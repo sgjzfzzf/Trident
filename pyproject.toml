@@ -1,0 +1,17 @@
+[project]
+name = "libtriton"
+version = "0.1.0"
+
+[build-system]
+requires = ["scikit-build-core"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+cmake.source-dir = "third_party/torch-mlir/externals/llvm-project/llvm"
+cmake.define.CMAKE_EXPORT_COMPILE_COMMANDS = "ON"
+cmake.define.LLVM_ENABLE_PROJECTS = "mlir"
+cmake.define.LLVM_EXTERNAL_PROJECTS = "torch-mlir"
+cmake.define.LLVM_EXTERNAL_TORCH_MLIR_SOURCE_DIR="third_party/torch-mlir"
+cmake.define.MLIR_ENABLE_BINDINGS_PYTHON = "ON"
+wheel.install-dir = "libtriton/_C"
+wheel.packages = ["python/libtriton"]

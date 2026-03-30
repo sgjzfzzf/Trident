@@ -1,4 +1,0 @@
-[submodule "third_party/torch-mlir"]
-	path = third_party/torch-mlir
-	url = https://github.com/llvm/torch-mlir.git
-	branch = main

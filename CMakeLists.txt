@@ -1,0 +1,71 @@
+cmake_minimum_required(VERSION 3.29)
+
+project(LibTriton)
+
+include(ExternalProject)
+
+ExternalProject_Add(
+    llvm-project
+    GIT_REPOSITORY https://github.com/llvm/llvm-project.git
+    GIT_TAG 977355be38d10c62c3d5498a64618ec926348252
+    SOURCE_SUBDIR llvm
+    INSTALL_DIR ${CMAKE_BINARY_DIR}/install/llvm-project
+    CMAKE_ARGS
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+        -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
+        -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/install/llvm-project
+        -DCMAKE_LINKER_TYPE=${CMAKE_LINKER_TYPE}
+        -DLLVM_ENABLE_PROJECTS=mlir
+        -DLLVM_INSTALL_UTILS=ON
+        -DMLIR_ENABLE_BINDINGS_PYTHON=ON
+        -DPython_FIND_VIRTUALENV=ONLY
+        -DPython3_FIND_VIRTUALENV=ONLY
+    USES_TERMINAL_DOWNLOAD ON
+    USES_TERMINAL_UPDATE ON
+    USES_TERMINAL_CONFIGURE ON
+    USES_TERMINAL_BUILD ON
+    USES_TERMINAL_INSTALL ON
+    USES_TERMINAL_TEST ON
+)
+
+ExternalProject_Add(
+    torch-mlir
+    GIT_REPOSITORY https://github.com/sgjzfzzf/torch-mlir.git
+    GIT_TAG libtriton
+    GIT_SUBMODULES "externals/stablehlo"
+    INSTALL_DIR ${CMAKE_BINARY_DIR}/install/torch-mlir
+    DEPENDS llvm-project
+    CMAKE_ARGS
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+        -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
+        -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/install/torch-mlir
+        -DCMAKE_LINKER_TYPE=${CMAKE_LINKER_TYPE}
+        -DLLVM_DIR=${CMAKE_BINARY_DIR}/install/llvm-project/lib/cmake/llvm
+        -DMLIR_DIR=${CMAKE_BINARY_DIR}/install/llvm-project/lib/cmake/mlir
+        -DMLIR_ENABLE_BINDINGS_PYTHON=ON
+        -DPython_FIND_VIRTUALENV=ONLY
+        -DPython3_FIND_VIRTUALENV=ONLY
+        -DTORCH_MLIR_PYTHON_PACKAGE_PREFIX=libtriton._C.torch_mlir.
+    USES_TERMINAL_DOWNLOAD ON
+    USES_TERMINAL_UPDATE ON
+    USES_TERMINAL_CONFIGURE ON
+    USES_TERMINAL_BUILD ON
+    USES_TERMINAL_INSTALL ON
+    USES_TERMINAL_TEST ON
+)
+
+install(
+    DIRECTORY ${CMAKE_BINARY_DIR}/install/llvm-project/python_packages/mlir_core/mlir
+    DESTINATION .
+)
+
+install(
+    DIRECTORY ${CMAKE_BINARY_DIR}/install/torch-mlir/python_packages/torch_mlir/torch_mlir
+    DESTINATION .
+)

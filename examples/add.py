@@ -1,21 +1,10 @@
-from typing import Any, List
-
-from libtriton._C.torch_mlir import fx
+from libtriton.core import triton_graph_backend
 import torch
 from torch._dynamo.backends.common import aot_autograd
 import triton
 import triton.language as tl
 
 DEVICE = triton.runtime.driver.active.get_active_torch_device()
-
-
-def customized_backend(
-    gm: torch.fx.GraphModule, example_inputs: List[Any]
-) -> torch.fx.GraphModule:
-    gm.print_readable()
-    m = fx.stateless_fx_import(gm)
-    print(m)
-    return gm.forward
 
 
 @triton.jit
@@ -36,7 +25,7 @@ def add_kernel(
     tl.store(output_ptr + offsets, output, mask=mask)
 
 
-@torch.compile(backend=aot_autograd(fw_compiler=customized_backend))
+@torch.compile(backend=aot_autograd(fw_compiler=triton_graph_backend))
 def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     output: torch.Tensor = torch.empty_like(x)
     assert x.device == DEVICE and y.device == DEVICE and output.device == DEVICE

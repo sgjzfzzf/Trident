@@ -12,10 +12,8 @@ class DLPack_Type<string name, string typeMnemonic>
 
 def DLPack_DLTensorType : DLPack_Type<"DLTensorType", "dltensor"> {
   let summary = "Opaque DLTensor handle type";
-  let description = [{
-    Represents a DLTensor-compatible handle value flowing across
-    DLPack interoperability boundaries.
-  }];
+  let description = [{Represents a DLTensor -
+     compatible handle value flowing across DLPack interoperability boundaries.}];
 }
 
 #endif // TVM_FFI_BINDINGS_DIALECT_DLPACK_IR_DLPACKTYPES_TD_

@@ -7,11 +7,13 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "tvm_ffi_bindings/Conversion/DLPackToLLVM/DLPackToLLVM.h"
 #include "tvm_ffi_bindings/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "tvm_ffi_bindings/Dialect/DLPack/IR/DLPackDialect.h"
 #include "tvm_ffi_bindings/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 
 int main(int argc, char **argv) {
+  libtriton::dlpack::registerDLPackToLLVMPasses();
   libtriton::tvm_ffi::registerTVMFFIToLLVMPasses();
 
   mlir::DialectRegistry registry;

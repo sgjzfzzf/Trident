@@ -9,7 +9,6 @@
 // is already in effect).
 
 #include "tvm_ffi_bindings/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
-
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -20,10 +19,12 @@ namespace {
 class ConvertTVMFFIToLLVMPass
     : public mlir::PassWrapper<ConvertTVMFFIToLLVMPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
- public:
+public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertTVMFFIToLLVMPass)
 
-  llvm::StringRef getArgument() const final { return "convert-tvm-ffi-to-llvm"; }
+  llvm::StringRef getArgument() const final {
+    return "convert-tvm-ffi-to-llvm";
+  }
 
   llvm::StringRef getDescription() const final {
     return "Lower TVMFFI dialect operations to LLVM dialect";
@@ -36,7 +37,7 @@ class ConvertTVMFFIToLLVMPass
 
 static mlir::PassRegistration<ConvertTVMFFIToLLVMPass> kPass;
 
-}  // namespace
+} // namespace
 
 std::unique_ptr<mlir::Pass> createConvertTVMFFIToLLVMPass() {
   return std::make_unique<ConvertTVMFFIToLLVMPass>();
@@ -48,4 +49,4 @@ void registerConvertTVMFFIToLLVMPass() {
 
 void registerTVMFFIToLLVMPasses() { registerConvertTVMFFIToLLVMPass(); }
 
-}  // namespace libtriton::tvm_ffi
+} // namespace libtriton::tvm_ffi

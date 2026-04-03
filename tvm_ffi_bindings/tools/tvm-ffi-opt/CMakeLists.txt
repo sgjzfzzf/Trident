@@ -7,10 +7,11 @@ set_target_properties(tvm-ffi-opt PROPERTIES
 )
 
 target_link_libraries(tvm-ffi-opt PRIVATE
-  MLIRFuncDialect
-  MLIRMlirOptMain
   DLPackDialect
   DLPackToLLVM
+  MLIRConvertToLLVMPass
+  MLIRFuncDialect
+  MLIRMlirOptMain
   TVMFFIToLLVM
   TVMFFIDialect
 )

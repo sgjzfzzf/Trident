@@ -4,6 +4,7 @@
 // development passes into the registry so tvm-ffi-opt can parse and transform
 // `.mlir` files exercising these dialects.
 
+#include "mlir/Conversion/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
@@ -15,11 +16,13 @@
 int main(int argc, char **argv) {
   libtriton::dlpack::registerDLPackToLLVMPasses();
   libtriton::tvm_ffi::registerTVMFFIToLLVMPasses();
+  mlir::registerConvertToLLVMPass();
 
   mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::LLVM::LLVMDialect,
-                  libtriton::dlpack::DLPackDialect,
-                  libtriton::tvm_ffi::TVMFFIDialect>();
+  registry.insert<libtriton::dlpack::DLPackDialect,
+                  libtriton::tvm_ffi::TVMFFIDialect, mlir::func::FuncDialect,
+                  mlir::LLVM::LLVMDialect>();
+  mlir::registerConvertToLLVMDependentDialectLoading(registry);
 
   return mlir::asMainReturnCode(mlir::MlirOptMain(
       argc, argv, "TVM FFI modular optimizer driver\n", registry));

@@ -16,6 +16,7 @@
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "tvm_ffi_bindings/Conversion/DLPackToLLVM/DLPackToLLVM.h"
+#include "tvm_ffi_bindings/Conversion/Utils/DLPackLLVMDescriptors.h"
 #include "tvm_ffi_bindings/Dialect/DLPack/IR/DLPackDialect.h"
 #include "tvm_ffi_bindings/Dialect/DLPack/IR/DLPackOps.h"
 #include "tvm_ffi_bindings/Dialect/DLPack/IR/DLPackTypes.h"
@@ -24,15 +25,6 @@
 namespace libtriton::dlpack {
 namespace {
 
-mlir::Type getOpaquePtrType(mlir::MLIRContext *context) {
-  return mlir::LLVM::LLVMPointerType::get(context);
-}
-
-mlir::Type getIntegerType(mlir::MLIRContext *context,
-                          const std::uint32_t width) {
-  return mlir::IntegerType::get(context, width);
-}
-
 mlir::Value materializeCast(mlir::OpBuilder &builder, mlir::Type resultType,
                             mlir::ValueRange inputs, mlir::Location loc) {
   if (inputs.size() != 1)
@@ -40,130 +32,6 @@ mlir::Value materializeCast(mlir::OpBuilder &builder, mlir::Type resultType,
   return mlir::UnrealizedConversionCastOp::create(builder, loc, resultType,
                                                   inputs)
       .getResult(0);
-}
-
-mlir::Type
-getConvertedDLContextType(const mlir::LLVMTypeConverter &typeConverter,
-                          mlir::MLIRContext *context) {
-  return typeConverter.convertType(
-      libtriton::dlpack::DLContextType::get(context));
-}
-
-mlir::Type
-getConvertedDLDataTypeType(const mlir::LLVMTypeConverter &typeConverter,
-                           mlir::MLIRContext *context) {
-  return typeConverter.convertType(
-      libtriton::dlpack::DLDataTypeType::get(context));
-}
-
-mlir::Value buildDLContextValue(mlir::ConversionPatternRewriter &rewriter,
-                                mlir::Location loc, mlir::Type i32Ty,
-                                mlir::LLVM::LLVMStructType dlContextTy) {
-  mlir::Value dlContextValue =
-      mlir::LLVM::PoisonOp::create(rewriter, loc, dlContextTy);
-  dlContextValue = mlir::LLVM::InsertValueOp::create(
-      rewriter, loc, dlContextValue,
-      mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty,
-                                     static_cast<std::int32_t>(kDLCPU)),
-      llvm::ArrayRef<int64_t>{0});
-  return mlir::LLVM::InsertValueOp::create(
-      rewriter, loc, dlContextValue,
-      mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 0LL),
-      llvm::ArrayRef<int64_t>{1});
-}
-
-mlir::Value buildDLDataTypeValue(mlir::ConversionPatternRewriter &rewriter,
-                                 mlir::Location loc, mlir::Type i8Ty,
-                                 mlir::Type i16Ty,
-                                 mlir::LLVM::LLVMStructType dlDataTypeTy,
-                                 std::uint8_t dtypeCode, std::uint8_t dtypeBits,
-                                 std::uint16_t dtypeLanes) {
-  mlir::Value dlDataTypeValue =
-      mlir::LLVM::PoisonOp::create(rewriter, loc, dlDataTypeTy);
-  dlDataTypeValue = mlir::LLVM::InsertValueOp::create(
-      rewriter, loc, dlDataTypeValue,
-      mlir::LLVM::ConstantOp::create(rewriter, loc, i8Ty,
-                                     static_cast<int64_t>(dtypeCode)),
-      llvm::ArrayRef<int64_t>{0});
-  dlDataTypeValue = mlir::LLVM::InsertValueOp::create(
-      rewriter, loc, dlDataTypeValue,
-      mlir::LLVM::ConstantOp::create(rewriter, loc, i8Ty,
-                                     static_cast<int64_t>(dtypeBits)),
-      llvm::ArrayRef<int64_t>{1});
-  return mlir::LLVM::InsertValueOp::create(
-      rewriter, loc, dlDataTypeValue,
-      mlir::LLVM::ConstantOp::create(rewriter, loc, i16Ty,
-                                     static_cast<int64_t>(dtypeLanes)),
-      llvm::ArrayRef<int64_t>{2});
-}
-
-mlir::Value
-buildDLTensorValue(mlir::ConversionPatternRewriter &rewriter,
-                   mlir::Location loc, mlir::LLVM::LLVMStructType dlTensorTy,
-                   mlir::TypedValue<mlir::LLVM::LLVMPointerType> dataPtr,
-                   mlir::Value dlContextValue,
-                   mlir::TypedValue<mlir::IntegerType> ndimValue,
-                   mlir::Value dlDataTypeValue,
-                   mlir::TypedValue<mlir::LLVM::LLVMPointerType> shapePtr,
-                   mlir::TypedValue<mlir::LLVM::LLVMPointerType> stridesPtr,
-                   mlir::TypedValue<mlir::IntegerType> byteOffset) {
-  mlir::Value dlTensor =
-      mlir::LLVM::PoisonOp::create(rewriter, loc, dlTensorTy);
-  dlTensor = mlir::LLVM::InsertValueOp::create(rewriter, loc, dlTensor, dataPtr,
-                                               llvm::ArrayRef<int64_t>{0});
-  dlTensor = mlir::LLVM::InsertValueOp::create(
-      rewriter, loc, dlTensor, dlContextValue, llvm::ArrayRef<int64_t>{1});
-  dlTensor = mlir::LLVM::InsertValueOp::create(
-      rewriter, loc, dlTensor, ndimValue, llvm::ArrayRef<int64_t>{2});
-  dlTensor = mlir::LLVM::InsertValueOp::create(
-      rewriter, loc, dlTensor, dlDataTypeValue, llvm::ArrayRef<int64_t>{3});
-  dlTensor = mlir::LLVM::InsertValueOp::create(
-      rewriter, loc, dlTensor, shapePtr, llvm::ArrayRef<int64_t>{4});
-  dlTensor = mlir::LLVM::InsertValueOp::create(
-      rewriter, loc, dlTensor, stridesPtr, llvm::ArrayRef<int64_t>{5});
-  return mlir::LLVM::InsertValueOp::create(rewriter, loc, dlTensor, byteOffset,
-                                           llvm::ArrayRef<int64_t>{6});
-}
-
-struct DLTensorLLVMView {
-  mlir::TypedValue<mlir::LLVM::LLVMPointerType> dataPtr;
-  mlir::Value dlContext;
-  mlir::TypedValue<mlir::IntegerType> ndim;
-  mlir::Value dlDataType;
-  mlir::TypedValue<mlir::LLVM::LLVMPointerType> shapePtr;
-  mlir::TypedValue<mlir::LLVM::LLVMPointerType> stridesPtr;
-  mlir::TypedValue<mlir::IntegerType> byteOffset;
-};
-
-DLTensorLLVMView unpackDLTensorValue(mlir::ConversionPatternRewriter &rewriter,
-                                     mlir::Location loc,
-                                     mlir::Value dltensorValue) {
-  DLTensorLLVMView view;
-  view.dataPtr = mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
-      mlir::LLVM::ExtractValueOp::create(rewriter, loc, dltensorValue,
-                                         llvm::ArrayRef<int64_t>{0})
-          .getResult());
-  view.dlContext = mlir::LLVM::ExtractValueOp::create(
-      rewriter, loc, dltensorValue, llvm::ArrayRef<int64_t>{1});
-  view.ndim = mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
-      mlir::LLVM::ExtractValueOp::create(rewriter, loc, dltensorValue,
-                                         llvm::ArrayRef<int64_t>{2})
-          .getResult());
-  view.dlDataType = mlir::LLVM::ExtractValueOp::create(
-      rewriter, loc, dltensorValue, llvm::ArrayRef<int64_t>{3});
-  view.shapePtr = mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
-      mlir::LLVM::ExtractValueOp::create(rewriter, loc, dltensorValue,
-                                         llvm::ArrayRef<int64_t>{4})
-          .getResult());
-  view.stridesPtr = mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
-      mlir::LLVM::ExtractValueOp::create(rewriter, loc, dltensorValue,
-                                         llvm::ArrayRef<int64_t>{5})
-          .getResult());
-  view.byteOffset = mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
-      mlir::LLVM::ExtractValueOp::create(rewriter, loc, dltensorValue,
-                                         llvm::ArrayRef<int64_t>{6})
-          .getResult());
-  return view;
 }
 
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
@@ -277,10 +145,8 @@ struct LowerFromMemRefOp
 
     mlir::Type convertedTensorType =
         llvmTypeConverter->convertType(op.getOutput().getType());
-    mlir::Type convertedDLContextType =
-        getConvertedDLContextType(*llvmTypeConverter, context);
-    mlir::Type convertedDLDataTypeType =
-        getConvertedDLDataTypeType(*llvmTypeConverter, context);
+    mlir::Type convertedDLContextType = getDLContextLLVMType(context);
+    mlir::Type convertedDLDataTypeType = getDLDataTypeLLVMType(context);
 
     mlir::LLVM::LLVMStructType dlTensorTy =
         mlir::dyn_cast<mlir::LLVM::LLVMStructType>(convertedTensorType);
@@ -330,13 +196,39 @@ struct LowerFromMemRefOp
                                               i64Ty, ptrTy);
 
     // Build DLContext struct: {device_type = kCPU = 1, device_id = 0}
-    mlir::Value dlContextValue =
-        buildDLContextValue(rewriter, loc, i32Ty, dlContextTy);
+    mlir::TypedValue<mlir::IntegerType> deviceTypeValue =
+        mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
+            mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty,
+                                           static_cast<std::int32_t>(kDLCPU))
+                .getResult());
+    mlir::TypedValue<mlir::IntegerType> deviceIdValue =
+        mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
+            mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 0LL)
+                .getResult());
+    libtriton::conversion::utils::DLContextLLVMDescriptor dlContext =
+        libtriton::conversion::utils::DLContextLLVMDescriptor::build(
+            rewriter, loc, dlContextTy, deviceTypeValue, deviceIdValue);
 
     // Build DLDataType struct: {code, bits, lanes = 1}
-    mlir::Value dlDataTypeValue =
-        buildDLDataTypeValue(rewriter, loc, i8Ty, i16Ty, dlDataTypeTy,
-                             dtypeCode, dtypeBits, dtypeLanes);
+    mlir::TypedValue<mlir::IntegerType> dtypeCodeValue =
+        mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
+            mlir::LLVM::ConstantOp::create(rewriter, loc, i8Ty,
+                                           static_cast<int64_t>(dtypeCode))
+                .getResult());
+    mlir::TypedValue<mlir::IntegerType> dtypeBitsValue =
+        mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
+            mlir::LLVM::ConstantOp::create(rewriter, loc, i8Ty,
+                                           static_cast<int64_t>(dtypeBits))
+                .getResult());
+    mlir::TypedValue<mlir::IntegerType> dtypeLanesValue =
+        mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
+            mlir::LLVM::ConstantOp::create(rewriter, loc, i16Ty,
+                                           static_cast<int64_t>(dtypeLanes))
+                .getResult());
+    libtriton::conversion::utils::DLDataTypeLLVMDescriptor dlDataType =
+        libtriton::conversion::utils::DLDataTypeLLVMDescriptor::build(
+            rewriter, loc, dlDataTypeTy, dtypeCodeValue, dtypeBitsValue,
+            dtypeLanesValue);
 
     mlir::TypedValue<mlir::IntegerType> ndimValue =
         mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
@@ -344,11 +236,12 @@ struct LowerFromMemRefOp
                                            static_cast<int64_t>(rank))
                 .getResult());
 
-    mlir::Value dlTensor = buildDLTensorValue(
-        rewriter, loc, dlTensorTy, dataPtr, dlContextValue, ndimValue,
-        dlDataTypeValue, shapeAlloca, stridesAlloca, elemOffset);
+    libtriton::conversion::utils::DLTensorLLVMDescriptor dlTensor =
+        libtriton::conversion::utils::DLTensorLLVMDescriptor::build(
+            rewriter, loc, dlTensorTy, dataPtr, dlContext, ndimValue,
+            dlDataType, shapeAlloca, stridesAlloca, elemOffset);
 
-    rewriter.replaceOp(op, dlTensor);
+    rewriter.replaceOp(op, dlTensor.as());
     return mlir::success();
   }
 };
@@ -372,12 +265,8 @@ struct LowerToMemRefOp
     if (!outputType)
       return mlir::failure();
 
-    const mlir::LLVMTypeConverter *llvmTypeConverter =
-        static_cast<const mlir::LLVMTypeConverter *>(getTypeConverter());
-    mlir::Type convertedDLContextType =
-        getConvertedDLContextType(*llvmTypeConverter, context);
-    mlir::Type convertedDLDataTypeType =
-        getConvertedDLDataTypeType(*llvmTypeConverter, context);
+    mlir::Type convertedDLContextType = getDLContextLLVMType(context);
+    mlir::Type convertedDLDataTypeType = getDLDataTypeLLVMType(context);
     mlir::LLVM::LLVMStructType dlContextTy =
         mlir::dyn_cast<mlir::LLVM::LLVMStructType>(convertedDLContextType);
     mlir::LLVM::LLVMStructType dlDataTypeTy =
@@ -388,24 +277,29 @@ struct LowerToMemRefOp
     mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
     mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
 
-    DLTensorLLVMView dlTensorView =
-        unpackDLTensorValue(rewriter, loc, adaptor.getInput());
+    libtriton::conversion::utils::DLTensorLLVMDescriptor dlTensor =
+        libtriton::conversion::utils::DLTensorLLVMDescriptor::from(
+            adaptor.getInput());
+    mlir::TypedValue<mlir::LLVM::LLVMPointerType> dataPtr =
+        dlTensor.data(rewriter, loc);
+    mlir::TypedValue<mlir::LLVM::LLVMPointerType> shapePtr =
+        dlTensor.shape(rewriter, loc);
+    mlir::TypedValue<mlir::LLVM::LLVMPointerType> stridesPtr =
+        dlTensor.strides(rewriter, loc);
+    mlir::TypedValue<mlir::IntegerType> byteOffset =
+        dlTensor.byteOffset(rewriter, loc);
 
     // Build an LLVM memref descriptor from the DLTensor fields
     mlir::MemRefDescriptor memDesc =
         mlir::MemRefDescriptor::poison(rewriter, loc, outputType);
-    memDesc.setAllocatedPtr(rewriter, loc, dlTensorView.dataPtr);
-    memDesc.setAlignedPtr(rewriter, loc, dlTensorView.dataPtr);
-    memDesc.setOffset(rewriter, loc, dlTensorView.byteOffset);
+    memDesc.setAllocatedPtr(rewriter, loc, dataPtr);
+    memDesc.setAlignedPtr(rewriter, loc, dataPtr);
+    memDesc.setOffset(rewriter, loc, byteOffset);
 
     std::tuple<llvm::SmallVector<mlir::Value>, llvm::SmallVector<mlir::Value>>
         shapeAndStrideValues = extractShapeAndStrideFromArrays(
-            rewriter, loc, dlTensorView.shapePtr, dlTensorView.stridesPtr, rank,
-            i64Ty, ptrTy);
-    llvm::SmallVector<mlir::Value> &shapeValues =
-        std::get<0>(shapeAndStrideValues);
-    llvm::SmallVector<mlir::Value> &strideValues =
-        std::get<1>(shapeAndStrideValues);
+            rewriter, loc, shapePtr, stridesPtr, rank, i64Ty, ptrTy);
+    auto [shapeValues, strideValues] = std::move(shapeAndStrideValues);
     for (std::uint32_t i = 0; i < rank; ++i) {
       memDesc.setSize(rewriter, loc, i, shapeValues[i]);
       memDesc.setStride(rewriter, loc, i, strideValues[i]);
@@ -468,22 +362,26 @@ static mlir::PassRegistration<ConvertDLPackToLLVMPass> kPass;
 
 mlir::LLVM::LLVMStructType getDLContextLLVMType(mlir::MLIRContext *context) {
   return mlir::LLVM::LLVMStructType::getLiteral(
-      context, {getIntegerType(context, 32), getIntegerType(context, 32)});
+      context, {mlir::IntegerType::get(context, 32),
+                mlir::IntegerType::get(context, 32)});
 }
 
 mlir::LLVM::LLVMStructType getDLDataTypeLLVMType(mlir::MLIRContext *context) {
   return mlir::LLVM::LLVMStructType::getLiteral(
-      context, {getIntegerType(context, 8), getIntegerType(context, 8),
-                getIntegerType(context, 16)});
+      context,
+      {mlir::IntegerType::get(context, 8), mlir::IntegerType::get(context, 8),
+       mlir::IntegerType::get(context, 16)});
 }
 
 mlir::LLVM::LLVMStructType getDLTensorLLVMType(mlir::MLIRContext *context,
                                                std::uint32_t sizeTWidth) {
   return mlir::LLVM::LLVMStructType::getLiteral(
-      context, {getOpaquePtrType(context), getDLContextLLVMType(context),
-                getIntegerType(context, 32), getDLDataTypeLLVMType(context),
-                getOpaquePtrType(context), getOpaquePtrType(context),
-                getIntegerType(context, sizeTWidth)});
+      context,
+      {mlir::LLVM::LLVMPointerType::get(context), getDLContextLLVMType(context),
+       mlir::IntegerType::get(context, 32), getDLDataTypeLLVMType(context),
+       mlir::LLVM::LLVMPointerType::get(context),
+       mlir::LLVM::LLVMPointerType::get(context),
+       mlir::IntegerType::get(context, sizeTWidth)});
 }
 
 void populateDLPackToLLVMTypeConversions(
@@ -497,9 +395,9 @@ void populateDLPackToLLVMTypeConversions(
   typeConverter.addConversion(
       [&](libtriton::dlpack::DLTensorTypeType type) -> mlir::Type {
         mlir::Type convertedDLContextType =
-            getConvertedDLContextType(typeConverter, type.getContext());
+            getDLContextLLVMType(type.getContext());
         mlir::Type convertedDLDataTypeType =
-            getConvertedDLDataTypeType(typeConverter, type.getContext());
+            getDLDataTypeLLVMType(type.getContext());
 
         mlir::LLVM::LLVMStructType dlContextTy =
             mlir::dyn_cast<mlir::LLVM::LLVMStructType>(convertedDLContextType);
@@ -510,12 +408,12 @@ void populateDLPackToLLVMTypeConversions(
 
         return mlir::LLVM::LLVMStructType::getLiteral(
             type.getContext(),
-            {getOpaquePtrType(type.getContext()), dlContextTy,
-             getIntegerType(type.getContext(), 32), dlDataTypeTy,
-             getOpaquePtrType(type.getContext()),
-             getOpaquePtrType(type.getContext()),
-             getIntegerType(type.getContext(),
-                            typeConverter.getPointerBitwidth())});
+            {mlir::LLVM::LLVMPointerType::get(type.getContext()), dlContextTy,
+             mlir::IntegerType::get(type.getContext(), 32), dlDataTypeTy,
+             mlir::LLVM::LLVMPointerType::get(type.getContext()),
+             mlir::LLVM::LLVMPointerType::get(type.getContext()),
+             mlir::IntegerType::get(type.getContext(),
+                                    typeConverter.getPointerBitwidth())});
       });
   typeConverter.addSourceMaterialization(materializeCast);
   typeConverter.addTargetMaterialization(materializeCast);

@@ -2,7 +2,6 @@
 #define TVM_FFI_BINDINGS_DIALECT_DLPACK_IR_DLPACKTYPES_H_
 
 #include "dlpack/dlpack.h"
-
 #include "mlir/IR/BuiltinTypes.h"
 
 #define GET_TYPEDEF_CLASSES

@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(MLIR REQUIRED CONFIG)
+find_package(tvm_ffi REQUIRED CONFIG)
 
 include(${LLVM_CMAKE_DIR}/AddLLVM.cmake)
 include(${MLIR_CMAKE_DIR}/AddMLIR.cmake)

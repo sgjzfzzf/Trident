@@ -60,8 +60,8 @@ mlir::Value buildDLContextValue(mlir::ConversionPatternRewriter &rewriter,
       mlir::LLVM::PoisonOp::create(rewriter, loc, dlContextTy);
   dlContextValue = mlir::LLVM::InsertValueOp::create(
       rewriter, loc, dlContextValue,
-      mlir::LLVM::ConstantOp::create(
-          rewriter, loc, i32Ty, static_cast<std::int32_t>(DLDeviceType::kCPU)),
+      mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty,
+                                     static_cast<std::int32_t>(kDLCPU)),
       llvm::ArrayRef<int64_t>{0});
   return mlir::LLVM::InsertValueOp::create(
       rewriter, loc, dlContextValue,
@@ -294,19 +294,18 @@ struct LowerFromMemRefOp
     uint16_t dtypeLanes = 1;
     mlir::Type elemTy = memRefType.getElementType();
     if (elemTy.isF16()) {
-      dtypeCode = static_cast<std::uint8_t>(DLDataTypeCode::kFloat);
+      dtypeCode = static_cast<std::uint8_t>(kDLFloat);
       dtypeBits = 16;
     } else if (elemTy.isF32()) {
-      dtypeCode = static_cast<std::uint8_t>(DLDataTypeCode::kFloat);
+      dtypeCode = static_cast<std::uint8_t>(kDLFloat);
       dtypeBits = 32;
     } else if (elemTy.isF64()) {
-      dtypeCode = static_cast<std::uint8_t>(DLDataTypeCode::kFloat);
+      dtypeCode = static_cast<std::uint8_t>(kDLFloat);
       dtypeBits = 64;
     } else if (mlir::IntegerType integerType =
                    mlir::dyn_cast<mlir::IntegerType>(elemTy)) {
-      dtypeCode = integerType.isUnsigned()
-                      ? static_cast<std::uint8_t>(DLDataTypeCode::kUInt)
-                      : static_cast<std::uint8_t>(DLDataTypeCode::kInt);
+      dtypeCode = integerType.isUnsigned() ? static_cast<std::uint8_t>(kDLUInt)
+                                           : static_cast<std::uint8_t>(kDLInt);
       dtypeBits = static_cast<uint8_t>(integerType.getWidth());
     } else {
       return mlir::failure();

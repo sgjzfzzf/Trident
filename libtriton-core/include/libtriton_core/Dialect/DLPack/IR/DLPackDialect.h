@@ -1,0 +1,8 @@
+#ifndef LIBTRITON_CORE_DIALECT_DLPACK_IR_DLPACKDIALECT_H_
+#define LIBTRITON_CORE_DIALECT_DLPACK_IR_DLPACKDIALECT_H_
+
+#include "mlir/IR/Dialect.h"
+
+#include "libtriton_core/Dialect/DLPack/IR/DLPackDialect.h.inc"
+
+#endif // LIBTRITON_CORE_DIALECT_DLPACK_IR_DLPACKDIALECT_H_

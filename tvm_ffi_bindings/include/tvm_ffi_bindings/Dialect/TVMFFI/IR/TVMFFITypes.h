@@ -1,9 +1,0 @@
-#ifndef TVM_FFI_BINDINGS_DIALECT_TVMFFI_IR_TVMFFITYPES_H_
-#define TVM_FFI_BINDINGS_DIALECT_TVMFFI_IR_TVMFFITYPES_H_
-
-#include "mlir/IR/BuiltinTypes.h"
-
-#define GET_TYPEDEF_CLASSES
-#include "tvm_ffi_bindings/Dialect/TVMFFI/IR/TVMFFITypes.h.inc"
-
-#endif // TVM_FFI_BINDINGS_DIALECT_TVMFFI_IR_TVMFFITYPES_H_

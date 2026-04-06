@@ -12,6 +12,7 @@ target_link_libraries(libtriton-core-opt PRIVATE
   MLIRConvertToLLVMPass
   MLIRFuncDialect
   MLIRMlirOptMain
+  MLIRTransforms
   TVMFFIToLLVM
   TVMFFIDialect
 )

@@ -14,11 +14,13 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "mlir/Transforms/Passes.h"
 
 int main(int argc, char **argv) {
   libtriton::dlpack::registerDLPackToLLVMPasses();
   libtriton::tvm_ffi::registerTVMFFIToLLVMPasses();
   mlir::registerConvertToLLVMPass();
+  mlir::registerReconcileUnrealizedCastsPass();
 
   mlir::DialectRegistry registry;
   libtriton::dlpack::registerConvertDLPackToLLVMInterface(registry);

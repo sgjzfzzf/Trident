@@ -20,7 +20,9 @@ void populateTVMFFIToLLVMConversionPatterns(
     mlir::RewritePatternSet &patterns);
 
 std::unique_ptr<mlir::Pass> createConvertTVMFFIToLLVMPass();
+std::unique_ptr<mlir::Pass> createEmitTVMFFIInterfacePass();
 void registerConvertTVMFFIToLLVMPass();
+void registerEmitTVMFFIInterfacePass();
 void registerTVMFFIToLLVMPasses();
 void registerConvertTVMFFIToLLVMInterface(mlir::DialectRegistry &registry);
 

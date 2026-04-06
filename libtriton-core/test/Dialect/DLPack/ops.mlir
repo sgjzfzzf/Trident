@@ -2,17 +2,17 @@
 
 // CHECK-LABEL: func.func @from_memref
 func.func @from_memref(%arg0: memref<?xf32>) {
-  // CHECK: %[[VALUE:.*]] = dlpack.from_memref %arg0 : memref<?xf32> -> !dlpack.mtensor
-  %0 = dlpack.from_memref %arg0 : memref<?xf32> -> !dlpack.mtensor
+  // CHECK: %[[VALUE:.*]] = dlpack.from_memref %arg0 : memref<?xf32> -> !dlpack.managed_tensor
+  %0 = dlpack.from_memref %arg0 : memref<?xf32> -> !dlpack.managed_tensor
   return
 }
 
 // -----
 
 // CHECK-LABEL: func.func @view
-func.func @view(%arg0: !dlpack.mtensor) {
-  // CHECK: %[[VALUE:.*]] = dlpack.view %arg0 : !dlpack.mtensor -> !dlpack.tensor
-  %0 = dlpack.view %arg0 : !dlpack.mtensor -> !dlpack.tensor
+func.func @view(%arg0: !dlpack.managed_tensor) {
+  // CHECK: %[[VALUE:.*]] = dlpack.view %arg0 : !dlpack.managed_tensor -> !dlpack.tensor
+  %0 = dlpack.view %arg0 : !dlpack.managed_tensor -> !dlpack.tensor
   return
 }
 

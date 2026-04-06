@@ -3,15 +3,26 @@
 
 #include <memory>
 
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/Transforms/DialectConversion.h"
+
 namespace mlir {
 class Pass;
 } // namespace mlir
 
 namespace libtriton::tvm_ffi {
 
+void populateTVMFFIToLLVMTypeConversions(
+    mlir::LLVMTypeConverter &typeConverter);
+void populateTVMFFIToLLVMConversionPatterns(
+    mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
+    mlir::RewritePatternSet &patterns);
+
 std::unique_ptr<mlir::Pass> createConvertTVMFFIToLLVMPass();
 void registerConvertTVMFFIToLLVMPass();
 void registerTVMFFIToLLVMPasses();
+void registerConvertTVMFFIToLLVMInterface(mlir::DialectRegistry &registry);
 
 } // namespace libtriton::tvm_ffi
 

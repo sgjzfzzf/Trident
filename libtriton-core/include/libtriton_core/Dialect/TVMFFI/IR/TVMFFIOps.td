@@ -67,9 +67,9 @@ def TVMFFI_ToStrOp : TVMFFI_Op<"to_str", [Pure]> {
 }
 
 def TVMFFI_FromTensorOp : TVMFFI_Op<"from_tensor", [Pure]> {
-  let summary = "Box DLTensor into TVMFFIAny";
-  let description = [{Converts a DLTensor handle value into TVMFFIAny.}];
-  let arguments = (ins DLPack_DLTensor : $input);
+  let summary = "Box tensor object handle into TVMFFIAny";
+  let description = [{Converts a TVMFFI tensor object handle into TVMFFIAny.}];
+  let arguments = (ins TVMFFI_ObjectHandleType : $input);
   let results = (outs TVMFFI_AnyType : $output);
 }
 
@@ -82,20 +82,32 @@ def TVMFFI_ToTensorOp : TVMFFI_Op<"to_tensor", [Pure]> {
 }
 
 def TVMFFI_FromObjectOp : TVMFFI_Op<"from_object", [Pure]> {
-  let summary = "Box object pointer into TVMFFIAny";
-  let description =
-      [{Converts an LLVM pointer value(typically modeling a void *object handle)
-            into TVMFFIAny.}];
-  let arguments = (ins LLVM_AnyPointer : $input);
+  let summary = "Box object handle into TVMFFIAny";
+  let description = [{Converts a TVMFFI object handle into TVMFFIAny.}];
+  let arguments = (ins TVMFFI_ObjectHandleType : $input);
   let results = (outs TVMFFI_AnyType : $output);
 }
 
 def TVMFFI_ToObjectOp : TVMFFI_Op<"to_object", [Pure]> {
-  let summary = "Unbox object pointer from TVMFFIAny";
-  let description = [{Converts a TVMFFIAny value into an LLVM pointer result
-                          intended to model an opaque object pointer.}];
+  let summary = "Unbox object handle from TVMFFIAny";
+  let description = [{Converts a TVMFFIAny value into a TVMFFI object handle.}];
   let arguments = (ins TVMFFI_AnyType : $input);
-  let results = (outs LLVM_AnyPointer : $output);
+  let results = (outs TVMFFI_ObjectHandleType : $output);
+}
+
+def TVMFFI_TensorFromDLPackOp : TVMFFI_Op<"tensor_from_dlpack"> {
+  let summary = "Call TVMFFITensorFromDLPack and return object handle";
+  let description = [{Models `TVMFFITensorFromDLPack(from, require_alignment,
+    require_contiguous, out)` with `out` materialized by lowering.
+    The op returns the produced TVMFFIObjectHandle directly.}];
+  let arguments = (ins LLVM_AnyPointer
+                   : $from, I32
+                   : $require_alignment, I32
+                   : $require_contiguous);
+  let results = (outs TVMFFI_ObjectHandleType : $output);
+  let assemblyFormat = "$from `,` $require_alignment `,` $require_contiguous "
+                       "attr-dict `:` type($from) `,` type($require_alignment) "
+                       "`,` type($require_contiguous) `->` type($output)";
 }
 
 #endif // LIBTRITON_CORE_DIALECT_TVMFFI_IR_TVMFFIOPS_TD_

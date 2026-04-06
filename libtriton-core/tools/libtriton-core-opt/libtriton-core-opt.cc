@@ -21,6 +21,8 @@ int main(int argc, char **argv) {
   mlir::registerConvertToLLVMPass();
 
   mlir::DialectRegistry registry;
+  libtriton::dlpack::registerConvertDLPackToLLVMInterface(registry);
+  libtriton::tvm_ffi::registerConvertTVMFFIToLLVMInterface(registry);
   registry.insert<libtriton::dlpack::DLPackDialect,
                   libtriton::tvm_ffi::TVMFFIDialect, mlir::func::FuncDialect,
                   mlir::LLVM::LLVMDialect>();

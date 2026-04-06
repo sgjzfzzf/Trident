@@ -29,7 +29,7 @@ def DLPack_DLTensor : DLPack_Type<"DLTensor", "tensor"> {
       "interoperability boundaries.";
 }
 
-def DLPack_DLManagedTensor : DLPack_Type<"DLManagedTensor", "mtensor"> {
+def DLPack_DLManagedTensor : DLPack_Type<"DLManagedTensor", "managed_tensor"> {
   let summary = "Opaque DLManagedTensor handle type";
   let description =
       "Represents a DLManagedTensor-compatible handle value flowing across "

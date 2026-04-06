@@ -55,9 +55,9 @@ func.func @to_str(%arg0: !tvm_ffi.any) {
 // -----
 
 // CHECK-LABEL: func.func @from_tensor
-func.func @from_tensor(%arg0: !dlpack.tensor) {
-  // CHECK: %[[VALUE:.*]] = tvm_ffi.from_tensor %arg0 : !dlpack.tensor -> !tvm_ffi.any
-  %0 = tvm_ffi.from_tensor %arg0 : !dlpack.tensor -> !tvm_ffi.any
+func.func @from_tensor(%arg0: !tvm_ffi.object_handle) {
+  // CHECK: %[[VALUE:.*]] = tvm_ffi.from_tensor %arg0 : !tvm_ffi.object_handle -> !tvm_ffi.any
+  %0 = tvm_ffi.from_tensor %arg0 : !tvm_ffi.object_handle -> !tvm_ffi.any
   return
 }
 
@@ -73,9 +73,9 @@ func.func @to_tensor(%arg0: !tvm_ffi.any) {
 // -----
 
 // CHECK-LABEL: func.func @from_object
-func.func @from_object(%arg0: !llvm.ptr) {
-  // CHECK: %[[VALUE:.*]] = tvm_ffi.from_object %arg0 : !llvm.ptr -> !tvm_ffi.any
-  %0 = tvm_ffi.from_object %arg0 : !llvm.ptr -> !tvm_ffi.any
+func.func @from_object(%arg0: !tvm_ffi.object_handle) {
+  // CHECK: %[[VALUE:.*]] = tvm_ffi.from_object %arg0 : !tvm_ffi.object_handle -> !tvm_ffi.any
+  %0 = tvm_ffi.from_object %arg0 : !tvm_ffi.object_handle -> !tvm_ffi.any
   return
 }
 
@@ -83,7 +83,16 @@ func.func @from_object(%arg0: !llvm.ptr) {
 
 // CHECK-LABEL: func.func @to_object
 func.func @to_object(%arg0: !tvm_ffi.any) {
-  // CHECK: %[[VALUE:.*]] = tvm_ffi.to_object %arg0 : !tvm_ffi.any -> !llvm.ptr
-  %0 = tvm_ffi.to_object %arg0 : !tvm_ffi.any -> !llvm.ptr
+  // CHECK: %[[VALUE:.*]] = tvm_ffi.to_object %arg0 : !tvm_ffi.any -> !tvm_ffi.object_handle
+  %0 = tvm_ffi.to_object %arg0 : !tvm_ffi.any -> !tvm_ffi.object_handle
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @tensor_from_dlpack
+func.func @tensor_from_dlpack(%arg0: !llvm.ptr, %arg1: i32, %arg2: i32) {
+  // CHECK: %[[VALUE:.*]] = tvm_ffi.tensor_from_dlpack %arg0, %arg1, %arg2 : !llvm.ptr, i32, i32 -> !tvm_ffi.object_handle
+  %0 = tvm_ffi.tensor_from_dlpack %arg0, %arg1, %arg2 : !llvm.ptr, i32, i32 -> !tvm_ffi.object_handle
   return
 }

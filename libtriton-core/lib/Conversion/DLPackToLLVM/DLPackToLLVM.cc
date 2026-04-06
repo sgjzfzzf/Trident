@@ -9,6 +9,8 @@
 #include "libtriton_core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "libtriton_core/Dialect/DLPack/IR/DLPackOps.h"
 #include "libtriton_core/Dialect/DLPack/IR/DLPackTypes.h"
+#include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
+#include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -371,30 +373,9 @@ public:
   void runOnOperation() final {
     mlir::MLIRContext &context = getContext();
     mlir::LLVMTypeConverter typeConverter(&context);
-    populateDLPackToLLVMTypeConversions(typeConverter);
-
-    mlir::RewritePatternSet patterns(&context);
-    mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
-        patterns, typeConverter);
-    mlir::populateReturnOpTypeConversionPattern(patterns, typeConverter);
-    patterns.add<LowerFromMemRefOp, LowerViewOp, LowerToMemRefOp>(typeConverter,
-                                                                  &context);
-
     mlir::ConversionTarget target(context);
-    target.addIllegalDialect<libtriton::dlpack::DLPackDialect>();
-    target.addLegalDialect<mlir::BuiltinDialect, mlir::LLVM::LLVMDialect>();
-    target.addDynamicallyLegalOp<mlir::func::FuncOp>(
-        [&](mlir::func::FuncOp op) {
-          return typeConverter.isSignatureLegal(op.getFunctionType()) &&
-                 typeConverter.isLegal(&op.getBody());
-        });
-    target.addDynamicallyLegalOp<mlir::func::ReturnOp>(
-        [&](mlir::Operation *op) {
-          return mlir::isLegalForReturnOpTypeConversionPattern(op,
-                                                               typeConverter);
-        });
-    target.markUnknownOpDynamicallyLegal(
-        [](mlir::Operation *) { return true; });
+    mlir::RewritePatternSet patterns(&context);
+    populateDLPackToLLVMConversionPatterns(target, typeConverter, patterns);
 
     if (failed(mlir::applyPartialConversion(getOperation(), target,
                                             std::move(patterns)))) {
@@ -404,6 +385,17 @@ public:
 };
 
 static mlir::PassRegistration<ConvertDLPackToLLVMPass> kPass;
+
+struct DLPackToLLVMDialectInterface
+    : public mlir::ConvertToLLVMPatternInterface {
+  using ConvertToLLVMPatternInterface::ConvertToLLVMPatternInterface;
+
+  void populateConvertToLLVMConversionPatterns(
+      mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
+      mlir::RewritePatternSet &patterns) const final {
+    populateDLPackToLLVMConversionPatterns(target, typeConverter, patterns);
+  }
+};
 
 } // namespace
 
@@ -431,6 +423,30 @@ void populateDLPackToLLVMTypeConversions(
   typeConverter.addTargetMaterialization(materializeCast);
 }
 
+void populateDLPackToLLVMConversionPatterns(
+    mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
+    mlir::RewritePatternSet &patterns) {
+  mlir::MLIRContext *context = patterns.getContext();
+  populateDLPackToLLVMTypeConversions(typeConverter);
+
+  mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
+      patterns, typeConverter);
+  mlir::populateReturnOpTypeConversionPattern(patterns, typeConverter);
+  patterns.add<LowerFromMemRefOp, LowerViewOp, LowerToMemRefOp>(typeConverter,
+                                                                context);
+
+  target.addIllegalDialect<libtriton::dlpack::DLPackDialect>();
+  target.addLegalDialect<mlir::BuiltinDialect, mlir::LLVM::LLVMDialect>();
+  target.addDynamicallyLegalOp<mlir::func::FuncOp>([&](mlir::func::FuncOp op) {
+    return typeConverter.isSignatureLegal(op.getFunctionType()) &&
+           typeConverter.isLegal(&op.getBody());
+  });
+  target.addDynamicallyLegalOp<mlir::func::ReturnOp>([&](mlir::Operation *op) {
+    return mlir::isLegalForReturnOpTypeConversionPattern(op, typeConverter);
+  });
+  target.markUnknownOpDynamicallyLegal([](mlir::Operation *) { return true; });
+}
+
 std::unique_ptr<mlir::Pass> createConvertDLPackToLLVMPass() {
   return std::make_unique<ConvertDLPackToLLVMPass>();
 }
@@ -440,5 +456,12 @@ void registerConvertDLPackToLLVMPass() {
 }
 
 void registerDLPackToLLVMPasses() { registerConvertDLPackToLLVMPass(); }
+
+void registerConvertDLPackToLLVMInterface(mlir::DialectRegistry &registry) {
+  registry.addExtension(
+      +[](mlir::MLIRContext *ctx, libtriton::dlpack::DLPackDialect *dialect) {
+        dialect->addInterfaces<DLPackToLLVMDialectInterface>();
+      });
+}
 
 } // namespace libtriton::dlpack

@@ -4,4 +4,5 @@ add_mlir_conversion_library(TVMFFIToLLVM
 	LINK_LIBS PUBLIC
 	MLIRPass
 	TVMFFIDialect
+	tvm_ffi::header
 )

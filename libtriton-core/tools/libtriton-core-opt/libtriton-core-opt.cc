@@ -18,10 +18,12 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
 
 int main(int argc, char **argv) {
+  mlir::registerAllPasses();
   mlir::registerConvertToLLVMPass();
   mlir::registerReconcileUnrealizedCastsPass();
   libtriton::dlpack::registerConvertDLPackToLLVMPass();

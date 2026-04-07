@@ -724,6 +724,7 @@ void populateDLPackToLLVMConversionPatterns(
 
   mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
       patterns, typeConverter);
+  mlir::populateCallOpTypeConversionPattern(patterns, typeConverter);
   mlir::populateReturnOpTypeConversionPattern(patterns, typeConverter);
   patterns.add<LowerFromMemRefOwnedOp, LowerFromMemRefBorrowedOp, LowerViewOp,
                LowerToMemRefOp>(typeConverter, context);
@@ -733,6 +734,10 @@ void populateDLPackToLLVMConversionPatterns(
   target.addDynamicallyLegalOp<mlir::func::FuncOp>([&](mlir::func::FuncOp op) {
     return typeConverter.isSignatureLegal(op.getFunctionType()) &&
            typeConverter.isLegal(&op.getBody());
+  });
+  target.addDynamicallyLegalOp<mlir::func::CallOp>([&](mlir::func::CallOp op) {
+    return typeConverter.isLegal(op.getOperandTypes()) &&
+           typeConverter.isLegal(op.getResultTypes());
   });
   target.addDynamicallyLegalOp<mlir::func::ReturnOp>([&](mlir::Operation *op) {
     return mlir::isLegalForReturnOpTypeConversionPattern(op, typeConverter);

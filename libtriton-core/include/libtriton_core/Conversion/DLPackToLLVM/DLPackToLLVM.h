@@ -19,7 +19,6 @@ void populateDLPackToLLVMConversionPatterns(
 
 std::unique_ptr<mlir::Pass> createConvertDLPackToLLVMPass();
 void registerConvertDLPackToLLVMPass();
-void registerDLPackToLLVMPasses();
 void registerConvertDLPackToLLVMInterface(mlir::DialectRegistry &registry);
 
 } // namespace libtriton::dlpack

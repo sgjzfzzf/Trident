@@ -6,6 +6,7 @@
 // libtriton-core-opt can parse and transform `.mlir` files exercising these
 // dialects.
 
+#include "libtriton_core/Conversion/ConvertFuncSignatureToDLPack/ConvertFuncSignatureToDLPack.h"
 #include "libtriton_core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
 #include "libtriton_core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "libtriton_core/Dialect/DLPack/IR/DLPackDialect.h"
@@ -23,17 +24,17 @@
 int main(int argc, char **argv) {
   mlir::registerConvertToLLVMPass();
   mlir::registerReconcileUnrealizedCastsPass();
+  libtriton::dlpack::registerConvertDLPackToLLVMPass();
+  libtriton::dlpack::registerConvertFuncSignatureToDLPackPass();
+  libtriton::tvm_ffi::registerTVMFFIToLLVMPasses();
 
   mlir::DialectRegistry registry;
   libtriton::dlpack::registerConvertDLPackToLLVMInterface(registry);
   libtriton::tvm_ffi::registerConvertTVMFFIToLLVMInterface(registry);
   registry.insert<libtriton::dlpack::DLPackDialect,
-                  libtriton::tvm_ffi::TVMFFIDialect,
-                  mlir::arith::ArithDialect,
-                  mlir::cf::ControlFlowDialect,
-                  mlir::func::FuncDialect,
-                  mlir::LLVM::LLVMDialect,
-                  mlir::memref::MemRefDialect,
+                  libtriton::tvm_ffi::TVMFFIDialect, mlir::arith::ArithDialect,
+                  mlir::cf::ControlFlowDialect, mlir::func::FuncDialect,
+                  mlir::LLVM::LLVMDialect, mlir::memref::MemRefDialect,
                   mlir::scf::SCFDialect>();
   mlir::registerConvertToLLVMDependentDialectLoading(registry);
 

@@ -2,8 +2,8 @@
 
 // CHECK-LABEL: func.func @from_memref
 func.func @from_memref(%arg0: memref<?xf32>) {
-  // CHECK: %[[VALUE:.*]] = dlpack.from_memref %arg0 : memref<?xf32> -> !dlpack.managed_tensor
-  %0 = dlpack.from_memref %arg0 : memref<?xf32> -> !dlpack.managed_tensor
+  // CHECK: %[[VALUE:.*]] = dlpack.from_memref_owned %arg0 : memref<?xf32> -> !dlpack.managed_tensor
+  %0 = dlpack.from_memref_owned %arg0 : memref<?xf32> -> !dlpack.managed_tensor
   return
 }
 

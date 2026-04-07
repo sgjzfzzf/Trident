@@ -56,7 +56,7 @@ func.func @lower_from_memref(%arg0: memref<?xf32>) -> !dlpack.managed_tensor {
   
   // Build managed tensor with malloc-allocated arrays
   // CHECK: return %[[MANAGED:.*]] : !llvm.struct<(struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>, ptr, ptr)>
-  %0 = dlpack.from_memref %arg0 : memref<?xf32> -> !dlpack.managed_tensor
+  %0 = dlpack.from_memref_owned %arg0 : memref<?xf32> -> !dlpack.managed_tensor
   return %0 : !dlpack.managed_tensor
 }
 

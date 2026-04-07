@@ -1,2 +1,3 @@
+add_subdirectory(ConvertFuncSignatureToDLPack)
 add_subdirectory(DLPackToLLVM)
 add_subdirectory(TVMFFIToLLVM)

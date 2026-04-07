@@ -11,8 +11,12 @@
 #include "libtriton_core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "libtriton_core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "mlir/Conversion/Passes.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -24,8 +28,13 @@ int main(int argc, char **argv) {
   libtriton::dlpack::registerConvertDLPackToLLVMInterface(registry);
   libtriton::tvm_ffi::registerConvertTVMFFIToLLVMInterface(registry);
   registry.insert<libtriton::dlpack::DLPackDialect,
-                  libtriton::tvm_ffi::TVMFFIDialect, mlir::func::FuncDialect,
-                  mlir::LLVM::LLVMDialect>();
+                  libtriton::tvm_ffi::TVMFFIDialect,
+                  mlir::arith::ArithDialect,
+                  mlir::cf::ControlFlowDialect,
+                  mlir::func::FuncDialect,
+                  mlir::LLVM::LLVMDialect,
+                  mlir::memref::MemRefDialect,
+                  mlir::scf::SCFDialect>();
   mlir::registerConvertToLLVMDependentDialectLoading(registry);
 
   return mlir::asMainReturnCode(mlir::MlirOptMain(

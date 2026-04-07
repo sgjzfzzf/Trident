@@ -9,9 +9,13 @@ set_target_properties(libtriton-core-opt PROPERTIES
 target_link_libraries(libtriton-core-opt PRIVATE
   DLPackDialect
   DLPackToLLVM
+  MLIRArithDialect
   MLIRConvertToLLVMPass
+  MLIRControlFlowDialect
   MLIRFuncDialect
+  MLIRMemRefDialect
   MLIRMlirOptMain
+  MLIRSCFDialect
   MLIRTransforms
   TVMFFIToLLVM
   TVMFFIDialect

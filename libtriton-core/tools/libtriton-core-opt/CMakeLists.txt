@@ -7,9 +7,9 @@ set_target_properties(libtriton-core-opt PROPERTIES
 )
 
 target_link_libraries(libtriton-core-opt PRIVATE
-  ConvertFuncSignatureToDLPack
   DLPackDialect
   DLPackToLLVM
+  MemRefOriginAnalysis
   MLIRArithDialect
   MLIRConvertToLLVMPass
   MLIRControlFlowDialect

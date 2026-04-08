@@ -89,15 +89,16 @@ func.func @lowering_to_str(%a: !tvm_ffi.any) -> !llvm.ptr {
 }
 
 // CHECK-LABEL: func.func @lowering_from_tensor
-// CHECK-SAME: (%[[FROM_DLPACK_ARG:.*]]: !llvm.ptr, %[[FROM_TENSOR_ALIGN:.*]]: i32, %[[FROM_TENSOR_CONTIG:.*]]: i32)
+// CHECK-SAME: (%[[FROM_DLPACK_ARG:.*]]: !llvm.struct<(struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>, ptr, ptr)>, %[[FROM_TENSOR_ALIGN:.*]]: i32, %[[FROM_TENSOR_CONTIG:.*]]: i32)
 // CHECK-SAME: -> !llvm.struct<(i32, i32, i64)>
 // NO-CAST-LABEL: func.func @lowering_from_tensor
-func.func @lowering_from_tensor(%from: !llvm.ptr, %align: i32, %contig: i32) -> !tvm_ffi.any {
+func.func @lowering_from_tensor(%from: !dlpack.managed_tensor, %align: i32, %contig: i32) -> !tvm_ffi.any {
   // CHECK-NOT: builtin.unrealized_conversion_cast
   // NO-CAST-NOT: builtin.unrealized_conversion_cast
   // CHECK: %[[ONE:.*]] = llvm.mlir.constant(1 : i64)
-  // CHECK: %[[FROM_SLOT:.*]] = llvm.alloca %[[ONE]] x i64 : (i64) -> !llvm.ptr
-  // CHECK: llvm.store %[[FROM_DLPACK_ARG]], %[[FROM_SLOT]]
+  // CHECK: %[[FROM_SIZE:.*]] = llvm.mlir.constant(64 : i64)
+  // CHECK: %[[FROM_SLOT:.*]] = llvm.call @malloc(%[[FROM_SIZE]]) : (i64) -> !llvm.ptr
+  // CHECK: llvm.store %[[FROM_DLPACK_ARG]], %[[FROM_SLOT]] : !llvm.struct<(struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>, ptr, ptr)>, !llvm.ptr
   // CHECK: %[[OUT_SLOT:.*]] = llvm.alloca %[[ONE]] x i64 : (i64) -> !llvm.ptr
   // CHECK: %[[ZERO_PTR:.*]] = llvm.mlir.zero : !llvm.ptr
   // CHECK: llvm.store %[[ZERO_PTR]], %[[OUT_SLOT]]
@@ -114,7 +115,7 @@ func.func @lowering_from_tensor(%from: !llvm.ptr, %align: i32, %contig: i32) -> 
   // CHECK-NOT: builtin.unrealized_conversion_cast
   // CHECK: return %[[ANY_VALUE]] : !llvm.struct<(i32, i32, i64)>
   // NO-CAST: return
-  %h = tvm_ffi.tensor_from_dlpack %from, %align, %contig : !llvm.ptr, i32, i32 -> !tvm_ffi.object_handle
+  %h = tvm_ffi.tensor_from_dlpack %from, %align, %contig : !dlpack.managed_tensor, i32, i32 -> !tvm_ffi.object_handle
   %0 = tvm_ffi.from_tensor %h : !tvm_ffi.object_handle -> !tvm_ffi.any
   return %0 : !tvm_ffi.any
 }

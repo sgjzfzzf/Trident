@@ -1,0 +1,9 @@
+add_mlir_library(MemRefOriginAnalysis
+  MemRefOriginAnalysis.cc
+
+  LINK_LIBS PUBLIC
+  MLIRAnalysis
+  MLIRFuncDialect
+  MLIRMemRefDialect
+  MLIRPass
+)

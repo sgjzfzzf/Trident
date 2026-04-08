@@ -91,8 +91,8 @@ func.func @to_object(%arg0: !tvm_ffi.any) {
 // -----
 
 // CHECK-LABEL: func.func @tensor_from_dlpack
-func.func @tensor_from_dlpack(%arg0: !llvm.ptr, %arg1: i32, %arg2: i32) {
-  // CHECK: %[[VALUE:.*]] = tvm_ffi.tensor_from_dlpack %arg0, %arg1, %arg2 : !llvm.ptr, i32, i32 -> !tvm_ffi.object_handle
-  %0 = tvm_ffi.tensor_from_dlpack %arg0, %arg1, %arg2 : !llvm.ptr, i32, i32 -> !tvm_ffi.object_handle
+func.func @tensor_from_dlpack(%arg0: !dlpack.managed_tensor, %arg1: i32, %arg2: i32) {
+  // CHECK: %[[VALUE:.*]] = tvm_ffi.tensor_from_dlpack %arg0, %arg1, %arg2 : !dlpack.managed_tensor, i32, i32 -> !tvm_ffi.object_handle
+  %0 = tvm_ffi.tensor_from_dlpack %arg0, %arg1, %arg2 : !dlpack.managed_tensor, i32, i32 -> !tvm_ffi.object_handle
   return
 }

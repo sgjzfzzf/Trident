@@ -28,7 +28,7 @@
 namespace libtriton::dlpack {
 namespace {
 
-constexpr const char *kDefaultManagedTensorDeleterName =
+constexpr const char kDefaultManagedTensorDeleterName[] =
     "__libtriton_dlpack_default_managed_tensor_deleter";
 
 mlir::Value materializeCast(mlir::OpBuilder &builder, mlir::Type resultType,
@@ -103,15 +103,22 @@ mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getOrCreateDefaultManagedTensorDeleter(
           .getResult();
   mlir::Value dlTensorValue = mlir::LLVM::ExtractValueOp::create(
       bodyBuilder, loc, managedTensorValue, llvm::ArrayRef<int64_t>{0});
+  mlir::Value dataPtr = mlir::LLVM::ExtractValueOp::create(
+      bodyBuilder, loc, dlTensorValue, llvm::ArrayRef<int64_t>{0});
   mlir::Value shapePtr = mlir::LLVM::ExtractValueOp::create(
       bodyBuilder, loc, dlTensorValue, llvm::ArrayRef<int64_t>{4});
   mlir::Value stridesPtr = mlir::LLVM::ExtractValueOp::create(
       bodyBuilder, loc, dlTensorValue, llvm::ArrayRef<int64_t>{5});
 
+  // TODO(cuda): adapt deleter for device-backed data pointers.
+  mlir::LLVM::CallOp::create(bodyBuilder, loc, *freeOrErr,
+                             mlir::ValueRange{dataPtr});
   mlir::LLVM::CallOp::create(bodyBuilder, loc, *freeOrErr,
                              mlir::ValueRange{stridesPtr});
   mlir::LLVM::CallOp::create(bodyBuilder, loc, *freeOrErr,
                              mlir::ValueRange{shapePtr});
+  mlir::LLVM::CallOp::create(bodyBuilder, loc, *freeOrErr,
+                             mlir::ValueRange{managedTensorPtr});
   mlir::LLVM::ReturnOp::create(bodyBuilder, loc, mlir::ValueRange{});
   return deleterFunc;
 }

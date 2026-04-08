@@ -12,7 +12,7 @@ configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.cfg.py
 )
 
-# Build integration test tools (e2e-dlpack-runner, etc.)
+# Build integration test tools.
 add_subdirectory(Integration)
 
 set(LIBTRITON_CORE_TEST_DEPENDS

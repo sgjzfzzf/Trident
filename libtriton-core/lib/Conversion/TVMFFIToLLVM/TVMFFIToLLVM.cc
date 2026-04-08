@@ -1,13 +1,18 @@
 #include <cstdint>
 
+#include "libtriton_core/Analysis/MemRefOriginAnalysis/MemRefOriginAnalysis.h"
 #include "libtriton_core/Conversion/DLPackToLLVM/DLPackLLVMDescriptors.h"
 #include "libtriton_core/Conversion/TVMFFIToLLVM/TVMFFICAPIDescriptors.h"
 #include "libtriton_core/Conversion/TVMFFIToLLVM/TVMFFILLVMDescriptors.h"
 #include "libtriton_core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
+#include "libtriton_core/Conversion/Utils/StdLibCFunctionDeclUtils.h"
+#include "libtriton_core/Dialect/DLPack/IR/DLPackDialect.h"
+#include "libtriton_core/Dialect/DLPack/IR/DLPackOps.h"
 #include "libtriton_core/Dialect/DLPack/IR/DLPackTypes.h"
 #include "libtriton_core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "libtriton_core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "libtriton_core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include "mlir/Analysis/DataFlow/Utils.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
@@ -84,20 +89,38 @@ mlir::Value materializeCast(mlir::OpBuilder &builder, mlir::Type resultType,
 
 mlir::FailureOr<mlir::Value> emitTensorFromDLPackAsObjectHandle(
     mlir::ModuleOp moduleOp, mlir::ConversionPatternRewriter &rewriter,
-    mlir::Location loc, mlir::Value fromPtr, mlir::Value requireAlignment,
+    mlir::Location loc, mlir::Value fromManaged, mlir::Value requireAlignment,
     mlir::Value requireContiguous) {
   mlir::MLIRContext *context = moduleOp.getContext();
   mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
   mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
+  mlir::Type managedTy = fromManaged.getType();
 
   mlir::Value one =
       mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1LL).getResult();
 
+  mlir::FailureOr<mlir::LLVM::LLVMFuncOp> mallocOrErr =
+      libtriton::conversion::utils::getOrCreateMalloc(moduleOp);
+  if (mlir::failed(mallocOrErr))
+    return mlir::failure();
+
+  mlir::DataLayout layout(moduleOp);
+  std::optional<std::int64_t> managedSize =
+      layout.getTypeSizeInBits(managedTy).getFixedValue();
+  if (!managedSize.has_value() || *managedSize <= 0)
+    return mlir::failure();
+
+  mlir::Value managedSizeBytes =
+      mlir::LLVM::ConstantOp::create(
+          rewriter, loc, i64Ty, static_cast<std::int64_t>(*managedSize / 8))
+          .getResult();
+  mlir::LLVM::CallOp managedAllocCall = mlir::LLVM::CallOp::create(
+      rewriter, loc, *mallocOrErr, mlir::ValueRange{managedSizeBytes});
   mlir::TypedValue<mlir::LLVM::LLVMPointerType> fromSlot =
       mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
-          mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, i64Ty, one)
-              .getResult());
-  mlir::LLVM::StoreOp::create(rewriter, loc, fromPtr, fromSlot);
+          managedAllocCall.getResult());
+
+  mlir::LLVM::StoreOp::create(rewriter, loc, fromManaged, fromSlot);
 
   mlir::TypedValue<mlir::LLVM::LLVMPointerType> outSlot =
       mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
@@ -452,6 +475,15 @@ mlir::FailureOr<mlir::Value> emitUnboxAnyValue(mlir::OpBuilder &builder,
                                                   anyValue)
         .getOutput();
   }
+  if (mlir::isa<mlir::BaseMemRefType>(valueType)) {
+    mlir::Type tensorType = libtriton::dlpack::DLTensorType::get(context);
+    mlir::Value tensor = libtriton::tvm_ffi::ToTensorOp::create(
+                             builder, loc, tensorType, anyValue)
+                             .getOutput();
+    return libtriton::dlpack::ToMemRefOp::create(builder, loc, valueType,
+                                                 tensor)
+        .getOutput();
+  }
   if (mlir::isa<mlir::LLVM::LLVMPointerType>(valueType)) {
     return libtriton::tvm_ffi::ToStrOp::create(builder, loc, valueType,
                                                anyValue)
@@ -475,6 +507,7 @@ mlir::FailureOr<mlir::Value> emitUnboxAnyValue(mlir::OpBuilder &builder,
 
 mlir::FailureOr<mlir::Value> emitBoxAnyValue(mlir::OpBuilder &builder,
                                              mlir::Location loc,
+                                             mlir::DataFlowSolver &solver,
                                              mlir::Value value) {
   mlir::MLIRContext *context = builder.getContext();
   mlir::Type valueType = value.getType();
@@ -489,6 +522,32 @@ mlir::FailureOr<mlir::Value> emitBoxAnyValue(mlir::OpBuilder &builder,
   if (mlir::isa<libtriton::dlpack::DLTensorType>(valueType)) {
     return libtriton::tvm_ffi::FromTensorOp::create(builder, loc, anyType,
                                                     value)
+        .getOutput();
+  }
+  if (mlir::isa<mlir::BaseMemRefType>(valueType)) {
+    mlir::Type managedType =
+        libtriton::dlpack::DLManagedTensorType::get(context);
+    mlir::Type objectHandleType =
+        libtriton::tvm_ffi::ObjectHandleType::get(context);
+    const libtriton::analysis::MemRefOriginKind origin =
+        libtriton::analysis::resolveMemRefOrigin(solver, value);
+
+    // TVMFFITensorFromDLPack currently accepts !dlpack.managed_tensor, so use
+    // FromMemRefOwnedOp for all origins and keep the origin query for future
+    // policy extension.
+    (void)origin;
+    mlir::Value managed = libtriton::dlpack::FromMemRefOwnedOp::create(
+                              builder, loc, managedType, value)
+                              .getOutput();
+
+    mlir::Value zero =
+        mlir::arith::ConstantIntOp::create(builder, loc, 0, 32).getResult();
+    mlir::Value handle =
+        libtriton::tvm_ffi::TensorFromDLPackOp::create(
+            builder, loc, objectHandleType, managed, zero, zero)
+            .getOutput();
+    return libtriton::tvm_ffi::FromTensorOp::create(builder, loc, anyType,
+                                                    handle)
         .getOutput();
   }
   if (mlir::isa<mlir::LLVM::LLVMPointerType>(valueType)) {
@@ -511,6 +570,7 @@ mlir::FailureOr<mlir::Value> emitBoxAnyValue(mlir::OpBuilder &builder,
 
 mlir::FailureOr<mlir::func::FuncOp>
 buildEmitTVMFFIInterfaceWrapper(mlir::ModuleOp moduleOp,
+                                mlir::DataFlowSolver &solver,
                                 mlir::func::FuncOp targetFunc) {
   mlir::MLIRContext *context = moduleOp.getContext();
   mlir::Location loc = targetFunc.getLoc();
@@ -553,7 +613,7 @@ buildEmitTVMFFIInterfaceWrapper(mlir::ModuleOp moduleOp,
   callArgs.reserve(targetType.getNumInputs());
   mlir::Value packedArgsPtr = entryBlock->getArgument(1);
   mlir::Value packedResultPtr = entryBlock->getArgument(3);
-  for (unsigned i = 0; i < targetType.getNumInputs(); ++i) {
+  for (std::int32_t i = 0; i < targetType.getNumInputs(); ++i) {
     mlir::TypedValue<mlir::IntegerType> argIndex =
         mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
             emitI64Constant(invokeBuilder, loc, i));
@@ -577,7 +637,7 @@ buildEmitTVMFFIInterfaceWrapper(mlir::ModuleOp moduleOp,
       mlir::func::CallOp::create(invokeBuilder, loc, targetFunc, callArgs);
   if (callOp.getNumResults() == 1) {
     mlir::FailureOr<mlir::Value> boxedResult =
-        emitBoxAnyValue(invokeBuilder, loc, callOp.getResult(0));
+        emitBoxAnyValue(invokeBuilder, loc, solver, callOp.getResult(0));
     if (mlir::failed(boxedResult))
       return mlir::failure();
     mlir::TypedValue<mlir::IntegerType> resultIndex =
@@ -604,9 +664,9 @@ public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(EmitTVMFFIInterfacePass)
 
   void getDependentDialects(mlir::DialectRegistry &registry) const final {
-    registry
-        .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                mlir::LLVM::LLVMDialect, libtriton::tvm_ffi::TVMFFIDialect>();
+    registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
+                    mlir::LLVM::LLVMDialect, libtriton::dlpack::DLPackDialect,
+                    libtriton::tvm_ffi::TVMFFIDialect>();
   }
 
   llvm::StringRef getArgument() const final { return "emit-tvm-ffi-interface"; }
@@ -617,13 +677,22 @@ public:
 
   void runOnOperation() final {
     mlir::ModuleOp moduleOp = getOperation();
+    mlir::DataFlowSolver solver;
+    mlir::dataflow::loadBaselineAnalyses(solver);
+    solver.load<libtriton::analysis::MemRefOriginDataFlowAnalysis>();
+    if (mlir::failed(solver.initializeAndRun(moduleOp))) {
+      signalPassFailure();
+      return;
+    }
+
     for (mlir::func::FuncOp targetFunc :
          llvm::make_filter_range(moduleOp.getOps<mlir::func::FuncOp>(),
                                  [](mlir::func::FuncOp funcOp) {
                                    return !funcOp.isDeclaration() &&
                                           funcOp->hasAttr(kTVMFFIInterfaceAttr);
                                  })) {
-      if (mlir::failed(buildEmitTVMFFIInterfaceWrapper(moduleOp, targetFunc))) {
+      if (mlir::failed(
+              buildEmitTVMFFIInterfaceWrapper(moduleOp, solver, targetFunc))) {
         signalPassFailure();
         return;
       }

@@ -227,22 +227,20 @@ _RAII:
   return ret_code;
 }
 
-// Test: tensor_add_kernel(x, y, out) stores x + y to out on CPU.
+// Test: tensor_add_kernel(x, y) returns x + y on CPU.
 static int test_tensor_add_kernel(const char *kernel_path) {
   static const int64_t lhs_values[4] = {1, 2, 3, 4};
   static const int64_t rhs_values[4] = {10, 20, 30, 40};
-  static const int64_t out_init[4] = {0, 0, 0, 0};
   static const int64_t expected[4] = {11, 22, 33, 44};
 
   int ret_code = 0;
   TVMFFIObjectHandle lhs_tensor = NULL;
   TVMFFIObjectHandle rhs_tensor = NULL;
-  TVMFFIObjectHandle out_tensor = NULL;
   TVMFFIAny result_any = {.type_index = kTVMFFINone};
-  TVMFFIAny call_args[3] = {};
+  TVMFFIAny call_args[2] = {};
   TVMFFIAny mod = {.type_index = kTVMFFINone, .v_obj = NULL};
   TVMFFIAny func = {.type_index = kTVMFFINone, .v_obj = NULL};
-  DLManagedTensor *out_managed = NULL;
+  DLManagedTensor *result_managed = NULL;
 
   printf("[TEST] tensor_add_kernel\n");
 
@@ -250,9 +248,6 @@ static int test_tensor_add_kernel(const char *kernel_path) {
     goto _RAII;
   }
   if ((ret_code = CreateTensorArg(rhs_values, 4, &rhs_tensor))) {
-    goto _RAII;
-  }
-  if ((ret_code = CreateTensorArg(out_init, 4, &out_tensor))) {
     goto _RAII;
   }
 
@@ -265,24 +260,23 @@ static int test_tensor_add_kernel(const char *kernel_path) {
                              .v_obj = (TVMFFIObject *)lhs_tensor};
   call_args[1] = (TVMFFIAny){.type_index = kTVMFFITensor,
                              .v_obj = (TVMFFIObject *)rhs_tensor};
-  call_args[2] = (TVMFFIAny){.type_index = kTVMFFITensor,
-                             .v_obj = (TVMFFIObject *)out_tensor};
   if ((ret_code = TVMFFIFunctionCall((TVMFFIObjectHandle)func.v_obj, call_args,
-                                     3, &result_any))) {
+                                     2, &result_any))) {
     goto _RAII;
   }
 
-  if (result_any.type_index != kTVMFFINone) {
-    fprintf(stderr, "ERROR: expected no return value, got type=%d\n",
+  if (result_any.type_index != kTVMFFITensor || result_any.v_obj == NULL) {
+    fprintf(stderr, "ERROR: expected tensor return value, got type=%d\n",
             result_any.type_index);
     ret_code = -1;
     goto _RAII;
   }
 
-  if ((ret_code = TVMFFITensorToDLPack(out_tensor, &out_managed))) {
+  if ((ret_code = TVMFFITensorToDLPack((TVMFFIObjectHandle)result_any.v_obj,
+                                       &result_managed))) {
     goto _RAII;
   }
-  if ((ret_code = CheckI64Tensor(&out_managed->dl_tensor, expected, 4))) {
+  if ((ret_code = CheckI64Tensor(&result_managed->dl_tensor, expected, 4))) {
     goto _RAII;
   }
 
@@ -290,20 +284,18 @@ static int test_tensor_add_kernel(const char *kernel_path) {
          "[11, 22, 33, 44]\n");
 
 _RAII:
-  if (out_managed != NULL && out_managed->deleter != NULL) {
-    out_managed->deleter(out_managed);
+  if (result_managed != NULL && result_managed->deleter != NULL) {
+    result_managed->deleter(result_managed);
+    result_managed = NULL;
   }
+  ReleaseAnyObject(result_any);
   ReleaseAnyObject(mod);
   ReleaseAnyObject(func);
-  ReleaseAnyObject(result_any);
   if (lhs_tensor != NULL) {
     TVMFFIObjectDecRef(lhs_tensor);
   }
   if (rhs_tensor != NULL) {
     TVMFFIObjectDecRef(rhs_tensor);
-  }
-  if (out_tensor != NULL) {
-    TVMFFIObjectDecRef(out_tensor);
   }
   return ret_code;
 }

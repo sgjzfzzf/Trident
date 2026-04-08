@@ -96,12 +96,12 @@ def TVMFFI_ToObjectOp : TVMFFI_Op<"to_object", [Pure]> {
 }
 
 def TVMFFI_TensorFromDLPackOp
-  : TVMFFI_Op<"tensor_from_dlpack", [MemoryEffects<[MemRead, MemWrite]>]> {
+    : TVMFFI_Op<"tensor_from_dlpack", [MemoryEffects<[MemRead, MemWrite]>]> {
   let summary = "Call TVMFFITensorFromDLPack and return object handle";
   let description = [{Models `TVMFFITensorFromDLPack(from, require_alignment,
     require_contiguous, out)` with `out` materialized by lowering. The op
     returns the produced TVMFFIObjectHandle directly.}];
-  let arguments = (ins LLVM_AnyPointer
+  let arguments = (ins DLPack_DLManagedTensor
                    : $from, I32
                    : $require_alignment, I32
                    : $require_contiguous);

@@ -1,20 +1,17 @@
-// RUN: libtriton-core-opt %s -convert-func-signature-to-dlpack -emit-tvm-ffi-interface -convert-to-llvm -convert-index-to-llvm -convert-arith-to-llvm -finalize-memref-to-llvm -convert-func-to-llvm -reconcile-unrealized-casts | mlir-translate --mlir-to-llvmir -o %t.ll
+// RUN: libtriton-core-opt %s -emit-tvm-ffi-interface -convert-to-llvm -convert-index-to-llvm -convert-arith-to-llvm -finalize-memref-to-llvm -convert-func-to-llvm -reconcile-unrealized-casts | mlir-translate --mlir-to-llvmir -o %t.ll
 // RUN: llc -filetype=obj %t.ll -o %t.o
-// RUN: clang -shared -fPIC %t.o -o %t%shlibext -lm
-// RUN: %e2e-dlpack-runner %t%shlibext tensor_add_kernel
+// RUN: clang -shared -fPIC -fsanitize=address %t.o -o %t_asan%shlibext -lm
+// RUN: env ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 %e2e-dlpack-runner-asan %t_asan%shlibext tensor_add_kernel
 
-// Minimal CPU tensor e2e test: tensor_add_kernel(x, y, out) writes x + y to out.
-// The kernel uses memref tensor arguments and relies on DLPack signature rewriting.
+// Minimal CPU tensor e2e test: tensor_add_kernel(x, y) returns x + y.
 
-func.func @tensor_add_kernel(%x: memref<4xi64>, %y: memref<4xi64>, %out: memref<4xi64>)
-  attributes {
-    tvm_ffi.emit_tvm_ffi_interface
-  }
+func.func @tensor_add_impl(%x: memref<4xi64>, %y: memref<4xi64>) -> memref<4xi64>
 {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
   %c3 = arith.constant 3 : index
+  %out = memref.alloc() : memref<4xi64>
 
   %x0 = memref.load %x[%c0] : memref<4xi64>
   %y0 = memref.load %y[%c0] : memref<4xi64>
@@ -36,5 +33,14 @@ func.func @tensor_add_kernel(%x: memref<4xi64>, %y: memref<4xi64>, %out: memref<
   %sum3 = arith.addi %x3, %y3 : i64
   memref.store %sum3, %out[%c3] : memref<4xi64>
 
-  return
+  return %out : memref<4xi64>
+}
+
+func.func @tensor_add_kernel(%x: memref<4xi64>, %y: memref<4xi64>) -> memref<4xi64>
+  attributes {
+    tvm_ffi.emit_tvm_ffi_interface
+  }
+{
+  %tmp = call @tensor_add_impl(%x, %y) : (memref<4xi64>, memref<4xi64>) -> memref<4xi64>
+  return %tmp : memref<4xi64>
 }

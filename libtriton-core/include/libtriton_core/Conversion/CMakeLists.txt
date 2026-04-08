@@ -1,2 +1,1 @@
-add_subdirectory(ConvertFuncSignatureToDLPack)
 add_subdirectory(Utils)

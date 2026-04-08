@@ -16,8 +16,12 @@ shlibext = config.llvm_shlib_ext if config.llvm_shlib_ext else ".so"
 config.substitutions.append(("%shlibext", shlibext))
 
 # E2E test tools
-config.substitutions.append(("%e2e-dlpack-runner", 
-  os.path.join(config.libtriton_core_obj_root, "bin", "e2e-dlpack-runner")))
+config.substitutions.append(
+    (
+        "%e2e-dlpack-runner-asan",
+        os.path.join(config.libtriton_core_obj_root, "bin", "e2e-dlpack-runner-asan"),
+    )
+)
 
 llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
 llvm_config.with_environment("PATH", config.libtriton_core_tools_dir, append_path=True)

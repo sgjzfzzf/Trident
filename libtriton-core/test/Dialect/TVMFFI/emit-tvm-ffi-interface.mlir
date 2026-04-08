@@ -1,7 +1,5 @@
 // RUN: libtriton-core-opt %s -emit-tvm-ffi-interface | FileCheck %s --check-prefix=CHECK-TVM-FFI
-// RUN: libtriton-core-opt %s -emit-tvm-ffi-interface -convert-to-llvm -reconcile-unrealized-casts | FileCheck %s --check-prefix=CHECK-LLVM
-// RUN: libtriton-core-opt %s -emit-tvm-ffi-interface -convert-to-llvm -reconcile-unrealized-casts | mlir-opt -convert-arith-to-llvm -convert-func-to-llvm -reconcile-unrealized-casts | mlir-translate --mlir-to-llvmir -o /dev/null
-
+// RUN: libtriton-core-opt %s -emit-tvm-ffi-interface -convert-to-llvm -reconcile-unrealized-casts | mlir-opt -finalize-memref-to-llvm -reconcile-unrealized-casts | FileCheck %s --check-prefix=CHECK-LLVM
 // CHECK-TVM-FFI-NOT: func.func @__tvm_ffi_plain
 // CHECK-TVM-FFI-LABEL: func.func @id_i64
 func.func @id_i64(%x: i64) -> i64 attributes {tvm_ffi.emit_tvm_ffi_interface} {
@@ -15,6 +13,12 @@ func.func @plain(%x: i64) -> i64 {
 // CHECK-TVM-FFI-LABEL: func.func @pick_float
 func.func @pick_float(%i: i64, %f: f64, %p: !llvm.ptr) -> f64 attributes {tvm_ffi.emit_tvm_ffi_interface} {
   return %f : f64
+}
+
+// CHECK-TVM-FFI-LABEL: func.func @ret_tmp_memref
+func.func @ret_tmp_memref() -> memref<4xf32> attributes {tvm_ffi.emit_tvm_ffi_interface} {
+  %tmp = memref.alloca() : memref<4xf32>
+  return %tmp : memref<4xf32>
 }
 
 // CHECK-TVM-FFI-LABEL: func.func @__tvm_ffi_id_i64(
@@ -57,6 +61,19 @@ func.func @pick_float(%i: i64, %f: f64, %p: !llvm.ptr) -> f64 attributes {tvm_ff
 // CHECK-TVM-FFI: %[[MSUCCESS:.*]] = arith.constant 0 : i32
 // CHECK-TVM-FFI: return %[[MSUCCESS]] : i32
 
+// CHECK-TVM-FFI-LABEL: func.func @__tvm_ffi_ret_tmp_memref(
+// CHECK-TVM-FFI-SAME: %[[RHANDLE:.*]]: !llvm.ptr, %[[RARGS:.*]]: !llvm.ptr, %[[RNUM_ARGS:.*]]: i32, %[[RRESULT:.*]]: !llvm.ptr) -> i32 {
+// CHECK-TVM-FFI: %[[RTMP:.*]] = call @ret_tmp_memref() : () -> memref<4xf32>
+// CHECK-TVM-FFI: %[[ROWNED:.*]] = dlpack.from_memref_owned %[[RTMP]] : memref<4xf32> -> !dlpack.managed_tensor
+// CHECK-TVM-FFI: %[[RZERO:.*]] = arith.constant 0 : i32
+// CHECK-TVM-FFI: %[[RH:.*]] = tvm_ffi.tensor_from_dlpack %[[ROWNED]], %[[RZERO]], %[[RZERO]] : !dlpack.managed_tensor, i32, i32 -> !tvm_ffi.object_handle
+// CHECK-TVM-FFI: %[[RBOXED:.*]] = tvm_ffi.from_tensor %[[RH]] : !tvm_ffi.object_handle -> !tvm_ffi.any
+// CHECK-TVM-FFI: %[[RRET_PTR:.*]] = llvm.getelementptr %[[RRESULT]][{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
+// CHECK-TVM-FFI: %[[RBOXED_LLVM:.*]] = builtin.unrealized_conversion_cast %[[RBOXED]] : !tvm_ffi.any to !llvm.struct<(i32, i32, i64)>
+// CHECK-TVM-FFI: llvm.store %[[RBOXED_LLVM]], %[[RRET_PTR]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK-TVM-FFI: %[[RSUCCESS:.*]] = arith.constant 0 : i32
+// CHECK-TVM-FFI: return %[[RSUCCESS]] : i32
+
 // CHECK-LLVM-NOT: func.func @__tvm_ffi_plain
 // CHECK-LLVM-LABEL: func.func @id_i64(
 // CHECK-LLVM-SAME: %{{.*}}: i64) -> i64 {
@@ -69,6 +86,12 @@ func.func @pick_float(%i: i64, %f: f64, %p: !llvm.ptr) -> f64 attributes {tvm_ff
 // CHECK-LLVM-NOT: tvm_ffi.emit_tvm_ffi_interface
 // CHECK-LLVM-NOT: builtin.unrealized_conversion_cast
 // CHECK-LLVM: return
+
+// CHECK-LLVM-LABEL: func.func @ret_tmp_memref() -> !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)> {
+// CHECK-LLVM: llvm.alloca {{.*}} x f32 : (i64) -> !llvm.ptr
+// CHECK-LLVM: llvm.insertvalue {{.*}}[0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+// CHECK-LLVM: llvm.insertvalue {{.*}}[1] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+// CHECK-LLVM: return {{.*}} : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
 
 // CHECK-LLVM-LABEL: func.func @__tvm_ffi_id_i64(
 // CHECK-LLVM-SAME: %{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: i32, %{{.*}}: !llvm.ptr) -> i32 {
@@ -96,5 +119,17 @@ func.func @pick_float(%i: i64, %f: f64, %p: !llvm.ptr) -> f64 attributes {tvm_ff
 // CHECK-LLVM: llvm.mlir.poison : !llvm.struct<(i32, i32, i64)>
 // CHECK-LLVM: llvm.insertvalue {{.*}}[2] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LLVM: llvm.getelementptr {{.*}} : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
+// CHECK-LLVM: llvm.store {{.*}} : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK-LLVM: return {{.*}} : i32
+
+// CHECK-LLVM-LABEL: func.func @__tvm_ffi_ret_tmp_memref(
+// CHECK-LLVM-SAME: %{{.*}}: !llvm.ptr, %{{.*}}: !llvm.ptr, %{{.*}}: i32, %{{.*}}: !llvm.ptr) -> i32 {
+// CHECK-LLVM: call @ret_tmp_memref() : () -> !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+// CHECK-LLVM: llvm.call @malloc
+// CHECK-LLVM: llvm.call @malloc
+// CHECK-LLVM: llvm.call @malloc
+// CHECK-LLVM: llvm.store {{.*}} : !llvm.struct<(struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>, ptr, ptr)>, !llvm.ptr
+// CHECK-LLVM: llvm.call @TVMFFITensorFromDLPack
+// CHECK-LLVM: llvm.ptrtoint {{.*}} : !llvm.ptr to i64
 // CHECK-LLVM: llvm.store {{.*}} : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK-LLVM: return {{.*}} : i32

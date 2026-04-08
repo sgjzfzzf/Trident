@@ -14,9 +14,11 @@ configure_lit_site_cfg(
 
 # Build integration test tools.
 add_subdirectory(Integration)
+add_subdirectory(CAPI)
 
 set(LIBTRITON_CORE_TEST_DEPENDS
   FileCheck
+  ${CAPI_TEST_TARGETS}
   libtriton-core-opt
   ${INTEGRATION_TEST_TARGETS}
 )

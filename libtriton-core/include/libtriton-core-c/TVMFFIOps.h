@@ -1,0 +1,88 @@
+#ifndef LIBTRITON_CORE_C_TVMFFIOPS_H
+#define LIBTRITON_CORE_C_TVMFFIOPS_H
+
+#include "mlir-c/IR.h"
+#include "mlir-c/Support.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsATVMFFIFromIntOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsATVMFFIToIntOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsATVMFFIFromFloatOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsATVMFFIToFloatOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsATVMFFIFromStrOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsATVMFFIToStrOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsATVMFFIFromTensorOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsATVMFFIToTensorOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsATVMFFIFromObjectOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsATVMFFIToObjectOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsATVMFFITensorFromDLPackOp(MlirOperation operation);
+
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIFromIntGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIFromIntGetOutput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIToIntGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIToIntGetOutput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIFromFloatGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIFromFloatGetOutput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIToFloatGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIToFloatGetOutput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIFromStrGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIFromStrGetOutput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIToStrGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIToStrGetOutput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIFromTensorGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIFromTensorGetOutput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIToTensorGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIToTensorGetOutput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIFromObjectGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIFromObjectGetOutput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIToObjectGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIToObjectGetOutput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFITensorFromDLPackGetFrom(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFITensorFromDLPackGetRequireAlignment(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFITensorFromDLPackGetRequireContiguous(
+    MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFITensorFromDLPackGetOutput(MlirOperation operation);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // LIBTRITON_CORE_C_TVMFFIOPS_H

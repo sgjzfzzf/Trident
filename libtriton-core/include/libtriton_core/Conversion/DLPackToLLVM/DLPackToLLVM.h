@@ -7,9 +7,16 @@
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace libtriton::dlpack {
+
+#define GEN_PASS_DECL_CONVERTDLPACKTOLLVM
+#include "libtriton_core/Conversion/DLPackToLLVM/Passes.h.inc"
+
+#define GEN_PASS_REGISTRATION_CONVERTDLPACKTOLLVM
+#include "libtriton_core/Conversion/DLPackToLLVM/Passes.h.inc"
 
 void populateDLPackToLLVMTypeConversions(
     mlir::LLVMTypeConverter &typeConverter);
@@ -17,7 +24,6 @@ void populateDLPackToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns);
 
-std::unique_ptr<mlir::Pass> createConvertDLPackToLLVMPass();
 void registerConvertDLPackToLLVMPass();
 void registerConvertDLPackToLLVMInterface(mlir::DialectRegistry &registry);
 

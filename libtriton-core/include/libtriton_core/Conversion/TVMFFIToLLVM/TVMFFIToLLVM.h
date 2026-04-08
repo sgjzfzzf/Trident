@@ -5,13 +5,23 @@
 
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/IR/DialectRegistry.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-namespace mlir {
-class Pass;
-} // namespace mlir
-
 namespace libtriton::tvm_ffi {
+
+#define GEN_PASS_DECL_CONVERTTVMFFITOLLVM
+#include "libtriton_core/Conversion/TVMFFIToLLVM/Passes.h.inc"
+
+#define GEN_PASS_DECL_EMITTVMFFIINTERFACE
+#include "libtriton_core/Conversion/TVMFFIToLLVM/Passes.h.inc"
+
+#define GEN_PASS_REGISTRATION_CONVERTTVMFFITOLLVM
+#include "libtriton_core/Conversion/TVMFFIToLLVM/Passes.h.inc"
+
+#define GEN_PASS_REGISTRATION_EMITTVMFFIINTERFACE
+#include "libtriton_core/Conversion/TVMFFIToLLVM/Passes.h.inc"
 
 void populateTVMFFIToLLVMTypeConversions(
     mlir::LLVMTypeConverter &typeConverter);
@@ -19,8 +29,6 @@ void populateTVMFFIToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns);
 
-std::unique_ptr<mlir::Pass> createConvertTVMFFIToLLVMPass();
-std::unique_ptr<mlir::Pass> createEmitTVMFFIInterfacePass();
 void registerConvertTVMFFIToLLVMPass();
 void registerEmitTVMFFIInterfacePass();
 void registerTVMFFIToLLVMPasses();

@@ -21,11 +21,14 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace libtriton::dlpack {
+
+#define GEN_PASS_DEF_CONVERTDLPACKTOLLVM
+#include "libtriton_core/Conversion/DLPackToLLVM/Passes.h.inc"
+
 namespace {
 
 constexpr const char kDefaultManagedTensorDeleterName[] =
@@ -659,17 +662,8 @@ struct LowerToMemRefOp
 };
 
 class ConvertDLPackToLLVMPass
-    : public mlir::PassWrapper<ConvertDLPackToLLVMPass,
-                               mlir::OperationPass<mlir::ModuleOp>> {
+    : public impl::ConvertDLPackToLLVMBase<ConvertDLPackToLLVMPass> {
 public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertDLPackToLLVMPass)
-
-  llvm::StringRef getArgument() const final { return "convert-dlpack-to-llvm"; }
-
-  llvm::StringRef getDescription() const final {
-    return "Lower DLPack dialect operations to LLVM dialect";
-  }
-
   void runOnOperation() final {
     mlir::MLIRContext &context = getContext();
     mlir::LLVMTypeConverter typeConverter(&context);
@@ -683,8 +677,6 @@ public:
     }
   }
 };
-
-static mlir::PassRegistration<ConvertDLPackToLLVMPass> kPass;
 
 struct DLPackToLLVMDialectInterface
     : public mlir::ConvertToLLVMPatternInterface {
@@ -750,14 +742,6 @@ void populateDLPackToLLVMConversionPatterns(
     return mlir::isLegalForReturnOpTypeConversionPattern(op, typeConverter);
   });
   target.markUnknownOpDynamicallyLegal([](mlir::Operation *) { return true; });
-}
-
-std::unique_ptr<mlir::Pass> createConvertDLPackToLLVMPass() {
-  return std::make_unique<ConvertDLPackToLLVMPass>();
-}
-
-void registerConvertDLPackToLLVMPass() {
-  // Registration is handled by static PassRegistration above.
 }
 
 void registerConvertDLPackToLLVMInterface(mlir::DialectRegistry &registry) {

@@ -24,7 +24,6 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "tvm/ffi/c_api.h"
 #include "llvm/ADT/STLExtras.h"
@@ -32,6 +31,11 @@
 #include "llvm/ADT/SmallVector.h"
 
 namespace libtriton::tvm_ffi {
+
+#define GEN_PASS_DEF_CONVERTTVMFFITOLLVM
+#define GEN_PASS_DEF_EMITTVMFFIINTERFACE
+#include "libtriton_core/Conversion/TVMFFIToLLVM/Passes.h.inc"
+
 namespace {
 
 constexpr std::int64_t kTVMFFIObjectHeaderBytes =
@@ -658,23 +662,8 @@ buildEmitTVMFFIInterfaceWrapper(mlir::ModuleOp moduleOp,
 }
 
 class EmitTVMFFIInterfacePass
-    : public mlir::PassWrapper<EmitTVMFFIInterfacePass,
-                               mlir::OperationPass<mlir::ModuleOp>> {
+    : public impl::EmitTVMFFIInterfaceBase<EmitTVMFFIInterfacePass> {
 public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(EmitTVMFFIInterfacePass)
-
-  void getDependentDialects(mlir::DialectRegistry &registry) const final {
-    registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                    mlir::LLVM::LLVMDialect, libtriton::dlpack::DLPackDialect,
-                    libtriton::tvm_ffi::TVMFFIDialect>();
-  }
-
-  llvm::StringRef getArgument() const final { return "emit-tvm-ffi-interface"; }
-
-  llvm::StringRef getDescription() const final {
-    return "Generate TVM stable C API wrappers for selected functions";
-  }
-
   void runOnOperation() final {
     mlir::ModuleOp moduleOp = getOperation();
     mlir::DataFlowSolver solver;
@@ -702,19 +691,8 @@ public:
 };
 
 class ConvertTVMFFIToLLVMPass
-    : public mlir::PassWrapper<ConvertTVMFFIToLLVMPass,
-                               mlir::OperationPass<mlir::ModuleOp>> {
+    : public impl::ConvertTVMFFIToLLVMBase<ConvertTVMFFIToLLVMPass> {
 public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertTVMFFIToLLVMPass)
-
-  llvm::StringRef getArgument() const final {
-    return "convert-tvm-ffi-to-llvm";
-  }
-
-  llvm::StringRef getDescription() const final {
-    return "Lower TVMFFI dialect operations to LLVM dialect";
-  }
-
   void runOnOperation() final {
     mlir::MLIRContext &context = getContext();
     mlir::LLVMTypeConverter typeConverter(&context);
@@ -746,9 +724,6 @@ public:
     }
   }
 };
-
-static mlir::PassRegistration<ConvertTVMFFIToLLVMPass> kPass;
-static mlir::PassRegistration<EmitTVMFFIInterfacePass> kEmitTVMFFIInterfacePass;
 
 struct TVMFFIToLLVMDialectInterface
     : public mlir::ConvertToLLVMPatternInterface {
@@ -797,22 +772,6 @@ void populateTVMFFIToLLVMConversionPatterns(
           typeConverter, context);
 
   target.addIllegalDialect<libtriton::tvm_ffi::TVMFFIDialect>();
-}
-
-std::unique_ptr<mlir::Pass> createConvertTVMFFIToLLVMPass() {
-  return std::make_unique<ConvertTVMFFIToLLVMPass>();
-}
-
-std::unique_ptr<mlir::Pass> createEmitTVMFFIInterfacePass() {
-  return std::make_unique<EmitTVMFFIInterfacePass>();
-}
-
-void registerConvertTVMFFIToLLVMPass() {
-  // Registration is handled by static PassRegistration above.
-}
-
-void registerEmitTVMFFIInterfacePass() {
-  // Registration is handled by static PassRegistration above.
 }
 
 void registerTVMFFIToLLVMPasses() {

@@ -1,7 +1,7 @@
 from typing_extensions import Any, Dict, List
 
 
-from libtriton._C.torch_mlir import fx, ir
+from . import fx, ir
 import torch
 
 from .transform import triton_graph_transform

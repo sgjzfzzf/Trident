@@ -28,30 +28,6 @@ ExternalProject_Add(
 )
 
 ExternalProject_Add(
-    torch-mlir
-    GIT_REPOSITORY https://github.com/sgjzfzzf/torch-mlir.git
-    GIT_TAG libtriton
-    GIT_SUBMODULES "externals/stablehlo"
-    INSTALL_DIR ${CMAKE_BINARY_DIR}/install/torch-mlir
-    DEPENDS llvm-project
-    CMAKE_ARGS
-        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-        -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
-        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-        -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
-        -DCMAKE_EXPORT_COMPILE_COMMANDS=${CMAKE_EXPORT_COMPILE_COMMANDS}
-        -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/install/torch-mlir
-        -DCMAKE_LINKER_TYPE=${CMAKE_LINKER_TYPE}
-        -DLLVM_DIR=${CMAKE_BINARY_DIR}/install/llvm-project/lib/cmake/llvm
-        -DMLIR_DIR=${CMAKE_BINARY_DIR}/install/llvm-project/lib/cmake/mlir
-        -DMLIR_ENABLE_BINDINGS_PYTHON=ON
-        -DPython_FIND_VIRTUALENV=ONLY
-        -DPython3_FIND_VIRTUALENV=ONLY
-        -DTORCH_MLIR_PYTHON_PACKAGE_PREFIX=libtriton._C.torch_mlir.
-)
-
-ExternalProject_Add(
     libtriton-core
     SOURCE_DIR ${CMAKE_SOURCE_DIR}/libtriton-core
     BINARY_DIR ${CMAKE_BINARY_DIR}/libtriton-core
@@ -71,16 +47,6 @@ ExternalProject_Add(
         -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}"
         -DPython_FIND_VIRTUALENV=ONLY
         -DPython3_FIND_VIRTUALENV=ONLY
-)
-
-install(
-    DIRECTORY ${CMAKE_BINARY_DIR}/install/llvm-project/python_packages/mlir_core/mlir
-    DESTINATION .
-)
-
-install(
-    DIRECTORY ${CMAKE_BINARY_DIR}/install/torch-mlir/python_packages/torch_mlir/torch_mlir
-    DESTINATION .
 )
 
 install(

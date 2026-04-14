@@ -2,24 +2,23 @@ import pathlib
 from typing import Final
 
 import numpy as np
-
-import libtriton._C.libtriton_core._mlir_libs._libtritonCore as registration_ext
-from libtriton._C.libtriton_core import capi_utils
-from libtriton._C.libtriton_core import execution_engine, ir, passmanager
-
 import tvm_ffi
 
+import libtriton_core
 
-MLIR_FILE: Final[pathlib.Path] = pathlib.Path(__file__).with_name("tvm_ffi_add.mlir")
+
+MLIR_FILE: Final[pathlib.Path] = (
+    pathlib.Path(__file__).parent / "Inputs" / "tvm_ffi_tensor_add.mlir"
+)
 TEST_FUNCTION: Final[str] = "tensor_add_kernel"
 
 
-def _lower_to_llvm_dialect() -> ir.Module:
-    ctx = ir.Context()
+def _lower_to_llvm_dialect() -> libtriton_core.ir.Module:
+    ctx = libtriton_core.ir.Context()
     with ctx:
-        registration_ext.register_all_dialects(ctx)
-        registration_ext.register_all_passes()
-        module = ir.Module.parse(MLIR_FILE.read_text(encoding="utf-8"))
+        libtriton_core.register_all_dialects(ctx)
+        libtriton_core.register_all_passes()
+        module = libtriton_core.ir.Module.parse(MLIR_FILE.read_text(encoding="utf-8"))
         pipeline = (
             "builtin.module("
             "emit-tvm-ffi-interface,"
@@ -31,14 +30,16 @@ def _lower_to_llvm_dialect() -> ir.Module:
             "reconcile-unrealized-casts"
             ")"
         )
-        passmanager.PassManager.parse(pipeline).run(module.operation)
+        libtriton_core.passmanager.PassManager.parse(pipeline).run(module.operation)
         return module
 
 
-def _build_tvm_ffi_function(module: ir.Module) -> tvm_ffi.Function:
-    engine = execution_engine.ExecutionEngine(
+def _build_tvm_ffi_function(module: libtriton_core.ir.Module) -> tvm_ffi.Function:
+    engine = libtriton_core.execution_engine.ExecutionEngine(
         module,
-        shared_libs=[capi_utils.find_capi_runtime_library(registration_ext.__file__)],
+        shared_libs=[
+            libtriton_core.capi_utils.find_capi_runtime_library(libtriton_core.__file__)
+        ],
     )
     function_ptr = engine.raw_lookup(f"__tvm_ffi_{TEST_FUNCTION}")
     if function_ptr is None:

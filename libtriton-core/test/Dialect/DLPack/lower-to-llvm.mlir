@@ -1,18 +1,8 @@
 // RUN: libtriton-core-opt %s -convert-to-llvm | FileCheck %s
 // RUN: libtriton-core-opt %s -convert-to-llvm | mlir-opt -convert-func-to-llvm -reconcile-unrealized-casts | mlir-translate --mlir-to-llvmir -o /dev/null
 
-// CHECK: llvm.func @__libtriton_dlpack_default_managed_tensor_deleter(%[[DEL_ARG:.*]]: !llvm.ptr)
-// CHECK: %[[DEL_MANAGED:.*]] = llvm.load %[[DEL_ARG]] : !llvm.ptr -> !llvm.struct<(struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>, ptr, ptr)>
-// CHECK: %[[DEL_TENSOR:.*]] = llvm.extractvalue %[[DEL_MANAGED]][0]
-// CHECK: %[[DEL_DATA:.*]] = llvm.extractvalue %[[DEL_TENSOR]][0]
-// CHECK: %[[DEL_SHAPE:.*]] = llvm.extractvalue %[[DEL_TENSOR]][4]
-// CHECK: %[[DEL_STRIDE:.*]] = llvm.extractvalue %[[DEL_TENSOR]][5]
-// CHECK: llvm.call @free(%[[DEL_DATA]]) : (!llvm.ptr) -> ()
-// CHECK: llvm.call @free(%[[DEL_STRIDE]]) : (!llvm.ptr) -> ()
-// CHECK: llvm.call @free(%[[DEL_SHAPE]]) : (!llvm.ptr) -> ()
-// CHECK: llvm.return
+// CHECK: llvm.func @__libtriton_dlpack_default_managed_tensor_deleter(!llvm.ptr)
 
-// CHECK: llvm.func @free(!llvm.ptr)
 // CHECK: llvm.func @malloc(i64) -> !llvm.ptr
 
 // CHECK-LABEL: func.func @lower_from_memref

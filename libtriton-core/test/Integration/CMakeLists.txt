@@ -13,6 +13,7 @@ target_link_options(e2e-dlpack-runner-asan PRIVATE
 )
 
 target_link_libraries(e2e-dlpack-runner-asan PRIVATE
+  LibTritonCoreRuntime
   tvm_ffi::shared
 )
 

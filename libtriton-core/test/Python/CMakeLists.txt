@@ -8,43 +8,38 @@ set(_libtriton_python_source_dir
   ${CMAKE_SOURCE_DIR}/../python
 )
 
-get_filename_component(_mlir_install_root "${MLIR_DIR}/../../.." ABSOLUTE)
-set(_mlir_python_package_dir
-  ${_mlir_install_root}/python_packages/mlir_core
-)
-
 add_test(
-  NAME libtriton-core-python-smoke
-  COMMAND ${CMAKE_COMMAND} -E env
-    PYTHONPATH=${_libtriton_python_source_dir}:${_libtriton_core_python_package_dir}:${_mlir_python_package_dir}
-    ${Python3_EXECUTABLE}
-    ${CMAKE_CURRENT_SOURCE_DIR}/smoke.py
-)
-
-add_test(
-  NAME libtriton-core-python-tvm-ffi-add
+  NAME libtriton-core-python-tvm-ffi-add-numpy
   COMMAND ${CMAKE_COMMAND} -E env
     PYTHONPATH=${_libtriton_python_source_dir}:${_libtriton_core_python_package_dir}
     ${Python3_EXECUTABLE}
-    ${CMAKE_CURRENT_SOURCE_DIR}/tvm_ffi_add_e2e.py
+    ${CMAKE_CURRENT_SOURCE_DIR}/tvm_ffi_add_numpy_e2e.py
+)
+
+add_test(
+  NAME libtriton-core-python-tvm-ffi-add-torch-cpu
+  COMMAND ${CMAKE_COMMAND} -E env
+    PYTHONPATH=${_libtriton_python_source_dir}:${_libtriton_core_python_package_dir}
+    ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tvm_ffi_add_torch_cpu_e2e.py
 )
 
 add_test(
   NAME libtriton-core-python-torch-dialect
   COMMAND ${CMAKE_COMMAND} -E env
-    PYTHONPATH=${_libtriton_python_source_dir}:${_libtriton_core_python_package_dir}:${_mlir_python_package_dir}
+    PYTHONPATH=${_libtriton_python_source_dir}:${_libtriton_core_python_package_dir}
     ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/torch_dialect_pipeline.py
 )
 
-set_tests_properties(libtriton-core-python-smoke PROPERTIES
-  ENVIRONMENT "PYTHONPATH=${_libtriton_python_source_dir}:${_libtriton_core_python_package_dir}:${_mlir_python_package_dir}"
+set_tests_properties(libtriton-core-python-tvm-ffi-add-numpy PROPERTIES
+  ENVIRONMENT "PYTHONPATH=${_libtriton_python_source_dir}:${_libtriton_core_python_package_dir}"
 )
 
-set_tests_properties(libtriton-core-python-tvm-ffi-add PROPERTIES
+set_tests_properties(libtriton-core-python-tvm-ffi-add-torch-cpu PROPERTIES
   ENVIRONMENT "PYTHONPATH=${_libtriton_python_source_dir}:${_libtriton_core_python_package_dir}"
 )
 
 set_tests_properties(libtriton-core-python-torch-dialect PROPERTIES
-  ENVIRONMENT "PYTHONPATH=${_libtriton_python_source_dir}:${_libtriton_core_python_package_dir}:${_mlir_python_package_dir}"
+  ENVIRONMENT "PYTHONPATH=${_libtriton_python_source_dir}:${_libtriton_core_python_package_dir}"
 )

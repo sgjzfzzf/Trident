@@ -1,5 +1,5 @@
 from libtriton_core import ir, passmanager
-from libtriton.core.dialects import func, torch
+from libtriton_core.dialects import func, torch
 
 
 def main():

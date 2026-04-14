@@ -1,5 +1,5 @@
-import libtriton.core
+import libtriton_core
 
 
-assert hasattr(libtriton.core, "register_all_dialects")
-assert hasattr(libtriton.core, "register_all_passes")
+assert hasattr(libtriton_core, "register_all_dialects")
+assert hasattr(libtriton_core, "register_all_passes")

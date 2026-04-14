@@ -2,12 +2,12 @@ import enum
 import types
 
 import torch
-import torch.fx.passes.split_module
 import torch._higher_order_ops.triton_kernel_wrap
+import torch.fx.passes.split_module
 
 
 def triton_graph_transform(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
-    transform: TritonGraphTransform = TritonGraphTransform()
+    transform = TritonGraphTransform()
     return torch.fx.passes.split_module.split_module(gm, None, transform.step)
 
 
@@ -24,10 +24,9 @@ class TritonGraphTransform(object):
     def step(self, node: torch.fx.Node) -> str:
         if self.state == TritonGraphTransform.State.TORCH:
             return self.step_torch(node)
-        elif self.state == TritonGraphTransform.State.TRITON:
+        if self.state == TritonGraphTransform.State.TRITON:
             return self.step_triton(node)
-        else:
-            raise ValueError(f"unknown state: {self.state}")
+        raise ValueError(f"unknown state: {self.state}")
 
     def step_torch(self, node: torch.fx.Node) -> str:
         if isinstance(
@@ -37,8 +36,7 @@ class TritonGraphTransform(object):
             self.cnt += 1
             self.state = TritonGraphTransform.State.TRITON
             return f"triton_{self.cnt}"
-        else:
-            return f"torch_{self.cnt}"
+        return f"torch_{self.cnt}"
 
     def step_triton(self, node: torch.fx.Node) -> str:
         if isinstance(
@@ -47,14 +45,13 @@ class TritonGraphTransform(object):
         ):
             self.cnt += 1
             return f"triton_{self.cnt}"
-        elif (
+        if (
             isinstance(
                 node.target, (types.BuiltinFunctionType, types.BuiltinMethodType)
             )
             and node.name == "getitem"
         ):
             return f"triton_{self.cnt}"
-        else:
-            self.cnt += 1
-            self.state = TritonGraphTransform.State.TORCH
-            return f"torch_{self.cnt}"
+        self.cnt += 1
+        self.state = TritonGraphTransform.State.TORCH
+        return f"torch_{self.cnt}"

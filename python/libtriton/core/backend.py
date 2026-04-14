@@ -1,17 +1,17 @@
-from typing_extensions import Any, Dict, List
+from typing import Any
 
-
-from . import fx, ir
 import torch
 
+from libtriton._C.libtriton_core import fx, ir
 from .transform import triton_graph_transform
 
 
 def triton_graph_backend(
-    gm: torch.fx.GraphModule, example_inputs: List[Any]
+    gm: torch.fx.GraphModule, example_inputs: list[Any]
 ) -> torch.fx.GraphModule:
-    modules: Dict[str, ir.Module] = {}
-    gm: torch.fx.GraphModule = triton_graph_transform(gm)
+    _ = example_inputs
+    modules: dict[str, ir.Module] = {}
+    gm = triton_graph_transform(gm)
     for name, child in gm.named_children():
         if name.startswith("submod_torch_"):
             modules[name] = fx.stateless_fx_import(child, model_name=name)

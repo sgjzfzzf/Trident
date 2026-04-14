@@ -1,5 +1,5 @@
-from libtriton.core import ir, passmanager
-from libtriton.core.dialects import torch, func
+from libtriton_core import ir, passmanager
+from libtriton.core.dialects import func, torch
 
 
 def main():
@@ -16,9 +16,7 @@ def main():
         entry = ir.Block.create_at_start(function.regions[0], [vtensor])
 
         with ir.InsertionPoint(entry):
-            relu = torch.AtenReluOp(
-                result=vtensor, self_=entry.arguments[0]
-            )
+            relu = torch.AtenReluOp(result=vtensor, self_=entry.arguments[0])
             func.ReturnOp([relu.result])
 
         passmanager.PassManager.parse(

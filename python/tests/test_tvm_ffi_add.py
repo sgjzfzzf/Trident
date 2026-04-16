@@ -39,7 +39,7 @@ _CUDA_PIPELINE: Final[str] = (
     "gpu.module(convert-gpu-to-nvvm{{index-bitwidth=64}},canonicalize,cse),"
     "gpu-to-llvm{{use-bare-pointers-for-kernels=1}},"
     "gpu-module-to-binary{{format=fatbin}},"
-        "convert-cf-to-llvm,"
+    "convert-cf-to-llvm,"
     "convert-index-to-llvm,"
     "convert-arith-to-llvm,"
     "finalize-memref-to-llvm{{use-generic-functions=1}},"

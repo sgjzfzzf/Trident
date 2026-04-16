@@ -12,6 +12,7 @@
 func.func @lower_from_memref(%arg0: memref<?xf32>) -> !dlpack.managed_tensor {
   // Extract data pointer and offset from memref descriptor
   // CHECK: %[[ALIGNED_PTR:.*]] = llvm.extractvalue %[[ARG]][1]
+  // CHECK: %[[ALLOCATED_PTR:.*]] = llvm.extractvalue %[[ARG]][0]
   // CHECK: %[[OFFSET:.*]] = llvm.extractvalue %[[ARG]][2]
   // CHECK: %[[ELEM_BYTES:.*]] = llvm.mlir.constant(4 : i64)
   // CHECK: %[[BYTE_OFFSET:.*]] = llvm.mul %[[OFFSET]], %[[ELEM_BYTES]] : i64
@@ -37,14 +38,15 @@ func.func @lower_from_memref(%arg0: memref<?xf32>) -> !dlpack.managed_tensor {
   // CHECK: llvm.mlir.constant(32 : i8)
   // CHECK: llvm.mlir.constant(1 : i16)
 
-  // CHECK: llvm.insertvalue %[[SHAPE_SLOT]], %{{.*}}[4]
-  // CHECK: llvm.insertvalue %[[STRIDE_SLOT]], %{{.*}}[5]
-  // CHECK: llvm.insertvalue %[[BYTE_OFFSET]], %{{.*}}[6]
+  // CHECK: %[[SHAPE_SLOT_VAL:.*]] = llvm.insertvalue %[[SHAPE_SLOT]], %{{.*}}[4]
+  // CHECK: %[[STRIDE_SLOT_VAL:.*]] = llvm.insertvalue %[[STRIDE_SLOT]], %[[SHAPE_SLOT_VAL]][5]
+  // CHECK: %[[DTENSOR:.*]] = llvm.insertvalue %[[BYTE_OFFSET]], %[[STRIDE_SLOT_VAL]][6]
 
-  // CHECK: %[[MANAGER_CTX:.*]] = llvm.mlir.zero : !llvm.ptr
   // CHECK: %[[DELETER_ADDR:.*]] = llvm.mlir.addressof @__libtriton_dlpack_default_managed_tensor_deleter : !llvm.ptr
-  // CHECK: llvm.insertvalue %[[MANAGER_CTX]], %{{.*}}[1]
-  // CHECK: llvm.insertvalue %[[DELETER_ADDR]], %{{.*}}[2]
+  // CHECK: %[[MANAGED_POISON:.*]] = llvm.mlir.poison : !llvm.struct<(struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>, ptr, ptr)>
+  // CHECK: %[[MANAGED_WITH_DTENSOR:.*]] = llvm.insertvalue %[[DTENSOR]], %[[MANAGED_POISON]][0]
+  // CHECK: %[[MANAGED_WITH_CTX:.*]] = llvm.insertvalue %[[ALLOCATED_PTR]], %[[MANAGED_WITH_DTENSOR]][1]
+  // CHECK: %[[MANAGED_FINAL:.*]] = llvm.insertvalue %[[DELETER_ADDR]], %[[MANAGED_WITH_CTX]][2]
   
   // Build managed tensor with malloc-allocated arrays
   // CHECK: return %[[MANAGED:.*]] : !llvm.struct<(struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>, ptr, ptr)>

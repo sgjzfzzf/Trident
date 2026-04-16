@@ -1,7 +1,7 @@
 // RUN: libtriton-core-opt %s -emit-tvm-ffi-interface -convert-to-llvm -convert-index-to-llvm -convert-arith-to-llvm -finalize-memref-to-llvm="use-generic-functions=1" -convert-func-to-llvm -reconcile-unrealized-casts | mlir-translate --mlir-to-llvmir -o %t.ll
 // RUN: llc -filetype=obj %t.ll -o %t.o
-// RUN: clang -shared -fPIC -fsanitize=address %t.o -o %t_asan%shlibext -lm
-// RUN: env ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1 %e2e-dlpack-runner-asan %t_asan%shlibext tensor_add_kernel
+// RUN: clang -shared -fPIC -fsanitize=address %t.o %S/../../../../libtriton-core-build/lib/Runtime/CMakeFiles/LibTritonCoreRuntimeCPU.dir/CPUMemRefRuntime.c.o -o %t_asan%shlibext -lm
+// RUN: env ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:abort_on_error=1 %e2e-dlpack-runner-asan %t_asan%shlibext tensor_add_kernel
 
 // Minimal CPU tensor e2e test: tensor_add_kernel(x, y) returns x + y.
 

@@ -1,7 +1,12 @@
-from typing import Any, Dict, Final, List, Tuple
+from __future__ import annotations
+from typing import Any, Callable, Dict, Final, List, Optional, Tuple, TYPE_CHECKING
 
 import torch
 import tvm_ffi
+
+if TYPE_CHECKING:
+    import torch._higher_order_ops.triton_kernel_wrap
+    import triton
 
 from libtriton._C.libtriton_core import (
     capi_utils,
@@ -53,20 +58,115 @@ _CUDA_EXECUTION_ENGINE_PIPELINE: Final[str] = (
 )
 
 
+class TritonGraphModule:
+    """Wrapper around a transformed fx.GraphModule produced by triton_graph_backend."""
+
+    def __init__(self, gm: torch.fx.GraphModule) -> None:
+        self.gm: torch.fx.GraphModule = triton_graph_transform(gm)
+        self.fn: Optional[Callable[..., Any]] = None
+        self._did_first_call: bool = False
+
+    def __call__(self, *args: List[Any], **kwargs: Dict[Any, Any]) -> Any:
+        with triton_kernel_scope(self.gm) as scope:
+            if not self.fn:
+                result = self.gm(*args, **kwargs)
+                self.fn = self._build_fn(scope)
+                return result
+            else:
+                return self.fn(*args, **kwargs)
+
+    def _build_fn(self, scope: KernelScope) -> Callable[..., Any]:
+        # TODO: this currently relies on the fact that the first call to the GraphModule will execute all kernels and thus trigger the hooks to capture the compiled kernels. We should ideally be able to capture the compiled kernels without relying on executing the GraphModule.
+        for name, child in self.gm.named_children():
+            if name.startswith("submod_torch_"):
+                module = fx.stateless_fx_import(
+                    child,
+                    output_type=compiler_utils.OutputType.LINALG_ON_TENSORS,
+                    model_name=name,
+                )
+                print(module)
+            elif name.startswith("submod_triton_"):
+                kernel: triton.compiler.CompiledKernel = scope.get_kernel(child)
+                print(kernel.asm["ptx"])
+            else:
+                raise ValueError(f"unknown submodule type: {name}")
+        return self.gm
+
+
+class KernelScope:
+    def __init__(self) -> None:
+        self._kernels: Dict[torch.fx.GraphModule, triton.JITFunction] = {}
+        self._original_runs: List[Tuple[triton.JITFunction, Callable[..., Any]]] = []
+        self._registry: Dict[torch.fx.GraphModule, triton.compiler.CompiledKernel] = {}
+        self._active: bool = False
+
+    def register_kernel(
+        self, gm: torch.fx.GraphModule, kernel: triton.JITFunction
+    ) -> None:
+        self._kernels[gm] = kernel
+        if self._active:
+            self._patch_kernel_run(gm, kernel)
+
+    def get_kernel(
+        self, module: torch.fx.GraphModule
+    ) -> Optional[triton.compiler.CompiledKernel]:
+        return self._registry.get(module)
+
+    def __enter__(self) -> KernelScope:
+        self._active = True
+        for gm, kernel in self._kernels.items():
+            self._patch_kernel_run(gm, kernel)
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        for kernel, original_run in self._original_runs:
+            kernel.run = original_run
+        self._kernels = {}
+        self._original_runs = []
+        self._active = False
+
+    def _patch_kernel_run(
+        self, gm: torch.fx.GraphModule, kernel: triton.JITFunction
+    ) -> None:
+        original_run = kernel.run
+        self._original_runs.append((kernel, original_run))
+        kernel.run = self._build_kernel_run_hook(gm, original_run)
+
+    def _build_kernel_run_hook(self, gm: torch.fx.GraphModule, fn: Any) -> Any:
+        def run(*args: Any, **kwargs: Any) -> Any:
+            compiled_kernel = fn(*args, **kwargs)
+            self._registry[gm] = compiled_kernel
+            return compiled_kernel
+
+        return run
+
+
+def triton_kernel_scope(gm: torch.fx.GraphModule) -> KernelScope:
+    scope = KernelScope()
+    for name, child in gm.named_children():
+        if name.startswith("submod_triton_"):
+            [triton_kernel_wrapper] = [
+                node
+                for node in child.graph.nodes
+                if node.op == "call_function"
+                and isinstance(
+                    node.target,
+                    torch._higher_order_ops.triton_kernel_wrap.TritonKernelWrapperFunctional,
+                )
+            ]
+            kernel = (
+                torch._higher_order_ops.triton_kernel_wrap.kernel_side_table.get_kernel(
+                    triton_kernel_wrapper.kwargs["kernel_idx"]
+                )
+            )
+            scope.register_kernel(child, kernel)
+    return scope
+
+
 def triton_graph_backend(
     gm: torch.fx.GraphModule, example_inputs: List[Any]
-) -> torch.fx.GraphModule:
-    _ = example_inputs
-    modules: Dict[str, ir.Module] = {}
-    gm = triton_graph_transform(gm)
-    for name, child in gm.named_children():
-        if name.startswith("submod_torch_"):
-            modules[name] = fx.stateless_fx_import(child, model_name=name)
-        elif name.startswith("submod_triton_"):
-            ...
-        else:
-            raise ValueError(f"unknown submodule type: {name}")
-    return gm
+) -> TritonGraphModule:
+    return TritonGraphModule(gm)
 
 
 def experimental_torch_mlir_execution_engine_backend(

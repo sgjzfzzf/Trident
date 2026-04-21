@@ -8,10 +8,7 @@ from .backend import (  # noqa: E402
     experimental_torch_mlir_execution_engine_backend,
     triton_graph_backend,
 )
-from . import core
-
 __all__ = [
-    "core",
     "experimental_torch_mlir_execution_engine_backend",
     "triton_graph_backend",
 ]

@@ -4,6 +4,7 @@ from typing import Final, Tuple
 import torch
 import triton
 import triton.language as tl
+import tvm_ffi
 
 import libtriton.kernel
 from libtriton._C.libtriton_core import (
@@ -18,6 +19,7 @@ from libtriton._C.libtriton_core import (
 _BLOCK_SIZE: Final[int] = 1024
 _GPU_BINARY_TO_LLVM_PIPELINE: Final[str] = (
     "builtin.module("
+    "convert-tvm-ffi-to-llvm,"
     "convert-arith-to-llvm,"
     "convert-index-to-llvm,"
     "convert-func-to-llvm,"
@@ -77,7 +79,6 @@ class TestTritonAddKernelCubin(unittest.TestCase):
         module = self.kernel_builder.build_gpu_launch_module(
             ctx,
             self.launch_grid,
-            fn_name="launch_add_kernel",
         )
         module_text = f"{module}"
         self.assertIn("gpu.launch_func", module_text)
@@ -95,6 +96,14 @@ class TestTritonAddKernelCubin(unittest.TestCase):
         self.assertIn("!llvm.ptr", module_text)
         self.assertIn("i32", module_text)
         self.assertIn(
+            "%arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr",
+            module_text,
+        )
+        self.assertIn("-> i32", module_text)
+        self.assertIn("llvm.getelementptr", module_text)
+        self.assertIn("tvm_ffi.to_tensor", module_text)
+        self.assertIn("tvm_ffi.to_int", module_text)
+        self.assertIn(
             f"@{self.kernel_builder.kernel_name}::@{self.kernel_builder.kernel_name}",
             module_text,
         )
@@ -105,7 +114,6 @@ class TestTritonAddKernelCubin(unittest.TestCase):
         module = self.kernel_builder.build_gpu_launch_module(
             ctx,
             self.launch_grid,
-            fn_name="launch_add_kernel",
         )
         with ctx:
             register_all_passes()
@@ -119,8 +127,22 @@ class TestTritonAddKernelCubin(unittest.TestCase):
         ]
         engine = execution_engine.ExecutionEngine(module, shared_libs=shared_libs)
         engine.initialize()
-        fn_ptr = engine.raw_lookup("launch_add_kernel")
+        fn_ptr = engine.raw_lookup(f"__tvm_ffi_{self.kernel_builder.kernel_name}")
         self.assertIsNotNone(fn_ptr)
+
+        if fn_ptr is None:
+            raise RuntimeError("failed to lookup tvm_ffi wrapper symbol")
+
+        launch_fn = tvm_ffi.Function.__from_mlir_packed_safe_call__(
+            fn_ptr,
+            keep_alive_object=engine,
+        )
+
+        expected = self.x + self.y
+        output = torch.empty_like(self.output)
+        launch_fn(self.x, self.y, output, self.n_elements)
+        torch.testing.assert_close(output, expected)
+        torch.testing.assert_close(output, self.output)
 
 
 if __name__ == "__main__":

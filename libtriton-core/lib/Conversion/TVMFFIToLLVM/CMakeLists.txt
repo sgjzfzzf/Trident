@@ -2,7 +2,7 @@ add_mlir_conversion_library(TVMFFIToLLVM
 	TVMFFIToLLVM.cc
 
 	DEPENDS
-	MLIRTVMFFIToLLVMPassIncGen
+	MLIRConversionPassIncGen
 
 	LINK_LIBS PUBLIC
 	MemRefOriginAnalysis

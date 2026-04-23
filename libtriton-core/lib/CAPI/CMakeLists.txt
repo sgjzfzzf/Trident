@@ -15,6 +15,7 @@ add_mlir_public_c_api_library(LibTritonCoreCAPI
   MLIRConvertToLLVMPass
   DLPackDialect
   DLPackToLLVM
+  EmitTVMFFIInterface
   MemRefOriginAnalysis
   MLIRIR
   MLIRSupport

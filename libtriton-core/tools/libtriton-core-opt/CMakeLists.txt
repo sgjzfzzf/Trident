@@ -9,6 +9,7 @@ set_target_properties(libtriton-core-opt PROPERTIES
 target_link_libraries(libtriton-core-opt PRIVATE
   DLPackDialect
   DLPackToLLVM
+  EmitTVMFFIInterface
   MemRefOriginAnalysis
   MLIRArithDialect
   MLIRConvertToLLVMPass

@@ -7,6 +7,7 @@
 // dialects.
 
 #include "libtriton_core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
+#include "libtriton_core/Conversion/EmitTVMFFIInterface/EmitTVMFFIInterface.h"
 #include "libtriton_core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "libtriton_core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "libtriton_core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
@@ -26,7 +27,8 @@ int main(int argc, char **argv) {
   mlir::registerConvertToLLVMPass();
   mlir::registerReconcileUnrealizedCastsPass();
   libtriton::dlpack::registerConvertDLPackToLLVMPass();
-  libtriton::tvm_ffi::registerTVMFFIToLLVMPasses();
+  libtriton::tvm_ffi::registerEmitTVMFFIInterfacePass();
+  libtriton::tvm_ffi::registerConvertTVMFFIToLLVMPass();
 
   mlir::DialectRegistry registry;
   libtriton::dlpack::registerConvertDLPackToLLVMInterface(registry);

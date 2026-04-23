@@ -1,6 +1,7 @@
 #include "libtriton-core-c/Registration.h"
 
 #include "libtriton_core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
+#include "libtriton_core/Conversion/EmitTVMFFIInterface/EmitTVMFFIInterface.h"
 #include "libtriton_core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "libtriton_core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "libtriton_core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
@@ -32,6 +33,7 @@ void libtritonCoreRegisterAllDialects(MlirContext context) {
 
 void libtritonCoreRegisterAllPasses(void) {
   libtriton::dlpack::registerConvertDLPackToLLVMPass();
-  libtriton::tvm_ffi::registerTVMFFIToLLVMPasses();
+  libtriton::tvm_ffi::registerEmitTVMFFIInterfacePass();
+  libtriton::tvm_ffi::registerConvertTVMFFIToLLVMPass();
   torchMlirRegisterAllPasses();
 }

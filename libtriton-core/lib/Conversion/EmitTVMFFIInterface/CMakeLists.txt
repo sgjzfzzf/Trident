@@ -1,15 +1,15 @@
-add_mlir_conversion_library(DLPackToLLVM
-        DLPackToLLVM.cc
+add_mlir_conversion_library(EmitTVMFFIInterface
+        EmitTVMFFIInterface.cc
 
         DEPENDS
         MLIRConversionPassIncGen
 
         LINK_LIBS PUBLIC
         DLPackDialect
+        MemRefOriginAnalysis
+        MLIRArithDialect
         MLIRFuncDialect
-        MLIRFuncTransforms
         MLIRLLVMDialect
-        MLIRLLVMCommonConversion
         MLIRPass
-        MLIRTransforms
+        TVMFFIDialect
 )

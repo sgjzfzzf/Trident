@@ -27,7 +27,7 @@
 namespace libtriton::dlpack {
 
 #define GEN_PASS_DEF_CONVERTDLPACKTOLLVM
-#include "libtriton_core/Conversion/DLPackToLLVM/Passes.h.inc"
+#include "libtriton_core/Conversion/Passes.h.inc"
 
 namespace {
 

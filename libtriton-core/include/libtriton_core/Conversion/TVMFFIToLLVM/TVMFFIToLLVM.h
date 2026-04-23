@@ -12,16 +12,10 @@
 namespace libtriton::tvm_ffi {
 
 #define GEN_PASS_DECL_CONVERTTVMFFITOLLVM
-#include "libtriton_core/Conversion/TVMFFIToLLVM/Passes.h.inc"
-
-#define GEN_PASS_DECL_EMITTVMFFIINTERFACE
-#include "libtriton_core/Conversion/TVMFFIToLLVM/Passes.h.inc"
+#include "libtriton_core/Conversion/Passes.h.inc"
 
 #define GEN_PASS_REGISTRATION_CONVERTTVMFFITOLLVM
-#include "libtriton_core/Conversion/TVMFFIToLLVM/Passes.h.inc"
-
-#define GEN_PASS_REGISTRATION_EMITTVMFFIINTERFACE
-#include "libtriton_core/Conversion/TVMFFIToLLVM/Passes.h.inc"
+#include "libtriton_core/Conversion/Passes.h.inc"
 
 void populateTVMFFIToLLVMTypeConversions(
     mlir::LLVMTypeConverter &typeConverter);
@@ -30,8 +24,6 @@ void populateTVMFFIToLLVMConversionPatterns(
     mlir::RewritePatternSet &patterns);
 
 void registerConvertTVMFFIToLLVMPass();
-void registerEmitTVMFFIInterfacePass();
-void registerTVMFFIToLLVMPasses();
 void registerConvertTVMFFIToLLVMInterface(mlir::DialectRegistry &registry);
 
 } // namespace libtriton::tvm_ffi

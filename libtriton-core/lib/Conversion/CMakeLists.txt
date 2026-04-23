@@ -1,2 +1,3 @@
 add_subdirectory(DLPackToLLVM)
+add_subdirectory(EmitTVMFFIInterface)
 add_subdirectory(TVMFFIToLLVM)

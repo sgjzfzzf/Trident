@@ -13,10 +13,10 @@
 namespace libtriton::dlpack {
 
 #define GEN_PASS_DECL_CONVERTDLPACKTOLLVM
-#include "libtriton_core/Conversion/DLPackToLLVM/Passes.h.inc"
+#include "libtriton_core/Conversion/Passes.h.inc"
 
 #define GEN_PASS_REGISTRATION_CONVERTDLPACKTOLLVM
-#include "libtriton_core/Conversion/DLPackToLLVM/Passes.h.inc"
+#include "libtriton_core/Conversion/Passes.h.inc"
 
 void populateDLPackToLLVMTypeConversions(
     mlir::LLVMTypeConverter &typeConverter);

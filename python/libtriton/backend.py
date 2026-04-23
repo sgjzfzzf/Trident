@@ -19,6 +19,7 @@ from libtriton._C.libtriton_core import (
     register_all_passes,
 )
 
+from .kernel import KernelBuilder
 from .transform import triton_graph_transform
 
 _CPU_EXECUTION_ENGINE_PIPELINE: Final[str] = (
@@ -58,13 +59,16 @@ _CUDA_EXECUTION_ENGINE_PIPELINE: Final[str] = (
 )
 
 
-class TritonGraphModule:
+class TritonGraphModule(object):
     """Wrapper around a transformed fx.GraphModule produced by triton_graph_backend."""
 
-    def __init__(self, gm: torch.fx.GraphModule) -> None:
+    def __init__(self, gm: torch.fx.GraphModule, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
         self.gm: torch.fx.GraphModule = triton_graph_transform(gm)
         self.fn: Optional[Callable[..., Any]] = None
-        self._did_first_call: bool = False
+        self.ctx: ir.Context = ir.Context()
+        register_all_dialects(self.ctx)
+        register_all_passes()
 
     def __call__(self, *args: List[Any], **kwargs: Dict[Any, Any]) -> Any:
         with triton_kernel_scope(self.gm) as scope:
@@ -79,15 +83,28 @@ class TritonGraphModule:
         # TODO: this currently relies on the fact that the first call to the GraphModule will execute all kernels and thus trigger the hooks to capture the compiled kernels. We should ideally be able to capture the compiled kernels without relying on executing the GraphModule.
         for name, child in self.gm.named_children():
             if name.startswith("submod_torch_"):
+                fx_importer = fx.FxImporter(context=self.ctx)
                 module = fx.stateless_fx_import(
                     child,
                     output_type=compiler_utils.OutputType.LINALG_ON_TENSORS,
                     model_name=name,
+                    fx_importer=fx_importer,
                 )
                 print(module)
             elif name.startswith("submod_triton_"):
                 kernel: triton.compiler.CompiledKernel = scope.get_kernel(child)
-                print(kernel.asm["ptx"])
+                [triton_kernel_wrapper] = [
+                    node
+                    for node in child.graph.nodes
+                    if node.op == "call_function"
+                    and isinstance(
+                        node.target,
+                        torch._higher_order_ops.triton_kernel_wrap.TritonKernelWrapperFunctional,
+                    )
+                ]
+                [grid] = triton_kernel_wrapper.kwargs["grid"]
+                module = KernelBuilder(kernel).build_gpu_launch_module(self.ctx, grid)
+                print(module)
             else:
                 raise ValueError(f"unknown submodule type: {name}")
         return self.gm

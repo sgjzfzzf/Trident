@@ -60,25 +60,22 @@ class KernelBuilder:
         ]
 
     @staticmethod
-    def to_tvm_ffi_any(
-        llvm_any_value: ir.Value,
-        tvm_ffi_any_type: ir.Type,
-    ) -> ir.Value:
-        """Cast LLVM TVMFFIAny descriptor struct into !tvm_ffi.any."""
+    def to_tvm_ffi_any(llvm_any_value: ir.Value) -> ir.Value:
+        """Convert LLVM TVMFFIAny descriptor struct into !tvm_ffi.any."""
         return ir.Operation.create(
-            "builtin.unrealized_conversion_cast",
-            results=[tvm_ffi_any_type],
+            "tvm_ffi.any_from_llvm",
+            results=[ir.Type.parse("!tvm_ffi.any")],
             operands=[llvm_any_value],
         ).results[0]
 
     @staticmethod
-    def to_llvm_dl_tensor(
-        dl_tensor_value: ir.Value,
-        dl_tensor_llvm_type: ir.Type,
-    ) -> ir.Value:
-        """Cast !dlpack.tensor into its LLVM descriptor struct type."""
+    def to_llvm_dl_tensor(dl_tensor_value: ir.Value) -> ir.Value:
+        """Convert !dlpack.tensor into its LLVM descriptor struct type."""
+        dl_tensor_llvm_type = ir.Type.parse(
+            "!llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>"
+        )
         return ir.Operation.create(
-            "builtin.unrealized_conversion_cast",
+            "dlpack.tensor_to_llvm",
             results=[dl_tensor_llvm_type],
             operands=[dl_tensor_value],
         ).results[0]
@@ -109,7 +106,6 @@ class KernelBuilder:
     ) -> ir.Value:
         """Unpack one TVM-FFI packed argument into the expected Triton runtime value."""
         any_llvm_type = ir.Type.parse("!llvm.struct<(i32, i32, i64)>")
-        tvm_ffi_any_type = ir.Type.parse("!tvm_ffi.any")
         ptr_type = ir.Type.parse("!llvm.ptr")
         i8_type = ir.IntegerType.get_signless(8)
         i64_type = ir.IntegerType.get_signless(64)
@@ -124,25 +120,16 @@ class KernelBuilder:
             llvm.GEPNoWrapFlags.none,
         )
         packed_any_llvm = llvm.load(any_llvm_type, arg_slot_ptr)
-        packed_any = self.to_tvm_ffi_any(
-            packed_any_llvm,
-            tvm_ffi_any_type,
-        )
+        packed_any = self.to_tvm_ffi_any(packed_any_llvm)
 
         if triton_type.startswith("*"):
             dl_tensor_type = ir.Type.parse("!dlpack.tensor")
-            dl_tensor_llvm_type = ir.Type.parse(
-                "!llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>"
-            )
             dl_tensor = self.unbox_any(
                 "tvm_ffi.to_tensor",
                 dl_tensor_type,
                 packed_any,
             )
-            dl_tensor_llvm = self.to_llvm_dl_tensor(
-                dl_tensor,
-                dl_tensor_llvm_type,
-            )
+            dl_tensor_llvm = self.to_llvm_dl_tensor(dl_tensor)
             data_ptr = llvm.extractvalue(ptr_type, dl_tensor_llvm, [0])
             byte_offset = llvm.extractvalue(i64_type, dl_tensor_llvm, [6])
             return llvm.getelementptr(

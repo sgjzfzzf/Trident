@@ -81,6 +81,24 @@ def TVMFFI_ToTensorOp : TVMFFI_Op<"to_tensor", [MemoryEffects<[MemRead]>]> {
   let results = (outs DLPack_DLTensor : $output);
 }
 
+def TVMFFI_AnyFromLLVMOp : TVMFFI_Op<"any_from_llvm", [Pure]> {
+  let summary = "Convert an LLVM TVMFFIAny descriptor struct to !tvm_ffi.any";
+  let description = [{Bridges an LLVM struct value carrying the TVMFFIAny ABI
+                      into !tvm_ffi.any for high-level unboxing operations.
+  }];
+  let arguments = (ins LLVM_AnyStruct : $input);
+  let results = (outs TVMFFI_AnyType : $output);
+}
+
+def TVMFFI_AnyToLLVMOp : TVMFFI_Op<"any_to_llvm", [Pure]> {
+  let summary = "Convert !tvm_ffi.any to its LLVM TVMFFIAny descriptor struct";
+  let description = [{Bridges !tvm_ffi.any to the LLVM struct value carrying
+                      the TVMFFIAny ABI for low-level stores and calls.
+  }];
+  let arguments = (ins TVMFFI_AnyType : $input);
+  let results = (outs LLVM_AnyStruct : $output);
+}
+
 def TVMFFI_FromObjectOp : TVMFFI_Op<"from_object", [MemoryEffects<[MemRead]>]> {
   let summary = "Box object handle into TVMFFIAny";
   let description = [{Converts a TVMFFI object handle into TVMFFIAny.}];
@@ -98,9 +116,11 @@ def TVMFFI_ToObjectOp : TVMFFI_Op<"to_object", [Pure]> {
 def TVMFFI_TensorFromDLPackOp
     : TVMFFI_Op<"tensor_from_dlpack", [MemoryEffects<[MemRead, MemWrite]>]> {
   let summary = "Call TVMFFITensorFromDLPack and return object handle";
-  let description = [{Models `TVMFFITensorFromDLPack(from, require_alignment,
-    require_contiguous, out)` with `out` materialized by lowering. The op
-    returns the produced TVMFFIObjectHandle directly.}];
+  let description = [
+    {Models `TVMFFITensorFromDLPack(from, require_alignment, require_contiguous,
+                                    out)` with `out` materialized by
+         lowering.The op returns the produced TVMFFIObjectHandle directly.}
+  ];
   let arguments = (ins DLPack_DLManagedTensor
                    : $from, I32
                    : $require_alignment, I32

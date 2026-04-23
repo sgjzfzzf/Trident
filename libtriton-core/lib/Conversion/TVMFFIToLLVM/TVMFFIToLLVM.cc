@@ -72,15 +72,6 @@ buildAnyValue(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
       .as();
 }
 
-mlir::Value materializeCast(mlir::OpBuilder &builder, mlir::Type resultType,
-                            mlir::ValueRange inputs, mlir::Location loc) {
-  if (inputs.size() != 1)
-    return {};
-  return mlir::UnrealizedConversionCastOp::create(builder, loc, resultType,
-                                                  inputs)
-      .getResult(0);
-}
-
 mlir::FailureOr<mlir::Value> emitTensorFromDLPackAsObjectHandle(
     mlir::ModuleOp moduleOp, mlir::ConversionPatternRewriter &rewriter,
     mlir::Location loc, mlir::Value fromManaged, mlir::Value requireAlignment,
@@ -426,6 +417,36 @@ struct LowerToTensorOp
   }
 };
 
+struct LowerAnyFromLLVMOp
+    : public mlir::OpConversionPattern<libtriton::tvm_ffi::AnyFromLLVMOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::tvm_ffi::AnyFromLLVMOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    mlir::Type convertedAnyType =
+        getTypeConverter()->convertType(op.getOutput().getType());
+    if (!convertedAnyType || adaptor.getInput().getType() != convertedAnyType)
+      return mlir::failure();
+    rewriter.replaceOp(op, adaptor.getInput());
+    return mlir::success();
+  }
+};
+
+struct LowerAnyToLLVMOp
+    : public mlir::OpConversionPattern<libtriton::tvm_ffi::AnyToLLVMOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::tvm_ffi::AnyToLLVMOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    if (adaptor.getInput().getType() != op.getOutput().getType())
+      return mlir::failure();
+    rewriter.replaceOp(op, adaptor.getInput());
+    return mlir::success();
+  }
+};
+
 class ConvertTVMFFIToLLVMPass
     : public impl::ConvertTVMFFIToLLVMBase<ConvertTVMFFIToLLVMPass> {
 public:
@@ -494,8 +515,6 @@ void populateTVMFFIToLLVMTypeConversions(
     return libtriton::conversion::utils::TVMFFIObjectHandleLLVMDescriptor::
         getLLVMType(type.getContext());
   });
-  typeConverter.addSourceMaterialization(materializeCast);
-  typeConverter.addTargetMaterialization(materializeCast);
 }
 
 void populateTVMFFIToLLVMConversionPatterns(
@@ -503,11 +522,11 @@ void populateTVMFFIToLLVMConversionPatterns(
     mlir::RewritePatternSet &patterns) {
   mlir::MLIRContext *context = patterns.getContext();
   populateTVMFFIToLLVMTypeConversions(typeConverter);
-  patterns
-      .add<LowerFromFloatOp, LowerFromIntOp, LowerFromObjectOp, LowerFromStrOp,
-           LowerFromTensorOp, LowerTensorFromDLPackOp, LowerToFloatOp,
-           LowerToIntOp, LowerToObjectOp, LowerToStrOp, LowerToTensorOp>(
-          typeConverter, context);
+  patterns.add<LowerFromFloatOp, LowerFromIntOp, LowerFromObjectOp,
+               LowerFromStrOp, LowerFromTensorOp, LowerTensorFromDLPackOp,
+               LowerToFloatOp, LowerToIntOp, LowerToObjectOp, LowerToStrOp,
+               LowerToTensorOp, LowerAnyFromLLVMOp, LowerAnyToLLVMOp>(
+      typeConverter, context);
 
   target.addIllegalDialect<libtriton::tvm_ffi::TVMFFIDialect>();
 }

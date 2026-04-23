@@ -32,15 +32,6 @@ constexpr llvm::StringLiteral kTVMFFIInterfaceAttr =
     "tvm_ffi.emit_tvm_ffi_interface";
 constexpr llvm::StringLiteral kTVMFFIWrapperPrefix = "__tvm_ffi_";
 
-mlir::Value materializeCast(mlir::OpBuilder &builder, mlir::Type resultType,
-                            mlir::ValueRange inputs, mlir::Location loc) {
-  if (inputs.size() != 1)
-    return {};
-  return mlir::UnrealizedConversionCastOp::create(builder, loc, resultType,
-                                                  inputs)
-      .getResult(0);
-}
-
 mlir::Value emitI32Constant(mlir::OpBuilder &builder, mlir::Location loc,
                             std::int32_t value) {
   return mlir::arith::ConstantIntOp::create(builder, loc, value, 32)
@@ -231,10 +222,9 @@ buildEmitTVMFFIInterfaceWrapper(mlir::ModuleOp moduleOp,
     mlir::Value anyValueLLVM =
         mlir::LLVM::LoadOp::create(invokeBuilder, loc, anyLLVMType, argSlotPtr)
             .getResult();
-    mlir::Value anyValue = materializeCast(invokeBuilder, anyTy,
-                                           mlir::ValueRange{anyValueLLVM}, loc);
-    if (!anyValue)
-      return mlir::failure();
+    mlir::Value anyValue = libtriton::tvm_ffi::AnyFromLLVMOp::create(
+                               invokeBuilder, loc, anyTy, anyValueLLVM)
+                               .getOutput();
     mlir::FailureOr<mlir::Value> unpackedValue =
         emitUnboxAnyValue(invokeBuilder, loc, targetType.getInput(i), anyValue);
     if (mlir::failed(unpackedValue))
@@ -254,10 +244,10 @@ buildEmitTVMFFIInterfaceWrapper(mlir::ModuleOp moduleOp,
             emitI64Constant(invokeBuilder, loc, 0));
     mlir::Value resultSlotPtr = emitAnyBufferSlotPtr(
         invokeBuilder, loc, packedResultPtr, resultIndex, anyLLVMType);
-    mlir::Value boxedResultLLVM = materializeCast(
-        invokeBuilder, anyLLVMType, mlir::ValueRange{*boxedResult}, loc);
-    if (!boxedResultLLVM)
-      return mlir::failure();
+    mlir::Value boxedResultLLVM =
+        libtriton::tvm_ffi::AnyToLLVMOp::create(invokeBuilder, loc, anyLLVMType,
+                                                *boxedResult)
+            .getOutput();
     mlir::LLVM::StoreOp::create(invokeBuilder, loc, boxedResultLLVM,
                                 resultSlotPtr);
   }

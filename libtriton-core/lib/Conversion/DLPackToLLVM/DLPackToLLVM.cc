@@ -34,15 +34,6 @@ namespace {
 constexpr const char kDefaultManagedTensorDeleterName[] =
     "__libtriton_dlpack_default_managed_tensor_deleter";
 
-mlir::Value materializeCast(mlir::OpBuilder &builder, mlir::Type resultType,
-                            mlir::ValueRange inputs, mlir::Location loc) {
-  if (inputs.size() != 1)
-    return {};
-  return mlir::UnrealizedConversionCastOp::create(builder, loc, resultType,
-                                                  inputs)
-      .getResult(0);
-}
-
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
 allocateArrayWithMalloc(mlir::ConversionPatternRewriter &rewriter,
                         mlir::ModuleOp moduleOp, mlir::Location loc,
@@ -631,6 +622,37 @@ struct LowerToMemRefOp
   }
 };
 
+struct LowerTensorFromLLVMOp
+    : public mlir::OpConversionPattern<libtriton::dlpack::TensorFromLLVMOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::dlpack::TensorFromLLVMOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    mlir::Type convertedTensorType =
+        getTypeConverter()->convertType(op.getOutput().getType());
+    if (!convertedTensorType ||
+        adaptor.getInput().getType() != convertedTensorType)
+      return mlir::failure();
+    rewriter.replaceOp(op, adaptor.getInput());
+    return mlir::success();
+  }
+};
+
+struct LowerTensorToLLVMOp
+    : public mlir::OpConversionPattern<libtriton::dlpack::TensorToLLVMOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::dlpack::TensorToLLVMOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    if (adaptor.getInput().getType() != op.getOutput().getType())
+      return mlir::failure();
+    rewriter.replaceOp(op, adaptor.getInput());
+    return mlir::success();
+  }
+};
+
 class ConvertDLPackToLLVMPass
     : public impl::ConvertDLPackToLLVMBase<ConvertDLPackToLLVMPass> {
 public:
@@ -681,8 +703,6 @@ void populateDLPackToLLVMTypeConversions(
         return libtriton::conversion::utils::DLManagedTensorLLVMDescriptor::
             getLLVMType(type.getContext(), typeConverter.getPointerBitwidth());
       });
-  typeConverter.addSourceMaterialization(materializeCast);
-  typeConverter.addTargetMaterialization(materializeCast);
 }
 
 void populateDLPackToLLVMConversionPatterns(
@@ -695,7 +715,8 @@ void populateDLPackToLLVMConversionPatterns(
       patterns, typeConverter);
   mlir::populateCallOpTypeConversionPattern(patterns, typeConverter);
   mlir::populateReturnOpTypeConversionPattern(patterns, typeConverter);
-  patterns.add<LowerFromMemRefOwnedOp, LowerFromMemRefBorrowedOp, LowerViewOp,
+  patterns.add<LowerFromMemRefOwnedOp, LowerFromMemRefBorrowedOp,
+               LowerTensorFromLLVMOp, LowerTensorToLLVMOp, LowerViewOp,
                LowerToMemRefOp>(typeConverter, context);
 
   target.addIllegalDialect<libtriton::dlpack::DLPackDialect>();

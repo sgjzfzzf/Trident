@@ -130,9 +130,6 @@ class TestTritonAddKernelCubin(unittest.TestCase):
         fn_ptr = engine.raw_lookup(f"__tvm_ffi_{self.kernel_builder.kernel_name}")
         self.assertIsNotNone(fn_ptr)
 
-        if fn_ptr is None:
-            raise RuntimeError("failed to lookup tvm_ffi wrapper symbol")
-
         launch_fn = tvm_ffi.Function.__from_mlir_packed_safe_call__(
             fn_ptr,
             keep_alive_object=engine,

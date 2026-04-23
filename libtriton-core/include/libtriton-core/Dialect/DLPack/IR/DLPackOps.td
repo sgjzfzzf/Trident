@@ -2,6 +2,7 @@
 #define LIBTRITON_CORE_DIALECT_DLPACK_IR_DLPACKOPS_TD_
 
 include "mlir/IR/OpBase.td"
+include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "libtriton-core/Dialect/DLPack/IR/DLPackBase.td"
 include "libtriton-core/Dialect/DLPack/IR/DLPackTypes.td"
@@ -52,6 +53,24 @@ def DLPack_ToMemRefOp : DLPack_Op<"to_memref", [Pure]> {
                 lowered during conversion to LLVM dialect.}];
   let arguments = (ins DLPack_DLTensor : $input);
   let results = (outs AnyMemRef : $output);
+}
+
+def DLPack_TensorFromLLVMOp : DLPack_Op<"tensor_from_llvm", [Pure]> {
+  let summary = "Convert an LLVM DLTensor descriptor struct to !dlpack.tensor";
+  let description = [{Bridges an LLVM struct value following the DLTensor ABI
+                      into !dlpack.tensor for high-level tensor interop ops.
+  }];
+  let arguments = (ins LLVM_AnyStruct : $input);
+  let results = (outs DLPack_DLTensor : $output);
+}
+
+def DLPack_TensorToLLVMOp : DLPack_Op<"tensor_to_llvm", [Pure]> {
+  let summary = "Convert !dlpack.tensor to its LLVM descriptor struct";
+  let description = [{
+      Bridges !dlpack.tensor into the LLVM struct descriptor form used by low -
+      level LLVM dialect ops.}];
+  let arguments = (ins DLPack_DLTensor : $input);
+  let results = (outs LLVM_AnyStruct : $output);
 }
 
 #endif // LIBTRITON_CORE_DIALECT_DLPACK_IR_DLPACKOPS_TD_

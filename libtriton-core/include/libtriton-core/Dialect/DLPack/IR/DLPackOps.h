@@ -2,6 +2,7 @@
 #define LIBTRITON_CORE_DIALECT_DLPACK_IR_DLPACKOPS_H_
 
 #include "libtriton-core/Dialect/DLPack/IR/DLPackTypes.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 

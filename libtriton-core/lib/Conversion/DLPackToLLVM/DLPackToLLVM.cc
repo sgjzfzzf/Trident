@@ -4,12 +4,12 @@
 #include <cstdint>
 #include <tuple>
 
-#include "libtriton_core/Conversion/DLPackToLLVM/DLPackLLVMDescriptors.h"
-#include "libtriton_core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
-#include "libtriton_core/Conversion/Utils/StdLibCFunctionDeclUtils.h"
-#include "libtriton_core/Dialect/DLPack/IR/DLPackDialect.h"
-#include "libtriton_core/Dialect/DLPack/IR/DLPackOps.h"
-#include "libtriton_core/Dialect/DLPack/IR/DLPackTypes.h"
+#include "libtriton-core/Conversion/DLPackToLLVM/DLPackLLVMDescriptors.h"
+#include "libtriton-core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
+#include "libtriton-core/Conversion/Utils/StdLibCFunctionDeclUtils.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackOps.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackTypes.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
@@ -27,7 +27,7 @@
 namespace libtriton::dlpack {
 
 #define GEN_PASS_DEF_CONVERTDLPACKTOLLVM
-#include "libtriton_core/Conversion/Passes.h.inc"
+#include "libtriton-core/Conversion/Passes.h.inc"
 
 namespace {
 

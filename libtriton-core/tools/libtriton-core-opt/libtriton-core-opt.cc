@@ -6,11 +6,11 @@
 // libtriton-core-opt can parse and transform `.mlir` files exercising these
 // dialects.
 
-#include "libtriton_core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
-#include "libtriton_core/Conversion/EmitTVMFFIInterface/EmitTVMFFIInterface.h"
-#include "libtriton_core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
-#include "libtriton_core/Dialect/DLPack/IR/DLPackDialect.h"
-#include "libtriton_core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
+#include "libtriton-core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
+#include "libtriton-core/Conversion/EmitTVMFFIInterface/EmitTVMFFIInterface.h"
+#include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.h"
+#include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "mlir/Conversion/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"

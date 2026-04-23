@@ -1,16 +1,16 @@
 #include <cstdint>
 
-#include "libtriton_core/Conversion/DLPackToLLVM/DLPackLLVMDescriptors.h"
-#include "libtriton_core/Conversion/TVMFFIToLLVM/TVMFFICAPIDescriptors.h"
-#include "libtriton_core/Conversion/TVMFFIToLLVM/TVMFFILLVMDescriptors.h"
-#include "libtriton_core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
-#include "libtriton_core/Conversion/Utils/StdLibCFunctionDeclUtils.h"
-#include "libtriton_core/Dialect/DLPack/IR/DLPackDialect.h"
-#include "libtriton_core/Dialect/DLPack/IR/DLPackOps.h"
-#include "libtriton_core/Dialect/DLPack/IR/DLPackTypes.h"
-#include "libtriton_core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
-#include "libtriton_core/Dialect/TVMFFI/IR/TVMFFIOps.h"
-#include "libtriton_core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include "libtriton-core/Conversion/DLPackToLLVM/DLPackLLVMDescriptors.h"
+#include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFICAPIDescriptors.h"
+#include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFILLVMDescriptors.h"
+#include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
+#include "libtriton-core/Conversion/Utils/StdLibCFunctionDeclUtils.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackOps.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackTypes.h"
+#include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
+#include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIOps.h"
+#include "libtriton-core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
@@ -27,7 +27,7 @@
 namespace libtriton::tvm_ffi {
 
 #define GEN_PASS_DEF_CONVERTTVMFFITOLLVM
-#include "libtriton_core/Conversion/Passes.h.inc"
+#include "libtriton-core/Conversion/Passes.h.inc"
 
 namespace {
 

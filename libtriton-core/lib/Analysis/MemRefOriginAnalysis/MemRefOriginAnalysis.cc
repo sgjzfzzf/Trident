@@ -1,9 +1,9 @@
 #include <cstdint>
 
-#include "libtriton_core/Analysis/MemRefOriginAnalysis/MemRefOriginAnalysis.h"
-#include "libtriton_core/Dialect/DLPack/IR/DLPackDialect.h"
-#include "libtriton_core/Dialect/DLPack/IR/DLPackOps.h"
-#include "libtriton_core/Dialect/DLPack/IR/DLPackTypes.h"
+#include "libtriton-core/Analysis/MemRefOriginAnalysis/MemRefOriginAnalysis.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackOps.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackTypes.h"
 #include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"
 #include "mlir/Analysis/DataFlow/SparseAnalysis.h"
 #include "mlir/Analysis/DataFlow/Utils.h"

@@ -1,6 +1,6 @@
 #include "libtriton-core-c/DLPackTypes.h"
 
-#include "libtriton_core/Dialect/DLPack/IR/DLPackTypes.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackTypes.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Support.h"
 #include "llvm/Support/Casting.h"

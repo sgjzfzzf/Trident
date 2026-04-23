@@ -1,6 +1,6 @@
 #include "libtriton-core-c/TVMFFITypes.h"
 
-#include "libtriton_core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include "libtriton-core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Support.h"
 #include "llvm/Support/Casting.h"

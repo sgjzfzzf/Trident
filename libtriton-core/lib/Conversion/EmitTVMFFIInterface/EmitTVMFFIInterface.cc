@@ -1,14 +1,14 @@
 #include <cstdint>
 
-#include "libtriton_core/Analysis/MemRefOriginAnalysis/MemRefOriginAnalysis.h"
-#include "libtriton_core/Conversion/EmitTVMFFIInterface/EmitTVMFFIInterface.h"
-#include "libtriton_core/Conversion/TVMFFIToLLVM/TVMFFILLVMDescriptors.h"
-#include "libtriton_core/Dialect/DLPack/IR/DLPackDialect.h"
-#include "libtriton_core/Dialect/DLPack/IR/DLPackOps.h"
-#include "libtriton_core/Dialect/DLPack/IR/DLPackTypes.h"
-#include "libtriton_core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
-#include "libtriton_core/Dialect/TVMFFI/IR/TVMFFIOps.h"
-#include "libtriton_core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include "libtriton-core/Analysis/MemRefOriginAnalysis/MemRefOriginAnalysis.h"
+#include "libtriton-core/Conversion/EmitTVMFFIInterface/EmitTVMFFIInterface.h"
+#include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFILLVMDescriptors.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackOps.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackTypes.h"
+#include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
+#include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIOps.h"
+#include "libtriton-core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "mlir/Analysis/DataFlow/Utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -24,7 +24,7 @@
 namespace libtriton::tvm_ffi {
 
 #define GEN_PASS_DEF_EMITTVMFFIINTERFACE
-#include "libtriton_core/Conversion/Passes.h.inc"
+#include "libtriton-core/Conversion/Passes.h.inc"
 
 namespace {
 

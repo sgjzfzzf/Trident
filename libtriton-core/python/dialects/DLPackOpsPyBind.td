@@ -1,6 +1,6 @@
 #ifndef LIBTRITON_CORE_PYTHON_DIALECTS_DLPACKOPSPYBIND_TD_
 #define LIBTRITON_CORE_PYTHON_DIALECTS_DLPACKOPSPYBIND_TD_
 
-include "libtriton_core/Dialect/DLPack/IR/DLPackOps.td"
+include "libtriton-core/Dialect/DLPack/IR/DLPackOps.td"
 
 #endif // LIBTRITON_CORE_PYTHON_DIALECTS_DLPACKOPSPYBIND_TD_

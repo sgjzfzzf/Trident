@@ -1,9 +1,0 @@
-#ifndef LIBTRITON_CORE_DIALECT_TVMFFI_IR_TVMFFITYPES_H_
-#define LIBTRITON_CORE_DIALECT_TVMFFI_IR_TVMFFITYPES_H_
-
-#include "mlir/IR/BuiltinTypes.h"
-
-#define GET_TYPEDEF_CLASSES
-#include "libtriton_core/Dialect/TVMFFI/IR/TVMFFITypes.h.inc"
-
-#endif // LIBTRITON_CORE_DIALECT_TVMFFI_IR_TVMFFITYPES_H_

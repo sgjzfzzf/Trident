@@ -1,1 +1,1 @@
-add_subdirectory(libtriton_core)
+add_subdirectory(libtriton-core)

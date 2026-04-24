@@ -1,12 +1,8 @@
 from __future__ import annotations
-from typing import Any, Callable, Dict, Final, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Callable, Dict, Final, List, Optional, Tuple
 
 import torch
 import tvm_ffi
-
-if TYPE_CHECKING:
-    import torch._higher_order_ops.triton_kernel_wrap
-    import triton
 
 from libtriton._C.libtriton_core import (
     capi_utils,
@@ -19,7 +15,6 @@ from libtriton._C.libtriton_core import (
     register_all_passes,
 )
 from .importers import TritonFxImporter
-from .kernel import KernelBuilder
 
 _CPU_EXECUTION_ENGINE_PIPELINE: Final[str] = (
     "builtin.module("
@@ -118,77 +113,6 @@ class TritonGraphModule(object):
         #     )
         print(module)
         return self.gm
-
-
-class KernelScope(object):
-    def __init__(self, *args: List[Any], **kwargs: Dict[str, Any]) -> None:
-        super().__init__(*args, **kwargs)
-        self._kernels: Dict[torch.fx.GraphModule, triton.JITFunction] = {}
-        self._original_runs: List[Tuple[triton.JITFunction, Callable[..., Any]]] = []
-        self._registry: Dict[torch.fx.GraphModule, triton.compiler.CompiledKernel] = {}
-        self._active: bool = False
-
-    def register_kernel(
-        self, gm: torch.fx.GraphModule, kernel: triton.JITFunction
-    ) -> None:
-        self._kernels[gm] = kernel
-        if self._active:
-            self._patch_kernel_run(gm, kernel)
-
-    def get_kernel(
-        self, module: torch.fx.GraphModule
-    ) -> Optional[triton.compiler.CompiledKernel]:
-        return self._registry.get(module)
-
-    def __enter__(self) -> KernelScope:
-        self._active = True
-        for gm, kernel in self._kernels.items():
-            self._patch_kernel_run(gm, kernel)
-        return self
-
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        for kernel, original_run in self._original_runs:
-            kernel.run = original_run
-        self._kernels = {}
-        self._original_runs = []
-        self._active = False
-
-    def _patch_kernel_run(
-        self, gm: torch.fx.GraphModule, kernel: triton.JITFunction
-    ) -> None:
-        original_run = kernel.run
-        self._original_runs.append((kernel, original_run))
-        kernel.run = self._build_kernel_run_hook(gm, original_run)
-
-    def _build_kernel_run_hook(self, gm: torch.fx.GraphModule, fn: Any) -> Any:
-        def run(*args: Any, **kwargs: Any) -> Any:
-            compiled_kernel = fn(*args, **kwargs)
-            self._registry[gm] = compiled_kernel
-            return compiled_kernel
-
-        return run
-
-
-def triton_kernel_scope(gm: torch.fx.GraphModule) -> KernelScope:
-    scope = KernelScope()
-    for name, child in gm.named_children():
-        if name.startswith("submod_triton_"):
-            [triton_kernel_wrapper] = [
-                node
-                for node in child.graph.nodes
-                if node.op == "call_function"
-                and isinstance(
-                    node.target,
-                    torch._higher_order_ops.triton_kernel_wrap.TritonKernelWrapperFunctional,
-                )
-            ]
-            kernel = (
-                torch._higher_order_ops.triton_kernel_wrap.kernel_side_table.get_kernel(
-                    triton_kernel_wrapper.kwargs["kernel_idx"]
-                )
-            )
-            scope.register_kernel(child, kernel)
-    return scope
 
 
 def triton_graph_backend(

@@ -18,12 +18,7 @@ from libtriton._C.libtriton_core import (
     register_all_dialects,
     register_all_passes,
 )
-from libtriton._C.libtriton_core.dialects import func
-from libtriton._C.libtriton_core.extras.fx_importer import (
-    FxImporter,
-    GraphNodeImporter,
-)
-
+from .importers import TritonFxImporter
 from .kernel import KernelBuilder
 
 _CPU_EXECUTION_ENGINE_PIPELINE: Final[str] = (
@@ -85,103 +80,12 @@ _TORCH_TO_LINALG_NO_VERIFY_PIPELINE: Final[str] = (
 )
 
 
-class TritonGraphNodeImporter(GraphNodeImporter):
-    """GraphNodeImporter subclass that handles triton higher-order ops natively."""
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-
-    def _import_hop_triton_kernel_wrapper_functional(
-        self,
-        loc: Any,
-        node: torch.fx.Node,
-        hop: Any,
-    ) -> None:
-        # TODO: Extract kernel_idx from node.kwargs["kernel_idx"] to retrieve
-        # the JITFunction via kernel_side_table.get_kernel(kernel_idx), then
-        # use KernelBuilder to compile the kernel and build a GPU launch
-        # func, merging it into the parent module via the symbol table.
-        keyword_values: Dict[str, Any] = node.kwargs.get("kwargs", {})
-        imported_items = [
-            (name, self._import_argument(loc, value))
-            for name, value in keyword_values.items()
-        ]
-        operands = [value for _, value in imported_items]
-        operand_types = [value.type for value in operands]
-        imported_values = {name: value for name, value in imported_items}
-        output_names = node.kwargs.get("tensors_to_clone", [])
-
-        out_results = [
-            imported_values[name] for name in output_names if name in imported_values
-        ]
-        result_types = [value.type for value in out_results]
-
-        dummy_name = f"__triton_hop_dummy_{node.name}"
-        dummy_fty = ir.FunctionType.get(operand_types, result_types)
-        with loc:
-            func.FuncOp(
-                dummy_name,
-                dummy_fty,
-                visibility="private",
-                ip=self.fx_importer._m_ip,
-            )
-
-        call = ir.Operation.create(
-            "func.call",
-            attributes={"callee": ir.FlatSymbolRefAttr.get(dummy_name)},
-            results=result_types,
-            operands=operands,
-            loc=loc,
-        )
-
-        self._multi_result_nodes.add(node)
-
-        for output_name, result in zip(output_names, call.results):
-            self.bind_node_value(node, result, output_name)
-
-
-class TritonFxImporter(FxImporter):
-    """FxImporter subclass that uses TritonGraphNodeImporter for triton op support."""
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-
-    def import_stateless_graph(
-        self,
-        g: torch.fx.Graph,
-        *,
-        func_name: str = "main",
-        func_visibility: Optional[str] = None,
-        import_symbolic_shape_expressions: bool = False,
-    ) -> Any:
-        """Override to inject TritonGraphNodeImporter."""
-        ftype, loc = self._graph_to_function_meta(g)
-        with loc:
-            func_op = func.FuncOp(
-                func_name,
-                ftype,
-                ip=self._m_ip,
-                visibility=func_visibility,
-            )
-            entry_block = ir.Block.create_at_start(func_op.body, ftype.inputs)
-        node_importer = TritonGraphNodeImporter(
-            self,
-            self._c,
-            self._cc,
-            entry_block,
-        )
-        node_importer.import_nodes(
-            g.nodes,
-            import_symbolic_shape_expressions=import_symbolic_shape_expressions,
-        )
-        self.symbol_table.insert(func_op)
-        return func_op
-
-
 class TritonGraphModule(object):
     """Compiles a torch.fx.GraphModule containing triton ops via TritonFxImporter."""
 
-    def __init__(self, gm: torch.fx.GraphModule, *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self, gm: torch.fx.GraphModule, *args: List[Any], **kwargs: Dict[str, Any]
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.gm: torch.fx.GraphModule = gm
         self.fn: Optional[Callable[..., Any]] = None
@@ -189,8 +93,9 @@ class TritonGraphModule(object):
         register_all_dialects(self.ctx)
         register_all_passes()
 
-    def __call__(self, *args: List[Any], **kwargs: Dict[Any, Any]) -> Any:
+    def __call__(self, *args: List[Any], **kwargs: Dict[str, Any]) -> Any:
         if not self.fn:
+            self.gm(*args, **kwargs)
             self.fn = self._build_fn()
         return self.fn(*args, **kwargs)
 
@@ -206,16 +111,18 @@ class TritonGraphModule(object):
             model_name="main",
             fx_importer=importer,
         )
-        with self.ctx:
-            passmanager.PassManager.parse(_TORCH_TO_LINALG_NO_VERIFY_PIPELINE).run(
-                module.operation
-            )
+        # TODO: disable verifier for now
+        # with self.ctx:
+        #     passmanager.PassManager.parse(_TORCH_TO_LINALG_NO_VERIFY_PIPELINE).run(
+        #         module.operation
+        #     )
         print(module)
         return self.gm
 
 
-class KernelScope:
-    def __init__(self) -> None:
+class KernelScope(object):
+    def __init__(self, *args: List[Any], **kwargs: Dict[str, Any]) -> None:
+        super().__init__(*args, **kwargs)
         self._kernels: Dict[torch.fx.GraphModule, triton.JITFunction] = {}
         self._original_runs: List[Tuple[triton.JITFunction, Callable[..., Any]]] = []
         self._registry: Dict[torch.fx.GraphModule, triton.compiler.CompiledKernel] = {}

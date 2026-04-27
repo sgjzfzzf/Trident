@@ -1,17 +1,16 @@
-add_mlir_public_c_api_library(LibTritonCoreCAPI
+add_mlir_public_c_api_library(
+  LibTritonCoreCAPI
   Dialects.cc
   Registration.cc
   DLPackTypes.cc
   TVMFFITypes.cc
   DLPackOps.cc
   TVMFFIOps.cc
-
   ADDITIONAL_HEADER_DIRS
   ${PROJECT_SOURCE_DIR}/include/libtriton-core-c/
-
   ENABLE_AGGREGATION
-
-  LINK_LIBS PUBLIC
+  LINK_LIBS
+  PUBLIC
   MLIRConvertToLLVMPass
   DLPackDialect
   DLPackToLLVM
@@ -21,14 +20,15 @@ add_mlir_public_c_api_library(LibTritonCoreCAPI
   MLIRSupport
   TorchMLIRCAPI
   TorchMLIRTorchConversionDialect
+  TritonRTBufferize
+  TritonRTToLLVM
   TritonRTNormalizeOperands
   TritonRTDialect
   TVMFFIDialect
-  TVMFFIToLLVM
-)
+  TVMFFIToLLVM)
 
-install(TARGETS LibTritonCoreCAPI
+install(
+  TARGETS LibTritonCoreCAPI
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin
-)
+  RUNTIME DESTINATION bin)

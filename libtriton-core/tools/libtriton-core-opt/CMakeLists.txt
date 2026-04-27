@@ -1,29 +1,28 @@
-add_mlir_tool(libtriton-core-opt
-  libtriton-core-opt.cc
-)
+add_mlir_tool(libtriton-core-opt libtriton-core-opt.cc)
 
-set_target_properties(libtriton-core-opt PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin"
-)
+set_target_properties(libtriton-core-opt PROPERTIES RUNTIME_OUTPUT_DIRECTORY
+                                                    "${PROJECT_BINARY_DIR}/bin")
 
-target_link_libraries(libtriton-core-opt PRIVATE
-  DLPackDialect
-  DLPackToLLVM
-  EmitTVMFFIInterface
-  MemRefOriginAnalysis
-  TritonRTNormalizeOperands
-  MLIRArithDialect
-  MLIRConvertToLLVMPass
-  MLIRControlFlowDialect
-  MLIRFuncDialect
-  MLIRMemRefDialect
-  MLIRMlirOptMain
-  MLIRSCFDialect
-  MLIRTransforms
-  TorchMLIRTorchConversionDialect
-  TritonRTDialect
-  TVMFFIToLLVM
-  TVMFFIDialect
-)
+target_link_libraries(
+  libtriton-core-opt
+  PRIVATE DLPackDialect
+          DLPackToLLVM
+          EmitTVMFFIInterface
+          MemRefOriginAnalysis
+          TritonRTToLLVM
+          TritonRTNormalizeOperands
+          MLIRArithDialect
+          MLIRConvertToLLVMPass
+          MLIRControlFlowDialect
+          MLIRFuncDialect
+          MLIRGPUDialect
+          MLIRMemRefDialect
+          MLIRMlirOptMain
+          MLIRSCFDialect
+          MLIRTransforms
+          TorchMLIRTorchConversionDialect
+          TritonRTDialect
+          TVMFFIToLLVM
+          TVMFFIDialect)
 
 mlir_check_all_link_libraries(libtriton-core-opt)

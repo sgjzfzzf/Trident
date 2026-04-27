@@ -43,4 +43,9 @@ if __name__ == "__main__":
     x = torch.rand(size, device=DEVICE)
     y = torch.rand(size, device=DEVICE)
     output_torch = x + y
+    for _ in range(5):
+        # warmup
+        add(x, y)
     output_triton = add(x, y)
+    # TODO: a known issue is that `output_triton` will show its device as `cpu` when it's actually on `cuda`. This is because tvm_ffi assign the wrong device type to it.
+    torch.testing.assert_close(output_triton.cpu(), output_torch.cpu())

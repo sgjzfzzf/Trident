@@ -3,9 +3,11 @@
 #include "libtriton-core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
 #include "libtriton-core/Conversion/EmitTVMFFIInterface/EmitTVMFFIInterface.h"
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
+#include "libtriton-core/Conversion/TritonRTToLLVM/TritonRTToLLVM.h"
 #include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "libtriton-core/Dialect/TritonRT/IR/TritonRTDialect.h"
+#include "libtriton-core/Dialect/TritonRT/Transforms/BufferizableOpInterfaceImpl.h"
 #include "libtriton-core/Dialect/TritonRT/Transforms/TritonRTNormalizeOperands.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMPass.h"
@@ -21,6 +23,8 @@
 void libtritonCoreRegisterAllDialects(MlirContext context) {
   mlir::DialectRegistry registry;
   libtriton::dlpack::registerConvertDLPackToLLVMInterface(registry);
+  libtriton::triton_rt::registerBufferizableOpInterfaceExternalModels(registry);
+  libtriton::triton_rt::registerConvertTritonRTToLLVMInterface(registry);
   libtriton::tvm_ffi::registerConvertTVMFFIToLLVMInterface(registry);
 
   registry.insert<libtriton::dlpack::DLPackDialect,
@@ -39,6 +43,7 @@ void libtritonCoreRegisterAllDialects(MlirContext context) {
 void libtritonCoreRegisterAllPasses(void) {
   libtriton::dlpack::registerConvertDLPackToLLVMPass();
   libtriton::tvm_ffi::registerEmitTVMFFIInterfacePass();
+  libtriton::triton_rt::registerConvertTritonRTToLLVMPass();
   libtriton::triton_rt::registerNormalizeTritonRTOperandsPass();
   libtriton::tvm_ffi::registerConvertTVMFFIToLLVMPass();
   torchMlirRegisterAllPasses();

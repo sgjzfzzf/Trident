@@ -1,3 +1,4 @@
 add_subdirectory(DLPackToLLVM)
 add_subdirectory(EmitTVMFFIInterface)
+add_subdirectory(TritonRTToLLVM)
 add_subdirectory(TVMFFIToLLVM)

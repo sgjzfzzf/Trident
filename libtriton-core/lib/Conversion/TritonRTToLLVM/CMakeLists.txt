@@ -1,0 +1,12 @@
+add_mlir_conversion_library(
+  TritonRTToLLVM
+  TritonRTToLLVM.cc
+  DEPENDS
+  MLIRConversionPassIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRGPUDialect
+  MLIRLLVMCommonConversion
+  MLIRLLVMDialect
+  MLIRPass
+  TritonRTDialect)

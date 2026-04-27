@@ -1,0 +1,15 @@
+add_mlir_library(
+  EmitTVMFFIInterface
+  EmitTVMFFIInterface.cc
+  DEPENDS
+  MLIRTVMFFIPassIncGen
+  LINK_LIBS PUBLIC
+  DLPackDialect
+  MemRefOriginAnalysis
+  MLIRArithDialect
+  MLIRFuncDialect
+  MLIRLLVMDialect
+  MLIRPass
+  TVMFFIDialect
+  TVMFFIToLLVM
+)

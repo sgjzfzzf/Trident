@@ -17,8 +17,6 @@ namespace libtriton::tvm_ffi {
 #define GEN_PASS_REGISTRATION_CONVERTTVMFFITOLLVM
 #include "libtriton-core/Conversion/Passes.h.inc"
 
-void populateTVMFFIToLLVMTypeConversions(
-    mlir::LLVMTypeConverter &typeConverter);
 void populateTVMFFIToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns);

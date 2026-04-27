@@ -495,8 +495,10 @@ struct TVMFFIToLLVMDialectInterface
 
 } // namespace
 
-void populateTVMFFIToLLVMTypeConversions(
-    mlir::LLVMTypeConverter &typeConverter) {
+void populateTVMFFIToLLVMConversionPatterns(
+    mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
+    mlir::RewritePatternSet &patterns) {
+  mlir::MLIRContext *context = patterns.getContext();
   typeConverter.addConversion(
       [&](libtriton::dlpack::DLManagedTensorType type) -> mlir::Type {
         return libtriton::conversion::utils::DLManagedTensorLLVMDescriptor::
@@ -515,13 +517,6 @@ void populateTVMFFIToLLVMTypeConversions(
     return libtriton::conversion::utils::TVMFFIObjectHandleLLVMDescriptor::
         getLLVMType(type.getContext());
   });
-}
-
-void populateTVMFFIToLLVMConversionPatterns(
-    mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
-    mlir::RewritePatternSet &patterns) {
-  mlir::MLIRContext *context = patterns.getContext();
-  populateTVMFFIToLLVMTypeConversions(typeConverter);
   patterns.add<LowerFromFloatOp, LowerFromIntOp, LowerFromObjectOp,
                LowerFromStrOp, LowerFromTensorOp, LowerTensorFromDLPackOp,
                LowerToFloatOp, LowerToIntOp, LowerToObjectOp, LowerToStrOp,

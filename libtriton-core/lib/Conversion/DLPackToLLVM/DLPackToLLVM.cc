@@ -683,8 +683,10 @@ struct DLPackToLLVMDialectInterface
 
 } // namespace
 
-void populateDLPackToLLVMTypeConversions(
-    mlir::LLVMTypeConverter &typeConverter) {
+void populateDLPackToLLVMConversionPatterns(
+    mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
+    mlir::RewritePatternSet &patterns) {
+  mlir::MLIRContext *context = patterns.getContext();
   typeConverter.addConversion([](libtriton::dlpack::DLContextType type) {
     return libtriton::conversion::utils::DLContextLLVMDescriptor::getLLVMType(
         type.getContext());
@@ -703,13 +705,6 @@ void populateDLPackToLLVMTypeConversions(
         return libtriton::conversion::utils::DLManagedTensorLLVMDescriptor::
             getLLVMType(type.getContext(), typeConverter.getPointerBitwidth());
       });
-}
-
-void populateDLPackToLLVMConversionPatterns(
-    mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
-    mlir::RewritePatternSet &patterns) {
-  mlir::MLIRContext *context = patterns.getContext();
-  populateDLPackToLLVMTypeConversions(typeConverter);
 
   mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
       patterns, typeConverter);

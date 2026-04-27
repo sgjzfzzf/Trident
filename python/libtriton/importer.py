@@ -210,7 +210,7 @@ class TritonGraphNodeImporter(GraphNodeImporter):
 class TritonFxImporter(FxImporter):
     """FxImporter subclass that uses TritonGraphNodeImporter for triton op support."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: List[Any], **kwargs: Dict[str, Any]) -> None:
         super().__init__(*args, **kwargs)
 
     def import_stateless_graph(

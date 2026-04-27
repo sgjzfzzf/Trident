@@ -1,6 +1,5 @@
 from libtriton import triton_graph_backend
 import torch
-from torch._dynamo.backends.common import aot_autograd
 import triton
 import triton.language as tl
 
@@ -25,7 +24,7 @@ def add_kernel(
     tl.store(output_ptr + offsets, output, mask=mask)
 
 
-@torch.compile(backend=aot_autograd(fw_compiler=triton_graph_backend))
+@torch.compile(backend=triton_graph_backend)
 def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     output: torch.Tensor = torch.empty_like(x)
     assert x.device == DEVICE and y.device == DEVICE and output.device == DEVICE

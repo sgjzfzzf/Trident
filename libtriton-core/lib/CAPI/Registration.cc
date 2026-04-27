@@ -1,11 +1,11 @@
 #include "libtriton-core-c/Registration.h"
 
 #include "libtriton-core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
-#include "libtriton-core/Conversion/EmitTVMFFIInterface/EmitTVMFFIInterface.h"
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "libtriton-core/Conversion/TritonRTToLLVM/TritonRTToLLVM.h"
 #include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
+#include "libtriton-core/Dialect/TVMFFI/Transforms/Passes.h"
 #include "libtriton-core/Dialect/TritonRT/IR/TritonRTDialect.h"
 #include "libtriton-core/Dialect/TritonRT/Transforms/BufferizableOpInterfaceImpl.h"
 #include "libtriton-core/Dialect/TritonRT/Transforms/TritonRTNormalizeOperands.h"

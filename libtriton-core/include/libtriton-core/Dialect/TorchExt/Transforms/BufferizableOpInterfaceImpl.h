@@ -9,7 +9,7 @@ namespace libtriton::torch_ext {
 
 /// Register the `BufferizableOpInterface` external models for TorchExt ops.
 /// Call this before running one-shot-bufferize to enable bufferization of
-/// `torch_ext.torch_kernel_launch` ops that carry tensor operands.
+/// `torch_ext.triton_kernel_launch` ops that carry tensor operands.
 void registerBufferizableOpInterfaceExternalModels(
     mlir::DialectRegistry &registry);
 

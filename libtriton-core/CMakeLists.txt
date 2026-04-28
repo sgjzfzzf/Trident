@@ -8,19 +8,20 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+find_package(CUDAToolkit REQUIRED)
+find_package(Python REQUIRED COMPONENTS Interpreter Development)
+find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+
 find_package(MLIR REQUIRED CONFIG)
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
+find_package(nanobind CONFIG REQUIRED PATHS ${Python3_SITELIB}/nanobind/cmake
+             ${Python3_SITEARCH}/nanobind/cmake)
 find_package(
   Torch CONFIG REQUIRED PATHS ${Python3_SITELIB}/torch/share/cmake/Torch
   ${Python3_SITEARCH}/torch/share/cmake/Torch)
-find_package(CUDAToolkit REQUIRED)
 find_package(
   tvm_ffi CONFIG REQUIRED PATHS ${Python3_SITELIB}/tvm_ffi/share/cmake/tvm_ffi
   ${Python3_SITEARCH}/tvm_ffi/share/cmake/tvm_ffi)
 
-set(LIBTRITON_CORE_ENABLE_PYTHON_BINDINGS
-    ON
-    CACHE BOOL "Enable libtriton-core Python bindings")
 set(TORCH_MLIR_OUT_OF_TREE_BUILD
     ON
     CACHE BOOL "Force torch-mlir out-of-tree mode in nested builds" FORCE)
@@ -40,11 +41,13 @@ FetchContent_MakeAvailable(torch-mlir)
 
 include(${LLVM_CMAKE_DIR}/AddLLVM.cmake)
 include(${MLIR_CMAKE_DIR}/AddMLIR.cmake)
+include(${MLIR_CMAKE_DIR}/AddMLIRPython.cmake)
 
+include_directories(${CUDAToolkit_INCLUDE_DIRS})
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 include_directories(${TORCH_INCLUDE_DIRS})
-include_directories(${CUDAToolkit_INCLUDE_DIRS})
+include_directories(${tvm_ffi_INCLUDE_DIRS})
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_BINARY_DIR}/include)
@@ -53,14 +56,6 @@ include_directories(${torch-mlir_BINARY_DIR}/include)
 
 add_subdirectory(include)
 add_subdirectory(lib)
-add_subdirectory(tools)
-
-if(LIBTRITON_CORE_ENABLE_PYTHON_BINDINGS)
-  find_package(Python REQUIRED COMPONENTS Interpreter Development)
-  find_package(nanobind CONFIG REQUIRED PATHS ${Python_SITELIB}/nanobind/cmake
-               ${Python_SITEARCH}/nanobind/cmake)
-  include(${MLIR_CMAKE_DIR}/AddMLIRPython.cmake)
-  add_subdirectory(python)
-endif()
-
+add_subdirectory(python)
 add_subdirectory(test)
+add_subdirectory(tools)

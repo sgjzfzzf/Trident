@@ -50,6 +50,7 @@ _PIPELINE: Final[str] = (
     "func.func(gpu-map-parallel-loops),"
     "convert-parallel-loops-to-gpu,"
     "gpu-kernel-outlining,"
+    "torchext-async-kernel-launch,"
     "convert-arith-to-llvm,"
     "finalize-memref-to-llvm{{use-generic-functions=1}},"
     "nvvm-attach-target{{O=3 chip={chip}}},"
@@ -99,6 +100,7 @@ class TritonGraphModule(object):
             major, minor = torch.cuda.get_device_capability()
             pipeline = _PIPELINE.format(chip=f"sm_{major}{minor}")
             passmanager.PassManager.parse(pipeline).run(module.operation)
+            print(module)
             return TritonGraphModule._build_execution_engine_callable(
                 module,
                 model_name=model_name,

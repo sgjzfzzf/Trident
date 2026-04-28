@@ -1,5 +1,4 @@
 add_library(LibTritonCoreRuntime SHARED Runtime.cc)
-target_include_directories(LibTritonCoreRuntime PRIVATE ${TORCH_INCLUDE_DIRS})
 target_link_libraries(
   LibTritonCoreRuntime PUBLIC CUDA::cudart CUDA::cuda_driver LLVMSupport
                               tvm_ffi::header)

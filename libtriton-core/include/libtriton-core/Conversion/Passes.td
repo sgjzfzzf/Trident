@@ -13,7 +13,7 @@ def ConvertTVMFFIToLLVM : Pass<"convert-tvm-ffi-to-llvm", "mlir::ModuleOp"> {
 def ConvertTorchExtToLLVM : Pass<"convert-torchext-to-llvm", "mlir::ModuleOp"> {
   let summary = "Lower TorchExt launch op to GPU/LLVM-compatible form";
   let description =
-      [{Rewrites torch_ext.torch_kernel_launch into
+      [{Rewrites torch_ext.triton_kernel_launch into
             gpu.launch_func.Kernel operands that are LLVM memref -
         descriptor -
         like structs are lowered to their aligned pointer field(index 1)

@@ -12,6 +12,18 @@ add_mlir_library(
   TorchExtDialect)
 
 add_mlir_library(
+  TorchExtAsyncKernelLaunch
+  TorchExtAsyncKernelLaunch.cc
+  DEPENDS
+  MLIRTorchExtPassIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRGPUDialect
+  MLIRLLVMDialect
+  MLIRPass
+  TorchExtDialect)
+
+add_mlir_library(
   TorchExtBufferize
   BufferizableOpInterfaceImpl.cc
   LINK_LIBS

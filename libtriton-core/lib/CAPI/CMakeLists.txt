@@ -22,6 +22,7 @@ add_mlir_public_c_api_library(
   TorchMLIRTorchConversionDialect
   TorchExtBufferize
   TorchExtToLLVM
+  TorchExtAsyncKernelLaunch
   TorchExtNormalizeOperands
   TorchExtDialect
   TVMFFIDialect

@@ -13,6 +13,7 @@
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "libtriton-core/Dialect/TVMFFI/Transforms/Passes.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "libtriton-core/Dialect/TorchExt/Transforms/TorchExtAsyncKernelLaunch.h"
 #include "libtriton-core/Dialect/TorchExt/Transforms/TorchExtNormalizeOperands.h"
 #include "mlir/Conversion/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -35,6 +36,7 @@ int main(int argc, char **argv) {
   libtriton::dlpack::registerConvertDLPackToLLVMPass();
   libtriton::tvm_ffi::registerEmitTVMFFIInterfacePass();
   libtriton::torch_ext::registerConvertTorchExtToLLVMPass();
+  libtriton::torch_ext::registerAsyncKernelLaunchPass();
   libtriton::torch_ext::registerNormalizeTorchExtOperandsPass();
   libtriton::tvm_ffi::registerConvertTVMFFIToLLVMPass();
 

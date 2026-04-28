@@ -45,12 +45,12 @@ rewriteKernelOperand(mlir::ConversionPatternRewriter &rewriter,
 }
 
 class ConvertKernelLaunchPattern
-    : public mlir::OpConversionPattern<TorchKernelLaunchOp> {
+    : public mlir::OpConversionPattern<TritonKernelLaunchOp> {
 public:
-  using mlir::OpConversionPattern<TorchKernelLaunchOp>::OpConversionPattern;
+  using mlir::OpConversionPattern<TritonKernelLaunchOp>::OpConversionPattern;
 
   mlir::LogicalResult
-  matchAndRewrite(TorchKernelLaunchOp launchOp, OpAdaptor adaptor,
+  matchAndRewrite(TritonKernelLaunchOp launchOp, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const final {
     mlir::Location loc = launchOp.getLoc();
 
@@ -78,7 +78,7 @@ public:
     mlir::gpu::LaunchFuncOp newLaunchOp = mlir::gpu::LaunchFuncOp::create(
         rewriter, loc, launchOp.getKernelAttr(), gridSize, blockSize,
         launchOp.getDynamicSharedMemorySize(), kernelOperands,
-        /*asyncObject=*/mlir::Value(),
+        adaptor.getAsyncObject(),
         /*clusterSize=*/std::nullopt);
 
     rewriter.replaceOp(launchOp, newLaunchOp->getResults());
@@ -187,7 +187,7 @@ void populateTorchExtToLLVMConversionPatterns(
                                            patterns.getContext());
   target.addIllegalOp<GetCurrentDeviceOp>();
   target.addIllegalOp<GetCurrentStreamOp>();
-  target.addIllegalOp<TorchKernelLaunchOp>();
+  target.addIllegalOp<TritonKernelLaunchOp>();
   target.addLegalDialect<mlir::LLVM::LLVMDialect, mlir::gpu::GPUDialect>();
   target.markUnknownOpDynamicallyLegal([](mlir::Operation *) { return true; });
 }

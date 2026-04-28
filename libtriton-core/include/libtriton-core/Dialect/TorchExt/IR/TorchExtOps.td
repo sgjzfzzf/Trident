@@ -19,7 +19,7 @@ def TorchExt_KernelOperandType : AnyTypeOf<[
   Torch_ValueTensorType
 ]>;
 
-def TorchExt_TorchKernelLaunchOp : TorchExt_Op<"torch_kernel_launch", [
+def TorchExt_TritonKernelLaunchOp : TorchExt_Op<"triton_kernel_launch", [
   AttrSizedOperandSegments, AllTypesMatch<[
     "gridSizeX", "gridSizeY", "gridSizeZ", "blockSizeX", "blockSizeY",
     "blockSizeZ"
@@ -41,11 +41,13 @@ def TorchExt_TorchKernelLaunchOp : TorchExt_Op<"torch_kernel_launch", [
                    LaunchIndx:$blockSizeY,
                    LaunchIndx:$blockSizeZ,
                    Optional<I32>:$dynamicSharedMemorySize,
-                   Variadic<TorchExt_KernelOperandType>:$kernelOperands);
+                   Variadic<TorchExt_KernelOperandType>:$kernelOperands,
+                   Optional<AnyType>:$asyncObject);
   let results = (outs);
 
   let assemblyFormat = [{
     $kernel
+    (`<` $asyncObject^ `:` type($asyncObject) `>`)?
     `blocks` `in` `(` $gridSizeX `,` $gridSizeY `,` $gridSizeZ `)`
     `threads` `in` `(` $blockSizeX `,` $blockSizeY `,` $blockSizeZ `)`
     (`dynamic_shared_memory_size` $dynamicSharedMemorySize^)?
@@ -74,12 +76,13 @@ def TorchExt_GetCurrentStreamOp : TorchExt_Op<"get_current_stream", [Pure]> {
 
   let arguments = (ins Optional<I8> : $device);
   let results = (outs LLVM_AnyPointer : $output);
-
+  // clang-format off
   let assemblyFormat = [{
     (`device` $device^ `:` type($device))?
     attr-dict
     `:` type($output)
   }];
+  // clang-format on
 }
 
 #endif // LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTOPS_TD_

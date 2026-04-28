@@ -24,13 +24,13 @@ static mlir::Value rewriteKernelOperand(mlir::Value operand) {
 }
 
 class NormalizeOperandsPattern
-    : public mlir::OpRewritePattern<libtriton::torch_ext::TorchKernelLaunchOp> {
+    : public mlir::OpRewritePattern<libtriton::torch_ext::TritonKernelLaunchOp> {
 public:
   using mlir::OpRewritePattern<
-      libtriton::torch_ext::TorchKernelLaunchOp>::OpRewritePattern;
+      libtriton::torch_ext::TritonKernelLaunchOp>::OpRewritePattern;
 
   mlir::LogicalResult
-  matchAndRewrite(libtriton::torch_ext::TorchKernelLaunchOp launchOp,
+  matchAndRewrite(libtriton::torch_ext::TritonKernelLaunchOp launchOp,
                   mlir::PatternRewriter &rewriter) const final {
     mlir::OperandRange kernelOperands = launchOp.getKernelOperands();
     llvm::SmallVector<mlir::Value> rewrittenKernelOperands;
@@ -52,13 +52,13 @@ public:
 
     mlir::OperationState state(
         launchOp.getLoc(),
-        libtriton::torch_ext::TorchKernelLaunchOp::getOperationName());
-    libtriton::torch_ext::TorchKernelLaunchOp::build(
+        libtriton::torch_ext::TritonKernelLaunchOp::getOperationName());
+    libtriton::torch_ext::TritonKernelLaunchOp::build(
         rewriter, state, launchOp.getKernelAttr(), launchOp.getGridSizeX(),
         launchOp.getGridSizeY(), launchOp.getGridSizeZ(),
         launchOp.getBlockSizeX(), launchOp.getBlockSizeY(),
         launchOp.getBlockSizeZ(), launchOp.getDynamicSharedMemorySize(),
-        rewrittenKernelOperands);
+        rewrittenKernelOperands, launchOp.getAsyncObject());
     mlir::Operation *newLaunchOp = rewriter.create(state);
     rewriter.replaceOp(launchOp, newLaunchOp->getResults());
     return mlir::success();

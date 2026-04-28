@@ -10,6 +10,7 @@ target_link_libraries(
           EmitTVMFFIInterface
           MemRefOriginAnalysis
           TorchExtToLLVM
+          TorchExtAsyncKernelLaunch
           TorchExtNormalizeOperands
           MLIRArithDialect
           MLIRConvertToLLVMPass

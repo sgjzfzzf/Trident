@@ -170,14 +170,14 @@ class TritonGraphNodeImporter(GraphNodeImporter):
             ]
 
             ir.Operation.create(
-                "torch_ext.torch_kernel_launch",
+                "torch_ext.triton_kernel_launch",
                 operands=launch_operands,
                 attributes={
                     "kernel": ir.Attribute.parse(
                         f"@{binary_name}::@{kernel.metadata.name}"
                     ),
                     "operandSegmentSizes": ir.Attribute.parse(
-                        f"array<i32: 1, 1, 1, 1, 1, 1, 1, {len(operands)}>"
+                        f"array<i32: 1, 1, 1, 1, 1, 1, 1, {len(operands)}, 0>"
                     ),
                 },
                 loc=loc,

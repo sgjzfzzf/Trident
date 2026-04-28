@@ -18,7 +18,7 @@ module attributes {gpu.container_module} {
   func.func @lower_scalar_operand(
       %gx: i64, %gy: i64, %gz: i64, %bx: i64, %by: i64, %bz: i64,
       %arg0: i32) {
-    triton_rt.triton_kernel_launch @kernels::@kernel
+    torch_ext.torch_kernel_launch @kernels::@kernel
         blocks in(%gx, %gy, %gz) threads in(%bx, %by, %bz)
         args(%arg0 : i32) : i64
     return
@@ -35,7 +35,7 @@ module attributes {gpu.container_module} {
   func.func @lower_memref_operand(
       %gx: i64, %gy: i64, %gz: i64, %bx: i64, %by: i64, %bz: i64,
       %buf: memref<?xf32>) {
-    triton_rt.triton_kernel_launch @buf_kernels::@buf_kernel
+    torch_ext.torch_kernel_launch @buf_kernels::@buf_kernel
         blocks in(%gx, %gy, %gz) threads in(%bx, %by, %bz)
         args(%buf : memref<?xf32>) : i64
     return

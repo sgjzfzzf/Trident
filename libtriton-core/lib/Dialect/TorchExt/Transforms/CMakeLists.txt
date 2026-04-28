@@ -1,21 +1,21 @@
 add_mlir_library(
-  TritonRTNormalizeOperands
-  TritonRTNormalizeOperands.cc
+  TorchExtNormalizeOperands
+  TorchExtNormalizeOperands.cc
   DEPENDS
-  MLIRTritonRTPassIncGen
+  MLIRTorchExtPassIncGen
   LINK_LIBS
   PUBLIC
   MLIRFuncDialect
   MLIRPass
   TorchMLIRTorchConversionDialect
   TorchMLIRTorchDialect
-  TritonRTDialect)
+  TorchExtDialect)
 
 add_mlir_library(
-  TritonRTBufferize
+  TorchExtBufferize
   BufferizableOpInterfaceImpl.cc
   LINK_LIBS
   PUBLIC
   MLIRBufferizationDialect
   MLIRBufferizationTransforms
-  TritonRTDialect)
+  TorchExtDialect)

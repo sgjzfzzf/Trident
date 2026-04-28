@@ -20,10 +20,10 @@ add_mlir_public_c_api_library(
   MLIRSupport
   TorchMLIRCAPI
   TorchMLIRTorchConversionDialect
-  TritonRTBufferize
-  TritonRTToLLVM
-  TritonRTNormalizeOperands
-  TritonRTDialect
+  TorchExtBufferize
+  TorchExtToLLVM
+  TorchExtNormalizeOperands
+  TorchExtDialect
   TVMFFIDialect
   TVMFFIToLLVM)
 

@@ -1,7 +1,7 @@
-add_mlir_dialect_library(TritonRTDialect
-  TritonRTDialect.cc
+add_mlir_dialect_library(TorchExtDialect
+  TorchExtDialect.cc
   DEPENDS
-  MLIRTritonRTIncGen
+  MLIRTorchExtIncGen
   MLIRTorchTypesIncGen
   LINK_LIBS PUBLIC
   TorchMLIRTorchDialect

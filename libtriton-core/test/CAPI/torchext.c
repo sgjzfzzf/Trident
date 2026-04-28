@@ -8,13 +8,13 @@ int main(void) {
   MlirContext context = mlirContextCreate();
   libtritonCoreRegisterAllDialects(context);
 
-  MlirDialectHandle handle = mlirGetDialectHandle__triton_rt__();
+  MlirDialectHandle handle = mlirGetDialectHandle__torch_ext__();
   MlirDialect dialect = mlirDialectHandleLoadDialect(handle, context);
   int ok = !mlirDialectIsNull(dialect);
 
   mlirContextDestroy(context);
   if (!ok) {
-    fprintf(stderr, "expected TritonRT dialect\n");
+    fprintf(stderr, "expected TorchExt dialect\n");
     return 1;
   }
   return 0;

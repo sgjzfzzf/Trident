@@ -1,7 +1,7 @@
-#include "libtriton-core/Dialect/TritonRT/Transforms/BufferizableOpInterfaceImpl.h"
+#include "libtriton-core/Dialect/TorchExt/Transforms/BufferizableOpInterfaceImpl.h"
 
-#include "libtriton-core/Dialect/TritonRT/IR/TritonRTDialect.h"
-#include "libtriton-core/Dialect/TritonRT/IR/TritonRTOps.h"
+#include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "libtriton-core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -10,21 +10,21 @@
 using namespace mlir;
 using namespace mlir::bufferization;
 
-namespace libtriton::triton_rt {
+namespace libtriton::torch_ext {
 
 namespace {
 
-/// Bufferization external model for `triton_rt.triton_kernel_launch`.
+/// Bufferization external model for `torch_ext.torch_kernel_launch`.
 ///
-/// The op passes tensor operands by value to a Triton kernel; the kernel reads
+/// The op passes tensor operands by value to a Torch kernel; the kernel reads
 /// them but never writes back through those pointers from the caller's
 /// perspective. After bufferization every tensor operand is replaced by its
 /// corresponding memref buffer, turning the op into a fully memref-based
 /// launch.
-struct TritonKernelLaunchOpInterface
+struct TorchKernelLaunchOpInterface
     : public BufferizableOpInterface::ExternalModel<
-          TritonKernelLaunchOpInterface,
-          libtriton::triton_rt::TritonKernelLaunchOp> {
+          TorchKernelLaunchOpInterface,
+          libtriton::torch_ext::TorchKernelLaunchOp> {
 
   bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
                               const AnalysisState &state) const {
@@ -52,7 +52,7 @@ struct TritonKernelLaunchOpInterface
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options,
                           BufferizationState &state) const {
-    auto launchOp = cast<libtriton::triton_rt::TritonKernelLaunchOp>(op);
+    auto launchOp = cast<libtriton::torch_ext::TorchKernelLaunchOp>(op);
 
     // Replace every tensor-typed kernel operand with its memref buffer.
     llvm::SmallVector<Value> newKernelOperands;
@@ -72,7 +72,7 @@ struct TritonKernelLaunchOpInterface
     // replaceOpWithNewBufferizedOp correctly calls
     // replaceOpWithBufferizedValues with an empty result list and erases the
     // original op.
-    replaceOpWithNewBufferizedOp<libtriton::triton_rt::TritonKernelLaunchOp>(
+    replaceOpWithNewBufferizedOp<libtriton::torch_ext::TorchKernelLaunchOp>(
         rewriter, op, launchOp.getKernelAttr(), launchOp.getGridSizeX(),
         launchOp.getGridSizeY(), launchOp.getGridSizeZ(),
         launchOp.getBlockSizeX(), launchOp.getBlockSizeY(),
@@ -87,10 +87,10 @@ struct TritonKernelLaunchOpInterface
 void registerBufferizableOpInterfaceExternalModels(
     mlir::DialectRegistry &registry) {
   registry.addExtension(
-      +[](MLIRContext *ctx, libtriton::triton_rt::TritonRTDialect *) {
-        libtriton::triton_rt::TritonKernelLaunchOp::attachInterface<
-            TritonKernelLaunchOpInterface>(*ctx);
+      +[](MLIRContext *ctx, libtriton::torch_ext::TorchExtDialect *) {
+        libtriton::torch_ext::TorchKernelLaunchOp::attachInterface<
+            TorchKernelLaunchOpInterface>(*ctx);
       });
 }
 
-} // namespace libtriton::triton_rt
+} // namespace libtriton::torch_ext

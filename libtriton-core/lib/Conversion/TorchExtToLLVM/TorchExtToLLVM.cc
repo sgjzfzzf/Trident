@@ -1,7 +1,7 @@
-#include "libtriton-core/Conversion/TritonRTToLLVM/TritonRTToLLVM.h"
+#include "libtriton-core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
 
-#include "libtriton-core/Dialect/TritonRT/IR/TritonRTDialect.h"
-#include "libtriton-core/Dialect/TritonRT/IR/TritonRTOps.h"
+#include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "libtriton-core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
@@ -12,9 +12,9 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/SmallVector.h"
 
-namespace libtriton::triton_rt {
+namespace libtriton::torch_ext {
 
-#define GEN_PASS_DEF_CONVERTTRITONRTTOLLVM
+#define GEN_PASS_DEF_CONVERTTORCHEXTTOLLVM
 #include "libtriton-core/Conversion/Passes.h.inc"
 
 namespace {
@@ -45,12 +45,12 @@ rewriteKernelOperand(mlir::ConversionPatternRewriter &rewriter,
 }
 
 class ConvertKernelLaunchPattern
-    : public mlir::OpConversionPattern<TritonKernelLaunchOp> {
+    : public mlir::OpConversionPattern<TorchKernelLaunchOp> {
 public:
-  using mlir::OpConversionPattern<TritonKernelLaunchOp>::OpConversionPattern;
+  using mlir::OpConversionPattern<TorchKernelLaunchOp>::OpConversionPattern;
 
   mlir::LogicalResult
-  matchAndRewrite(TritonKernelLaunchOp launchOp, OpAdaptor adaptor,
+  matchAndRewrite(TorchKernelLaunchOp launchOp, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const final {
     mlir::Location loc = launchOp.getLoc();
 
@@ -86,15 +86,15 @@ public:
   }
 };
 
-class ConvertTritonRTToLLVMPass
-    : public impl::ConvertTritonRTToLLVMBase<ConvertTritonRTToLLVMPass> {
+class ConvertTorchExtToLLVMPass
+    : public impl::ConvertTorchExtToLLVMBase<ConvertTorchExtToLLVMPass> {
 public:
   void runOnOperation() final {
     mlir::MLIRContext &context = getContext();
     mlir::LLVMTypeConverter typeConverter(&context);
     mlir::ConversionTarget target(context);
     mlir::RewritePatternSet patterns(&context);
-    populateTritonRTToLLVMConversionPatterns(target, typeConverter, patterns);
+    populateTorchExtToLLVMConversionPatterns(target, typeConverter, patterns);
 
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
@@ -103,33 +103,33 @@ public:
   }
 };
 
-struct TritonRTToLLVMDialectInterface
+struct TorchExtToLLVMDialectInterface
     : public mlir::ConvertToLLVMPatternInterface {
   using ConvertToLLVMPatternInterface::ConvertToLLVMPatternInterface;
 
   void populateConvertToLLVMConversionPatterns(
       mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
       mlir::RewritePatternSet &patterns) const final {
-    populateTritonRTToLLVMConversionPatterns(target, typeConverter, patterns);
+    populateTorchExtToLLVMConversionPatterns(target, typeConverter, patterns);
   }
 };
 
 } // namespace
 
-void populateTritonRTToLLVMConversionPatterns(
+void populateTorchExtToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns) {
   patterns.add<ConvertKernelLaunchPattern>(typeConverter,
                                            patterns.getContext());
-  target.addIllegalOp<TritonKernelLaunchOp>();
+  target.addIllegalOp<TorchKernelLaunchOp>();
   target.addLegalDialect<mlir::LLVM::LLVMDialect, mlir::gpu::GPUDialect>();
   target.markUnknownOpDynamicallyLegal([](mlir::Operation *) { return true; });
 }
 
-void registerConvertTritonRTToLLVMInterface(mlir::DialectRegistry &registry) {
-  registry.addExtension(+[](mlir::MLIRContext *ctx, TritonRTDialect *dialect) {
-    dialect->addInterfaces<TritonRTToLLVMDialectInterface>();
+void registerConvertTorchExtToLLVMInterface(mlir::DialectRegistry &registry) {
+  registry.addExtension(+[](mlir::MLIRContext *ctx, TorchExtDialect *dialect) {
+    dialect->addInterfaces<TorchExtToLLVMDialectInterface>();
   });
 }
 
-} // namespace libtriton::triton_rt
+} // namespace libtriton::torch_ext

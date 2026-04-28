@@ -1,7 +1,7 @@
-#define GEN_PASS_DEF_NORMALIZETRITONRTOPERANDS
-#include "libtriton-core/Dialect/TritonRT/Transforms/TritonRTNormalizeOperands.h"
-#include "libtriton-core/Dialect/TritonRT/IR/TritonRTDialect.h"
-#include "libtriton-core/Dialect/TritonRT/IR/TritonRTOps.h"
+#define GEN_PASS_DEF_NORMALIZETORCHEXTOPERANDS
+#include "libtriton-core/Dialect/TorchExt/Transforms/TorchExtNormalizeOperands.h"
+#include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "libtriton-core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -9,7 +9,7 @@
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.h"
 #include "llvm/ADT/SmallVector.h"
 
-namespace libtriton::triton_rt {
+namespace libtriton::torch_ext {
 
 namespace {
 
@@ -24,14 +24,13 @@ static mlir::Value rewriteKernelOperand(mlir::Value operand) {
 }
 
 class NormalizeOperandsPattern
-    : public mlir::OpRewritePattern<
-          libtriton::triton_rt::TritonKernelLaunchOp> {
+    : public mlir::OpRewritePattern<libtriton::torch_ext::TorchKernelLaunchOp> {
 public:
   using mlir::OpRewritePattern<
-      libtriton::triton_rt::TritonKernelLaunchOp>::OpRewritePattern;
+      libtriton::torch_ext::TorchKernelLaunchOp>::OpRewritePattern;
 
   mlir::LogicalResult
-  matchAndRewrite(libtriton::triton_rt::TritonKernelLaunchOp launchOp,
+  matchAndRewrite(libtriton::torch_ext::TorchKernelLaunchOp launchOp,
                   mlir::PatternRewriter &rewriter) const final {
     mlir::OperandRange kernelOperands = launchOp.getKernelOperands();
     llvm::SmallVector<mlir::Value> rewrittenKernelOperands;
@@ -53,8 +52,8 @@ public:
 
     mlir::OperationState state(
         launchOp.getLoc(),
-        libtriton::triton_rt::TritonKernelLaunchOp::getOperationName());
-    libtriton::triton_rt::TritonKernelLaunchOp::build(
+        libtriton::torch_ext::TorchKernelLaunchOp::getOperationName());
+    libtriton::torch_ext::TorchKernelLaunchOp::build(
         rewriter, state, launchOp.getKernelAttr(), launchOp.getGridSizeX(),
         launchOp.getGridSizeY(), launchOp.getGridSizeZ(),
         launchOp.getBlockSizeX(), launchOp.getBlockSizeY(),
@@ -66,9 +65,9 @@ public:
   }
 };
 
-class NormalizeTritonRTOperandsPass
-    : public impl::NormalizeTritonRTOperandsBase<
-          NormalizeTritonRTOperandsPass> {
+class NormalizeTorchExtOperandsPass
+    : public impl::NormalizeTorchExtOperandsBase<
+          NormalizeTorchExtOperandsPass> {
 public:
   void runOnOperation() final {
     mlir::func::FuncOp funcOp = getOperation();
@@ -82,4 +81,4 @@ public:
 };
 
 } // namespace
-} // namespace libtriton::triton_rt
+} // namespace libtriton::torch_ext

@@ -8,12 +8,12 @@
 
 #include "libtriton-core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
-#include "libtriton-core/Conversion/TritonRTToLLVM/TritonRTToLLVM.h"
+#include "libtriton-core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
 #include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "libtriton-core/Dialect/TVMFFI/Transforms/Passes.h"
-#include "libtriton-core/Dialect/TritonRT/IR/TritonRTDialect.h"
-#include "libtriton-core/Dialect/TritonRT/Transforms/TritonRTNormalizeOperands.h"
+#include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "libtriton-core/Dialect/TorchExt/Transforms/TorchExtNormalizeOperands.h"
 #include "mlir/Conversion/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
@@ -34,16 +34,16 @@ int main(int argc, char **argv) {
   mlir::registerReconcileUnrealizedCastsPass();
   libtriton::dlpack::registerConvertDLPackToLLVMPass();
   libtriton::tvm_ffi::registerEmitTVMFFIInterfacePass();
-  libtriton::triton_rt::registerConvertTritonRTToLLVMPass();
-  libtriton::triton_rt::registerNormalizeTritonRTOperandsPass();
+  libtriton::torch_ext::registerConvertTorchExtToLLVMPass();
+  libtriton::torch_ext::registerNormalizeTorchExtOperandsPass();
   libtriton::tvm_ffi::registerConvertTVMFFIToLLVMPass();
 
   mlir::DialectRegistry registry;
   libtriton::dlpack::registerConvertDLPackToLLVMInterface(registry);
-  libtriton::triton_rt::registerConvertTritonRTToLLVMInterface(registry);
+  libtriton::torch_ext::registerConvertTorchExtToLLVMInterface(registry);
   libtriton::tvm_ffi::registerConvertTVMFFIToLLVMInterface(registry);
   registry.insert<libtriton::dlpack::DLPackDialect,
-                  libtriton::triton_rt::TritonRTDialect,
+                  libtriton::torch_ext::TorchExtDialect,
                   libtriton::tvm_ffi::TVMFFIDialect, mlir::arith::ArithDialect,
                   mlir::cf::ControlFlowDialect, mlir::func::FuncDialect,
                   mlir::gpu::GPUDialect, mlir::LLVM::LLVMDialect,

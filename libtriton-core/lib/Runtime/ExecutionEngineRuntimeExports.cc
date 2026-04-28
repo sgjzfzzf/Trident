@@ -9,9 +9,8 @@ void *_mlir_memref_to_llvm_alloc(size_t size);
 void *_mlir_memref_to_llvm_aligned_alloc(size_t alignment, size_t size);
 void _mlir_memref_to_llvm_free(void *ptr);
 void __libtriton_dlpack_default_managed_tensor_deleter(DLManagedTensor *self);
-}
 
-extern "C" __attribute__((visibility("default"))) void
+__attribute__((visibility("default"))) void
 __mlir_execution_engine_init(llvm::StringMap<void *> &exportSymbols) {
   auto exportSymbol = [&](llvm::StringRef name, auto ptr) {
     assert(exportSymbols.count(name) == 0 && "symbol already exists");
@@ -26,5 +25,5 @@ __mlir_execution_engine_init(llvm::StringMap<void *> &exportSymbols) {
                &__libtriton_dlpack_default_managed_tensor_deleter);
 }
 
-extern "C" __attribute__((visibility("default"))) void
-__mlir_execution_engine_destroy() {}
+__attribute__((visibility("default"))) void __mlir_execution_engine_destroy();
+}

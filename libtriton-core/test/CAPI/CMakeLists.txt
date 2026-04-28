@@ -10,15 +10,15 @@ target_link_libraries(libtriton-core-capi-tvmffi-test PRIVATE
   MLIRCAPIIR
 )
 
-add_executable(libtriton-core-capi-tritonrt-test tritonrt.c)
-target_link_libraries(libtriton-core-capi-tritonrt-test PRIVATE
+add_executable(libtriton-core-capi-torchext-test torchext.c)
+target_link_libraries(libtriton-core-capi-torchext-test PRIVATE
   LibTritonCoreCAPI
   MLIRCAPIIR
 )
 
 set(CAPI_TEST_TARGETS
   libtriton-core-capi-dlpack-test
-  libtriton-core-capi-tritonrt-test
+  libtriton-core-capi-torchext-test
   libtriton-core-capi-tvmffi-test
 )
 

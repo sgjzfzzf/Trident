@@ -9,8 +9,8 @@ target_link_libraries(
           DLPackToLLVM
           EmitTVMFFIInterface
           MemRefOriginAnalysis
-          TritonRTToLLVM
-          TritonRTNormalizeOperands
+          TorchExtToLLVM
+          TorchExtNormalizeOperands
           MLIRArithDialect
           MLIRConvertToLLVMPass
           MLIRControlFlowDialect
@@ -21,7 +21,7 @@ target_link_libraries(
           MLIRSCFDialect
           MLIRTransforms
           TorchMLIRTorchConversionDialect
-          TritonRTDialect
+          TorchExtDialect
           TVMFFIToLLVM
           TVMFFIDialect)
 

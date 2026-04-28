@@ -1,9 +1,0 @@
-#ifndef LIBTRITON_CORE_DIALECT_TRITONRT_IR_TRITONRTTYPES_H_
-#define LIBTRITON_CORE_DIALECT_TRITONRT_IR_TRITONRTTYPES_H_
-
-#include "mlir/IR/BuiltinTypes.h"
-
-#define GET_TYPEDEF_CLASSES
-#include "libtriton-core/Dialect/TritonRT/IR/TritonRTTypes.h.inc"
-
-#endif // LIBTRITON_CORE_DIALECT_TRITONRT_IR_TRITONRTTYPES_H_

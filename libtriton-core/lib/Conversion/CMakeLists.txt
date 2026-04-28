@@ -1,3 +1,3 @@
 add_subdirectory(DLPackToLLVM)
-add_subdirectory(TritonRTToLLVM)
+add_subdirectory(TorchExtToLLVM)
 add_subdirectory(TVMFFIToLLVM)

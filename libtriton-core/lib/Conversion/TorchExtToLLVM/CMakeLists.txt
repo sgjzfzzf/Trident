@@ -1,6 +1,6 @@
 add_mlir_conversion_library(
-  TritonRTToLLVM
-  TritonRTToLLVM.cc
+  TorchExtToLLVM
+  TorchExtToLLVM.cc
   DEPENDS
   MLIRConversionPassIncGen
   LINK_LIBS
@@ -9,4 +9,4 @@ add_mlir_conversion_library(
   MLIRLLVMCommonConversion
   MLIRLLVMDialect
   MLIRPass
-  TritonRTDialect)
+  TorchExtDialect)

@@ -170,7 +170,7 @@ class TritonGraphNodeImporter(GraphNodeImporter):
             ]
 
             ir.Operation.create(
-                "triton_rt.triton_kernel_launch",
+                "torch_ext.torch_kernel_launch",
                 operands=launch_operands,
                 attributes={
                     "kernel": ir.Attribute.parse(

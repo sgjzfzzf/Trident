@@ -1,5 +1,5 @@
 #include "libtriton-core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
-
+#include "libtriton-core/Conversion/Utils/RuntimeCFunctionDeclUtils.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
@@ -86,6 +86,69 @@ public:
   }
 };
 
+class ConvertGetCurrentDevicePattern
+    : public mlir::OpConversionPattern<GetCurrentDeviceOp> {
+public:
+  using mlir::OpConversionPattern<GetCurrentDeviceOp>::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(GetCurrentDeviceOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    if (!moduleOp) {
+      return mlir::failure();
+    }
+
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
+        libtriton::conversion::utils::runtime::getOrCreateGetCurrentDevice(
+            moduleOp);
+    if (mlir::failed(calleeOrErr)) {
+      return mlir::failure();
+    }
+
+    mlir::Location loc = op.getLoc();
+    mlir::LLVM::CallOp callOp = mlir::LLVM::CallOp::create(
+        rewriter, loc, *calleeOrErr, mlir::ValueRange{});
+    rewriter.replaceOp(op, callOp.getResults());
+    return mlir::success();
+  }
+};
+
+class ConvertGetCurrentStreamPattern
+    : public mlir::OpConversionPattern<GetCurrentStreamOp> {
+public:
+  using mlir::OpConversionPattern<GetCurrentStreamOp>::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(GetCurrentStreamOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    if (!moduleOp) {
+      return mlir::failure();
+    }
+
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
+        libtriton::conversion::utils::runtime::getOrCreateGetCurrentStream(
+            moduleOp);
+    if (mlir::failed(calleeOrErr)) {
+      return mlir::failure();
+    }
+
+    mlir::Location loc = op.getLoc();
+    mlir::Value device = adaptor.getDevice();
+    if (!device) {
+      mlir::Type i8Ty = mlir::IntegerType::get(rewriter.getContext(), 8);
+      device =
+          mlir::LLVM::ConstantOp::create(rewriter, loc, i8Ty, -1).getResult();
+    }
+
+    mlir::LLVM::CallOp callOp = mlir::LLVM::CallOp::create(
+        rewriter, loc, *calleeOrErr, mlir::ValueRange{device});
+    rewriter.replaceOp(op, callOp.getResults());
+    return mlir::success();
+  }
+};
+
 class ConvertTorchExtToLLVMPass
     : public impl::ConvertTorchExtToLLVMBase<ConvertTorchExtToLLVMPass> {
 public:
@@ -119,8 +182,11 @@ struct TorchExtToLLVMDialectInterface
 void populateTorchExtToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns) {
-  patterns.add<ConvertKernelLaunchPattern>(typeConverter,
+  patterns.add<ConvertGetCurrentDevicePattern, ConvertGetCurrentStreamPattern,
+               ConvertKernelLaunchPattern>(typeConverter,
                                            patterns.getContext());
+  target.addIllegalOp<GetCurrentDeviceOp>();
+  target.addIllegalOp<GetCurrentStreamOp>();
   target.addIllegalOp<TorchKernelLaunchOp>();
   target.addLegalDialect<mlir::LLVM::LLVMDialect, mlir::gpu::GPUDialect>();
   target.markUnknownOpDynamicallyLegal([](mlir::Operation *) { return true; });

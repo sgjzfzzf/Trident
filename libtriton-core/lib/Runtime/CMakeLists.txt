@@ -1,5 +1,3 @@
-find_package(CUDAToolkit REQUIRED)
-
 add_library(LibTritonCoreRuntime SHARED Runtime.cc)
 target_include_directories(LibTritonCoreRuntime PRIVATE ${TORCH_INCLUDE_DIRS})
 target_link_libraries(

@@ -2,15 +2,12 @@
 #include <cstddef>
 #include <cstdlib>
 
-#include <cuda_runtime.h>
-
 #include "c10/cuda/CUDACachingAllocator.h"
+#include "c10/cuda/CUDAFunctions.h"
 #include "dlpack/dlpack.h"
+#include "libtriton-core/Runtime/Runtime.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-
-#define LIBTRITON_CORE_RUNTIME_EXPORT                                          \
-  extern "C" __attribute__((visibility("default")))
 
 LIBTRITON_CORE_RUNTIME_EXPORT void *_mlir_memref_to_llvm_alloc(size_t size) {
   return c10::cuda::CUDACachingAllocator::raw_alloc(size);
@@ -34,4 +31,14 @@ __libtriton_dlpack_default_managed_tensor_deleter(DLManagedTensor *self) {
     free(self->dl_tensor.shape);
     free(self);
   }
+}
+
+LIBTRITON_CORE_RUNTIME_EXPORT c10::DeviceIndex
+__libtriton_get_current_device() {
+  return c10::cuda::current_device();
+}
+
+LIBTRITON_CORE_RUNTIME_EXPORT cudaStream_t
+__libtriton_get_current_stream(c10::DeviceIndex device_index) {
+  return c10::cuda::getCurrentCUDAStream(device_index).stream();
 }

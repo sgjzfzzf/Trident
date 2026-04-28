@@ -6,6 +6,7 @@
 
 #include "libtriton-core/Conversion/DLPackToLLVM/DLPackLLVMDescriptors.h"
 #include "libtriton-core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
+#include "libtriton-core/Conversion/Utils/RuntimeCFunctionDeclUtils.h"
 #include "libtriton-core/Conversion/Utils/StdLibCFunctionDeclUtils.h"
 #include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "libtriton-core/Dialect/DLPack/IR/DLPackOps.h"
@@ -31,9 +32,6 @@ namespace libtriton::dlpack {
 
 namespace {
 
-constexpr const char kDefaultManagedTensorDeleterName[] =
-    "__libtriton_dlpack_default_managed_tensor_deleter";
-
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
 allocateArrayWithMalloc(mlir::ConversionPatternRewriter &rewriter,
                         mlir::ModuleOp moduleOp, mlir::Location loc,
@@ -52,35 +50,6 @@ allocateArrayWithMalloc(mlir::ConversionPatternRewriter &rewriter,
 
   return mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
       callOp.getResult());
-}
-
-mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getOrCreateDefaultManagedTensorDeleter(
-    mlir::ModuleOp moduleOp, mlir::LLVM::LLVMStructType dlManagedTensorTy) {
-  mlir::MLIRContext *context = moduleOp.getContext();
-  mlir::Type voidTy = mlir::LLVM::LLVMVoidType::get(context);
-  mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
-  mlir::LLVM::LLVMFunctionType funcType = mlir::LLVM::LLVMFunctionType::get(
-      voidTy, llvm::SmallVector<mlir::Type>{ptrTy});
-
-  mlir::LLVM::LLVMFuncOp existingFunc =
-      moduleOp.lookupSymbol<mlir::LLVM::LLVMFuncOp>(
-          kDefaultManagedTensorDeleterName);
-  if (existingFunc) {
-    if (existingFunc.getFunctionType() != funcType) {
-      moduleOp.emitError() << "existing llvm.func @"
-                           << kDefaultManagedTensorDeleterName
-                           << " has incompatible signature";
-      return mlir::failure();
-    }
-    return existingFunc;
-  }
-
-  mlir::OpBuilder builder(context);
-  builder.setInsertionPointToStart(moduleOp.getBody());
-  mlir::LLVM::LLVMFuncOp deleterDecl = mlir::LLVM::LLVMFuncOp::create(
-      builder, moduleOp.getLoc(), kDefaultManagedTensorDeleterName, funcType,
-      mlir::LLVM::Linkage::External);
-  return deleterDecl;
 }
 
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
@@ -374,7 +343,8 @@ struct LowerFromMemRefOwnedOp
     mlir::TypedValue<mlir::LLVM::LLVMPointerType> managerCtxValue =
         allocatedPtr;
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> deleterOrErr =
-        getOrCreateDefaultManagedTensorDeleter(moduleOp, dlManagedTensorTy);
+        libtriton::conversion::utils::runtime::
+            getOrCreateDefaultManagedTensorDeleter(moduleOp);
     if (mlir::failed(deleterOrErr))
       return mlir::failure();
 

@@ -13,6 +13,7 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_package(
   Torch CONFIG REQUIRED PATHS ${Python3_SITELIB}/torch/share/cmake/Torch
   ${Python3_SITEARCH}/torch/share/cmake/Torch)
+find_package(CUDAToolkit REQUIRED)
 find_package(
   tvm_ffi CONFIG REQUIRED PATHS ${Python3_SITELIB}/tvm_ffi/share/cmake/tvm_ffi
   ${Python3_SITEARCH}/tvm_ffi/share/cmake/tvm_ffi)
@@ -42,6 +43,8 @@ include(${MLIR_CMAKE_DIR}/AddMLIR.cmake)
 
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
+include_directories(${TORCH_INCLUDE_DIRS})
+include_directories(${CUDAToolkit_INCLUDE_DIRS})
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_BINARY_DIR}/include)

@@ -3,6 +3,7 @@
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/CommonTypeConstraints.td"
+include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "torch-mlir/Dialect/Torch/IR/TorchTypes.td"
 
@@ -51,6 +52,33 @@ def TorchExt_TorchKernelLaunchOp : TorchExt_Op<"torch_kernel_launch", [
     (`args` `(` $kernelOperands^ `:` type($kernelOperands) `)`)?
     attr-dict
     `:` type($gridSizeX)
+  }];
+}
+
+def TorchExt_GetCurrentDeviceOp : TorchExt_Op<"get_current_device", [Pure]> {
+  let summary = "Get current CUDA device index";
+  let description = [{Returns the current CUDA device index from the runtime.}];
+
+  let arguments = (ins);
+  let results = (outs I8 : $output);
+
+  let assemblyFormat = "attr-dict `:` type($output)";
+}
+
+def TorchExt_GetCurrentStreamOp : TorchExt_Op<"get_current_stream", [Pure]> {
+  let summary = "Get current CUDA stream pointer";
+  let description = [{
+    Returns the current CUDA stream pointer for the provided device index.
+    If the optional device operand is omitted, lowering materializes -1.
+  }];
+
+  let arguments = (ins Optional<I8> : $device);
+  let results = (outs LLVM_AnyPointer : $output);
+
+  let assemblyFormat = [{
+    (`device` $device^ `:` type($device))?
+    attr-dict
+    `:` type($output)
   }];
 }
 

@@ -1,8 +1,9 @@
-add_mlir_dialect_library(TVMFFIDialect
+add_mlir_dialect_library(
+  TVMFFIDialect
   TVMFFIDialect.cc
   DEPENDS
   MLIRTVMFFIIncGen
   MLIRDLPackIncGen
-  LINK_LIBS PUBLIC
-  DLPackDialect
-)
+  LINK_LIBS
+  PUBLIC
+  DLPackDialect)

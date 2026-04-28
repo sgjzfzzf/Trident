@@ -31,8 +31,7 @@ namespace libtriton::tvm_ffi {
 
 namespace {
 
-constexpr std::int64_t kTVMFFIObjectHeaderBytes =
-    static_cast<std::int64_t>(sizeof(TVMFFIObject));
+constexpr std::int64_t kTVMFFIObjectHeaderBytes = sizeof(TVMFFIObject);
 
 mlir::TypedValue<mlir::IntegerType>
 emitI32Constant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,

@@ -1,9 +1,10 @@
-add_mlir_dialect_library(TorchExtDialect
+add_mlir_dialect_library(
+  TorchExtDialect
   TorchExtDialect.cc
   DEPENDS
   MLIRTorchExtIncGen
   MLIRTorchTypesIncGen
-  LINK_LIBS PUBLIC
+  LINK_LIBS
+  PUBLIC
   TorchMLIRTorchDialect
-  TorchMLIRTorchUtils
-)
+  TorchMLIRTorchUtils)

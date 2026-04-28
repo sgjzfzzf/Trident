@@ -1,7 +1,7 @@
 [project]
 name = "libtriton"
 version = "0.1.0"
-dependencies = ["apache-tvm-ffi"]
+dependencies = ["apache-tvm-ffi", "torch", "triton"]
 
 [build-system]
 requires = ["cmake", "ninja", "scikit-build-core"]

@@ -32,11 +32,12 @@ func.func @lower_from_memref(%arg0: memref<?xf32>) -> !dlpack.managed_tensor {
   // CHECK: llvm.store %[[DIM0_STRIDE]], %[[STRIDE_GEP]]
   
   // Build DLContext and DLDataType structures
-  // CHECK: llvm.mlir.constant(1 : i32)
+  // CHECK: llvm.mlir.constant(2 : i32)
   // CHECK: llvm.mlir.constant(0 : i32)
   // CHECK: llvm.mlir.constant(2 : i8)
   // CHECK: llvm.mlir.constant(32 : i8)
   // CHECK: llvm.mlir.constant(1 : i16)
+  // CHECK: llvm.mlir.constant(1 : i32)
 
   // CHECK: %[[SHAPE_SLOT_VAL:.*]] = llvm.insertvalue %[[SHAPE_SLOT]], %{{.*}}[4]
   // CHECK: %[[STRIDE_SLOT_VAL:.*]] = llvm.insertvalue %[[STRIDE_SLOT]], %[[SHAPE_SLOT_VAL]][5]

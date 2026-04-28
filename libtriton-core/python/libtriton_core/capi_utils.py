@@ -1,6 +1,8 @@
 import pathlib
 from typing import List
 
+import torch
+
 
 def find_capi_runtime_library() -> str:
     """Find the LibTriton Runtime library.
@@ -43,4 +45,8 @@ def find_runtime_libraries() -> List[str]:
     Raises:
         RuntimeError: If any runtime library is not found
     """
-    return [find_capi_runtime_library(), find_mlir_cuda_runtime_library()]
+    return [
+        find_capi_runtime_library(),
+        find_mlir_cuda_runtime_library(),
+        torch._C.__file__,
+    ]

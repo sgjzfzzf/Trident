@@ -45,17 +45,18 @@ _PIPELINE: Final[str] = (
     "func.func(torch-finalizing-backend-type-conversion),"
     "one-shot-bufferize{{bufferize-function-boundaries=1 function-boundary-type-conversion=identity-layout-map}},"
     "emit-tvm-ffi-interface,"
-    "convert-torchext-to-llvm,"
     "convert-linalg-to-parallel-loops,"
     "func.func(gpu-map-parallel-loops),"
     "convert-parallel-loops-to-gpu,"
     "gpu-kernel-outlining,"
-    "torchext-async-kernel-launch,"
-    "convert-arith-to-llvm,"
     "finalize-memref-to-llvm{{use-generic-functions=1}},"
     "nvvm-attach-target{{O=3 chip={chip}}},"
     "gpu.module(convert-gpu-to-nvvm{{index-bitwidth=64}}),"
+    "convert-arith-to-llvm,"
+    "convert-torchext-to-llvm,"
     "gpu-to-llvm,"
+    "torchext-async-kernel-launch,"
+    "convert-torchext-to-llvm,"
     "gpu-module-to-binary{{format=fatbin}},"
     "convert-func-to-llvm,"
     "func.func(canonicalize),"
@@ -100,7 +101,6 @@ class TritonGraphModule(object):
             major, minor = torch.cuda.get_device_capability()
             pipeline = _PIPELINE.format(chip=f"sm_{major}{minor}")
             passmanager.PassManager.parse(pipeline).run(module.operation)
-            print(module)
             return TritonGraphModule._build_execution_engine_callable(
                 module,
                 model_name=model_name,

@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import (
     Any,
     Callable,
-    Dict,
     Final,
     List,
     Optional,
@@ -28,7 +27,7 @@ class TritonGraphModule(object):
     """Compiles a torch.fx.GraphModule containing triton ops via TritonFxImporter."""
 
     def __init__(
-        self, fn: Callable[..., Any], *args: List[Any], **kwargs: Dict[str, Any]
+        self, fn: Callable[..., Any], *args: Any, **kwargs: Any
     ) -> None:
         super().__init__(*args, **kwargs)
         self.fn: Final[Callable[..., Any]] = fn
@@ -38,13 +37,13 @@ class TritonGraphModule(object):
         register_all_dialects(self.ctx)
         register_all_passes()
 
-    def __call__(self, *args: List[Any], **kwargs: Dict[str, Any]) -> Any:
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
         if self.executor:
             return self.executor(*args, **kwargs)
         else:
             return self.compile(*args, **kwargs)
 
-    def compile(self, *args: List[Any], **kwargs: Dict[str, Any]) -> Any:
+    def compile(self, *args: Any, **kwargs: Any) -> Any:
         ret: Any = self.fn(*args, **kwargs)
         if self.gm is None:
             self.gm, _ = torch._dynamo.export(
@@ -87,7 +86,7 @@ class TritonGraphModule(object):
             ptr, keep_alive_object=engine
         )
 
-        def f(*args: List[Any]) -> Any:
+        def f(*args: Any) -> Any:
             result = fn(*args)
             if isinstance(result, (list, tuple)):
                 return tuple(

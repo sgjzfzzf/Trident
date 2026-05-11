@@ -2,12 +2,14 @@ from __future__ import annotations
 from typing import (
     Any,
     Callable,
+    Dict,
     Final,
     List,
     Optional,
 )
 
 import torch
+import torch._guards
 import tvm_ffi
 
 from libtriton._C.libtriton_core import (
@@ -20,19 +22,19 @@ from libtriton._C.libtriton_core import (
     register_all_dialects,
     register_all_passes,
 )
+from .guards import GuardExpr, GuardParser
 from .importer import TritonFxImporter
 
 
 class TritonGraphModule(object):
     """Compiles a torch.fx.GraphModule containing triton ops via TritonFxImporter."""
 
-    def __init__(
-        self, fn: Callable[..., Any], *args: Any, **kwargs: Any
-    ) -> None:
+    def __init__(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.fn: Final[Callable[..., Any]] = fn
         self.gm: Optional[torch.fx.GraphModule] = None
         self.executor: Optional[Callable[..., Any]] = None
+        self.guard_to_fx_map: Dict[GuardExpr, ir.Module] = {}
         self.ctx: ir.Context = ir.Context()
         register_all_dialects(self.ctx)
         register_all_passes()
@@ -46,14 +48,18 @@ class TritonGraphModule(object):
     def compile(self, *args: Any, **kwargs: Any) -> Any:
         ret: Any = self.fn(*args, **kwargs)
         if self.gm is None:
-            self.gm, _ = torch._dynamo.export(
+            self.gm, guards = torch._dynamo.export(
                 self.fn, aten_graph=True, assume_static_by_default=True
             )(*args, **kwargs)
+            self.guard_to_fx_map: Dict[GuardExpr, Any] = (
+                TritonGraphModule._build_guard_to_fx_map(guards)
+            )
+            TritonGraphModule._print_guard_to_fx_map(self.guard_to_fx_map)
         self.executor = self._build_fn()
         return ret
 
     def _build_fn(self) -> Callable[..., Any]:
-        importer = TritonFxImporter(context=self.ctx)
+        importer: TritonFxImporter = TritonFxImporter(context=self.ctx)
         module: ir.Module = fx.stateless_fx_import(
             self.gm,
             output_type=compiler_utils.OutputType.TORCH,
@@ -69,6 +75,26 @@ class TritonGraphModule(object):
                 module,
                 model_name=self.fn.__name__,
             )
+
+    @staticmethod
+    def _build_guard_to_fx_map(
+        guards: torch._guards.GuardsSet,
+    ) -> Dict[GuardExpr, ir.Module]:
+        parser = GuardParser()
+        return {
+            expr: None
+            for expr in parser.parse(
+                code.strip() for entry in guards.inner for code in entry.code_list or []
+            )
+        }
+
+    @staticmethod
+    def _print_guard_to_fx_map(
+        guard_to_fx_map: Dict[GuardExpr, ir.Module],
+    ) -> None:
+        print(f"[libtriton][guard] matched={len(guard_to_fx_map)}")
+        for expr in guard_to_fx_map:
+            print(f"[libtriton][guard] {expr.code} -> {type(expr).__name__}")
 
     @staticmethod
     def _build_execution_engine_callable(

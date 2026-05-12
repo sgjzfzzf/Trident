@@ -64,46 +64,27 @@ mlir::FailureOr<mlir::Value> emitUnboxAnyValue(mlir::OpBuilder &builder,
                                                mlir::Type valueType,
                                                mlir::Value anyValue) {
   mlir::MLIRContext *context = builder.getContext();
-  if (mlir::isa<libtriton::tvm_ffi::AnyType>(valueType))
+  if (mlir::isa<libtriton::tvm_ffi::AnyType>(valueType)) {
     return anyValue;
-  if (mlir::isa<libtriton::tvm_ffi::ObjectHandleType>(valueType)) {
-    return libtriton::tvm_ffi::ToObjectOp::create(builder, loc, valueType,
-                                                  anyValue)
-        .getOutput();
-  }
-  if (mlir::isa<libtriton::dlpack::DLTensorType>(valueType)) {
-    return libtriton::tvm_ffi::ToTensorOp::create(builder, loc, valueType,
-                                                  anyValue)
-        .getOutput();
-  }
-  if (mlir::isa<mlir::BaseMemRefType>(valueType)) {
+  } else if (mlir::isa<mlir::BaseMemRefType>(valueType)) {
     mlir::Type tensorType = libtriton::dlpack::DLTensorType::get(context);
-    mlir::Value tensor = libtriton::tvm_ffi::ToTensorOp::create(
-                             builder, loc, tensorType, anyValue)
-                             .getOutput();
+    mlir::Value tensor =
+        libtriton::tvm_ffi::ToOp::create(builder, loc, tensorType, anyValue)
+            .getOutput();
     return libtriton::dlpack::ToMemRefOp::create(builder, loc, valueType,
                                                  tensor)
         .getOutput();
-  }
-  if (mlir::isa<mlir::LLVM::LLVMPointerType>(valueType)) {
-    return libtriton::tvm_ffi::ToStrOp::create(builder, loc, valueType,
-                                               anyValue)
+  } else if (mlir::isa<libtriton::tvm_ffi::ObjectHandleType,
+                       libtriton::dlpack::DLTensorType,
+                       mlir::LLVM::LLVMPointerType, mlir::Float64Type,
+                       mlir::IntegerType>(valueType)) {
+    return libtriton::tvm_ffi::ToOp::create(builder, loc, valueType, anyValue)
         .getOutput();
+  } else {
+    mlir::emitError(loc) << "unsupported TVM FFI wrapper parameter type: "
+                         << valueType;
+    return mlir::failure();
   }
-  if (mlir::isa<mlir::Float64Type>(valueType)) {
-    return libtriton::tvm_ffi::ToFloatOp::create(builder, loc, valueType,
-                                                 anyValue)
-        .getOutput();
-  }
-  mlir::IntegerType integerType = mlir::dyn_cast<mlir::IntegerType>(valueType);
-  if (integerType && integerType.getWidth() == 64) {
-    return libtriton::tvm_ffi::ToIntOp::create(builder, loc, valueType,
-                                               anyValue)
-        .getOutput();
-  }
-  mlir::emitError(loc) << "unsupported TVM FFI wrapper parameter type: "
-                       << valueType;
-  return mlir::failure();
 }
 
 mlir::FailureOr<mlir::Value> emitBoxAnyValue(mlir::OpBuilder &builder,
@@ -113,19 +94,14 @@ mlir::FailureOr<mlir::Value> emitBoxAnyValue(mlir::OpBuilder &builder,
   mlir::MLIRContext *context = builder.getContext();
   mlir::Type valueType = value.getType();
   mlir::Type anyType = libtriton::tvm_ffi::AnyType::get(context);
-  if (mlir::isa<libtriton::tvm_ffi::AnyType>(valueType))
+  if (mlir::isa<libtriton::tvm_ffi::AnyType>(valueType)) {
     return value;
-  if (mlir::isa<libtriton::tvm_ffi::ObjectHandleType>(valueType)) {
-    return libtriton::tvm_ffi::FromObjectOp::create(builder, loc, anyType,
-                                                    value)
-        .getOutput();
-  }
-  if (mlir::isa<libtriton::dlpack::DLTensorType>(valueType)) {
-    return libtriton::tvm_ffi::FromTensorOp::create(builder, loc, anyType,
-                                                    value)
-        .getOutput();
-  }
-  if (mlir::isa<mlir::BaseMemRefType>(valueType)) {
+  } else if (mlir::isa<libtriton::dlpack::DLTensorType>(valueType)) {
+    mlir::emitError(loc)
+        << "unsupported TVM FFI wrapper return type for tvm_ffi.to: "
+        << valueType;
+    return mlir::failure();
+  } else if (mlir::isa<mlir::BaseMemRefType>(valueType)) {
     mlir::Type managedType =
         libtriton::dlpack::DLManagedTensorType::get(context);
     mlir::Type objectHandleType =
@@ -147,26 +123,18 @@ mlir::FailureOr<mlir::Value> emitBoxAnyValue(mlir::OpBuilder &builder,
         libtriton::tvm_ffi::TensorFromDLPackOp::create(
             builder, loc, objectHandleType, managed, zero, zero)
             .getOutput();
-    return libtriton::tvm_ffi::FromTensorOp::create(builder, loc, anyType,
-                                                    handle)
+    return libtriton::tvm_ffi::ToOp::create(builder, loc, anyType, handle)
         .getOutput();
-  }
-  if (mlir::isa<mlir::LLVM::LLVMPointerType>(valueType)) {
-    return libtriton::tvm_ffi::FromStrOp::create(builder, loc, anyType, value)
+  } else if (mlir::isa<libtriton::tvm_ffi::ObjectHandleType,
+                       mlir::LLVM::LLVMPointerType, mlir::Float64Type,
+                       mlir::IntegerType>(valueType)) {
+    return libtriton::tvm_ffi::ToOp::create(builder, loc, anyType, value)
         .getOutput();
+  } else {
+    mlir::emitError(loc) << "unsupported TVM FFI wrapper return type: "
+                         << valueType;
+    return mlir::failure();
   }
-  if (mlir::isa<mlir::Float64Type>(valueType)) {
-    return libtriton::tvm_ffi::FromFloatOp::create(builder, loc, anyType, value)
-        .getOutput();
-  }
-  mlir::IntegerType integerType = mlir::dyn_cast<mlir::IntegerType>(valueType);
-  if (integerType && integerType.getWidth() == 64) {
-    return libtriton::tvm_ffi::FromIntOp::create(builder, loc, anyType, value)
-        .getOutput();
-  }
-  mlir::emitError(loc) << "unsupported TVM FFI wrapper return type: "
-                       << valueType;
-  return mlir::failure();
 }
 
 mlir::FailureOr<mlir::func::FuncOp>

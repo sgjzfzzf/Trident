@@ -27,9 +27,9 @@ func.func @ret_tmp_memref() -> memref<4xf32> attributes {tvm_ffi.emit_tvm_ffi_in
 // CHECK-TVM-FFI: %[[ARG0_PTR:.*]] = llvm.getelementptr %[[ARGS]][%[[ARG0_INDEX]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: %[[ARG0_ANY_LLVM:.*]] = llvm.load %[[ARG0_PTR]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: %[[ARG0_ANY:.*]] = tvm_ffi.any_from_llvm %[[ARG0_ANY_LLVM]] : !llvm.struct<(i32, i32, i64)> -> !tvm_ffi.any
-// CHECK-TVM-FFI: %[[ARG0:.*]] = tvm_ffi.to_int %[[ARG0_ANY]] : !tvm_ffi.any -> i64
+// CHECK-TVM-FFI: %[[ARG0:.*]] = tvm_ffi.to %[[ARG0_ANY]] : !tvm_ffi.any -> i64
 // CHECK-TVM-FFI: %[[CALLEE_RET:.*]] = call @id_i64(%[[ARG0]]) : (i64) -> i64
-// CHECK-TVM-FFI: %[[BOXED_RET:.*]] = tvm_ffi.from_int %[[CALLEE_RET]] : i64 -> !tvm_ffi.any
+// CHECK-TVM-FFI: %[[BOXED_RET:.*]] = tvm_ffi.to %[[CALLEE_RET]] : i64 -> !tvm_ffi.any
 // CHECK-TVM-FFI: %[[RET_PTR:.*]] = llvm.getelementptr %[[RESULT]][{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: %[[BOXED_RET_LLVM:.*]] = tvm_ffi.any_to_llvm %[[BOXED_RET]] : !tvm_ffi.any -> !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: llvm.store %[[BOXED_RET_LLVM]], %[[RET_PTR]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
@@ -42,19 +42,19 @@ func.func @ret_tmp_memref() -> memref<4xf32> attributes {tvm_ffi.emit_tvm_ffi_in
 // CHECK-TVM-FFI: %[[MARG0_PTR:.*]] = llvm.getelementptr %[[MARGS]][%[[MARG0_INDEX]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: %[[MARG0_ANY_LLVM:.*]] = llvm.load %[[MARG0_PTR]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: %[[MARG0_ANY:.*]] = tvm_ffi.any_from_llvm %[[MARG0_ANY_LLVM]] : !llvm.struct<(i32, i32, i64)> -> !tvm_ffi.any
-// CHECK-TVM-FFI: %[[MARG0:.*]] = tvm_ffi.to_int %[[MARG0_ANY]] : !tvm_ffi.any -> i64
+// CHECK-TVM-FFI: %[[MARG0:.*]] = tvm_ffi.to %[[MARG0_ANY]] : !tvm_ffi.any -> i64
 // CHECK-TVM-FFI: %[[MARG1_INDEX:.*]] = arith.constant 1 : i64
 // CHECK-TVM-FFI: %[[MARG1_PTR:.*]] = llvm.getelementptr %[[MARGS]][%[[MARG1_INDEX]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: %[[MARG1_ANY_LLVM:.*]] = llvm.load %[[MARG1_PTR]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: %[[MARG1_ANY:.*]] = tvm_ffi.any_from_llvm %[[MARG1_ANY_LLVM]] : !llvm.struct<(i32, i32, i64)> -> !tvm_ffi.any
-// CHECK-TVM-FFI: %[[MARG1:.*]] = tvm_ffi.to_float %[[MARG1_ANY]] : !tvm_ffi.any -> f64
+// CHECK-TVM-FFI: %[[MARG1:.*]] = tvm_ffi.to %[[MARG1_ANY]] : !tvm_ffi.any -> f64
 // CHECK-TVM-FFI: %[[MARG2_INDEX:.*]] = arith.constant 2 : i64
 // CHECK-TVM-FFI: %[[MARG2_PTR:.*]] = llvm.getelementptr %[[MARGS]][%[[MARG2_INDEX]]] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: %[[MARG2_ANY_LLVM:.*]] = llvm.load %[[MARG2_PTR]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: %[[MARG2_ANY:.*]] = tvm_ffi.any_from_llvm %[[MARG2_ANY_LLVM]] : !llvm.struct<(i32, i32, i64)> -> !tvm_ffi.any
-// CHECK-TVM-FFI: %[[MARG2:.*]] = tvm_ffi.to_str %[[MARG2_ANY]] : !tvm_ffi.any -> !llvm.ptr
+// CHECK-TVM-FFI: %[[MARG2:.*]] = tvm_ffi.to %[[MARG2_ANY]] : !tvm_ffi.any -> !llvm.ptr
 // CHECK-TVM-FFI: %[[MCALLEE_RET:.*]] = call @pick_float(%[[MARG0]], %[[MARG1]], %[[MARG2]]) : (i64, f64, !llvm.ptr) -> f64
-// CHECK-TVM-FFI: %[[MBOXED_RET:.*]] = tvm_ffi.from_float %[[MCALLEE_RET]] : f64 -> !tvm_ffi.any
+// CHECK-TVM-FFI: %[[MBOXED_RET:.*]] = tvm_ffi.to %[[MCALLEE_RET]] : f64 -> !tvm_ffi.any
 // CHECK-TVM-FFI: %[[MRET_PTR:.*]] = llvm.getelementptr %[[MRESULT]][{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: %[[MBOXED_RET_LLVM:.*]] = tvm_ffi.any_to_llvm %[[MBOXED_RET]] : !tvm_ffi.any -> !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: llvm.store %[[MBOXED_RET_LLVM]], %[[MRET_PTR]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
@@ -67,7 +67,7 @@ func.func @ret_tmp_memref() -> memref<4xf32> attributes {tvm_ffi.emit_tvm_ffi_in
 // CHECK-TVM-FFI: %[[ROWNED:.*]] = dlpack.from_memref_owned %[[RTMP]] : memref<4xf32> -> !dlpack.managed_tensor
 // CHECK-TVM-FFI: %[[RZERO:.*]] = arith.constant 0 : i32
 // CHECK-TVM-FFI: %[[RH:.*]] = tvm_ffi.tensor_from_dlpack %[[ROWNED]], %[[RZERO]], %[[RZERO]] : !dlpack.managed_tensor, i32, i32 -> !tvm_ffi.object_handle
-// CHECK-TVM-FFI: %[[RBOXED:.*]] = tvm_ffi.from_tensor %[[RH]] : !tvm_ffi.object_handle -> !tvm_ffi.any
+// CHECK-TVM-FFI: %[[RBOXED:.*]] = tvm_ffi.to %[[RH]] : !tvm_ffi.object_handle -> !tvm_ffi.any
 // CHECK-TVM-FFI: %[[RRET_PTR:.*]] = llvm.getelementptr %[[RRESULT]][{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: %[[RBOXED_LLVM:.*]] = tvm_ffi.any_to_llvm %[[RBOXED]] : !tvm_ffi.any -> !llvm.struct<(i32, i32, i64)>
 // CHECK-TVM-FFI: llvm.store %[[RBOXED_LLVM]], %[[RRET_PTR]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr

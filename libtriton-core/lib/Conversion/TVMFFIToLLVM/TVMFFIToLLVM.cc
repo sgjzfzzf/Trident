@@ -71,52 +71,101 @@ buildAnyValue(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
       .as();
 }
 
+mlir::FailureOr<mlir::TypedValue<mlir::IntegerType>>
+castIntegerToI64Payload(mlir::ConversionPatternRewriter &rewriter,
+                        mlir::Location loc, mlir::Type i64Ty,
+                        mlir::TypedValue<mlir::IntegerType> integerValue) {
+  const std::int32_t width = integerValue.getType().getWidth();
+  if (width == 64) {
+    return integerValue;
+  } else if (width < 64) {
+    return mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
+        mlir::LLVM::ZExtOp::create(rewriter, loc, i64Ty, integerValue)
+            .getResult());
+  } else {
+    return mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
+        mlir::LLVM::TruncOp::create(rewriter, loc, i64Ty, integerValue)
+            .getResult());
+  }
+}
+
+mlir::FailureOr<mlir::Value> castI64PayloadToInteger(
+    mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
+    const mlir::TypeConverter *typeConverter, mlir::Type integerType,
+    mlir::TypedValue<mlir::IntegerType> payloadBits) {
+  const mlir::IntegerType targetIntegerType =
+      mlir::dyn_cast<mlir::IntegerType>(integerType);
+  if (!targetIntegerType) {
+    return mlir::failure();
+  }
+  const mlir::Type convertedIntegerType =
+      typeConverter->convertType(integerType);
+  if (!convertedIntegerType) {
+    return mlir::failure();
+  }
+  const std::int32_t width = targetIntegerType.getWidth();
+  if (width == 64) {
+    return payloadBits;
+  } else if (width < 64) {
+    return mlir::LLVM::TruncOp::create(rewriter, loc, convertedIntegerType,
+                                       payloadBits)
+        .getResult();
+  } else {
+    return mlir::LLVM::ZExtOp::create(rewriter, loc, convertedIntegerType,
+                                      payloadBits)
+        .getResult();
+  }
+}
+
 mlir::FailureOr<mlir::Value> emitTensorFromDLPackAsObjectHandle(
     mlir::ModuleOp moduleOp, mlir::ConversionPatternRewriter &rewriter,
     mlir::Location loc, mlir::Value fromManaged, mlir::Value requireAlignment,
     mlir::Value requireContiguous) {
   mlir::MLIRContext *context = moduleOp.getContext();
-  mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
-  mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
-  mlir::Type managedTy = fromManaged.getType();
+  const mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
+  const mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
+  const mlir::Type managedTy = fromManaged.getType();
 
-  mlir::Value one =
+  const mlir::Value one =
       mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1LL).getResult();
 
-  mlir::FailureOr<mlir::LLVM::LLVMFuncOp> mallocOrErr =
+  const mlir::FailureOr<mlir::LLVM::LLVMFuncOp> mallocOrErr =
       libtriton::conversion::utils::getOrCreateMalloc(moduleOp);
-  if (mlir::failed(mallocOrErr))
+  if (mlir::failed(mallocOrErr)) {
     return mlir::failure();
+  }
 
-  mlir::DataLayout layout(moduleOp);
-  std::optional<std::int64_t> managedSize =
+  const mlir::DataLayout layout(moduleOp);
+  const std::optional<std::int64_t> managedSize =
       layout.getTypeSizeInBits(managedTy).getFixedValue();
-  if (!managedSize.has_value() || *managedSize <= 0)
+  if (!managedSize.has_value() || *managedSize <= 0) {
     return mlir::failure();
+  }
 
-  mlir::Value managedSizeBytes =
+  const mlir::Value managedSizeBytes =
       mlir::LLVM::ConstantOp::create(
           rewriter, loc, i64Ty, static_cast<std::int64_t>(*managedSize / 8))
           .getResult();
   mlir::LLVM::CallOp managedAllocCall = mlir::LLVM::CallOp::create(
       rewriter, loc, *mallocOrErr, mlir::ValueRange{managedSizeBytes});
-  mlir::TypedValue<mlir::LLVM::LLVMPointerType> fromSlot =
+  const mlir::TypedValue<mlir::LLVM::LLVMPointerType> fromSlot =
       mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
           managedAllocCall.getResult());
 
   mlir::LLVM::StoreOp::create(rewriter, loc, fromManaged, fromSlot);
 
-  mlir::TypedValue<mlir::LLVM::LLVMPointerType> outSlot =
+  const mlir::TypedValue<mlir::LLVM::LLVMPointerType> outSlot =
       mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
           mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, i64Ty, one)
               .getResult());
-  mlir::Value zeroPtr = mlir::LLVM::ZeroOp::create(rewriter, loc, ptrTy);
+  const mlir::Value zeroPtr = mlir::LLVM::ZeroOp::create(rewriter, loc, ptrTy);
   mlir::LLVM::StoreOp::create(rewriter, loc, zeroPtr, outSlot);
 
-  mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
+  const mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
       capi::getOrCreateTVMFFITensorFromDLPack(moduleOp);
-  if (mlir::failed(calleeOrErr))
+  if (mlir::failed(calleeOrErr)) {
     return mlir::failure();
+  }
 
   mlir::LLVM::CallOp::create(
       rewriter, loc, *calleeOrErr,
@@ -133,286 +182,168 @@ struct LowerTensorFromDLPackOp
   matchAndRewrite(libtriton::tvm_ffi::TensorFromDLPackOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const final {
     mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
-    if (!moduleOp)
+    if (!moduleOp) {
       return mlir::failure();
+    }
 
     mlir::Location loc = op.getLoc();
     mlir::FailureOr<mlir::Value> objectHandle =
         emitTensorFromDLPackAsObjectHandle(
             moduleOp, rewriter, loc, adaptor.getFrom(),
             adaptor.getRequireAlignment(), adaptor.getRequireContiguous());
-    if (mlir::failed(objectHandle))
+    if (mlir::failed(objectHandle)) {
       return mlir::failure();
-    rewriter.replaceOp(op, *objectHandle);
-    return mlir::success();
+    } else {
+      rewriter.replaceOp(op, *objectHandle);
+      return mlir::success();
+    }
   }
 };
 
-struct LowerFromTensorOp
-    : public mlir::OpConversionPattern<libtriton::tvm_ffi::FromTensorOp> {
+struct LowerToOp : public mlir::OpConversionPattern<libtriton::tvm_ffi::ToOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  mlir::LogicalResult
-  matchAndRewrite(libtriton::tvm_ffi::FromTensorOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    mlir::Location loc = op.getLoc();
+  mlir::FailureOr<mlir::Value>
+  lowerToAny(libtriton::tvm_ffi::ToOp op, OpAdaptor adaptor,
+             mlir::ConversionPatternRewriter &rewriter) const {
+    const mlir::Location loc = op.getLoc();
     mlir::MLIRContext *context = op.getContext();
-    mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
+    const mlir::Type inputType = op.getInput().getType();
+    const mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
+    const mlir::Type i32Ty = mlir::IntegerType::get(context, 32);
 
-    mlir::TypedValue<mlir::IntegerType> typeIndexValue = emitI32Constant(
-        rewriter, loc, context, static_cast<std::int64_t>(kTVMFFITensor));
-    mlir::TypedValue<mlir::IntegerType> payloadBitsValue =
-        mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
-            mlir::LLVM::PtrToIntOp::create(rewriter, loc, i64Ty,
-                                           adaptor.getInput())
-                .getResult());
-
-    mlir::FailureOr<mlir::Value> anyValue = buildAnyValue(
-        rewriter, loc, getTypeConverter(), op.getOutput().getType(),
-        typeIndexValue, payloadBitsValue);
-    if (mlir::failed(anyValue))
+    if (mlir::isa<libtriton::tvm_ffi::AnyType>(inputType)) {
+      return adaptor.getInput();
+    } else if (mlir::isa<libtriton::tvm_ffi::ObjectHandleType>(inputType)) {
+      const mlir::TypedValue<mlir::IntegerType> typeIndexValue =
+          mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
+              mlir::LLVM::LoadOp::create(rewriter, loc, i32Ty,
+                                         adaptor.getInput())
+                  .getResult());
+      const mlir::TypedValue<mlir::IntegerType> payloadBitsValue =
+          mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
+              mlir::LLVM::PtrToIntOp::create(rewriter, loc, i64Ty,
+                                             adaptor.getInput())
+                  .getResult());
+      return buildAnyValue(rewriter, loc, getTypeConverter(),
+                           op.getOutput().getType(), typeIndexValue,
+                           payloadBitsValue);
+    } else if (mlir::isa<mlir::LLVM::LLVMPointerType>(inputType)) {
+      const mlir::TypedValue<mlir::IntegerType> typeIndexValue =
+          emitI32Constant(rewriter, loc, context,
+                          static_cast<std::int64_t>(kTVMFFIRawStr));
+      const mlir::TypedValue<mlir::IntegerType> payloadBitsValue =
+          mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
+              mlir::LLVM::PtrToIntOp::create(rewriter, loc, i64Ty,
+                                             adaptor.getInput())
+                  .getResult());
+      return buildAnyValue(rewriter, loc, getTypeConverter(),
+                           op.getOutput().getType(), typeIndexValue,
+                           payloadBitsValue);
+    } else if (mlir::isa<mlir::Float64Type>(inputType)) {
+      const mlir::TypedValue<mlir::IntegerType> typeIndexValue =
+          emitI32Constant(rewriter, loc, context,
+                          static_cast<std::int64_t>(kTVMFFIFloat));
+      const mlir::TypedValue<mlir::IntegerType> payloadBitsValue =
+          mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
+              mlir::LLVM::BitcastOp::create(rewriter, loc, i64Ty,
+                                            adaptor.getInput())
+                  .getResult());
+      return buildAnyValue(rewriter, loc, getTypeConverter(),
+                           op.getOutput().getType(), typeIndexValue,
+                           payloadBitsValue);
+    } else if (mlir::isa<mlir::IntegerType>(inputType)) {
+      const mlir::TypedValue<mlir::IntegerType> typeIndexValue =
+          emitI32Constant(rewriter, loc, context,
+                          static_cast<std::int64_t>(kTVMFFIInt));
+      const mlir::FailureOr<mlir::TypedValue<mlir::IntegerType>> payloadOrErr =
+          castIntegerToI64Payload(
+              rewriter, loc, i64Ty,
+              mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
+                  adaptor.getInput()));
+      if (mlir::failed(payloadOrErr)) {
+        return mlir::failure();
+      }
+      const mlir::TypedValue<mlir::IntegerType> payloadBitsValue =
+          *payloadOrErr;
+      return buildAnyValue(rewriter, loc, getTypeConverter(),
+                           op.getOutput().getType(), typeIndexValue,
+                           payloadBitsValue);
+    } else {
       return mlir::failure();
-
-    rewriter.replaceOp(op, *anyValue);
-    return mlir::success();
+    }
   }
-};
 
-struct LowerFromIntOp
-    : public mlir::OpConversionPattern<libtriton::tvm_ffi::FromIntOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(libtriton::tvm_ffi::FromIntOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    mlir::Location loc = op.getLoc();
+  mlir::FailureOr<mlir::Value>
+  lowerFromAny(libtriton::tvm_ffi::ToOp op, OpAdaptor adaptor,
+               mlir::ConversionPatternRewriter &rewriter) const {
+    const mlir::Location loc = op.getLoc();
     mlir::MLIRContext *context = op.getContext();
-
-    mlir::TypedValue<mlir::IntegerType> typeIndexValue = emitI32Constant(
-        rewriter, loc, context, static_cast<std::int64_t>(kTVMFFIInt));
-    mlir::TypedValue<mlir::IntegerType> payloadBitsValue =
-        mlir::cast<mlir::TypedValue<mlir::IntegerType>>(adaptor.getInput());
-
-    mlir::FailureOr<mlir::Value> anyValue = buildAnyValue(
-        rewriter, loc, getTypeConverter(), op.getOutput().getType(),
-        typeIndexValue, payloadBitsValue);
-    if (mlir::failed(anyValue))
-      return mlir::failure();
-
-    rewriter.replaceOp(op, *anyValue);
-    return mlir::success();
-  }
-};
-
-struct LowerToIntOp
-    : public mlir::OpConversionPattern<libtriton::tvm_ffi::ToIntOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(libtriton::tvm_ffi::ToIntOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    mlir::Location loc = op.getLoc();
-    libtriton::conversion::utils::TVMFFIAnyLLVMDescriptor anyValue =
+    const mlir::Type outputType = op.getOutput().getType();
+    const mlir::Type i8Ty = mlir::IntegerType::get(context, 8);
+    const mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
+    const libtriton::conversion::utils::TVMFFIAnyLLVMDescriptor anyValue =
         libtriton::conversion::utils::TVMFFIAnyLLVMDescriptor::from(
             adaptor.getInput());
-    rewriter.replaceOp(op, anyValue.payloadBits(rewriter, loc));
-    return mlir::success();
-  }
-};
-
-struct LowerFromFloatOp
-    : public mlir::OpConversionPattern<libtriton::tvm_ffi::FromFloatOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(libtriton::tvm_ffi::FromFloatOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    mlir::Location loc = op.getLoc();
-    mlir::MLIRContext *context = op.getContext();
-    mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
-
-    mlir::TypedValue<mlir::IntegerType> typeIndexValue = emitI32Constant(
-        rewriter, loc, context, static_cast<std::int64_t>(kTVMFFIFloat));
-    mlir::TypedValue<mlir::IntegerType> payloadBitsValue =
-        mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
-            mlir::LLVM::BitcastOp::create(rewriter, loc, i64Ty,
-                                          adaptor.getInput())
-                .getResult());
-
-    mlir::FailureOr<mlir::Value> anyValue = buildAnyValue(
-        rewriter, loc, getTypeConverter(), op.getOutput().getType(),
-        typeIndexValue, payloadBitsValue);
-    if (mlir::failed(anyValue))
-      return mlir::failure();
-
-    rewriter.replaceOp(op, *anyValue);
-    return mlir::success();
-  }
-};
-
-struct LowerToFloatOp
-    : public mlir::OpConversionPattern<libtriton::tvm_ffi::ToFloatOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(libtriton::tvm_ffi::ToFloatOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    mlir::Location loc = op.getLoc();
-    mlir::Type convertedFloatType =
-        getTypeConverter()->convertType(op.getOutput().getType());
-    if (!convertedFloatType)
-      return mlir::failure();
-
-    libtriton::conversion::utils::TVMFFIAnyLLVMDescriptor anyValue =
-        libtriton::conversion::utils::TVMFFIAnyLLVMDescriptor::from(
-            adaptor.getInput());
-    rewriter.replaceOpWithNewOp<mlir::LLVM::BitcastOp>(
-        op, convertedFloatType, anyValue.payloadBits(rewriter, loc));
-    return mlir::success();
-  }
-};
-
-struct LowerFromStrOp
-    : public mlir::OpConversionPattern<libtriton::tvm_ffi::FromStrOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(libtriton::tvm_ffi::FromStrOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    mlir::Location loc = op.getLoc();
-    mlir::MLIRContext *context = op.getContext();
-    mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
-
-    mlir::TypedValue<mlir::IntegerType> typeIndexValue = emitI32Constant(
-        rewriter, loc, context, static_cast<std::int64_t>(kTVMFFIRawStr));
-    mlir::TypedValue<mlir::IntegerType> payloadBitsValue =
-        mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
-            mlir::LLVM::PtrToIntOp::create(rewriter, loc, i64Ty,
-                                           adaptor.getInput())
-                .getResult());
-
-    mlir::FailureOr<mlir::Value> anyValue = buildAnyValue(
-        rewriter, loc, getTypeConverter(), op.getOutput().getType(),
-        typeIndexValue, payloadBitsValue);
-    if (mlir::failed(anyValue))
-      return mlir::failure();
-
-    rewriter.replaceOp(op, *anyValue);
-    return mlir::success();
-  }
-};
-
-struct LowerToStrOp
-    : public mlir::OpConversionPattern<libtriton::tvm_ffi::ToStrOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(libtriton::tvm_ffi::ToStrOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    mlir::Location loc = op.getLoc();
-    mlir::Type convertedPtrType =
-        getTypeConverter()->convertType(op.getOutput().getType());
-    if (!convertedPtrType)
-      return mlir::failure();
-
-    libtriton::conversion::utils::TVMFFIAnyLLVMDescriptor anyValue =
-        libtriton::conversion::utils::TVMFFIAnyLLVMDescriptor::from(
-            adaptor.getInput());
-    rewriter.replaceOpWithNewOp<mlir::LLVM::IntToPtrOp>(
-        op, convertedPtrType, anyValue.payloadBits(rewriter, loc));
-    return mlir::success();
-  }
-};
-
-struct LowerFromObjectOp
-    : public mlir::OpConversionPattern<libtriton::tvm_ffi::FromObjectOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(libtriton::tvm_ffi::FromObjectOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    mlir::Location loc = op.getLoc();
-    mlir::MLIRContext *context = op.getContext();
-    mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
-    mlir::Type i32Ty = mlir::IntegerType::get(context, 32);
-
-    mlir::TypedValue<mlir::IntegerType> typeIndexValue =
-        mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
-            mlir::LLVM::LoadOp::create(rewriter, loc, i32Ty, adaptor.getInput())
-                .getResult());
-    mlir::TypedValue<mlir::IntegerType> payloadBitsValue =
-        mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
-            mlir::LLVM::PtrToIntOp::create(rewriter, loc, i64Ty,
-                                           adaptor.getInput())
-                .getResult());
-
-    mlir::FailureOr<mlir::Value> anyValue = buildAnyValue(
-        rewriter, loc, getTypeConverter(), op.getOutput().getType(),
-        typeIndexValue, payloadBitsValue);
-    if (mlir::failed(anyValue))
-      return mlir::failure();
-
-    rewriter.replaceOp(op, *anyValue);
-    return mlir::success();
-  }
-};
-
-struct LowerToObjectOp
-    : public mlir::OpConversionPattern<libtriton::tvm_ffi::ToObjectOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(libtriton::tvm_ffi::ToObjectOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    mlir::Location loc = op.getLoc();
-    mlir::Type convertedPtrType =
-        getTypeConverter()->convertType(op.getOutput().getType());
-    if (!convertedPtrType)
-      return mlir::failure();
-
-    libtriton::conversion::utils::TVMFFIAnyLLVMDescriptor anyValue =
-        libtriton::conversion::utils::TVMFFIAnyLLVMDescriptor::from(
-            adaptor.getInput());
-    rewriter.replaceOpWithNewOp<mlir::LLVM::IntToPtrOp>(
-        op, convertedPtrType, anyValue.payloadBits(rewriter, loc));
-    return mlir::success();
-  }
-};
-
-struct LowerToTensorOp
-    : public mlir::OpConversionPattern<libtriton::tvm_ffi::ToTensorOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(libtriton::tvm_ffi::ToTensorOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    mlir::Location loc = op.getLoc();
-    mlir::MLIRContext *context = op.getContext();
-    mlir::Type i8Ty = mlir::IntegerType::get(context, 8);
-    mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
-
-    mlir::Type convertedTensorType =
-        getTypeConverter()->convertType(op.getOutput().getType());
-    if (!convertedTensorType)
-      return mlir::failure();
-
-    libtriton::conversion::utils::TVMFFIAnyLLVMDescriptor anyValue =
-        libtriton::conversion::utils::TVMFFIAnyLLVMDescriptor::from(
-            adaptor.getInput());
-    mlir::TypedValue<mlir::IntegerType> payloadBits =
+    const mlir::TypedValue<mlir::IntegerType> payloadBits =
         anyValue.payloadBits(rewriter, loc);
-    mlir::Value payloadPtr =
-        mlir::LLVM::IntToPtrOp::create(rewriter, loc, ptrTy, payloadBits)
-            .getResult();
 
-    mlir::Value tensorCellPtr = mlir::LLVM::GEPOp::create(
-        rewriter, loc, ptrTy, i8Ty, payloadPtr,
-        llvm::ArrayRef<mlir::LLVM::GEPArg>{kTVMFFIObjectHeaderBytes});
+    if (mlir::isa<libtriton::tvm_ffi::AnyType>(outputType)) {
+      return adaptor.getInput();
+    } else if (mlir::isa<libtriton::dlpack::DLTensorType>(outputType)) {
+      mlir::Type convertedTensorType =
+          getTypeConverter()->convertType(outputType);
+      if (!convertedTensorType)
+        return mlir::failure();
+      mlir::Value payloadPtr =
+          mlir::LLVM::IntToPtrOp::create(rewriter, loc, ptrTy, payloadBits)
+              .getResult();
+      mlir::Value tensorCellPtr = mlir::LLVM::GEPOp::create(
+          rewriter, loc, ptrTy, i8Ty, payloadPtr,
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{kTVMFFIObjectHeaderBytes});
+      return mlir::LLVM::LoadOp::create(rewriter, loc, convertedTensorType,
+                                        tensorCellPtr)
+          .getResult();
+    } else if (mlir::isa<mlir::Float64Type>(outputType)) {
+      mlir::Type convertedFloatType =
+          getTypeConverter()->convertType(outputType);
+      if (!convertedFloatType)
+        return mlir::failure();
+      return mlir::LLVM::BitcastOp::create(rewriter, loc, convertedFloatType,
+                                           payloadBits)
+          .getResult();
+    } else if (mlir::isa<mlir::LLVM::LLVMPointerType,
+                         libtriton::tvm_ffi::ObjectHandleType>(outputType)) {
+      mlir::Type convertedPtrType = getTypeConverter()->convertType(outputType);
+      if (!convertedPtrType)
+        return mlir::failure();
+      return mlir::LLVM::IntToPtrOp::create(rewriter, loc, convertedPtrType,
+                                            payloadBits)
+          .getResult();
+    } else if (mlir::isa<mlir::IntegerType>(outputType)) {
+      return castI64PayloadToInteger(rewriter, loc, getTypeConverter(),
+                                     outputType, payloadBits);
+    } else {
+      return mlir::failure();
+    }
+  }
 
-    mlir::Value tensorValue = mlir::LLVM::LoadOp::create(
-        rewriter, loc, convertedTensorType, tensorCellPtr);
-    rewriter.replaceOp(op, tensorValue);
-    return mlir::success();
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::tvm_ffi::ToOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    mlir::FailureOr<mlir::Value> convertedValue = mlir::failure();
+    if (mlir::isa<libtriton::tvm_ffi::AnyType>(op.getOutput().getType())) {
+      convertedValue = lowerToAny(op, adaptor, rewriter);
+    } else if (mlir::isa<libtriton::tvm_ffi::AnyType>(
+                   op.getInput().getType())) {
+      convertedValue = lowerFromAny(op, adaptor, rewriter);
+    }
+    if (mlir::failed(convertedValue)) {
+      return mlir::failure();
+    } else {
+      rewriter.replaceOp(op, *convertedValue);
+      return mlir::success();
+    }
   }
 };
 
@@ -425,10 +356,12 @@ struct LowerAnyFromLLVMOp
                   mlir::ConversionPatternRewriter &rewriter) const final {
     mlir::Type convertedAnyType =
         getTypeConverter()->convertType(op.getOutput().getType());
-    if (!convertedAnyType || adaptor.getInput().getType() != convertedAnyType)
+    if (!convertedAnyType || adaptor.getInput().getType() != convertedAnyType) {
       return mlir::failure();
-    rewriter.replaceOp(op, adaptor.getInput());
-    return mlir::success();
+    } else {
+      rewriter.replaceOp(op, adaptor.getInput());
+      return mlir::success();
+    }
   }
 };
 
@@ -439,10 +372,12 @@ struct LowerAnyToLLVMOp
   mlir::LogicalResult
   matchAndRewrite(libtriton::tvm_ffi::AnyToLLVMOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const final {
-    if (adaptor.getInput().getType() != op.getOutput().getType())
+    if (adaptor.getInput().getType() != op.getOutput().getType()) {
       return mlir::failure();
-    rewriter.replaceOp(op, adaptor.getInput());
-    return mlir::success();
+    } else {
+      rewriter.replaceOp(op, adaptor.getInput());
+      return mlir::success();
+    }
   }
 };
 
@@ -451,21 +386,24 @@ struct LowerErrorSetRaisedFromCStrOp
           libtriton::tvm_ffi::ErrorSetRaisedFromCStrOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  mlir::LogicalResult matchAndRewrite(
-      libtriton::tvm_ffi::ErrorSetRaisedFromCStrOp op, OpAdaptor adaptor,
-      mlir::ConversionPatternRewriter &rewriter) const final {
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::tvm_ffi::ErrorSetRaisedFromCStrOp op,
+                  OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
     mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
-    if (!moduleOp)
+    if (!moduleOp) {
       return mlir::failure();
+    }
 
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
         capi::getOrCreateTVMFFIErrorSetRaisedFromCStr(moduleOp);
-    if (mlir::failed(calleeOrErr))
+    if (mlir::failed(calleeOrErr)) {
       return mlir::failure();
+    }
 
-    mlir::LLVM::CallOp::create(rewriter, op.getLoc(), *calleeOrErr,
-                               mlir::ValueRange{adaptor.getKind(),
-                                                adaptor.getMessage()});
+    mlir::LLVM::CallOp::create(
+        rewriter, op.getLoc(), *calleeOrErr,
+        mlir::ValueRange{adaptor.getKind(), adaptor.getMessage()});
     rewriter.eraseOp(op);
     return mlir::success();
   }
@@ -541,12 +479,9 @@ void populateTVMFFIToLLVMConversionPatterns(
     return libtriton::conversion::utils::TVMFFIObjectHandleLLVMDescriptor::
         getLLVMType(type.getContext());
   });
-  patterns.add<LowerFromFloatOp, LowerFromIntOp, LowerFromObjectOp,
-               LowerFromStrOp, LowerFromTensorOp, LowerTensorFromDLPackOp,
-               LowerToFloatOp, LowerToIntOp, LowerToObjectOp, LowerToStrOp,
-               LowerToTensorOp, LowerAnyFromLLVMOp, LowerAnyToLLVMOp,
-               LowerErrorSetRaisedFromCStrOp>(
-      typeConverter, context);
+  patterns.add<LowerToOp, LowerTensorFromDLPackOp, LowerAnyFromLLVMOp,
+               LowerAnyToLLVMOp, LowerErrorSetRaisedFromCStrOp>(typeConverter,
+                                                                context);
 
   target.addIllegalDialect<libtriton::tvm_ffi::TVMFFIDialect>();
 }

@@ -3,7 +3,17 @@ from __future__ import annotations
 import dataclasses
 import enum
 import re
-from typing import Any, Callable, Dict, Iterable, List, Optional, Pattern, Sequence
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Pattern,
+    Sequence,
+    Tuple,
+)
 from typing_extensions import Protocol
 
 
@@ -48,6 +58,13 @@ class _RegexRule(object):
     builder: Callable[[str, Dict[str, str]], GuardExpr]
 
 
+@dataclasses.dataclass(frozen=True)
+class Guards(object):
+    """Represents a set of parsed guard expressions from torch._guards.GuardsSet."""
+
+    expressions: Tuple[GuardExpr, ...]
+
+
 class GuardParser(object):
     """Regex-based parser for common tensor-related dynamo guard snippets."""
 
@@ -84,6 +101,22 @@ class GuardParser(object):
             None,
             map(lambda code: self._parse_one(code), codes),
         )
+
+    def parse_guards(self, guards_set: Any) -> Guards:
+        """Parse a torch._guards.GuardsSet into a Guards.
+
+        Args:
+            guards_set: A torch._guards.GuardsSet object with an 'inner' attribute.
+
+        Returns:
+            Guards containing all parsed guard expressions.
+        """
+        expressions: Tuple[GuardExpr, ...] = tuple(
+            self.parse(
+                code for entry in guards_set.inner for code in entry.code_list or []
+            )
+        )
+        return Guards(expressions=expressions)
 
     def _parse_one(self, code: str) -> Optional[GuardExpr]:
         for rule in self._rules:

@@ -446,6 +446,31 @@ struct LowerAnyToLLVMOp
   }
 };
 
+struct LowerErrorSetRaisedFromCStrOp
+    : public mlir::OpConversionPattern<
+          libtriton::tvm_ffi::ErrorSetRaisedFromCStrOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      libtriton::tvm_ffi::ErrorSetRaisedFromCStrOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter &rewriter) const final {
+    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    if (!moduleOp)
+      return mlir::failure();
+
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
+        capi::getOrCreateTVMFFIErrorSetRaisedFromCStr(moduleOp);
+    if (mlir::failed(calleeOrErr))
+      return mlir::failure();
+
+    mlir::LLVM::CallOp::create(rewriter, op.getLoc(), *calleeOrErr,
+                               mlir::ValueRange{adaptor.getKind(),
+                                                adaptor.getMessage()});
+    rewriter.eraseOp(op);
+    return mlir::success();
+  }
+};
+
 class ConvertTVMFFIToLLVMPass
     : public impl::ConvertTVMFFIToLLVMBase<ConvertTVMFFIToLLVMPass> {
 public:
@@ -519,7 +544,8 @@ void populateTVMFFIToLLVMConversionPatterns(
   patterns.add<LowerFromFloatOp, LowerFromIntOp, LowerFromObjectOp,
                LowerFromStrOp, LowerFromTensorOp, LowerTensorFromDLPackOp,
                LowerToFloatOp, LowerToIntOp, LowerToObjectOp, LowerToStrOp,
-               LowerToTensorOp, LowerAnyFromLLVMOp, LowerAnyToLLVMOp>(
+               LowerToTensorOp, LowerAnyFromLLVMOp, LowerAnyToLLVMOp,
+               LowerErrorSetRaisedFromCStrOp>(
       typeConverter, context);
 
   target.addIllegalDialect<libtriton::tvm_ffi::TVMFFIDialect>();

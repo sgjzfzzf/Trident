@@ -1,7 +1,8 @@
 // RUN: libtriton-core-opt %s -convert-to-llvm | FileCheck %s
 // RUN: libtriton-core-opt %s -convert-to-llvm | mlir-opt -convert-func-to-llvm -reconcile-unrealized-casts | mlir-translate --mlir-to-llvmir -o /dev/null
 
-// CHECK: llvm.func @TVMFFITensorFromDLPack
+// CHECK-DAG: llvm.func @TVMFFIErrorSetRaisedFromCStr
+// CHECK-DAG: llvm.func @TVMFFITensorFromDLPack
 
 // CHECK-LABEL: func.func @lowering_from_int
 // CHECK-SAME: (%[[FROM_INT_ARG:.*]]: i64) -> !llvm.struct<(i32, i32, i64)>
@@ -86,6 +87,17 @@ func.func @lowering_to_str(%a: !tvm_ffi.any) -> !llvm.ptr {
   // CHECK: return %[[TO_STR_VALUE]] : !llvm.ptr
   %0 = tvm_ffi.to_str %a : !tvm_ffi.any -> !llvm.ptr
   return %0 : !llvm.ptr
+}
+
+// CHECK-LABEL: func.func @lowering_error_set_raised_from_c_str
+// CHECK-SAME: (%[[ERROR_KIND:.*]]: !llvm.ptr, %[[ERROR_MESSAGE:.*]]: !llvm.ptr)
+func.func @lowering_error_set_raised_from_c_str(%kind: !llvm.ptr, %message: !llvm.ptr) {
+  // CHECK-NOT: tvm_ffi.
+  // CHECK-NOT: builtin.unrealized_conversion_cast
+  // CHECK: llvm.call @TVMFFIErrorSetRaisedFromCStr(%[[ERROR_KIND]], %[[ERROR_MESSAGE]]) : (!llvm.ptr, !llvm.ptr) -> ()
+  // CHECK: return
+  tvm_ffi.error_set_raised_from_c_str %kind, %message : !llvm.ptr, !llvm.ptr
+  return
 }
 
 // CHECK-LABEL: func.func @lowering_from_tensor

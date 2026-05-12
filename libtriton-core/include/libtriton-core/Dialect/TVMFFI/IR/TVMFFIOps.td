@@ -131,4 +131,16 @@ def TVMFFI_TensorFromDLPackOp
                        "`,` type($require_contiguous) `->` type($output)";
 }
 
+def TVMFFI_ErrorSetRaisedFromCStrOp
+    : Op<TVMFFI_Dialect, "error_set_raised_from_c_str",
+         [MemoryEffects<[MemWrite]>]> {
+  let summary = "Call TVMFFIErrorSetRaisedFromCStr";
+  let description = [{
+    Models `TVMFFIErrorSetRaisedFromCStr(kind, message)`.
+  }];
+  let arguments = (ins LLVM_AnyPointer : $kind, LLVM_AnyPointer : $message);
+  let assemblyFormat = "$kind `,` $message attr-dict `:` type($kind) `,` "
+                       "type($message)";
+}
+
 #endif // LIBTRITON_CORE_DIALECT_TVMFFI_IR_TVMFFIOPS_TD_

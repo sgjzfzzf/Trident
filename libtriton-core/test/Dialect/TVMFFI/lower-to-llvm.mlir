@@ -185,7 +185,7 @@ func.func @lowering_to_tensor(%a: !tvm_ffi.any) -> !dlpack.tensor {
 func.func @lowering_from_object(%h: !tvm_ffi.object_handle) -> !tvm_ffi.any {
   // CHECK-NOT: tvm_ffi.
   // CHECK-NOT: builtin.unrealized_conversion_cast
-  // CHECK: %[[FROM_OBJECT_TYPE:.*]] = llvm.load %[[FROM_OBJECT_ARG]] : !llvm.ptr -> i32
+  // CHECK: %[[FROM_OBJECT_TYPE:.*]] = llvm.mlir.constant(70 : i32) : i32
   // CHECK: %[[FROM_OBJECT_BITS:.*]] = llvm.ptrtoint %[[FROM_OBJECT_ARG]] : !llvm.ptr to i64
   // CHECK: %[[FROM_OBJECT_ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
   // CHECK: %[[FROM_OBJECT_INIT:.*]] = llvm.mlir.poison : !llvm.struct<(i32, i32, i64)>

@@ -42,7 +42,7 @@ class Guard(object):
     def build_ir(
         self, context: Optional[ir.Context] = None, loc: Optional[ir.Location] = None
     ) -> ir.Operation:
-        return arith.constant(ir.Type.parse("i1"), 1)
+        return arith.constant(ir.Type.parse("i1"), 1, loc=loc)
 
 
 class Guards(object):

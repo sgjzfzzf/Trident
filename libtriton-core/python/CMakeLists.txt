@@ -88,7 +88,10 @@ declare_mlir_python_sources(
   LibTritonCorePythonSources
   SOURCES
   __init__.py
-  capi_utils.py)
+  capi_utils.py
+  dialects/dlpack.py
+  dialects/torch_ext.py
+  dialects/tvm_ffi.py)
 
 declare_mlir_python_sources(
   LibTritonCorePythonSources.TorchMlirCompat

@@ -24,7 +24,8 @@ static mlir::Value rewriteKernelOperand(mlir::Value operand) {
 }
 
 class NormalizeOperandsPattern
-    : public mlir::OpRewritePattern<libtriton::torch_ext::TritonKernelLaunchOp> {
+    : public mlir::OpRewritePattern<
+          libtriton::torch_ext::TritonKernelLaunchOp> {
 public:
   using mlir::OpRewritePattern<
       libtriton::torch_ext::TritonKernelLaunchOp>::OpRewritePattern;

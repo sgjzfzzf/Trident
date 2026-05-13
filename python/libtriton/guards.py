@@ -20,7 +20,7 @@ from libtriton._C.libtriton_core.dialects import arith
 class Guard(object):
     """Base class for guard definitions with opt-in subclass registration."""
 
-    _registry: Set[Type["Guard"]] = set()
+    _registry: Set[Type[Guard]] = set()
 
     def __init__(self, code: str, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)

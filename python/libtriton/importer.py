@@ -7,7 +7,7 @@ import torch
 import triton
 
 from libtriton._C.libtriton_core import ir
-from libtriton._C.libtriton_core.dialects import arith, func
+from libtriton._C.libtriton_core.dialects import arith, func, llvm, torch_ext
 from libtriton._C.libtriton_core.extras.fx_importer import FxImporter, GraphNodeImporter
 
 
@@ -59,7 +59,7 @@ class TritonGraphNodeImporter(GraphNodeImporter):
     @staticmethod
     def _triton_type_to_ir_type(triton_type: str) -> ir.Type:
         if triton_type.startswith("*"):
-            return ir.Type.parse("!llvm.ptr")
+            return llvm.PointerType.get()
         elif triton_type == "bf16":
             return ir.BF16Type.get()
         elif triton_type == "fp16":
@@ -71,7 +71,7 @@ class TritonGraphNodeImporter(GraphNodeImporter):
         elif triton_type.startswith(("i", "u")):
             return ir.IntegerType.get_signless(int(triton_type[1:]))
         else:
-            raise ValueError(f"unsupported Triton runtime type: {triton_type}")
+            assert False, f"unsupported Triton type: {triton_type}"
 
     def _materialize_runtime_argument(
         self,
@@ -93,11 +93,9 @@ class TritonGraphNodeImporter(GraphNodeImporter):
                 elif triton_type in ("fp16", "bf16", "fp32", "fp64"):
                     return arith.constant(target_type, float(value))
                 else:
-                    raise ValueError(
-                        f"unsupported Triton runtime constant for {name}: {value}"
-                    )
+                    assert False, f"unsupported constant argument type: {triton_type}"
         else:
-            raise ValueError(f"missing Triton runtime argument: {name}")
+            assert False, f"missing runtime argument for {name} of type {triton_type}"
 
     def _import_hop_triton_kernel_wrapper_mutation(
         self,
@@ -156,7 +154,8 @@ class TritonGraphNodeImporter(GraphNodeImporter):
             index_type = ir.IndexType.get()
             i32_type = ir.IntegerType.get_signless(32)
             grid_x, grid_y, grid_z = grid
-            launch_operands: List[ir.Value] = [
+            torch_ext.TritonKernelLaunchOp(
+                ir.Attribute.parse(f"@{binary_name}::@{kernel.metadata.name}"),
                 arith.constant(index_type, grid_x),
                 arith.constant(index_type, grid_y),
                 arith.constant(index_type, grid_z),
@@ -166,21 +165,10 @@ class TritonGraphNodeImporter(GraphNodeImporter):
                 ),
                 arith.constant(index_type, 1),
                 arith.constant(index_type, 1),
-                arith.constant(i32_type, kernel.metadata.shared),
-                *operands,
-            ]
-
-            ir.Operation.create(
-                "torch_ext.triton_kernel_launch",
-                operands=launch_operands,
-                attributes={
-                    "kernel": ir.Attribute.parse(
-                        f"@{binary_name}::@{kernel.metadata.name}"
-                    ),
-                    "operandSegmentSizes": ir.Attribute.parse(
-                        f"array<i32: 1, 1, 1, 1, 1, 1, 1, {len(operands)}, 0>"
-                    ),
-                },
+                operands,
+                dynamicSharedMemorySize=arith.constant(
+                    i32_type, kernel.metadata.shared
+                ),
                 loc=loc,
             )
 

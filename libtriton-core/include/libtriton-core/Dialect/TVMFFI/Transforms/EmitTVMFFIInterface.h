@@ -15,9 +15,10 @@ namespace libtriton::tvm_ffi {
 ///
 /// @p solver must already have been initialized and run so that
 /// MemRefOriginDataFlowAnalysis results are available.
-mlir::FailureOr<mlir::func::FuncOp> buildEmitTVMFFIInterfaceWrapper(
-    mlir::ModuleOp moduleOp, mlir::DataFlowSolver &solver,
-    mlir::func::FuncOp targetFunc);
+mlir::FailureOr<mlir::func::FuncOp>
+buildEmitTVMFFIInterfaceWrapper(mlir::ModuleOp moduleOp,
+                                mlir::DataFlowSolver &solver,
+                                mlir::func::FuncOp targetFunc);
 
 } // namespace libtriton::tvm_ffi
 

@@ -29,7 +29,8 @@ class DLPack_IndexedOp<string mnemonic, list<Trait> traits = []>
   let arguments = (ins DLPack_DLTensor : $input, Index : $index);
 }
 
-def DLPack_FromMemRefOwnedOp : DLPack_MemRefOp<"from_memref_owned", [Pure]> {
+def DLPack_FromMemRefOwnedOp
+  : DLPack_MemRefOp<"from_memref_owned", [MemoryEffects<[MemWrite]>]> {
   let summary = "Convert an MLIR memref value to a DLManagedTensor handle";
   let description =
       [{Bridges a memref -
@@ -40,7 +41,7 @@ def DLPack_FromMemRefOwnedOp : DLPack_MemRefOp<"from_memref_owned", [Pure]> {
 }
 
 def DLPack_FromMemRefBorrowedOp
-    : DLPack_MemRefOp<"from_memref_borrowed", [Pure]> {
+  : DLPack_MemRefOp<"from_memref_borrowed", [MemoryEffects<[MemWrite]>]> {
   let summary = "Convert an MLIR memref value to a borrowed DLTensor handle";
   let description = [{Bridges a memref -
         typed MLIR value into a non-owning DLPack DLTensor handle value
@@ -61,7 +62,8 @@ def DLPack_ViewOp : DLPack_Op<"view", [Pure]> {
   let results = (outs DLPack_DLTensor : $output);
 }
 
-def DLPack_ToMemRefOp : DLPack_TensorOp<"to_memref", [Pure]> {
+def DLPack_ToMemRefOp
+  : DLPack_TensorOp<"to_memref", [MemoryEffects<[MemRead]>]> {
   let summary = "Convert a DLTensor handle to an MLIR memref value";
   let description =
       [{Bridges a DLPack DLTensor handle value to an MLIR memref -
@@ -77,13 +79,15 @@ def DLPack_NDimOp : DLPack_TensorOp<"ndim", [Pure]> {
   let results = (outs I32 : $output);
 }
 
-def DLPack_ShapeOp : DLPack_IndexedOp<"shape", [Pure]> {
+def DLPack_ShapeOp
+  : DLPack_IndexedOp<"shape", [MemoryEffects<[MemRead]>]> {
   let summary = "Get one shape element from a DLTensor handle";
   let description = [{Extracts one shape entry from a DLPack DLTensor handle.}];
   let results = (outs I64 : $output);
 }
 
-def DLPack_StridesOp : DLPack_IndexedOp<"strides", [Pure]> {
+def DLPack_StridesOp
+  : DLPack_IndexedOp<"strides", [MemoryEffects<[MemRead]>]> {
   let summary = "Get one stride element from a DLTensor handle";
   let description =
       [{Extracts one stride entry from a DLPack DLTensor handle.}];

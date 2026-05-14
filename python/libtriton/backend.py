@@ -1,4 +1,7 @@
 from __future__ import annotations
+from functools import cached_property
+import inspect
+from itertools import starmap
 from typing import (
     Any,
     Callable,
@@ -34,14 +37,12 @@ from libtriton._C.libtriton_core.dialects import (
     transform,
     tvm_ffi as tvm_ffi_d,
 )
-from .guards import GuardParser, Guards
+from .guards import Guards, parse_guards
 from .importer import TritonFxImporter
 
 
 class TritonGraphModule(object):
     """Compiles a torch.fx.GraphModule containing triton ops via TritonFxImporter."""
-
-    _parser: GuardParser = GuardParser()
 
     def __init__(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -118,6 +119,10 @@ class TritonGraphModule(object):
     def _message_value(self) -> str:
         return "No suitable guard matched\x00"
 
+    @cached_property
+    def _parameters(self) -> Sequence[str]:
+        return inspect.signature(self.fn).parameters.keys()
+
     @property
     def _ptr_type(self) -> ir.Type:
         return llvm.PointerType.get()
@@ -134,7 +139,7 @@ class TritonGraphModule(object):
             gm, gs = torch._dynamo.export(
                 self.fn, aten_graph=True, assume_static_by_default=True
             )(*args, **kwargs)
-            guards: Guards = TritonGraphModule._parser.parse_guards(gs)
+            guards: Guards = parse_guards(gs)
             model_name: str = f"{self.fn.__name__}_{hash(guards)}"
             module: ir.Module = fx.stateless_fx_import(
                 gm,
@@ -165,11 +170,10 @@ class TritonGraphModule(object):
         ]
         return op.sym_name.value, ir.FunctionType(op.type)
 
-    def _emit_unbox_any_arg(
+    def _emit_unpack_any_arg(
         self,
         packed_args_ptr: ir.Value,
         index: int,
-        target_ty: ir.Type,
     ) -> ir.Value:
         arg_slot_ptr: ir.Value = llvm.GEPOp(
             self._ptr_type,
@@ -180,9 +184,18 @@ class TritonGraphModule(object):
             None,
         ).result
         any_value_llvm: ir.Value = llvm.LoadOp(self._any_llvm_type, arg_slot_ptr).result
-        any_value: ir.Value = tvm_ffi_d.AnyFromLLVMOp(
-            self._any_type, any_value_llvm
-        ).output
+        return tvm_ffi_d.AnyFromLLVMOp(self._any_type, any_value_llvm).output
+
+    def _emit_unbox_any_arg(
+        self,
+        packed_args_ptr: ir.Value,
+        index: int,
+        target_ty: ir.Type,
+    ) -> ir.Value:
+        any_value: ir.Value = self._emit_unpack_any_arg(
+            packed_args_ptr,
+            index,
+        )
         if isinstance(target_ty, ir.RankedTensorType):
             dl_tensor: ir.Value = tvm_ffi_d.ToOp(self._dl_tensor_type, any_value).output
             memref_ty: ir.Type = ir.MemRefType.get(
@@ -271,12 +284,18 @@ class TritonGraphModule(object):
         dispatch_iter: Iterator[Tuple[Guards, str, ir.FunctionType]],
         packed_args_ptr: ir.Value,
         packed_result_ptr: ir.Value,
+        symbol_table: Optional[Dict[str, ir.Value]] = None,
     ) -> ir.Value:
         item: Optional[Tuple[Guards, str, ir.FunctionType]] = next(dispatch_iter, None)
         if item is None:
             return self._emit_fallback_error()
+        if symbol_table is None:
+            symbol_table = {
+                name: self._emit_unpack_any_arg(packed_args_ptr, idx)
+                for idx, name in enumerate(self._parameters)
+            }
         guard, callee_name, callee_ty = item
-        cond: ir.Value = guard.build_ir(context=self.ctx)
+        cond: ir.Value = guard.build_ir(symbol_table, context=self.ctx)
         if_op: scf.IfOp = scf.IfOp(cond, [self._i32_type], has_else=True)
         with ir.InsertionPoint(if_op.then_block):
             success: ir.Value = self._emit_dispatch_call(
@@ -291,6 +310,7 @@ class TritonGraphModule(object):
                 dispatch_iter,
                 packed_args_ptr,
                 packed_result_ptr,
+                symbol_table,
             )
             scf.YieldOp([fallback])
         [result] = if_op.results
@@ -336,14 +356,15 @@ class TritonGraphModule(object):
                 _, packed_args_ptr, _, packed_result_ptr = entry_block.arguments
                 with ir.InsertionPoint(entry_block):
                     status: ir.Value = self._emit_dispatch_if_chain(
-                        map(
-                            lambda guards: (
+                        starmap(
+                            lambda guards, m: (
                                 guards,
                                 *TritonGraphModule._lookup_func_type(
-                                    module, self.fn.__name__
+                                    m,
+                                    self.fn.__name__,
                                 ),
                             ),
-                            self.guard_to_fx_map,
+                            self.guard_to_fx_map.items(),
                         ),
                         packed_args_ptr,
                         packed_result_ptr,
@@ -394,6 +415,7 @@ class TritonGraphModule(object):
     @staticmethod
     def _build_builtin_pipeline(chip: str) -> str:
         passes: List[str] = [
+            "func.func(canonicalize,sccp,canonicalize,cse)",
             "one-shot-bufferize{bufferize-function-boundaries=1 function-boundary-type-conversion=identity-layout-map}",
             "convert-linalg-to-parallel-loops",
             "func.func(gpu-map-parallel-loops)",
@@ -411,12 +433,12 @@ class TritonGraphModule(object):
             "convert-scf-to-cf",
             "convert-cf-to-llvm",
             "convert-func-to-llvm",
-            "func.func(canonicalize)",
-            "func.func(cse)",
+            "func.func(canonicalize, cse)",
             "reconcile-unrealized-casts",
         ]
         return "builtin.module({})".format(", ".join(passes))
 
+    @staticmethod
     def _build_torch_pipeline() -> str:
         passes: List[str] = [
             "func.func(torch-restructure-non-constant-axes)",

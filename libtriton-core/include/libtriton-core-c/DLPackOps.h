@@ -16,6 +16,14 @@ MLIR_CAPI_EXPORTED bool
 libtritonCoreOperationIsADLPackViewOp(MlirOperation operation);
 MLIR_CAPI_EXPORTED bool
 libtritonCoreOperationIsADLPackToMemRefOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsADLPackNDimOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsADLPackShapeOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsADLPackStridesOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsADLPackByteOffsetOp(MlirOperation operation);
 
 MLIR_CAPI_EXPORTED MlirValue
 libtritonCoreDLPackFromMemRefOwnedGetInput(MlirOperation operation);
@@ -36,6 +44,30 @@ MLIR_CAPI_EXPORTED MlirValue
 libtritonCoreDLPackToMemRefGetInput(MlirOperation operation);
 MLIR_CAPI_EXPORTED MlirValue
 libtritonCoreDLPackToMemRefGetOutput(MlirOperation operation);
+
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackNDimGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackNDimGetOutput(MlirOperation operation);
+
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackShapeGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackShapeGetIndex(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackShapeGetOutput(MlirOperation operation);
+
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackStridesGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackStridesGetIndex(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackStridesGetOutput(MlirOperation operation);
+
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackByteOffsetGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackByteOffsetGetOutput(MlirOperation operation);
 
 #ifdef __cplusplus
 }

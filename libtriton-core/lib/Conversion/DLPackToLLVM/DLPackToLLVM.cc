@@ -592,6 +592,90 @@ struct LowerToMemRefOp
   }
 };
 
+struct LowerNDimOp
+    : public mlir::OpConversionPattern<libtriton::dlpack::NDimOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::dlpack::NDimOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    libtriton::conversion::utils::DLTensorLLVMDescriptor dlTensor =
+        libtriton::conversion::utils::DLTensorLLVMDescriptor::from(
+            adaptor.getInput());
+    rewriter.replaceOp(op, dlTensor.ndim(rewriter, loc));
+    return mlir::success();
+  }
+};
+
+struct LowerShapeOp
+    : public mlir::OpConversionPattern<libtriton::dlpack::ShapeOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::dlpack::ShapeOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    libtriton::conversion::utils::DLTensorLLVMDescriptor dlTensor =
+        libtriton::conversion::utils::DLTensorLLVMDescriptor::from(
+            adaptor.getInput());
+    mlir::TypedValue<mlir::LLVM::LLVMPointerType> shapePtr =
+        dlTensor.shape(rewriter, loc);
+    mlir::Value indexValue = adaptor.getIndex();
+    mlir::Type i64Ty = mlir::IntegerType::get(op.getContext(), 64);
+    mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(op.getContext());
+    mlir::Value elementPtr = mlir::LLVM::GEPOp::create(
+        rewriter, loc, ptrTy, i64Ty, shapePtr,
+        llvm::ArrayRef<mlir::LLVM::GEPArg>{indexValue});
+    mlir::Value shapeValue =
+        mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, elementPtr);
+    rewriter.replaceOp(op, shapeValue);
+    return mlir::success();
+  }
+};
+
+struct LowerStridesOp
+    : public mlir::OpConversionPattern<libtriton::dlpack::StridesOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::dlpack::StridesOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    libtriton::conversion::utils::DLTensorLLVMDescriptor dlTensor =
+        libtriton::conversion::utils::DLTensorLLVMDescriptor::from(
+            adaptor.getInput());
+    mlir::TypedValue<mlir::LLVM::LLVMPointerType> stridesPtr =
+        dlTensor.strides(rewriter, loc);
+    mlir::Value indexValue = adaptor.getIndex();
+    mlir::Type i64Ty = mlir::IntegerType::get(op.getContext(), 64);
+    mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(op.getContext());
+    mlir::Value elementPtr = mlir::LLVM::GEPOp::create(
+        rewriter, loc, ptrTy, i64Ty, stridesPtr,
+        llvm::ArrayRef<mlir::LLVM::GEPArg>{indexValue});
+    mlir::Value strideValue =
+        mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, elementPtr);
+    rewriter.replaceOp(op, strideValue);
+    return mlir::success();
+  }
+};
+
+struct LowerByteOffsetOp
+    : public mlir::OpConversionPattern<libtriton::dlpack::ByteOffsetOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::dlpack::ByteOffsetOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    libtriton::conversion::utils::DLTensorLLVMDescriptor dlTensor =
+        libtriton::conversion::utils::DLTensorLLVMDescriptor::from(
+            adaptor.getInput());
+    rewriter.replaceOp(op, dlTensor.byteOffset(rewriter, loc));
+    return mlir::success();
+  }
+};
+
 struct LowerTensorFromLLVMOp
     : public mlir::OpConversionPattern<libtriton::dlpack::TensorFromLLVMOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -682,7 +766,8 @@ void populateDLPackToLLVMConversionPatterns(
   mlir::populateReturnOpTypeConversionPattern(patterns, typeConverter);
   patterns.add<LowerFromMemRefOwnedOp, LowerFromMemRefBorrowedOp,
                LowerTensorFromLLVMOp, LowerTensorToLLVMOp, LowerViewOp,
-               LowerToMemRefOp>(typeConverter, context);
+               LowerToMemRefOp, LowerNDimOp, LowerShapeOp, LowerStridesOp,
+               LowerByteOffsetOp>(typeConverter, context);
 
   target.addIllegalDialect<libtriton::dlpack::DLPackDialect>();
   target.addLegalDialect<mlir::BuiltinDialect, mlir::LLVM::LLVMDialect>();

@@ -90,3 +90,55 @@ func.func @lower_to_memref(%arg0: !dlpack.tensor) -> memref<?xf32> {
   %0 = dlpack.to_memref %arg0 : !dlpack.tensor -> memref<?xf32>
   return %0 : memref<?xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @lower_ndim
+// CHECK-SAME: (%[[ARG:.*]]: !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>)
+// CHECK-SAME: -> i32
+func.func @lower_ndim(%arg0: !dlpack.tensor) -> i32 {
+  // CHECK: %[[NDIM:.*]] = llvm.extractvalue %[[ARG]][2]
+  // CHECK: return %[[NDIM]] : i32
+  %0 = dlpack.ndim %arg0 : !dlpack.tensor -> i32
+  return %0 : i32
+}
+
+// -----
+
+// CHECK-LABEL: func.func @lower_shape
+// CHECK-SAME: (%[[ARG:.*]]: !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>, %[[IDX:.*]]: i64)
+// CHECK-SAME: -> i64
+func.func @lower_shape(%arg0: !dlpack.tensor, %arg1: index) -> i64 {
+  // CHECK: %[[SHAPE_PTR:.*]] = llvm.extractvalue %[[ARG]][4]
+  // CHECK: %[[SHAPE_GEP:.*]] = llvm.getelementptr %[[SHAPE_PTR]][%[[IDX]]]
+  // CHECK: %[[SHAPE:.*]] = llvm.load %[[SHAPE_GEP]]
+  // CHECK: return %[[SHAPE]] : i64
+  %0 = dlpack.shape %arg0[%arg1] : !dlpack.tensor, index -> i64
+  return %0 : i64
+}
+
+// -----
+
+// CHECK-LABEL: func.func @lower_strides
+// CHECK-SAME: (%[[ARG:.*]]: !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>, %[[IDX:.*]]: i64)
+// CHECK-SAME: -> i64
+func.func @lower_strides(%arg0: !dlpack.tensor, %arg1: index) -> i64 {
+  // CHECK: %[[STRIDES_PTR:.*]] = llvm.extractvalue %[[ARG]][5]
+  // CHECK: %[[STRIDES_GEP:.*]] = llvm.getelementptr %[[STRIDES_PTR]][%[[IDX]]]
+  // CHECK: %[[STRIDE:.*]] = llvm.load %[[STRIDES_GEP]]
+  // CHECK: return %[[STRIDE]] : i64
+  %0 = dlpack.strides %arg0[%arg1] : !dlpack.tensor, index -> i64
+  return %0 : i64
+}
+
+// -----
+
+// CHECK-LABEL: func.func @lower_byte_offset
+// CHECK-SAME: (%[[ARG:.*]]: !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>)
+// CHECK-SAME: -> i64
+func.func @lower_byte_offset(%arg0: !dlpack.tensor) -> i64 {
+  // CHECK: %[[OFFSET:.*]] = llvm.extractvalue %[[ARG]][6]
+  // CHECK: return %[[OFFSET]] : i64
+  %0 = dlpack.byte_offset %arg0 : !dlpack.tensor -> i64
+  return %0 : i64
+}

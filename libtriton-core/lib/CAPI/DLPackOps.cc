@@ -63,6 +63,22 @@ bool libtritonCoreOperationIsADLPackToMemRefOp(MlirOperation operation) {
   return isOpType<libtriton::dlpack::ToMemRefOp>(operation);
 }
 
+bool libtritonCoreOperationIsADLPackNDimOp(MlirOperation operation) {
+  return isOpType<libtriton::dlpack::NDimOp>(operation);
+}
+
+bool libtritonCoreOperationIsADLPackShapeOp(MlirOperation operation) {
+  return isOpType<libtriton::dlpack::ShapeOp>(operation);
+}
+
+bool libtritonCoreOperationIsADLPackStridesOp(MlirOperation operation) {
+  return isOpType<libtriton::dlpack::StridesOp>(operation);
+}
+
+bool libtritonCoreOperationIsADLPackByteOffsetOp(MlirOperation operation) {
+  return isOpType<libtriton::dlpack::ByteOffsetOp>(operation);
+}
+
 MlirValue libtritonCoreDLPackFromMemRefOwnedGetInput(MlirOperation operation) {
   return getInputValue<libtriton::dlpack::FromMemRefOwnedOp>(operation);
 }
@@ -95,4 +111,62 @@ MlirValue libtritonCoreDLPackToMemRefGetInput(MlirOperation operation) {
 
 MlirValue libtritonCoreDLPackToMemRefGetOutput(MlirOperation operation) {
   return getOutputValue<libtriton::dlpack::ToMemRefOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackNDimGetInput(MlirOperation operation) {
+  return getInputValue<libtriton::dlpack::NDimOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackNDimGetOutput(MlirOperation operation) {
+  return getOutputValue<libtriton::dlpack::NDimOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackShapeGetInput(MlirOperation operation) {
+  return getInputValue<libtriton::dlpack::ShapeOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackShapeGetIndex(MlirOperation operation) {
+  mlir::Operation *op = unwrap(operation);
+  if (!op) {
+    return getNullValue();
+  }
+  libtriton::dlpack::ShapeOp typedOp =
+      llvm::dyn_cast<libtriton::dlpack::ShapeOp>(op);
+  if (!typedOp) {
+    return getNullValue();
+  }
+  return wrap(typedOp.getIndex());
+}
+
+MlirValue libtritonCoreDLPackShapeGetOutput(MlirOperation operation) {
+  return getOutputValue<libtriton::dlpack::ShapeOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackStridesGetInput(MlirOperation operation) {
+  return getInputValue<libtriton::dlpack::StridesOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackStridesGetIndex(MlirOperation operation) {
+  mlir::Operation *op = unwrap(operation);
+  if (!op) {
+    return getNullValue();
+  }
+  libtriton::dlpack::StridesOp typedOp =
+      llvm::dyn_cast<libtriton::dlpack::StridesOp>(op);
+  if (!typedOp) {
+    return getNullValue();
+  }
+  return wrap(typedOp.getIndex());
+}
+
+MlirValue libtritonCoreDLPackStridesGetOutput(MlirOperation operation) {
+  return getOutputValue<libtriton::dlpack::StridesOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackByteOffsetGetInput(MlirOperation operation) {
+  return getInputValue<libtriton::dlpack::ByteOffsetOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackByteOffsetGetOutput(MlirOperation operation) {
+  return getOutputValue<libtriton::dlpack::ByteOffsetOp>(operation);
 }

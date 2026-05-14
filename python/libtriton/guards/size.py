@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Final, Optional
+from typing import Any, Dict, Final, Optional
 from typing_extensions import override
+
+from libtriton._C.libtriton_core import ir
+from libtriton._C.libtriton_core.dialects import arith, dlpack, tvm_ffi as tvm_ffi_d
 
 from .check import CheckGuard
 
@@ -32,3 +35,22 @@ class SizeGuard(CheckGuard):
             return SizeGuard(variable, int(index), int(expected))
         else:
             return None
+
+    @override
+    def build_ir(
+        self,
+        symbol_table: Dict[str, ir.Value],
+        *,
+        context: Optional[ir.Context] = None,
+        loc: Optional[ir.Location] = None,
+    ) -> ir.Operation:
+        any_value: ir.Value = symbol_table[self.variable]
+        dl_tensor_type: ir.Type = ir.Type.parse("!dlpack.tensor", context=context)
+        index_type: ir.Type = ir.IndexType.get(context=context)
+        i64_type: ir.Type = ir.IntegerType.get_signless(64, context=context)
+
+        dl_tensor: ir.Value = tvm_ffi_d.to(dl_tensor_type, any_value, loc=loc)
+        dim: ir.Value = arith.constant(index_type, self.index, loc=loc)
+        size: ir.Value = dlpack.shape(i64_type, dl_tensor, dim, loc=loc)
+        expected: ir.Value = arith.constant(i64_type, self.expected, loc=loc)
+        return arith.cmpi(arith.CmpIPredicate.eq, size, expected, loc=loc)

@@ -119,7 +119,7 @@ class TritonGraphNodeImporter(GraphNodeImporter):
             )
         )
         kernel_idx: Final[int] = node.kwargs["kernel_idx"]
-        function: triton.JITFunction = (
+        function: triton.KernelInterface = (
             torch._higher_order_ops.triton_kernel_wrap.kernel_side_table.get_kernel(
                 kernel_idx
             )
@@ -179,20 +179,28 @@ class TritonGraphNodeImporter(GraphNodeImporter):
 
     @staticmethod
     def get_compiled_kernel(
-        function: triton.JITFunction, args: List[Any], kwargs: Dict[str, Any]
-    ) -> Optional[triton.compiler.CompiledKernel]:
+        function: triton.KernelInterface, args: List[Any], kwargs: Dict[str, Any]
+    ) -> Optional[triton.KernelInterface]:
         device = triton.runtime.driver.active.get_current_device()
+        best_config: Dict[str, Any] = (
+            function.best_config.all_kwargs()
+            if hasattr(function, "best_config")
+            else {}
+        )
+        while not isinstance(function, triton.JITFunction):
+            function = function.fn
         kernel_cache, kernel_key_cache, _, _, binder = function.device_caches[device]
         _, specialization, options = binder(
             *args,
             **kwargs,
+            **best_config,
             debug=kwargs.get("debug", function.debug) or triton.knobs.runtime.debug,
             instrumentation_mode=triton.knobs.compilation.instrumentation_mode,
         )
         key: str = triton.runtime.jit.compute_cache_key(
             kernel_key_cache, specialization, options
         )
-        return kernel_cache.get(key, None)
+        return kernel_cache.get(key)
 
 
 class TritonFxImporter(FxImporter):

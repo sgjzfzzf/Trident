@@ -142,10 +142,10 @@ class TritonGraphModule(object):
         )
 
     def compile(self, *args: Any, **kwargs: Any) -> Any:
-        ret: Any = self.fn(*args, **kwargs)
         gm, gs = torch._dynamo.export(
             self.fn, aten_graph=True, assume_static_by_default=True
         )(*args, **kwargs)
+        ret: Any = gm(*args, **kwargs)
         guards: Guards = parse_guards(gs)
         model_name: str = f"{self.fn.__name__}_{hash(guards)}"
         module: ir.Module = fx.stateless_fx_import(

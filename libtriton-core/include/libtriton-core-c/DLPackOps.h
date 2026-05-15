@@ -24,6 +24,20 @@ MLIR_CAPI_EXPORTED bool
 libtritonCoreOperationIsADLPackStridesOp(MlirOperation operation);
 MLIR_CAPI_EXPORTED bool
 libtritonCoreOperationIsADLPackByteOffsetOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsADLPackDTypeOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsADLPackDTypeCodeOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsADLPackDTypeBitsOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsADLPackDTypeLanesOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsADLPackDeviceOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsADLPackDeviceIdOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsADLPackDeviceTypeOp(MlirOperation operation);
 
 MLIR_CAPI_EXPORTED MlirValue
 libtritonCoreDLPackFromMemRefOwnedGetInput(MlirOperation operation);
@@ -68,6 +82,41 @@ MLIR_CAPI_EXPORTED MlirValue
 libtritonCoreDLPackByteOffsetGetInput(MlirOperation operation);
 MLIR_CAPI_EXPORTED MlirValue
 libtritonCoreDLPackByteOffsetGetOutput(MlirOperation operation);
+
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDTypeGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDTypeGetOutput(MlirOperation operation);
+
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDTypeCodeGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDTypeCodeGetOutput(MlirOperation operation);
+
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDTypeBitsGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDTypeBitsGetOutput(MlirOperation operation);
+
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDTypeLanesGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDTypeLanesGetOutput(MlirOperation operation);
+
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDeviceGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDeviceGetOutput(MlirOperation operation);
+
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDeviceIdGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDeviceIdGetOutput(MlirOperation operation);
+
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDeviceTypeGetInput(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreDLPackDeviceTypeGetOutput(MlirOperation operation);
 
 #ifdef __cplusplus
 }

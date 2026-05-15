@@ -142,3 +142,82 @@ func.func @lower_byte_offset(%arg0: !dlpack.tensor) -> i64 {
   %0 = dlpack.byte_offset %arg0 : !dlpack.tensor -> i64
   return %0 : i64
 }
+
+// -----
+
+// CHECK-LABEL: func.func @lower_dtype
+// CHECK-SAME: (%[[ARG:.*]]: !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>)
+// CHECK-SAME: -> !llvm.struct<packed (i8, i8, i16)>
+func.func @lower_dtype(%arg0: !dlpack.tensor) -> !dlpack.datatype {
+  // CHECK: %[[DTYPE:.*]] = llvm.extractvalue %[[ARG]][3]
+  // CHECK: return %[[DTYPE]] : !llvm.struct<packed (i8, i8, i16)>
+  %0 = dlpack.dtype %arg0 : !dlpack.tensor -> !dlpack.datatype
+  return %0 : !dlpack.datatype
+}
+
+// -----
+
+// CHECK-LABEL: func.func @lower_dtype_code
+// CHECK-SAME: (%[[ARG:.*]]: !llvm.struct<packed (i8, i8, i16)>) -> i8
+func.func @lower_dtype_code(%arg0: !dlpack.datatype) -> i8 {
+  // CHECK: %[[CODE:.*]] = llvm.extractvalue %[[ARG]][0]
+  // CHECK: return %[[CODE]] : i8
+  %0 = dlpack.dtype_code %arg0 : !dlpack.datatype -> i8
+  return %0 : i8
+}
+
+// -----
+
+// CHECK-LABEL: func.func @lower_dtype_bits
+// CHECK-SAME: (%[[ARG:.*]]: !llvm.struct<packed (i8, i8, i16)>) -> i8
+func.func @lower_dtype_bits(%arg0: !dlpack.datatype) -> i8 {
+  // CHECK: %[[BITS:.*]] = llvm.extractvalue %[[ARG]][1]
+  // CHECK: return %[[BITS]] : i8
+  %0 = dlpack.dtype_bits %arg0 : !dlpack.datatype -> i8
+  return %0 : i8
+}
+
+// -----
+
+// CHECK-LABEL: func.func @lower_dtype_lanes
+// CHECK-SAME: (%[[ARG:.*]]: !llvm.struct<packed (i8, i8, i16)>) -> i16
+func.func @lower_dtype_lanes(%arg0: !dlpack.datatype) -> i16 {
+  // CHECK: %[[LANES:.*]] = llvm.extractvalue %[[ARG]][2]
+  // CHECK: return %[[LANES]] : i16
+  %0 = dlpack.dtype_lanes %arg0 : !dlpack.datatype -> i16
+  return %0 : i16
+}
+
+// -----
+
+// CHECK-LABEL: func.func @lower_device
+// CHECK-SAME: (%[[ARG:.*]]: !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>)
+// CHECK-SAME: -> !llvm.struct<packed (i32, i32)>
+func.func @lower_device(%arg0: !dlpack.tensor) -> !dlpack.device {
+  // CHECK: %[[DEVICE:.*]] = llvm.extractvalue %[[ARG]][1]
+  // CHECK: return %[[DEVICE]] : !llvm.struct<packed (i32, i32)>
+  %0 = dlpack.device %arg0 : !dlpack.tensor -> !dlpack.device
+  return %0 : !dlpack.device
+}
+
+// -----
+
+// CHECK-LABEL: func.func @lower_device_type
+// CHECK-SAME: (%[[ARG:.*]]: !llvm.struct<packed (i32, i32)>) -> i32
+func.func @lower_device_type(%arg0: !dlpack.device) -> i32 {
+  // CHECK: %[[TYPE:.*]] = llvm.extractvalue %[[ARG]][0]
+  // CHECK: return %[[TYPE]] : i32
+  %0 = dlpack.device_type %arg0 : !dlpack.device -> i32
+  return %0 : i32
+}
+
+// -----
+
+// CHECK-LABEL: func.func @lower_device_id
+// CHECK-SAME: (%[[ARG:.*]]: !llvm.struct<packed (i32, i32)>) -> i32
+func.func @lower_device_id(%arg0: !dlpack.device) -> i32 {
+  // CHECK: %[[ID:.*]] = llvm.extractvalue %[[ARG]][1]
+  // CHECK: return %[[ID]] : i32
+  %0 = dlpack.device_id %arg0 : !dlpack.device -> i32
+  return %0 : i32
+}

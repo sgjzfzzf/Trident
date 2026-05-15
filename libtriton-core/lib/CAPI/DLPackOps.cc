@@ -79,6 +79,34 @@ bool libtritonCoreOperationIsADLPackByteOffsetOp(MlirOperation operation) {
   return isOpType<libtriton::dlpack::ByteOffsetOp>(operation);
 }
 
+bool libtritonCoreOperationIsADLPackDTypeOp(MlirOperation operation) {
+  return isOpType<libtriton::dlpack::DTypeOp>(operation);
+}
+
+bool libtritonCoreOperationIsADLPackDTypeCodeOp(MlirOperation operation) {
+  return isOpType<libtriton::dlpack::DTypeCodeOp>(operation);
+}
+
+bool libtritonCoreOperationIsADLPackDTypeBitsOp(MlirOperation operation) {
+  return isOpType<libtriton::dlpack::DTypeBitsOp>(operation);
+}
+
+bool libtritonCoreOperationIsADLPackDTypeLanesOp(MlirOperation operation) {
+  return isOpType<libtriton::dlpack::DTypeLanesOp>(operation);
+}
+
+bool libtritonCoreOperationIsADLPackDeviceOp(MlirOperation operation) {
+  return isOpType<libtriton::dlpack::DeviceOp>(operation);
+}
+
+bool libtritonCoreOperationIsADLPackDeviceIdOp(MlirOperation operation) {
+  return isOpType<libtriton::dlpack::DeviceIdOp>(operation);
+}
+
+bool libtritonCoreOperationIsADLPackDeviceTypeOp(MlirOperation operation) {
+  return isOpType<libtriton::dlpack::DeviceTypeOp>(operation);
+}
+
 MlirValue libtritonCoreDLPackFromMemRefOwnedGetInput(MlirOperation operation) {
   return getInputValue<libtriton::dlpack::FromMemRefOwnedOp>(operation);
 }
@@ -169,4 +197,60 @@ MlirValue libtritonCoreDLPackByteOffsetGetInput(MlirOperation operation) {
 
 MlirValue libtritonCoreDLPackByteOffsetGetOutput(MlirOperation operation) {
   return getOutputValue<libtriton::dlpack::ByteOffsetOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDTypeGetInput(MlirOperation operation) {
+  return getInputValue<libtriton::dlpack::DTypeOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDTypeGetOutput(MlirOperation operation) {
+  return getOutputValue<libtriton::dlpack::DTypeOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDTypeCodeGetInput(MlirOperation operation) {
+  return getInputValue<libtriton::dlpack::DTypeCodeOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDTypeCodeGetOutput(MlirOperation operation) {
+  return getOutputValue<libtriton::dlpack::DTypeCodeOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDTypeBitsGetInput(MlirOperation operation) {
+  return getInputValue<libtriton::dlpack::DTypeBitsOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDTypeBitsGetOutput(MlirOperation operation) {
+  return getOutputValue<libtriton::dlpack::DTypeBitsOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDTypeLanesGetInput(MlirOperation operation) {
+  return getInputValue<libtriton::dlpack::DTypeLanesOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDTypeLanesGetOutput(MlirOperation operation) {
+  return getOutputValue<libtriton::dlpack::DTypeLanesOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDeviceGetInput(MlirOperation operation) {
+  return getInputValue<libtriton::dlpack::DeviceOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDeviceGetOutput(MlirOperation operation) {
+  return getOutputValue<libtriton::dlpack::DeviceOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDeviceIdGetInput(MlirOperation operation) {
+  return getInputValue<libtriton::dlpack::DeviceIdOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDeviceIdGetOutput(MlirOperation operation) {
+  return getOutputValue<libtriton::dlpack::DeviceIdOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDeviceTypeGetInput(MlirOperation operation) {
+  return getInputValue<libtriton::dlpack::DeviceTypeOp>(operation);
+}
+
+MlirValue libtritonCoreDLPackDeviceTypeGetOutput(MlirOperation operation) {
+  return getOutputValue<libtriton::dlpack::DeviceTypeOp>(operation);
 }

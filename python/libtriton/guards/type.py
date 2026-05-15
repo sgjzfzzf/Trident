@@ -42,11 +42,11 @@ class TensorTypeGuard(CheckGuard):
         context: Optional[ir.Context] = None,
         loc: Optional[ir.Location] = None,
     ) -> ir.Operation:
-        any_value: ir.Value = symbol_table[self.variable]
         i32_type: ir.Type = ir.IntegerType.get_signless(32, context=context)
 
-        type_index: ir.Value = tvm_ffi_d.get_type_index(i32_type, any_value, loc=loc)
-        expected: ir.Value = arith.constant(
-            i32_type, self._tvm_ffi_tensor_type_index, loc=loc
+        return arith.cmpi(
+            arith.CmpIPredicate.eq,
+            tvm_ffi_d.get_type_index(i32_type, symbol_table[self.variable], loc=loc),
+            arith.constant(i32_type, self._tvm_ffi_tensor_type_index, loc=loc),
+            loc=loc,
         )
-        return arith.cmpi(arith.CmpIPredicate.eq, type_index, expected, loc=loc)

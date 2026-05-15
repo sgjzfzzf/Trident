@@ -44,13 +44,21 @@ class StrideGuard(CheckGuard):
         context: Optional[ir.Context] = None,
         loc: Optional[ir.Location] = None,
     ) -> ir.Operation:
-        any_value: ir.Value = symbol_table[self.variable]
-        dl_tensor_type: ir.Type = ir.Type.parse("!dlpack.tensor", context=context)
         index_type: ir.Type = ir.IndexType.get(context=context)
         i64_type: ir.Type = ir.IntegerType.get_signless(64, context=context)
 
-        dl_tensor: ir.Value = tvm_ffi_d.to(dl_tensor_type, any_value, loc=loc)
-        dim: ir.Value = arith.constant(index_type, self.index, loc=loc)
-        stride: ir.Value = dlpack.strides(i64_type, dl_tensor, dim, loc=loc)
-        expected: ir.Value = arith.constant(i64_type, self.expected, loc=loc)
-        return arith.cmpi(arith.CmpIPredicate.eq, stride, expected, loc=loc)
+        return arith.cmpi(
+            arith.CmpIPredicate.eq,
+            dlpack.strides(
+                i64_type,
+                tvm_ffi_d.to(
+                    ir.Type.parse("!dlpack.tensor", context=context),
+                    symbol_table[self.variable],
+                    loc=loc,
+                ),
+                arith.constant(index_type, self.index, loc=loc),
+                loc=loc,
+            ),
+            arith.constant(i64_type, self.expected, loc=loc),
+            loc=loc,
+        )

@@ -41,11 +41,19 @@ class DimensionGuard(CheckGuard):
         context: Optional[ir.Context] = None,
         loc: Optional[ir.Location] = None,
     ) -> ir.Operation:
-        any_value: ir.Value = symbol_table[self.variable]
-        dl_tensor_type: ir.Type = ir.Type.parse("!dlpack.tensor", context=context)
         i32_type: ir.Type = ir.IntegerType.get_signless(32, context=context)
 
-        dl_tensor: ir.Value = tvm_ffi_d.to(dl_tensor_type, any_value, loc=loc)
-        ndim: ir.Value = dlpack.ndim(i32_type, dl_tensor, loc=loc)
-        expected: ir.Value = arith.constant(i32_type, self.expected, loc=loc)
-        return arith.cmpi(arith.CmpIPredicate.eq, ndim, expected, loc=loc)
+        return arith.cmpi(
+            arith.CmpIPredicate.eq,
+            dlpack.ndim(
+                i32_type,
+                tvm_ffi_d.to(
+                    ir.Type.parse("!dlpack.tensor", context=context),
+                    symbol_table[self.variable],
+                    loc=loc,
+                ),
+                loc=loc,
+            ),
+            arith.constant(i32_type, self.expected, loc=loc),
+            loc=loc,
+        )

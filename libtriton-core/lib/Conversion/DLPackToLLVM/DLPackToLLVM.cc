@@ -678,6 +678,118 @@ struct LowerByteOffsetOp
   }
 };
 
+struct LowerDTypeOp
+    : public mlir::OpConversionPattern<libtriton::dlpack::DTypeOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::dlpack::DTypeOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    libtriton::conversion::utils::DLTensorLLVMDescriptor dlTensor =
+        libtriton::conversion::utils::DLTensorLLVMDescriptor::from(
+            adaptor.getInput());
+    rewriter.replaceOp(op, dlTensor.dtype(rewriter, loc).as());
+    return mlir::success();
+  }
+};
+
+struct LowerDTypeCodeOp
+    : public mlir::OpConversionPattern<libtriton::dlpack::DTypeCodeOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::dlpack::DTypeCodeOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    libtriton::conversion::utils::DLDataTypeLLVMDescriptor dlDataType =
+        libtriton::conversion::utils::DLDataTypeLLVMDescriptor::from(
+            adaptor.getInput());
+    rewriter.replaceOp(op, dlDataType.code(rewriter, loc));
+    return mlir::success();
+  }
+};
+
+struct LowerDTypeBitsOp
+    : public mlir::OpConversionPattern<libtriton::dlpack::DTypeBitsOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::dlpack::DTypeBitsOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    libtriton::conversion::utils::DLDataTypeLLVMDescriptor dlDataType =
+        libtriton::conversion::utils::DLDataTypeLLVMDescriptor::from(
+            adaptor.getInput());
+    rewriter.replaceOp(op, dlDataType.bits(rewriter, loc));
+    return mlir::success();
+  }
+};
+
+struct LowerDTypeLanesOp
+    : public mlir::OpConversionPattern<libtriton::dlpack::DTypeLanesOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::dlpack::DTypeLanesOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    libtriton::conversion::utils::DLDataTypeLLVMDescriptor dlDataType =
+        libtriton::conversion::utils::DLDataTypeLLVMDescriptor::from(
+            adaptor.getInput());
+    rewriter.replaceOp(op, dlDataType.lanes(rewriter, loc));
+    return mlir::success();
+  }
+};
+
+struct LowerDeviceOp
+    : public mlir::OpConversionPattern<libtriton::dlpack::DeviceOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::dlpack::DeviceOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    libtriton::conversion::utils::DLTensorLLVMDescriptor dlTensor =
+        libtriton::conversion::utils::DLTensorLLVMDescriptor::from(
+            adaptor.getInput());
+    rewriter.replaceOp(op, dlTensor.device(rewriter, loc).as());
+    return mlir::success();
+  }
+};
+
+struct LowerDeviceTypeOp
+    : public mlir::OpConversionPattern<libtriton::dlpack::DeviceTypeOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::dlpack::DeviceTypeOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    libtriton::conversion::utils::DLDeviceLLVMDescriptor dlDevice =
+        libtriton::conversion::utils::DLDeviceLLVMDescriptor::from(
+            adaptor.getInput());
+    rewriter.replaceOp(op, dlDevice.deviceType(rewriter, loc));
+    return mlir::success();
+  }
+};
+
+struct LowerDeviceIdOp
+    : public mlir::OpConversionPattern<libtriton::dlpack::DeviceIdOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::dlpack::DeviceIdOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    libtriton::conversion::utils::DLDeviceLLVMDescriptor dlDevice =
+        libtriton::conversion::utils::DLDeviceLLVMDescriptor::from(
+            adaptor.getInput());
+    rewriter.replaceOp(op, dlDevice.deviceId(rewriter, loc));
+    return mlir::success();
+  }
+};
+
 struct LowerTensorFromLLVMOp
     : public mlir::OpConversionPattern<libtriton::dlpack::TensorFromLLVMOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -771,7 +883,9 @@ void populateDLPackToLLVMConversionPatterns(
   patterns.add<LowerFromMemRefOwnedOp, LowerFromMemRefBorrowedOp,
                LowerTensorFromLLVMOp, LowerTensorToLLVMOp, LowerViewOp,
                LowerToMemRefOp, LowerNDimOp, LowerShapeOp, LowerStridesOp,
-               LowerByteOffsetOp>(typeConverter, context);
+               LowerByteOffsetOp, LowerDTypeOp, LowerDTypeCodeOp,
+               LowerDTypeBitsOp, LowerDTypeLanesOp, LowerDeviceOp,
+               LowerDeviceTypeOp, LowerDeviceIdOp>(typeConverter, context);
 
   target.addIllegalDialect<libtriton::dlpack::DLPackDialect>();
   target.addLegalDialect<mlir::BuiltinDialect, mlir::LLVM::LLVMDialect>();

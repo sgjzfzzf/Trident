@@ -60,3 +60,66 @@ func.func @byte_offset(%arg0: !dlpack.tensor) {
   %0 = dlpack.byte_offset %arg0 : !dlpack.tensor -> i64
   return
 }
+
+// -----
+
+// CHECK-LABEL: func.func @dtype
+func.func @dtype(%arg0: !dlpack.tensor) {
+  // CHECK: %[[VALUE:.*]] = dlpack.dtype %arg0 : !dlpack.tensor -> !dlpack.datatype
+  %0 = dlpack.dtype %arg0 : !dlpack.tensor -> !dlpack.datatype
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @dtype_code
+func.func @dtype_code(%arg0: !dlpack.datatype) {
+  // CHECK: %[[VALUE:.*]] = dlpack.dtype_code %arg0 : !dlpack.datatype -> i8
+  %0 = dlpack.dtype_code %arg0 : !dlpack.datatype -> i8
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @dtype_bits
+func.func @dtype_bits(%arg0: !dlpack.datatype) {
+  // CHECK: %[[VALUE:.*]] = dlpack.dtype_bits %arg0 : !dlpack.datatype -> i8
+  %0 = dlpack.dtype_bits %arg0 : !dlpack.datatype -> i8
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @dtype_lanes
+func.func @dtype_lanes(%arg0: !dlpack.datatype) {
+  // CHECK: %[[VALUE:.*]] = dlpack.dtype_lanes %arg0 : !dlpack.datatype -> i16
+  %0 = dlpack.dtype_lanes %arg0 : !dlpack.datatype -> i16
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @device
+func.func @device(%arg0: !dlpack.tensor) {
+  // CHECK: %[[VALUE:.*]] = dlpack.device %arg0 : !dlpack.tensor -> !dlpack.device
+  %0 = dlpack.device %arg0 : !dlpack.tensor -> !dlpack.device
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @device_type
+func.func @device_type(%arg0: !dlpack.device) {
+  // CHECK: %[[VALUE:.*]] = dlpack.device_type %arg0 : !dlpack.device -> i32
+  %0 = dlpack.device_type %arg0 : !dlpack.device -> i32
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @device_id
+func.func @device_id(%arg0: !dlpack.device) {
+  // CHECK: %[[VALUE:.*]] = dlpack.device_id %arg0 : !dlpack.device -> i32
+  %0 = dlpack.device_id %arg0 : !dlpack.device -> i32
+  return
+}

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from .base import Guard, Guards
 from .check import CheckGuard  # noqa: F401
 from .dimension import DimensionGuard  # noqa: F401
-from .device import DeviceGuard  # noqa: F401
+from .device import CUDADeviceGuard  # noqa: F401
 from .dtype import DTypeGuard  # noqa: F401
 from .size import SizeGuard  # noqa: F401
 from .storage_offset import StorageOffsetGuard  # noqa: F401

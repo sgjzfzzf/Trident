@@ -1,6 +1,7 @@
 add_mlir_conversion_library(
   TVMFFIToLLVM
   TVMFFIToLLVM.cc
+  TVMFFILLVMDescriptors.cc
   DEPENDS
   MLIRConversionPassIncGen
   LINK_LIBS

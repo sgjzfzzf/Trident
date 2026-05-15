@@ -32,30 +32,19 @@ public:
   using Base::build;
   using Base::from;
 
-  static mlir::LLVM::LLVMStructType getLLVMType(mlir::MLIRContext *context) {
-    return mlir::LLVM::LLVMStructType::getLiteral(
-        context, {mlir::IntegerType::get(context, 32),
-                  mlir::IntegerType::get(context, 32),
-                  mlir::IntegerType::get(context, 64)});
-  }
+  static mlir::LLVM::LLVMStructType getLLVMType(mlir::MLIRContext *context);
 
   mlir::TypedValue<mlir::IntegerType>
   typeIndex(mlir::ConversionPatternRewriter &rewriter,
-            mlir::Location loc) const {
-    return this->template get<0>(rewriter, loc);
-  }
+            mlir::Location loc) const;
 
   mlir::TypedValue<mlir::IntegerType>
   zeroPadding(mlir::ConversionPatternRewriter &rewriter,
-              mlir::Location loc) const {
-    return this->template get<1>(rewriter, loc);
-  }
+              mlir::Location loc) const;
 
   mlir::TypedValue<mlir::IntegerType>
   payloadBits(mlir::ConversionPatternRewriter &rewriter,
-              mlir::Location loc) const {
-    return this->template get<2>(rewriter, loc);
-  }
+              mlir::Location loc) const;
 
 private:
   friend Base;

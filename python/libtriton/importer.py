@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from typing import Any, Dict, List, Optional, Tuple
 from typing_extensions import Final
 
@@ -7,7 +8,7 @@ import torch
 import triton
 
 from libtriton._C.libtriton_core import ir
-from libtriton._C.libtriton_core.dialects import arith, func, llvm, torch_ext
+from libtriton._C.libtriton_core.dialects import arith, func, gpu, llvm, torch_ext
 from libtriton._C.libtriton_core.extras.fx_importer import FxImporter, GraphNodeImporter
 
 
@@ -36,25 +37,24 @@ class TritonGraphNodeImporter(GraphNodeImporter):
     ) -> None:
         module_op = module.operation
         module_op.attributes["gpu.container_module"] = ir.UnitAttr.get()
-        cubin = kernel.asm["cubin"]
-        cubin_mlir: str = "".join(f"\\{byte:02X}" for byte in cubin)
-        gpu_object = ir.Attribute.parse(
-            '#gpu.object<#nvvm.target<chip = "sm_{arch}">, "{cubin}">'.format(
-                arch=kernel.metadata.target.arch,
-                cubin=cubin_mlir,
-            )
-        )
-        with loc:
-            module.body.append(
-                ir.Operation.create(
-                    "gpu.binary",
-                    attributes={
-                        "sym_name": ir.StringAttr.get(binary_name),
-                        "objects": ir.ArrayAttr.get([gpu_object]),
-                        "offloadingHandler": ir.Attribute.parse("#gpu.select_object"),
-                    },
+        if all(
+            not isinstance(op, gpu.BinaryOp) or op.sym_name != binary_name
+            for op in module.body.operations
+        ):
+            cubin = kernel.asm["cubin"]
+            cubin_mlir: str = "".join(f"\\{byte:02X}" for byte in cubin)
+            gpu_object = ir.Attribute.parse(
+                '#gpu.object<#nvvm.target<chip = "sm_{arch}">, "{cubin}">'.format(
+                    arch=kernel.metadata.target.arch,
+                    cubin=cubin_mlir,
                 )
             )
+            with loc, ir.InsertionPoint(module.body):
+                gpu.binary(
+                    ir.StringAttr.get(binary_name),
+                    ir.ArrayAttr.get([gpu_object]),
+                    offloading_handler=ir.Attribute.parse("#gpu.select_object"),
+                )
 
     @staticmethod
     def _triton_type_to_ir_type(triton_type: str) -> ir.Type:
@@ -147,8 +147,7 @@ class TritonGraphNodeImporter(GraphNodeImporter):
             call_arguments[name] for name, _ in runtime_parameters
         ]
         (grid,) = node.kwargs["grid"]
-        fname: Final[str] = f"__triton_{node.name}"
-        binary_name: Final[str] = f"{fname}_bin"
+        binary_name: Final[str] = f"_{node.name}_{random.randint(0, 1 << 32)}"
         self._add_gpu_binary(loc, self.fx_importer.module, binary_name, kernel)
         with loc:
             index_type = ir.IndexType.get()

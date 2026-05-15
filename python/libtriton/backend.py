@@ -37,6 +37,7 @@ from libtriton._C.libtriton_core.dialects import (
     transform,
     tvm_ffi as tvm_ffi_d,
 )
+from .error import GuardMatchException
 from .guards import Guards, parse_guards
 from .importer import TritonFxImporter
 
@@ -47,12 +48,11 @@ class TritonGraphModule(object):
     def __init__(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.fn: Final[Callable[..., Any]] = fn
-        self.executor: Optional[Callable[..., Any]] = None
         self.guard_to_fx_map: Dict[Guards, ir.Module] = {}
         self.ctx: ir.Context = ir.Context()
         register_all_dialects(self.ctx)
         register_all_passes()
-        self.importer: TritonFxImporter = TritonFxImporter(context=self.ctx)
+        self.executor: Callable[..., Any] = self.stub_compile()
 
     @property
     def _dl_tensor_type(self) -> ir.Type:
@@ -128,35 +128,38 @@ class TritonGraphModule(object):
         return llvm.PointerType.get()
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        if self.executor:
-            return self.executor(*args, **kwargs)
-        else:
-            return self.compile(*args, **kwargs)
+        while True:
+            try:
+                return self.executor(*args, **kwargs)
+            except GuardMatchException:
+                self.compile(*args, **kwargs)
+
+    def stub_compile(self) -> Callable[..., Any]:
+        module: ir.Module = self._build_ir_module()
+        return TritonGraphModule._build_execution_engine_callable(
+            module,
+            fn_name=self.fn.__name__,
+        )
 
     def compile(self, *args: Any, **kwargs: Any) -> Any:
         ret: Any = self.fn(*args, **kwargs)
-        if self.executor is None:
-            gm, gs = torch._dynamo.export(
-                self.fn, aten_graph=True, assume_static_by_default=True
-            )(*args, **kwargs)
-            guards: Guards = parse_guards(gs)
-            model_name: str = f"{self.fn.__name__}_{hash(guards)}"
-            module: ir.Module = fx.stateless_fx_import(
-                gm,
-                output_type=compiler_utils.OutputType.TORCH,
-                model_name=model_name,
-                fx_importer=self.importer,
-            )
-            with self.ctx:
-                passmanager.PassManager.parse(
-                    TritonGraphModule._build_torch_pipeline()
-                ).run(module.operation)
-            self.guard_to_fx_map[guards] = module
-            module = self._build_ir_module()
-            self.executor = TritonGraphModule._build_execution_engine_callable(
-                module,
-                fn_name=self.fn.__name__,
-            )
+        gm, gs = torch._dynamo.export(
+            self.fn, aten_graph=True, assume_static_by_default=True
+        )(*args, **kwargs)
+        guards: Guards = parse_guards(gs)
+        model_name: str = f"{self.fn.__name__}_{hash(guards)}"
+        module: ir.Module = fx.stateless_fx_import(
+            gm,
+            output_type=compiler_utils.OutputType.TORCH,
+            model_name=model_name,
+            fx_importer=TritonFxImporter(context=self.ctx),
+        )
+        with self.ctx:
+            passmanager.PassManager.parse(
+                TritonGraphModule._build_torch_pipeline()
+            ).run(module.operation)
+        self.guard_to_fx_map[guards] = module
+        self.executor = self.stub_compile()
         return ret
 
     @staticmethod

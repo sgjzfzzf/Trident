@@ -24,7 +24,16 @@ def add_kernel(
     tl.store(output_ptr + offsets, output, mask=mask)
 
 
+@libtriton.jit
+def add_jit(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    return add_impl(x, y)
+
+
 def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    return add_impl(x, y)
+
+
+def add_impl(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     output: torch.Tensor = torch.empty_like(x)
     assert x.device == DEVICE and y.device == DEVICE and output.device == DEVICE
     n_elements: int = output.numel()
@@ -37,10 +46,14 @@ def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 if __name__ == "__main__":
     torch.manual_seed(0)
-    size = 98432
-    x = torch.rand(size, device=DEVICE)
-    y = torch.rand(size, device=DEVICE)
-    output_torch = x + y
-    f = libtriton.compile(add, x, y)
-    output_triton = f(x, y)
-    torch.testing.assert_close(output_triton.cpu(), output_torch.cpu())
+
+    for ex in range(12, 14):
+        size = 2**ex
+        x = torch.rand(size, device=DEVICE)
+        y = torch.rand(size, device=DEVICE)
+        output_torch = x + y
+        output_triton = add(x, y)
+        add_jit(x, y)  # warmup
+        output_jit = add_jit(x, y)
+        torch.testing.assert_close(output_triton, output_torch)
+        torch.testing.assert_close(output_jit, output_torch)

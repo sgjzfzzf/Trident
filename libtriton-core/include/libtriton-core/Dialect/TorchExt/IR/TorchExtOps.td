@@ -7,6 +7,7 @@ include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "torch-mlir/Dialect/Torch/IR/TorchTypes.td"
 
+include "libtriton-core/Dialect/DLPack/IR/DLPackTypes.td"
 include "libtriton-core/Dialect/TorchExt/IR/TorchExtBase.td"
 
 class TorchExt_Op<string mnemonic, list<Trait> traits = []>
@@ -62,7 +63,7 @@ def TorchExt_GetCurrentDeviceOp : TorchExt_Op<"get_current_device", [Pure]> {
   let description = [{Returns the current CUDA device index from the runtime.}];
 
   let arguments = (ins);
-  let results = (outs I8 : $output);
+  let results = (outs DLPack_DLDeviceType : $output);
 
   let assemblyFormat = "attr-dict `:` type($output)";
 }

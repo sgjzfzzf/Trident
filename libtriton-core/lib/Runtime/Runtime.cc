@@ -6,6 +6,7 @@
 #include "c10/cuda/CUDAFunctions.h"
 #include "dlpack/dlpack.h"
 #include "libtriton-core/Runtime/Runtime.h"
+#include "tvm/ffi/extra/c_env_api.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -33,12 +34,28 @@ __libtriton_dlpack_default_managed_tensor_deleter(DLManagedTensor *self) {
   }
 }
 
-LIBTRITON_CORE_RUNTIME_EXPORT c10::DeviceIndex
-__libtriton_get_current_device() {
-  return c10::cuda::current_device();
+LIBTRITON_CORE_RUNTIME_EXPORT DLDevice __libtriton_get_current_device() {
+  return {kDLCUDA, c10::cuda::current_device()};
 }
 
 LIBTRITON_CORE_RUNTIME_EXPORT cudaStream_t
 __libtriton_get_current_stream(c10::DeviceIndex device_index) {
   return c10::cuda::getCurrentCUDAStream(device_index).stream();
+}
+
+LIBTRITON_CORE_RUNTIME_EXPORT void *
+__libtriton_tvmffi_env_tensor_alloc(const DLDataType dtype, const int32_t ndim,
+                                    int64_t *const shape) {
+  DLTensor prototype = {
+      .data = nullptr,
+      .device = __libtriton_get_current_device(),
+      .ndim = ndim,
+      .dtype = dtype,
+      .shape = shape,
+      .strides = nullptr,
+      .byte_offset = 0,
+  };
+  TVMFFIObjectHandle out = nullptr;
+  const int status = TVMFFIEnvTensorAlloc(&prototype, &out);
+  return status ? nullptr : out;
 }

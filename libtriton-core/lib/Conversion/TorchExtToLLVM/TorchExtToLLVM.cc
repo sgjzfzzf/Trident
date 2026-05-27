@@ -1,5 +1,9 @@
+#include <cstdint>
+
+#include "dlpack/dlpack.h"
 #include "libtriton-core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
 #include "libtriton-core/Conversion/Utils/RuntimeCFunctionDeclUtils.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackTypes.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
@@ -92,7 +96,7 @@ public:
   using mlir::OpConversionPattern<GetCurrentDeviceOp>::OpConversionPattern;
 
   mlir::LogicalResult
-  matchAndRewrite(GetCurrentDeviceOp op, OpAdaptor adaptor,
+  matchAndRewrite(GetCurrentDeviceOp op, OpAdaptor /*adaptor*/,
                   mlir::ConversionPatternRewriter &rewriter) const final {
     mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
     if (!moduleOp) {
@@ -182,6 +186,14 @@ struct TorchExtToLLVMDialectInterface
 void populateTorchExtToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns) {
+  typeConverter.addConversion(
+      [](libtriton::dlpack::DLDeviceType type) -> mlir::Type {
+        return mlir::LLVM::LLVMStructType::getLiteral(
+            type.getContext(),
+            {mlir::IntegerType::get(type.getContext(), 32),
+             mlir::IntegerType::get(type.getContext(), 32)},
+            /*isPacked=*/true);
+      });
   patterns.add<ConvertGetCurrentDevicePattern, ConvertGetCurrentStreamPattern,
                ConvertKernelLaunchPattern>(typeConverter,
                                            patterns.getContext());

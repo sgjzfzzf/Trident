@@ -1,9 +1,13 @@
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 
+#include "libtriton-core/Conversion/DLPackToLLVM/DLPackDTypeUtils.h"
 #include "libtriton-core/Conversion/DLPackToLLVM/DLPackLLVMDescriptors.h"
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFICAPIDescriptors.h"
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFILLVMDescriptors.h"
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
+#include "libtriton-core/Conversion/Utils/RuntimeCFunctionDeclUtils.h"
 #include "libtriton-core/Conversion/Utils/StdLibCFunctionDeclUtils.h"
 #include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "libtriton-core/Dialect/DLPack/IR/DLPackOps.h"
@@ -33,12 +37,37 @@ namespace {
 
 constexpr std::int64_t kTVMFFIObjectHeaderBytes = sizeof(TVMFFIObject);
 
+template <unsigned BitWidth>
+mlir::TypedValue<mlir::IntegerType>
+emitIConstant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
+              mlir::MLIRContext *context, std::int64_t value) {
+  mlir::Type iTy = mlir::IntegerType::get(context, BitWidth);
+  return mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
+      mlir::LLVM::ConstantOp::create(rewriter, loc, iTy, value).getResult());
+}
+
+mlir::TypedValue<mlir::IntegerType>
+emitI8Constant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
+               mlir::MLIRContext *context, std::int64_t value) {
+  return emitIConstant<8>(rewriter, loc, context, value);
+}
+
+mlir::TypedValue<mlir::IntegerType>
+emitI16Constant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
+                mlir::MLIRContext *context, std::int64_t value) {
+  return emitIConstant<16>(rewriter, loc, context, value);
+}
+
 mlir::TypedValue<mlir::IntegerType>
 emitI32Constant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
                 mlir::MLIRContext *context, std::int64_t value) {
-  mlir::Type i32Ty = mlir::IntegerType::get(context, 32);
-  return mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
-      mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, value).getResult());
+  return emitIConstant<32>(rewriter, loc, context, value);
+}
+
+mlir::TypedValue<mlir::IntegerType>
+emitI64Constant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
+                mlir::MLIRContext *context, std::int64_t value) {
+  return emitIConstant<64>(rewriter, loc, context, value);
 }
 
 mlir::FailureOr<mlir::LLVM::LLVMStructType>
@@ -136,6 +165,62 @@ mlir::FailureOr<mlir::Value> emitTensorFromDLPackAsObjectHandle(
   return mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, outSlot).getResult();
 }
 
+mlir::FailureOr<mlir::Value> emitEnvTensorAllocAsObjectHandle(
+    mlir::ModuleOp moduleOp, mlir::ConversionPatternRewriter &rewriter,
+    mlir::Location loc, mlir::Type dtype, llvm::ArrayRef<std::int64_t> shape) {
+  mlir::MLIRContext *context = moduleOp.getContext();
+  const mlir::Type i32Ty = mlir::IntegerType::get(context, 32);
+  const mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
+  const mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
+  const mlir::Type dlDataTypeTy =
+      libtriton::conversion::utils::DLDataTypeLLVMDescriptor::getLLVMType(
+          context);
+
+  const std::optional<DLDataType> dtypeInfo =
+      libtriton::conversion::utils::getDLPackDTypeFromMLIRType(dtype);
+  if (!dtypeInfo.has_value()) {
+    return mlir::failure();
+  }
+
+  const mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
+      libtriton::conversion::utils::runtime::getOrCreateEnvTensorAllocRuntime(
+          moduleOp);
+  if (mlir::failed(calleeOrErr)) {
+    return mlir::failure();
+  }
+
+  const mlir::Value shapeSlot =
+      mlir::LLVM::AllocaOp::create(
+          rewriter, loc, ptrTy, i64Ty,
+          emitI64Constant(rewriter, loc, context, shape.size()))
+          .getResult();
+  for (size_t i = 0; i < shape.size(); ++i) {
+    const mlir::Value dimPtr =
+        mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, i64Ty, shapeSlot, {i})
+            .getResult();
+    mlir::LLVM::StoreOp::create(
+        rewriter, loc, emitI64Constant(rewriter, loc, context, shape[i]),
+        dimPtr);
+  }
+
+  const mlir::TypedValue<mlir::IntegerType> dtypeCodeValue =
+      emitI8Constant(rewriter, loc, context, dtypeInfo->code);
+  const mlir::TypedValue<mlir::IntegerType> dtypeBitsValue =
+      emitI8Constant(rewriter, loc, context, dtypeInfo->bits);
+  const mlir::TypedValue<mlir::IntegerType> dtypeLanesValue =
+      emitI16Constant(rewriter, loc, context, dtypeInfo->lanes);
+  const libtriton::conversion::utils::DLDataTypeLLVMDescriptor dlDataTypeValue =
+      libtriton::conversion::utils::DLDataTypeLLVMDescriptor::build(
+          rewriter, loc, mlir::cast<mlir::LLVM::LLVMStructType>(dlDataTypeTy),
+          dtypeCodeValue, dtypeBitsValue, dtypeLanesValue);
+  const mlir::TypedValue<mlir::IntegerType> ndimValue =
+      emitI32Constant(rewriter, loc, context, shape.size());
+  return mlir::LLVM::CallOp::create(
+             rewriter, loc, *calleeOrErr,
+             mlir::ValueRange{dlDataTypeValue.as(), ndimValue, shapeSlot})
+      .getResult();
+}
+
 struct LowerTensorFromDLPackOp
     : public mlir::OpConversionPattern<libtriton::tvm_ffi::TensorFromDLPackOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -152,6 +237,31 @@ struct LowerTensorFromDLPackOp
         emitTensorFromDLPackAsObjectHandle(
             moduleOp, rewriter, loc, adaptor.getFrom(),
             adaptor.getRequireAlignment(), adaptor.getRequireContiguous());
+    if (mlir::failed(objectHandle)) {
+      return mlir::failure();
+    } else {
+      rewriter.replaceOp(op, *objectHandle);
+      return mlir::success();
+    }
+  }
+};
+
+struct LowerEnvTensorAllocOp
+    : public mlir::OpConversionPattern<libtriton::tvm_ffi::EnvTensorAllocOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::tvm_ffi::EnvTensorAllocOp op,
+                  OpAdaptor /*adaptor*/,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    if (!moduleOp) {
+      return mlir::failure();
+    }
+    mlir::Location loc = op.getLoc();
+    mlir::FailureOr<mlir::Value> objectHandle =
+        emitEnvTensorAllocAsObjectHandle(moduleOp, rewriter, loc, op.getDtype(),
+                                         op.getShape());
     if (mlir::failed(objectHandle)) {
       return mlir::failure();
     } else {
@@ -398,6 +508,52 @@ struct LowerErrorSetRaisedFromCStrOp
   }
 };
 
+struct LowerObjectIncRefOp
+    : public mlir::OpConversionPattern<libtriton::tvm_ffi::ObjectIncRefOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::tvm_ffi::ObjectIncRefOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    if (!moduleOp) {
+      return mlir::failure();
+    }
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
+        capi::getOrCreateTVMFFIObjectIncRef(moduleOp);
+    if (mlir::failed(calleeOrErr)) {
+      return mlir::failure();
+    }
+    mlir::LLVM::CallOp::create(rewriter, op.getLoc(), *calleeOrErr,
+                               mlir::ValueRange{adaptor.getObject()});
+    rewriter.eraseOp(op);
+    return mlir::success();
+  }
+};
+
+struct LowerObjectDecRefOp
+    : public mlir::OpConversionPattern<libtriton::tvm_ffi::ObjectDecRefOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(libtriton::tvm_ffi::ObjectDecRefOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    if (!moduleOp) {
+      return mlir::failure();
+    }
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
+        capi::getOrCreateTVMFFIObjectDecRef(moduleOp);
+    if (mlir::failed(calleeOrErr)) {
+      return mlir::failure();
+    }
+    mlir::LLVM::CallOp::create(rewriter, op.getLoc(), *calleeOrErr,
+                               mlir::ValueRange{adaptor.getObject()});
+    rewriter.eraseOp(op);
+    return mlir::success();
+  }
+};
+
 class ConvertTVMFFIToLLVMPass
     : public impl::ConvertTVMFFIToLLVMBase<ConvertTVMFFIToLLVMPass> {
 public:
@@ -469,8 +625,9 @@ void populateTVMFFIToLLVMConversionPatterns(
         getLLVMType(type.getContext());
   });
   patterns.add<LowerGetTypeIndexOp, LowerToOp, LowerTensorFromDLPackOp,
-               LowerAsOp, LowerErrorSetRaisedFromCStrOp>(typeConverter,
-                                                         context);
+               LowerEnvTensorAllocOp, LowerAsOp, LowerObjectIncRefOp,
+               LowerObjectDecRefOp, LowerErrorSetRaisedFromCStrOp>(
+      typeConverter, context);
   target.addIllegalDialect<libtriton::tvm_ffi::TVMFFIDialect>();
 }
 

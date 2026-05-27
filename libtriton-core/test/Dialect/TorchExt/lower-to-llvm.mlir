@@ -40,8 +40,7 @@ module attributes {gpu.container_module} {
         args(%buf : memref<?xf32>) : i64
     return
     // CHECK-NOT: builtin.unrealized_conversion_cast
-    // The descriptor is rebuilt from the flattened args, then field [1] extracted.
-    // CHECK: llvm.insertvalue %{{.*}}, %{{.*}}[1]
+    // Field [1] (aligned ptr) is extracted from the converted descriptor.
     // CHECK: %[[APTR:.*]] = llvm.extractvalue %{{.*}}[1]
     // CHECK: %[[NULL:.*]] = llvm.mlir.zero : !llvm.ptr
     // CHECK: gpu.launch_func @buf_kernels::@buf_kernel
@@ -50,13 +49,13 @@ module attributes {gpu.container_module} {
 }
 
 // CHECK-LABEL: llvm.func @lowering_get_current_device
-// CHECK-SAME: () -> i8
-func.func @lowering_get_current_device() -> i8 {
+// CHECK-SAME: () -> !llvm.struct<packed (i32, i32)>
+func.func @lowering_get_current_device() -> !dlpack.device {
   // CHECK-NOT: torch_ext.get_current_device
-  // CHECK: %[[DEV:.*]] = llvm.call @__libtriton_get_current_device() : () -> i8
-  // CHECK: return %[[DEV]] : i8
-  %0 = torch_ext.get_current_device : i8
-  return %0 : i8
+  // CHECK: %[[DEV:.*]] = llvm.call @__libtriton_get_current_device() : () -> !llvm.struct<packed (i32, i32)>
+  // CHECK: return %[[DEV]] : !llvm.struct<packed (i32, i32)>
+  %0 = torch_ext.get_current_device : !dlpack.device
+  return %0 : !dlpack.device
 }
 
 // CHECK-LABEL: llvm.func @lowering_get_current_stream_with_device

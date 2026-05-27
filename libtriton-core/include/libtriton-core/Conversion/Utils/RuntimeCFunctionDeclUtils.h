@@ -13,6 +13,8 @@ LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(__libtriton_get_current_device,
                                            GetCurrentDevice)
 LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(__libtriton_get_current_stream,
                                            GetCurrentStream)
+LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(__libtriton_tvmffi_env_tensor_alloc,
+                                           EnvTensorAllocRuntime)
 
 } // namespace libtriton::conversion::utils::runtime
 

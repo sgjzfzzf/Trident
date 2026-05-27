@@ -9,6 +9,8 @@
 namespace libtriton::tvm_ffi::capi {
 
 LIBTRITON_DECLARE_CAPI_GET_OR_CREATE(TVMFFIErrorSetRaisedFromCStr)
+LIBTRITON_DECLARE_CAPI_GET_OR_CREATE(TVMFFIObjectDecRef)
+LIBTRITON_DECLARE_CAPI_GET_OR_CREATE(TVMFFIObjectIncRef)
 LIBTRITON_DECLARE_CAPI_GET_OR_CREATE(TVMFFITensorFromDLPack)
 
 } // namespace libtriton::tvm_ffi::capi

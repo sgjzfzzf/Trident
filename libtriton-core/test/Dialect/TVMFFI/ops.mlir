@@ -132,3 +132,30 @@ func.func @tensor_from_dlpack(%arg0: !dlpack.managed_tensor, %arg1: i32, %arg2: 
   %0 = tvm_ffi.tensor_from_dlpack %arg0, %arg1, %arg2 : !dlpack.managed_tensor, i32, i32 -> !tvm_ffi.object_handle
   return
 }
+
+// -----
+
+// CHECK-LABEL: func.func @env_tensor_alloc
+func.func @env_tensor_alloc() {
+  // CHECK: %[[VALUE:.*]] = tvm_ffi.env_tensor_alloc dtype = f32, shape = [16, 32] : !tvm_ffi.object_handle
+  %0 = tvm_ffi.env_tensor_alloc dtype = f32, shape = [16, 32] : !tvm_ffi.object_handle
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @object_inc_ref
+func.func @object_inc_ref(%arg0: !tvm_ffi.object_handle) {
+  // CHECK: tvm_ffi.object_inc_ref %arg0 : !tvm_ffi.object_handle
+  tvm_ffi.object_inc_ref %arg0 : !tvm_ffi.object_handle
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @object_dec_ref
+func.func @object_dec_ref(%arg0: !tvm_ffi.object_handle) {
+  // CHECK: tvm_ffi.object_dec_ref %arg0 : !tvm_ffi.object_handle
+  tvm_ffi.object_dec_ref %arg0 : !tvm_ffi.object_handle
+  return
+}

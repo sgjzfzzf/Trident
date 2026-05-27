@@ -3,6 +3,7 @@
 
 #include <type_traits>
 
+#include "dlpack/dlpack.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -18,7 +19,20 @@ template <typename CType> struct CTypeToLLVM {
   static mlir::Type get(mlir::MLIRContext *context) {
     using BaseType = std::remove_cv_t<std::remove_reference_t<CType>>;
 
-    if constexpr (std::is_integral_v<BaseType>) {
+    if constexpr (std::is_same_v<BaseType, DLDataType>) {
+      return mlir::LLVM::LLVMStructType::getLiteral(
+          context,
+          {mlir::IntegerType::get(context, 8),
+           mlir::IntegerType::get(context, 8),
+           mlir::IntegerType::get(context, 16)},
+          /*isPacked=*/true);
+    } else if constexpr (std::is_same_v<BaseType, DLDevice>) {
+      return mlir::LLVM::LLVMStructType::getLiteral(
+          context,
+          {mlir::IntegerType::get(context, 32),
+           mlir::IntegerType::get(context, 32)},
+          /*isPacked=*/true);
+    } else if constexpr (std::is_integral_v<BaseType>) {
       return mlir::IntegerType::get(context, sizeof(BaseType) * 8);
     } else if constexpr (std::is_same_v<BaseType, float>) {
       return mlir::Float32Type::get(context);

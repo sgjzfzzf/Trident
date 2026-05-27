@@ -1,6 +1,7 @@
 #ifndef LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTOPS_H_
 #define LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTOPS_H_
 
+#include "libtriton-core/Dialect/DLPack/IR/DLPackTypes.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtTypes.h"
 #include "mlir/Bytecode/BytecodeImplementation.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"

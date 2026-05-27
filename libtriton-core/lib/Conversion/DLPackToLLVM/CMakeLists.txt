@@ -1,6 +1,7 @@
 add_mlir_conversion_library(
   DLPackToLLVM
   DLPackToLLVM.cc
+  DLPackDTypeUtils.cc
   DLPackLLVMDescriptors.cc
   DEPENDS
   MLIRConversionPassIncGen

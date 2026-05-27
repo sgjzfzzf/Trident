@@ -1,11 +1,11 @@
 #include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "libtriton-core/Dialect/DLPack/IR/DLPackOps.h"
 #include "libtriton-core/Dialect/DLPack/IR/DLPackTypes.h"
-
-#include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.cpp.inc"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/ADT/TypeSwitch.h"
+
+#include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.cpp.inc"
 
 #define GET_OP_CLASSES
 #include "libtriton-core/Dialect/DLPack/IR/DLPack.cpp.inc"

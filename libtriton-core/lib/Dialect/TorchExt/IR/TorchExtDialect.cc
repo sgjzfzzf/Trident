@@ -1,10 +1,11 @@
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
-#include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.cpp.inc"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/ADT/TypeSwitch.h"
+
+#include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.cpp.inc"
 
 #define GET_OP_CLASSES
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExt.cpp.inc"

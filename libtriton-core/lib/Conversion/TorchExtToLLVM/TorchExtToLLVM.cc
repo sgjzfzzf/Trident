@@ -117,10 +117,8 @@ public:
       return mlir::failure();
     }
 
-    mlir::Location loc = op.getLoc();
-    mlir::LLVM::CallOp callOp = mlir::LLVM::CallOp::create(
-        rewriter, loc, *calleeOrErr, mlir::ValueRange{});
-    rewriter.replaceOp(op, callOp.getResults());
+    rewriter.replaceOpWithNewOp<mlir::LLVM::CallOp>(op, *calleeOrErr,
+                                                    mlir::ValueRange{});
     return mlir::success();
   }
 };

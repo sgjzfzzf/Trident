@@ -629,9 +629,7 @@ struct LowerShapeOp
     mlir::Value elementPtr = mlir::LLVM::GEPOp::create(
         rewriter, loc, ptrTy, i64Ty, shapePtr,
         llvm::ArrayRef<mlir::LLVM::GEPArg>{indexValue});
-    mlir::Value shapeValue =
-        mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, elementPtr);
-    rewriter.replaceOp(op, shapeValue);
+    rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(op, i64Ty, elementPtr);
     return mlir::success();
   }
 };
@@ -655,9 +653,7 @@ struct LowerStridesOp
     mlir::Value elementPtr = mlir::LLVM::GEPOp::create(
         rewriter, loc, ptrTy, i64Ty, stridesPtr,
         llvm::ArrayRef<mlir::LLVM::GEPArg>{indexValue});
-    mlir::Value strideValue =
-        mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, elementPtr);
-    rewriter.replaceOp(op, strideValue);
+    rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(op, i64Ty, elementPtr);
     return mlir::success();
   }
 };

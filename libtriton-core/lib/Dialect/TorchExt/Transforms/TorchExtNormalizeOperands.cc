@@ -13,55 +13,50 @@ namespace libtriton::torch_ext {
 
 namespace {
 
-static mlir::Value rewriteKernelOperand(mlir::Value operand) {
+static std::optional<mlir::Value> rewriteKernelOperand(mlir::Value operand) {
   if (mlir::torch::TorchConversion::FromBuiltinTensorOp fromBuiltinOp =
           operand.getDefiningOp<
               mlir::torch::TorchConversion::FromBuiltinTensorOp>()) {
     return fromBuiltinOp.getOperand();
-  } else {
-    return operand;
   }
+  return std::nullopt;
 }
 
 class NormalizeOperandsPattern
-    : public mlir::OpRewritePattern<
-          libtriton::torch_ext::TritonKernelLaunchOp> {
+    : public mlir::OpRewritePattern<TritonKernelLaunchOp> {
 public:
-  using mlir::OpRewritePattern<
-      libtriton::torch_ext::TritonKernelLaunchOp>::OpRewritePattern;
+  using mlir::OpRewritePattern<TritonKernelLaunchOp>::OpRewritePattern;
 
   mlir::LogicalResult
-  matchAndRewrite(libtriton::torch_ext::TritonKernelLaunchOp launchOp,
+  matchAndRewrite(TritonKernelLaunchOp launchOp,
                   mlir::PatternRewriter &rewriter) const final {
     mlir::OperandRange kernelOperands = launchOp.getKernelOperands();
     llvm::SmallVector<mlir::Value> rewrittenKernelOperands;
     rewrittenKernelOperands.reserve(kernelOperands.size());
     bool changed = false;
-    rewriter.setInsertionPoint(launchOp);
-    for (const auto &indexedOperand : llvm::enumerate(kernelOperands)) {
-      mlir::Value originalValue = indexedOperand.value();
-      mlir::Value rewrittenValue = rewriteKernelOperand(originalValue);
-      if (rewrittenValue != originalValue) {
-        changed = true;
-      }
-      rewrittenKernelOperands.push_back(rewrittenValue);
+    for (mlir::Value operand : kernelOperands) {
+      std::optional<mlir::Value> rewritten = rewriteKernelOperand(operand);
+      changed |= rewritten.has_value();
+      rewrittenKernelOperands.push_back(rewritten.value_or(operand));
     }
 
     if (!changed) {
       return mlir::failure();
     }
 
-    mlir::OperationState state(
-        launchOp.getLoc(),
-        libtriton::torch_ext::TritonKernelLaunchOp::getOperationName());
-    libtriton::torch_ext::TritonKernelLaunchOp::build(
-        rewriter, state, launchOp.getKernelAttr(), launchOp.getGridSizeX(),
+    mlir::Type asyncTokenType;
+    if (mlir::Value asyncToken = launchOp.getAsyncToken()) {
+      asyncTokenType = asyncToken.getType();
+    }
+    rewriter.replaceOpWithNewOp<TritonKernelLaunchOp>(
+        launchOp, asyncTokenType, launchOp.getAsyncDependencies(),
+        launchOp.getKernelAttr(), launchOp.getGridSizeX(),
         launchOp.getGridSizeY(), launchOp.getGridSizeZ(),
         launchOp.getBlockSizeX(), launchOp.getBlockSizeY(),
-        launchOp.getBlockSizeZ(), launchOp.getDynamicSharedMemorySize(),
-        rewrittenKernelOperands, launchOp.getAsyncObject());
-    mlir::Operation *newLaunchOp = rewriter.create(state);
-    rewriter.replaceOp(launchOp, newLaunchOp->getResults());
+        launchOp.getBlockSizeZ(), launchOp.getClusterSizeX(),
+        launchOp.getClusterSizeY(), launchOp.getClusterSizeZ(),
+        launchOp.getDynamicSharedMemorySize(), rewrittenKernelOperands,
+        launchOp.getAsyncObject());
     return mlir::success();
   }
 };

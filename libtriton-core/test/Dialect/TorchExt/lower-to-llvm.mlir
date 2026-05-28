@@ -1,4 +1,4 @@
-// RUN: libtriton-core-opt %s -convert-to-llvm -convert-func-to-llvm -reconcile-unrealized-casts | FileCheck %s
+// RUN: libtriton-core-opt %s -convert-to-llvm -gpu-to-llvm -convert-func-to-llvm -reconcile-unrealized-casts | FileCheck %s
 
 module attributes {gpu.container_module} {
   gpu.module @kernels {
@@ -41,8 +41,8 @@ module attributes {gpu.container_module} {
     return
     // CHECK-NOT: builtin.unrealized_conversion_cast
     // Field [1] (aligned ptr) is extracted from the converted descriptor.
-    // CHECK: %[[APTR:.*]] = llvm.extractvalue %{{.*}}[1]
-    // CHECK: %[[NULL:.*]] = llvm.mlir.zero : !llvm.ptr
+    // CHECK-DAG: %[[APTR:.*]] = llvm.extractvalue %{{.*}}[1]
+    // CHECK-DAG: %[[NULL:.*]] = llvm.mlir.zero : !llvm.ptr
     // CHECK: gpu.launch_func @buf_kernels::@buf_kernel
     // CHECK-SAME: args(%[[APTR]] : !llvm.ptr, %[[NULL]] : !llvm.ptr, %[[NULL]] : !llvm.ptr)
   }
@@ -59,22 +59,19 @@ func.func @lowering_get_current_device() -> !dlpack.device {
 }
 
 // CHECK-LABEL: llvm.func @lowering_get_current_stream_with_device
-// CHECK-SAME: (%[[DEVICE:.*]]: i8) -> !llvm.ptr
-func.func @lowering_get_current_stream_with_device(%device: i8) -> !llvm.ptr {
+func.func @lowering_get_current_stream_with_device() {
   // CHECK-NOT: torch_ext.get_current_stream
-  // CHECK: %[[STREAM:.*]] = llvm.call @__libtriton_get_current_stream(%[[DEVICE]]) : (i8) -> !llvm.ptr
-  // CHECK: return %[[STREAM]] : !llvm.ptr
-  %0 = torch_ext.get_current_stream device %device : i8 : !llvm.ptr
-  return %0 : !llvm.ptr
+  // CHECK: %[[DEVICE:.*]] = llvm.mlir.constant(7 : i8) : i8
+  // CHECK: llvm.call @__libtriton_get_current_stream(%[[DEVICE]]) : (i8) -> !llvm.ptr
+  %0 = torch_ext.get_current_stream device = 7 : !gpu.async.token
+  return
 }
 
 // CHECK-LABEL: llvm.func @lowering_get_current_stream_default_device
-// CHECK-SAME: () -> !llvm.ptr
-func.func @lowering_get_current_stream_default_device() -> !llvm.ptr {
+func.func @lowering_get_current_stream_default_device() {
   // CHECK-NOT: torch_ext.get_current_stream
   // CHECK: %[[DEFAULT_DEVICE:.*]] = llvm.mlir.constant(-1 : i8) : i8
-  // CHECK: %[[STREAM:.*]] = llvm.call @__libtriton_get_current_stream(%[[DEFAULT_DEVICE]]) : (i8) -> !llvm.ptr
-  // CHECK: return %[[STREAM]] : !llvm.ptr
-  %0 = torch_ext.get_current_stream : !llvm.ptr
-  return %0 : !llvm.ptr
+  // CHECK: llvm.call @__libtriton_get_current_stream(%[[DEFAULT_DEVICE]]) : (i8) -> !llvm.ptr
+  %0 = torch_ext.get_current_stream device = -1 : !gpu.async.token
+  return
 }

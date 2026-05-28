@@ -29,11 +29,9 @@ static bool isMemRefDescriptorLikeStructType(mlir::Type type) {
     return false;
   }
   llvm::ArrayRef<mlir::Type> body = structType.getBody();
-  if (body.size() != 5 || !mlir::isa<mlir::LLVM::LLVMPointerType>(body[0]) ||
-      !mlir::isa<mlir::LLVM::LLVMPointerType>(body[1])) {
-    return false;
-  }
-  return body[2].isInteger(64);
+  return body.size() == 5 && mlir::isa<mlir::LLVM::LLVMPointerType>(body[0]) &&
+         mlir::isa<mlir::LLVM::LLVMPointerType>(body[1]) &&
+         body[2].isInteger(64);
 }
 
 static mlir::Value
@@ -78,14 +76,23 @@ public:
     mlir::gpu::KernelDim3 blockSize{launchOp.getBlockSizeX(),
                                     launchOp.getBlockSizeY(),
                                     launchOp.getBlockSizeZ()};
+    std::optional<mlir::gpu::KernelDim3> clusterSize = std::nullopt;
+    if (launchOp.hasClusterSize()) {
+      clusterSize = mlir::gpu::KernelDim3{launchOp.getClusterSizeX(),
+                                          launchOp.getClusterSizeY(),
+                                          launchOp.getClusterSizeZ()};
+    }
 
-    mlir::gpu::LaunchFuncOp newLaunchOp = mlir::gpu::LaunchFuncOp::create(
-        rewriter, loc, launchOp.getKernelAttr(), gridSize, blockSize,
-        launchOp.getDynamicSharedMemorySize(), kernelOperands,
-        adaptor.getAsyncObject(),
-        /*clusterSize=*/std::nullopt);
-
-    rewriter.replaceOp(launchOp, newLaunchOp->getResults());
+    mlir::Type asyncTokenType;
+    if (mlir::Value asyncToken = launchOp.getAsyncToken()) {
+      asyncTokenType = asyncToken.getType();
+    }
+    llvm::SmallVector<mlir::Value> asyncDependencies =
+        llvm::to_vector(adaptor.getAsyncDependencies());
+    rewriter.replaceOpWithNewOp<mlir::gpu::LaunchFuncOp>(
+        launchOp, adaptor.getKernelAttr(), gridSize, blockSize,
+        adaptor.getDynamicSharedMemorySize(), kernelOperands, asyncTokenType,
+        asyncDependencies, clusterSize);
     return mlir::success();
   }
 };
@@ -139,16 +146,11 @@ public:
     }
 
     mlir::Location loc = op.getLoc();
-    mlir::Value device = adaptor.getDevice();
-    if (!device) {
-      mlir::Type i8Ty = mlir::IntegerType::get(rewriter.getContext(), 8);
-      device =
-          mlir::LLVM::ConstantOp::create(rewriter, loc, i8Ty, -1).getResult();
-    }
-
-    mlir::LLVM::CallOp callOp = mlir::LLVM::CallOp::create(
-        rewriter, loc, *calleeOrErr, mlir::ValueRange{device});
-    rewriter.replaceOp(op, callOp.getResults());
+    mlir::Type i8Ty = mlir::IntegerType::get(rewriter.getContext(), 8);
+    mlir::Value device = mlir::LLVM::ConstantOp::create(
+        rewriter, loc, i8Ty, op.getDeviceAttr().getInt());
+    rewriter.replaceOpWithNewOp<mlir::LLVM::CallOp>(op, *calleeOrErr,
+                                                    mlir::ValueRange{device});
     return mlir::success();
   }
 };

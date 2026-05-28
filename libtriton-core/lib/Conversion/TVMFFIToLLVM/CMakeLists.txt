@@ -6,6 +6,7 @@ add_mlir_conversion_library(
   MLIRConversionPassIncGen
   LINK_LIBS
   PUBLIC
+  DLPackToLLVM
   MemRefOriginAnalysis
   MLIRPass
   TVMFFIDialect

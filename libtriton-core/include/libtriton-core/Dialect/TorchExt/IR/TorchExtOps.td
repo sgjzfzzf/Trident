@@ -3,6 +3,7 @@
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/CommonTypeConstraints.td"
+include "mlir/Dialect/GPU/IR/GPUBase.td"
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "torch-mlir/Dialect/Torch/IR/TorchTypes.td"
@@ -21,7 +22,7 @@ def TorchExt_KernelOperandType : AnyTypeOf<[
 ]>;
 
 def TorchExt_TritonKernelLaunchOp : TorchExt_Op<"triton_kernel_launch", [
-  AttrSizedOperandSegments, AllTypesMatch<[
+  GPU_AsyncOpInterface, AttrSizedOperandSegments, AllTypesMatch<[
     "gridSizeX", "gridSizeY", "gridSizeZ", "blockSizeX", "blockSizeY",
     "blockSizeZ"
   ]>
@@ -32,28 +33,45 @@ def TorchExt_TritonKernelLaunchOp : TorchExt_Op<"triton_kernel_launch", [
     In addition to regular scalar and memref launch arguments, this op also
     supports builtin tensor and torch vtensor operands for staging initial
     TorchExt integration.
+
+    Optionally supports cluster-level parallelism via `clusterSizeX`,
+    `clusterSizeY`, and `clusterSizeZ` arguments. When present, the kernel
+    is launched with the specified thread-block cluster size. This feature
+    is exclusive to certain architectures (e.g. NVIDIA Hopper and later).
   }];
 
-  let arguments = (ins SymbolRefAttr:$kernel,
+  let arguments = (ins Variadic<GPU_AsyncToken>:$asyncDependencies,
+                   SymbolRefAttr:$kernel,
                    LaunchIndx:$gridSizeX,
                    LaunchIndx:$gridSizeY,
                    LaunchIndx:$gridSizeZ,
                    LaunchIndx:$blockSizeX,
                    LaunchIndx:$blockSizeY,
                    LaunchIndx:$blockSizeZ,
+                   Optional<Index>:$clusterSizeX,
+                   Optional<Index>:$clusterSizeY,
+                   Optional<Index>:$clusterSizeZ,
                    Optional<I32>:$dynamicSharedMemorySize,
                    Variadic<TorchExt_KernelOperandType>:$kernelOperands,
                    Optional<AnyType>:$asyncObject);
-  let results = (outs);
+  let results = (outs Optional<GPU_AsyncToken> : $asyncToken);
+
+  let extraClassDeclaration = [{
+    /// Returns true if cluster size is specified.
+    bool hasClusterSize();
+  }];
 
   let assemblyFormat = [{
-    $kernel
+    (`async` `[` $asyncDependencies^ `:` type($asyncDependencies) `]`)?
     (`<` $asyncObject^ `:` type($asyncObject) `>`)?
+    $kernel
+    (`clusters` `in` `(` $clusterSizeX^ `,` $clusterSizeY `,` $clusterSizeZ `)`)?
     `blocks` `in` `(` $gridSizeX `,` $gridSizeY `,` $gridSizeZ `)`
     `threads` `in` `(` $blockSizeX `,` $blockSizeY `,` $blockSizeZ `)`
     (`dynamic_shared_memory_size` $dynamicSharedMemorySize^)?
     (`args` `(` $kernelOperands^ `:` type($kernelOperands) `)`)?
     attr-dict
+    (`->` type($asyncToken)^)?
     `:` type($gridSizeX)
   }];
 }
@@ -69,21 +87,20 @@ def TorchExt_GetCurrentDeviceOp : TorchExt_Op<"get_current_device", [Pure]> {
 }
 
 def TorchExt_GetCurrentStreamOp : TorchExt_Op<"get_current_stream", [Pure]> {
-  let summary = "Get current CUDA stream pointer";
+  let summary = "Get current CUDA stream async token";
   let description = [{
-    Returns the current CUDA stream pointer for the provided device index.
-    If the optional device operand is omitted, lowering materializes -1.
+    Returns a gpu async token associated with the current CUDA stream for the
+    provided device index. If the optional device attribute is omitted, lowering
+    materializes -1.
   }];
 
-  let arguments = (ins Optional<I8> : $device);
-  let results = (outs LLVM_AnyPointer : $output);
-  // clang-format off
+  let arguments = (ins DefaultValuedAttr<I8Attr, "-1"> : $device);
+  let results = (outs GPU_AsyncToken : $output);
   let assemblyFormat = [{
-    (`device` $device^ `:` type($device))?
+    `device` `=` $device
     attr-dict
     `:` type($output)
   }];
-  // clang-format on
 }
 
 #endif // LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTOPS_TD_

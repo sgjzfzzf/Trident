@@ -30,3 +30,15 @@ func.func @triton_kernel_launch_without_kernel_args(%gx: i32, %gy: i32, %gz: i32
     torch_ext.triton_kernel_launch @kernel_no_args blocks in(%gx, %gy, %gz) threads in(%bx, %by, %bz) : i32
     return
 }
+
+// -----
+
+// CHECK-LABEL: func.func @triton_kernel_launch_with_cluster_size
+func.func @triton_kernel_launch_with_cluster_size(%gx: index, %gy: index, %gz: index, %bx: index, %by: index, %bz: index, %cx: index, %cy: index, %cz: index, %arg0: i32) {
+  // CHECK: torch_ext.triton_kernel_launch @kernel_cluster
+  // CHECK-SAME: clusters in(%{{[^,)]+}}, %{{[^,)]+}}, %{{[^)]+}})
+  // CHECK-SAME: blocks in(%{{[^,)]+}}, %{{[^,)]+}}, %{{[^)]+}})
+  // CHECK-SAME: threads in(%{{[^,)]+}}, %{{[^,)]+}}, %{{[^)]+}})
+    torch_ext.triton_kernel_launch @kernel_cluster clusters in(%cx, %cy, %cz) blocks in(%gx, %gy, %gz) threads in(%bx, %by, %bz) args(%arg0 : i32) : index
+    return
+}

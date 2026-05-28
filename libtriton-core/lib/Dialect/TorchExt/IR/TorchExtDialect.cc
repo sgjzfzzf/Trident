@@ -1,6 +1,7 @@
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtTypes.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -14,6 +15,10 @@
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtTypes.cpp.inc"
 
 namespace libtriton::torch_ext {
+
+bool TritonKernelLaunchOp::hasClusterSize() {
+  return getClusterSizeX() && getClusterSizeY() && getClusterSizeZ();
+}
 
 void TorchExtDialect::initialize() {
   addOperations<

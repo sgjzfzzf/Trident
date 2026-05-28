@@ -23,8 +23,7 @@ namespace {
 /// launch.
 struct TritonKernelLaunchOpInterface
     : public BufferizableOpInterface::ExternalModel<
-          TritonKernelLaunchOpInterface,
-          libtriton::torch_ext::TritonKernelLaunchOp> {
+          TritonKernelLaunchOpInterface, TritonKernelLaunchOp> {
 
   bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
                               const AnalysisState &state) const {
@@ -52,7 +51,7 @@ struct TritonKernelLaunchOpInterface
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options,
                           BufferizationState &state) const {
-    auto launchOp = cast<libtriton::torch_ext::TritonKernelLaunchOp>(op);
+    TritonKernelLaunchOp launchOp = cast<TritonKernelLaunchOp>(op);
 
     // Replace every tensor-typed kernel operand with its memref buffer.
     llvm::SmallVector<Value> newKernelOperands;
@@ -60,24 +59,33 @@ struct TritonKernelLaunchOpInterface
     for (Value operand : launchOp.getKernelOperands()) {
       if (isa<TensorType>(operand.getType())) {
         FailureOr<Value> buffer = getBuffer(rewriter, operand, options, state);
-        if (failed(buffer))
+        if (failed(buffer)) {
           return failure();
+        }
         newKernelOperands.push_back(*buffer);
       } else {
         newKernelOperands.push_back(operand);
       }
     }
 
+    mlir::Type asyncTokenType;
+    if (mlir::Value asyncToken = launchOp.getAsyncToken()) {
+      asyncTokenType = asyncToken.getType();
+    }
+
     // Recreate the op with the updated operands. The op has no results, so
     // replaceOpWithNewBufferizedOp correctly calls
     // replaceOpWithBufferizedValues with an empty result list and erases the
     // original op.
-    replaceOpWithNewBufferizedOp<libtriton::torch_ext::TritonKernelLaunchOp>(
-        rewriter, op, launchOp.getKernelAttr(), launchOp.getGridSizeX(),
+    replaceOpWithNewBufferizedOp<TritonKernelLaunchOp>(
+        rewriter, op, asyncTokenType, launchOp.getAsyncDependencies(),
+        launchOp.getKernelAttr(), launchOp.getGridSizeX(),
         launchOp.getGridSizeY(), launchOp.getGridSizeZ(),
         launchOp.getBlockSizeX(), launchOp.getBlockSizeY(),
-        launchOp.getBlockSizeZ(), launchOp.getDynamicSharedMemorySize(),
-        newKernelOperands, launchOp.getAsyncObject());
+        launchOp.getBlockSizeZ(), launchOp.getClusterSizeX(),
+        launchOp.getClusterSizeY(), launchOp.getClusterSizeZ(),
+        launchOp.getDynamicSharedMemorySize(), newKernelOperands,
+        launchOp.getAsyncObject());
     return success();
   }
 };
@@ -86,11 +94,10 @@ struct TritonKernelLaunchOpInterface
 
 void registerBufferizableOpInterfaceExternalModels(
     mlir::DialectRegistry &registry) {
-  registry.addExtension(
-      +[](MLIRContext *ctx, libtriton::torch_ext::TorchExtDialect *) {
-        libtriton::torch_ext::TritonKernelLaunchOp::attachInterface<
-            TritonKernelLaunchOpInterface>(*ctx);
-      });
+  registry.addExtension(+[](MLIRContext *ctx,
+                            libtriton::torch_ext::TorchExtDialect *) {
+    TritonKernelLaunchOp::attachInterface<TritonKernelLaunchOpInterface>(*ctx);
+  });
 }
 
 } // namespace libtriton::torch_ext

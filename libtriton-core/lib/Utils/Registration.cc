@@ -19,6 +19,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/MemRef/Transforms/AllocationOpInterfaceImpl.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/InitAllPasses.h"
@@ -42,6 +43,7 @@ void libtriton::conversion::registerAllPasses() {
 
 void libtriton::conversion::registerAllDialects(
     mlir::DialectRegistry &registry) {
+  mlir::memref::registerAllocationOpInterfaceExternalModels(registry);
   libtriton::dlpack::registerConvertDLPackToLLVMInterface(registry);
   libtriton::torch_ext::registerConvertTorchExtToLLVMInterface(registry);
   libtriton::tvm_ffi::registerConvertTVMFFIToLLVMInterface(registry);

@@ -15,12 +15,12 @@ def NormalizeTorchExtOperands
 
 def AsyncKernelLaunch : Pass<"torchext-async-kernel-launch", "mlir::ModuleOp"> {
   let summary =
-      "Ensure kernel launch ops carry an async stream operand";
+      "Ensure kernel launch ops carry an async token";
   let description = [{
     Rewrites gpu.launch_func and torch_ext.triton_kernel_launch in a module.
-    If the optional async/stream operand is not provided, this pass materializes
-    torch_ext.get_current_stream and wires the resulting stream into the launch
-    op.
+    If the optional async token is not provided, this pass materializes
+    torch_ext.get_current_stream and wires the resulting token into async token
+    positions on launch operations.
   }];
   let dependentDialects = [
     "libtriton::torch_ext::TorchExtDialect", "mlir::gpu::GPUDialect"

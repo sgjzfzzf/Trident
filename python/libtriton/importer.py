@@ -154,6 +154,8 @@ class TritonGraphNodeImporter(GraphNodeImporter):
             i32_type = ir.IntegerType.get_signless(32)
             grid_x, grid_y, grid_z = grid
             torch_ext.TritonKernelLaunchOp(
+                None,
+                [],
                 ir.Attribute.parse(f"@{binary_name}::@{kernel.metadata.name}"),
                 arith.constant(index_type, grid_x),
                 arith.constant(index_type, grid_y),

@@ -96,11 +96,11 @@ def TorchExt_GetCurrentStreamOp : TorchExt_Op<"get_current_stream", [Pure]> {
 
   let arguments = (ins DefaultValuedAttr<I8Attr, "-1"> : $device);
   let results = (outs GPU_AsyncToken : $output);
+  // clang-format off
   let assemblyFormat = [{
-    `device` `=` $device
-    attr-dict
-    `:` type($output)
+    `device` `=` $device attr-dict `:` type($output)
   }];
+  // clang-format on
 }
 
 #endif // LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTOPS_TD_

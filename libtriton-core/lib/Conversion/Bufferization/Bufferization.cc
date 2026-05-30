@@ -18,6 +18,7 @@
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/StringRef.h"
@@ -78,22 +79,6 @@ public:
       return;
     }
     options.setFunctionBoundaryTypeConversion(*typeConversion);
-
-    options.allocationFn =
-        [](mlir::OpBuilder &builder, mlir::Location loc,
-           mlir::MemRefType allocationType, mlir::ValueRange dynamicSizes,
-           unsigned int /*alignment*/) -> mlir::FailureOr<mlir::Value> {
-      return mlir::memref::AllocOp::create(builder, loc, allocationType,
-                                           dynamicSizes)
-          .getResult();
-    };
-
-    options.memCpyFn = [](mlir::OpBuilder &builder, mlir::Location loc,
-                          mlir::Value from,
-                          mlir::Value to) -> mlir::LogicalResult {
-      mlir::memref::CopyOp::create(builder, loc, from, to);
-      return mlir::success();
-    };
 
     mlir::bufferization::BufferizationState state;
     if (mlir::failed(mlir::bufferization::runOneShotModuleBufferize(

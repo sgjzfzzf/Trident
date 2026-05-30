@@ -53,14 +53,14 @@ module {
 
 // IDENTITY-LABEL: func.func @insert_conflict(
 // IDENTITY-SAME: %[[SRC0:.+]]: memref<4xf32>, %[[V0:.+]]: f32) -> (memref<4xf32>, memref<4xf32>)
-// IDENTITY: %[[A0:.+]] = memref.alloc() : memref<4xf32>
+// IDENTITY: %[[A0:.+]] = memref.alloc() {{.*}} : memref<4xf32>
 // IDENTITY: memref.copy %[[SRC0]], %[[A0]] : memref<4xf32> to memref<4xf32>
 // IDENTITY: memref.store %[[V0]], %[[A0]]
 // IDENTITY: return %[[A0]], %[[SRC0]] : memref<4xf32>, memref<4xf32>
 
 // IDENTITY-LABEL: func.func @build_from_empty(
 // IDENTITY-SAME: %[[N0:.+]]: index, %[[V1:.+]]: f32) -> memref<?xf32>
-// IDENTITY: %[[A1:.+]] = memref.alloc(%[[N0]]) : memref<?xf32>
+// IDENTITY: %[[A1:.+]] = memref.alloc(%[[N0]]) {{.*}} : memref<?xf32>
 // IDENTITY: memref.store %[[V1]], %[[A1]]
 // IDENTITY: return %[[A1]] : memref<?xf32>
 
@@ -79,12 +79,12 @@ module {
 
 // INFER-LABEL: func.func @insert_conflict(
 // INFER-SAME: %[[SRC1:.+]]: memref<4xf32, strided<[?], offset: ?>>, %[[V2:.+]]: f32)
-// INFER: %[[A2:.+]] = memref.alloc() : memref<4xf32>
+// INFER: %[[A2:.+]] = memref.alloc() {{.*}} : memref<4xf32>
 // INFER: memref.copy %[[SRC1]], %[[A2]] : memref<4xf32, strided<[?], offset: ?>> to memref<4xf32>
 // INFER: memref.store %[[V2]], %[[A2]]
 
 // INFER-LABEL: func.func @build_from_empty(
 // INFER-SAME: %[[N1:.+]]: index, %[[V3:.+]]: f32) -> memref<?xf32>
-// INFER: %[[A3:.+]] = memref.alloc(%[[N1]]) : memref<?xf32>
+// INFER: %[[A3:.+]] = memref.alloc(%[[N1]]) {{.*}} : memref<?xf32>
 // INFER: memref.store %[[V3]], %[[A3]]
 // INFER: return %[[A3]] : memref<?xf32>

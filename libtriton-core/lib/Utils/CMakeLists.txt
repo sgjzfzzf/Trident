@@ -19,7 +19,6 @@ add_mlir_library(
   TorchMLIRTorchConversionDialect
   TorchExtBufferize
   TorchExtDialect
-  TorchExtNormalizeOperands
   TorchExtToLLVM
   TVMFFIDialect
   TVMFFIToLLVM)

@@ -7,7 +7,6 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
-#include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
 
 namespace libtriton::torch_ext {
 
@@ -20,11 +19,3 @@ namespace libtriton::torch_ext {
 } // namespace libtriton::torch_ext
 
 #endif // LIBTRITON_CORE_DIALECT_TORCHEXT_TRANSFORMS_PASSES_H_
-
-// Re-includable section: expand pass base class definitions.
-#ifdef GEN_PASS_DEF_NORMALIZETORCHEXTOPERANDS
-namespace libtriton::torch_ext {
-#include "libtriton-core/Dialect/TorchExt/Transforms/Passes.h.inc"
-} // namespace libtriton::torch_ext
-#undef GEN_PASS_DEF_NORMALIZETORCHEXTOPERANDS
-#endif

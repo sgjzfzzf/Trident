@@ -8,7 +8,6 @@
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "libtriton-core/Dialect/TorchExt/Transforms/BufferizableOpInterfaceImpl.h"
-#include "libtriton-core/Dialect/TorchExt/Transforms/TorchExtNormalizeOperands.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMPass.h"
 #include "mlir/Conversion/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -34,7 +33,6 @@ void libtriton::conversion::registerAllPasses() {
   libtriton::conversion::registerLibTritonOneShotBufferizePass();
   libtriton::dlpack::registerConvertDLPackToLLVMPass();
   libtriton::torch_ext::registerConvertTorchExtToLLVMPass();
-  libtriton::torch_ext::registerNormalizeTorchExtOperandsPass();
   libtriton::tvm_ffi::registerConvertTVMFFIToLLVMPass();
   torchMlirRegisterAllPasses();
 }

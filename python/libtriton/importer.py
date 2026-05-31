@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import re
 from typing import Any, Dict, List, Optional, Tuple
 from typing_extensions import Final
 
@@ -50,11 +51,12 @@ class LibTritonGraphNodeImporter(GraphNodeImporter):
                     cubin=cubin_mlir,
                 )
             )
-            with loc, ir.InsertionPoint(module.body):
+            with ir.InsertionPoint(module.body):
                 gpu.binary(
                     ir.StringAttr.get(binary_name),
                     ir.ArrayAttr.get([gpu_object]),
                     offloading_handler=ir.Attribute.parse("#gpu.select_object"),
+                    loc=loc,
                 )
 
     @staticmethod
@@ -98,6 +100,36 @@ class LibTritonGraphNodeImporter(GraphNodeImporter):
         else:
             assert False, f"missing runtime argument for {name} of type {triton_type}"
 
+    @staticmethod
+    def _vtensor_type_to_builtin_tensor_type(value_type: ir.Type) -> Optional[ir.Type]:
+        value_type_asm: str = f"{value_type}"
+        match: Optional[re.Match[str]] = re.match(
+            r"^!torch\.vtensor<\[(\d*(?:,\d*)*)\],([fiu]\d+)>$", value_type_asm
+        )
+        if match is None:
+            return None
+        else:
+            shape_asm, element_type_asm = match.groups()
+            literals: List[str] = shape_asm.split(",") + [element_type_asm]
+            return ir.Type.parse("tensor<{}>".format("x".join(literals)))
+
+    @staticmethod
+    def _to_builtin_launch_operand(operand: ir.Value, loc: ir.Location) -> ir.Value:
+        builtin_tensor_type: Optional[ir.Type] = (
+            LibTritonGraphNodeImporter._vtensor_type_to_builtin_tensor_type(
+                operand.type
+            )
+        )
+        if builtin_tensor_type is None:
+            return operand
+        else:
+            return ir.Operation.create(
+                "torch_c.to_builtin_tensor",
+                results=[builtin_tensor_type],
+                operands=[operand],
+                loc=loc,
+            ).result
+
     def _emit_async_triton_kernel_launch(
         self,
         loc: Any,
@@ -125,15 +157,18 @@ class LibTritonGraphNodeImporter(GraphNodeImporter):
             async_token_type,
             async_dependencies,
             kernel_attr,
-            arith.constant(index_type, grid_x),
-            arith.constant(index_type, grid_y),
-            arith.constant(index_type, grid_z),
-            arith.constant(index_type, block_size_x),
-            arith.constant(index_type, 1),
-            arith.constant(index_type, 1),
-            operands,
+            arith.constant(index_type, grid_x, loc=loc),
+            arith.constant(index_type, grid_y, loc=loc),
+            arith.constant(index_type, grid_z, loc=loc),
+            arith.constant(index_type, block_size_x, loc=loc),
+            arith.constant(index_type, 1, loc=loc),
+            arith.constant(index_type, 1, loc=loc),
+            [
+                LibTritonGraphNodeImporter._to_builtin_launch_operand(operand, loc)
+                for operand in operands
+            ],
             dynamicSharedMemorySize=arith.constant(
-                i32_type, dynamic_shared_memory_size
+                i32_type, dynamic_shared_memory_size, loc=loc
             ),
             loc=loc,
         )
@@ -191,15 +226,14 @@ class LibTritonGraphNodeImporter(GraphNodeImporter):
         (grid,) = node.kwargs["grid"]
         binary_name: Final[str] = f"_{node.name}_{random.randint(0, 1 << 32)}"
         self._add_gpu_binary(loc, self.fx_importer.module, binary_name, kernel)
-        with loc:
-            self._emit_async_triton_kernel_launch(
-                loc,
-                ir.Attribute.parse(f"@{binary_name}::@{kernel.metadata.name}"),
-                grid,
-                kernel.metadata.num_warps * kernel.metadata.warp_size,
-                operands,
-                kernel.metadata.shared,
-            )
+        self._emit_async_triton_kernel_launch(
+            loc,
+            ir.Attribute.parse(f"@{binary_name}::@{kernel.metadata.name}"),
+            grid,
+            kernel.metadata.num_warps * kernel.metadata.warp_size,
+            operands,
+            kernel.metadata.shared,
+        )
 
         self._multi_result_nodes.add(node)
 
@@ -233,7 +267,7 @@ class LibTritonGraphNodeImporter(GraphNodeImporter):
         return kernel_cache.get(key)
 
 
-class TritonFxImporter(FxImporter):
+class LibTritonFxImporter(FxImporter):
     """FxImporter subclass that uses LibTritonGraphNodeImporter for triton op support."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

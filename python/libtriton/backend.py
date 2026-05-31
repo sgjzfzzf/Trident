@@ -39,11 +39,11 @@ from libtriton._C.libtriton_core.dialects import (
 )
 from .error import GuardMatchException
 from .guards import Guards, parse_guards
-from .importer import TritonFxImporter
+from .importer import LibTritonFxImporter
 
 
 class TritonGraphModule(object):
-    """Compiles a torch.fx.GraphModule containing triton ops via TritonFxImporter."""
+    """Compiles a torch.fx.GraphModule containing triton ops via LibTritonFxImporter."""
 
     def __init__(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -152,7 +152,7 @@ class TritonGraphModule(object):
             gm,
             output_type=compiler_utils.OutputType.TORCH,
             model_name=model_name,
-            fx_importer=TritonFxImporter(context=self.ctx),
+            fx_importer=LibTritonFxImporter(context=self.ctx),
         )
         with self.ctx:
             passmanager.PassManager.parse(
@@ -452,7 +452,7 @@ class TritonGraphModule(object):
             "func.func(convert-torch-to-tensor)",
             "convert-torch-conversion-to-mlprogram",
             "torch-func-backend-type-conversion",
-            "func.func(torchext-normalize-operands)",
+            "func.func(canonicalize,cse)",
             "func.func(torch-finalizing-backend-type-conversion)",
         ]
         return "builtin.module({})".format(", ".join(passes))

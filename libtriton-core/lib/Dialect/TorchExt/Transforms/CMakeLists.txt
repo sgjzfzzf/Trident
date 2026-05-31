@@ -1,17 +1,4 @@
 add_mlir_library(
-  TorchExtNormalizeOperands
-  TorchExtNormalizeOperands.cc
-  DEPENDS
-  MLIRTorchExtPassIncGen
-  LINK_LIBS
-  PUBLIC
-  MLIRFuncDialect
-  MLIRPass
-  TorchMLIRTorchConversionDialect
-  TorchMLIRTorchDialect
-  TorchExtDialect)
-
-add_mlir_library(
   TorchExtBufferize
   BufferizableOpInterfaceImpl.cc
   LINK_LIBS

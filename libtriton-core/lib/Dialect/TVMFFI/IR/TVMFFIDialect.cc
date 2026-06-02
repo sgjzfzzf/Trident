@@ -41,6 +41,8 @@ bool isSupportedToConversionPair(mlir::Type inputType, mlir::Type outputType) {
          (inputIsAny && mlir::isa<mlir::IntegerType, mlir::Float64Type,
                                   mlir::LLVM::LLVMPointerType, ObjectHandleType,
                                   dlpack::DLTensorType>(outputType)) ||
+         (mlir::isa<ObjectHandleType>(inputType) &&
+          mlir::isa<dlpack::DLTensorType>(outputType)) ||
          (outputIsAny &&
           mlir::isa<mlir::IntegerType, mlir::Float64Type,
                     mlir::LLVM::LLVMPointerType, ObjectHandleType>(inputType));

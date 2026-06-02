@@ -1,5 +1,6 @@
 // RUN: libtriton-core-opt %s -convert-to-llvm | FileCheck %s
-// RUN: libtriton-core-opt %s -convert-to-llvm | mlir-opt -convert-func-to-llvm -reconcile-unrealized-casts | mlir-translate --mlir-to-llvmir -o /dev/null
+// RUN: libtriton-core-opt %s -convert-to-llvm | mlir-opt -convert-func-to-llvm
+// -reconcile-unrealized-casts | mlir-translate --mlir-to-llvmir -o /dev/null
 
 // CHECK-DAG: llvm.func @TVMFFIErrorSetRaisedFromCStr
 // CHECK-DAG: llvm.func @TVMFFIObjectDecRef
@@ -262,6 +263,19 @@ func.func @lower_object_handle_from_any(%a: !tvm_ffi.any) -> !tvm_ffi.object_han
   return %0 : !tvm_ffi.object_handle
 }
 
+// CHECK-LABEL: func.func @lower_tensor_from_object_handle
+// CHECK-SAME: (%[[TO_TENSOR_FROM_HANDLE_ARG:.*]]: !llvm.ptr)
+// CHECK-SAME: -> !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
+func.func @lower_tensor_from_object_handle(%h: !tvm_ffi.object_handle) -> !dlpack.tensor {
+  // CHECK-NOT: tvm_ffi.
+  // CHECK-NOT: builtin.unrealized_conversion_cast
+  // CHECK: %[[TO_TENSOR_FROM_HANDLE_PTR:.*]] = llvm.getelementptr %[[TO_TENSOR_FROM_HANDLE_ARG]][24] : (!llvm.ptr) -> !llvm.ptr, i8
+  // CHECK: %[[TO_TENSOR_FROM_HANDLE_VALUE:.*]] = llvm.load %[[TO_TENSOR_FROM_HANDLE_PTR]] : !llvm.ptr -> !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
+  // CHECK: return %[[TO_TENSOR_FROM_HANDLE_VALUE]] : !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
+  %0 = tvm_ffi.to %h : !tvm_ffi.object_handle -> !dlpack.tensor
+  return %0 : !dlpack.tensor
+}
+
 // CHECK-LABEL: func.func @lower_tensor_from_llvm_struct
 // CHECK-SAME: (%[[TENSOR_FROM_LLVM_ARG:.*]]: !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>)
 // CHECK-SAME: -> !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
@@ -315,4 +329,3 @@ func.func @lower_object_handle_env_tensor_alloc() -> !tvm_ffi.object_handle {
   %h = tvm_ffi.env_tensor_alloc dtype = f32, shape = [16, 32] : !tvm_ffi.object_handle
   return %h : !tvm_ffi.object_handle
 }
-

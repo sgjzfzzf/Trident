@@ -126,6 +126,15 @@ func.func @object_handle_from_any(%arg0: !tvm_ffi.any) {
 
 // -----
 
+// CHECK-LABEL: func.func @tensor_from_object_handle
+func.func @tensor_from_object_handle(%arg0: !tvm_ffi.object_handle) {
+  // CHECK: %[[VALUE:.*]] = tvm_ffi.to %arg0 : !tvm_ffi.object_handle -> !dlpack.tensor
+  %0 = tvm_ffi.to %arg0 : !tvm_ffi.object_handle -> !dlpack.tensor
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func.func @object_handle_from_dlpack_managed_tensor
 func.func @object_handle_from_dlpack_managed_tensor(%arg0: !dlpack.managed_tensor, %arg1: i32, %arg2: i32) {
   // CHECK: %[[VALUE:.*]] = tvm_ffi.tensor_from_dlpack %arg0, %arg1, %arg2 : !dlpack.managed_tensor, i32, i32 -> !tvm_ffi.object_handle

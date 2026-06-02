@@ -152,7 +152,7 @@ class LibTritonGraphModule(object):
         )(*args, **kwargs)
         ret: Any = gm(*args, **kwargs)
         guards: Guards = parse_guards(gs)
-        model_name: str = f"{self.fn.__name__}_{hash(guards)}"
+        model_name: str = f"{self.fn.__name__}_{hex(hash(guards))}"
         module: ir.Module = fx.stateless_fx_import(
             gm,
             output_type=compiler_utils.OutputType.TORCH,
@@ -375,7 +375,7 @@ class LibTritonGraphModule(object):
             assert isinstance(out_param_ty, ir.MemRefType), (
                 f"submodule out-param type must be memref: {callee_name}: {callee_ty}"
             )
-        wrapper_name: str = f"__tvm_ffi_{self.fn.__name__}_guard_{abs(hash(guards))}"
+        wrapper_name: str = f"__tvm_ffi_{self.fn.__name__}_guard_{hex(hash(guards))}"
         with ir.InsertionPoint(module.body), ir.Location.unknown():
             wrapper_op: func.FuncOp = func.FuncOp(wrapper_name, self._func_type)
             entry_block: ir.Block = ir.Block.create_at_start(
@@ -404,10 +404,9 @@ class LibTritonGraphModule(object):
                         out_param_ty.element_type,
                         out_param_ty.shape,
                     )
-                    out_any: ir.Value = tvm_ffi_d.to(self._any_type, out_handle)
                     dl_tensor: ir.Value = tvm_ffi_d.to(
                         self._dl_tensor_type,
-                        out_any,
+                        out_handle,
                     )
                     out_memref: ir.Value = dlpack.to_memref(
                         out_param_ty,
@@ -419,7 +418,7 @@ class LibTritonGraphModule(object):
                         call_args + [out_memref],
                     )
                     assert len(call_op.results) == 0
-                    self._emit_box_return(packed_result_ptr, out_memref)
+                    self._emit_box_return(packed_result_ptr, out_handle)
                     func.return_([arith.constant(self._i32_type, 0)])
         return wrapper_name, ir.FunctionType(wrapper_op.type)
 

@@ -486,6 +486,31 @@ struct LowerToOp : public mlir::OpConversionPattern<ToOp> {
     }
   }
 
+  mlir::FailureOr<mlir::Value>
+  lowerObjectHandleToDLTensor(ToOp op, OpAdaptor adaptor,
+                              mlir::ConversionPatternRewriter &rewriter) const {
+    const mlir::Location loc = op.getLoc();
+    const mlir::Type outputType = op.getOutput().getType();
+    if (!mlir::isa<dlpack::DLTensorType>(outputType)) {
+      return mlir::failure();
+    }
+    const mlir::Type convertedTensorType =
+        getTypeConverter()->convertType(outputType);
+    if (!convertedTensorType) {
+      return mlir::failure();
+    }
+    mlir::MLIRContext *context = op.getContext();
+    const mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
+    const mlir::Type i8Ty = mlir::IntegerType::get(context, 8);
+    const mlir::Value objectPtr = adaptor.getInput();
+    const mlir::Value tensorPtr = mlir::LLVM::GEPOp::create(
+        rewriter, loc, ptrTy, i8Ty, objectPtr,
+        llvm::ArrayRef<mlir::LLVM::GEPArg>{kTVMFFIObjectHeaderBytes});
+    return mlir::LLVM::LoadOp::create(rewriter, loc, convertedTensorType,
+                                      tensorPtr)
+        .getResult();
+  }
+
   mlir::LogicalResult
   matchAndRewrite(ToOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const final {
@@ -494,6 +519,9 @@ struct LowerToOp : public mlir::OpConversionPattern<ToOp> {
       convertedValue = lowerToAny(op, adaptor, rewriter);
     } else if (mlir::isa<AnyType>(op.getInput().getType())) {
       convertedValue = lowerFromAny(op, adaptor, rewriter);
+    } else if (mlir::isa<ObjectHandleType>(op.getInput().getType()) &&
+               mlir::isa<dlpack::DLTensorType>(op.getOutput().getType())) {
+      convertedValue = lowerObjectHandleToDLTensor(op, adaptor, rewriter);
     }
     if (mlir::failed(convertedValue)) {
       return mlir::failure();

@@ -18,9 +18,8 @@ std::optional<DLDataType> getDLPackDTypeFromMLIRType(mlir::Type type) {
     return DLDataType{kDLBfloat, 16, 1};
   } else if (mlir::IntegerType integerType =
                  mlir::dyn_cast<mlir::IntegerType>(type)) {
-    const std::uint8_t code = integerType.isUnsigned() ? kDLUInt : kDLInt;
-    return DLDataType{code, static_cast<std::uint8_t>(integerType.getWidth()),
-                      1};
+    const uint8_t code = integerType.isUnsigned() ? kDLUInt : kDLInt;
+    return DLDataType{code, static_cast<uint8_t>(integerType.getWidth()), 1};
   } else {
     return std::nullopt;
   }

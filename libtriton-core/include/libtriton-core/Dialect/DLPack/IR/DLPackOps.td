@@ -44,32 +44,37 @@ class DLPack_IndexedOp<string mnemonic, list<Trait> traits = []>
 def DLPack_FromMemRefOwnedOp
     : DLPack_MemRefOp<"from_memref_owned", [MemoryEffects<[MemWrite]>]> {
   let summary = "Convert an MLIR memref value to a DLManagedTensor handle";
+  // clang-format off
   let description =
-      [{Bridges a memref -
-        typed MLIR value into a DLPack DLManagedTensor handle value
-            .This op is intended as an interoperability scaffold and can be
-                lowered during conversion to LLVM dialect.}];
+      [{Bridges an MLIR memref-typed value to a DLPack DLManagedTensor handle.
+        This op is intended as an interoperability scaffold and can be lowered
+        during conversion to LLVM dialect.}];
+  // clang-format on
   let results = (outs DLPack_DLManagedTensor : $output);
 }
 
 def DLPack_FromMemRefBorrowedOp
     : DLPack_MemRefOp<"from_memref_borrowed", [MemoryEffects<[MemWrite]>]> {
   let summary = "Convert an MLIR memref value to a borrowed DLTensor handle";
-  let description = [{Bridges a memref -
-        typed MLIR value into a non-owning DLPack DLTensor handle value
-            .This op is intended for short-lived adapter paths and can be
-                lowered during conversion to LLVM dialect.
+  // clang-format off
+  let description = [{Bridges an MLIR memref-typed value to a non-owning
+                      DLPack DLTensor handle value. This op is intended for
+                      short-lived adapter paths and can be lowered during
+                      conversion to LLVM dialect.
   }];
+  // clang-format on
   let results = (outs DLPack_DLTensor : $output);
 }
 
 def DLPack_ViewOp : DLPack_Op<"view", [Pure]> {
   let assemblyFormat = "$input attr-dict `:` type($input) `->` type($output)";
   let summary = "Convert a DLManagedTensor handle to a plain DLTensor handle";
+  // clang-format off
   let description =
-      [{Extracts the DLTensor payload from a DLPack DLManagedTensor handle
-            .This op is intended as an interoperability scaffold and can be
-                lowered during conversion to LLVM dialect.}];
+      [{Extracts the DLTensor payload from a DLPack DLManagedTensor handle.
+        This op is intended as an interoperability scaffold and can be lowered
+        during conversion to LLVM dialect.}];
+  // clang-format on
   let arguments = (ins DLPack_DLManagedTensor : $input);
   let results = (outs DLPack_DLTensor : $output);
 }
@@ -77,11 +82,12 @@ def DLPack_ViewOp : DLPack_Op<"view", [Pure]> {
 def DLPack_ToMemRefOp
     : DLPack_TensorOp<"to_memref", [MemoryEffects<[MemRead]>]> {
   let summary = "Convert a DLTensor handle to an MLIR memref value";
+  // clang-format off
   let description =
-      [{Bridges a DLPack DLTensor handle value to an MLIR memref -
-        typed value
-            .This op is intended as an interoperability scaffold and can be
-                lowered during conversion to LLVM dialect.}];
+      [{Bridges a DLPack DLTensor handle value to an MLIR memref-typed value.
+        This op is intended as an interoperability scaffold and can be lowered
+        during conversion to LLVM dialect.}];
+  // clang-format on
   let results = (outs AnyMemRef : $output);
 }
 
@@ -166,9 +172,11 @@ def DLPack_TensorFromLLVMOp : DLPack_Op<"tensor_from_llvm", [Pure]> {
 
 def DLPack_TensorToLLVMOp : DLPack_TensorOp<"tensor_to_llvm", [Pure]> {
   let summary = "Convert !dlpack.tensor to its LLVM descriptor struct";
+  // clang-format off
   let description = [{
-      Bridges !dlpack.tensor into the LLVM struct descriptor form used by low -
-      level LLVM dialect ops.}];
+      Bridges !dlpack.tensor into the LLVM struct descriptor form used by
+      low-level LLVM dialect ops.}];
+  // clang-format on
   let results = (outs LLVM_AnyStruct : $output);
 }
 

@@ -82,7 +82,10 @@ func.func @lower_to_memref_tensor(%arg0: !dlpack.tensor) -> memref<?xf32> {
   // CHECK: llvm.insertvalue %[[BYTE_OFFSET]], %{{.*}}[2]
   // CHECK: %[[SHAPE_GEP:.*]] = llvm.getelementptr %[[SHAPE_PTR]]
   // CHECK: %[[SHAPE0:.*]] = llvm.load %[[SHAPE_GEP]]
-  // CHECK: %[[STRIDE_GEP:.*]] = llvm.getelementptr %[[STRIDE_PTR]]
+  // CHECK: %[[NULL_PTR:.*]] = llvm.mlir.zero : !llvm.ptr
+  // CHECK: %[[IS_NULL_STRIDE:.*]] = llvm.icmp "eq" %[[STRIDE_PTR]], %[[NULL_PTR]] : !llvm.ptr
+  // CHECK: %[[EFFECTIVE_STRIDE_PTR:.*]] = llvm.select %[[IS_NULL_STRIDE]], %{{.*}}, %[[STRIDE_PTR]] : i1, !llvm.ptr
+  // CHECK: %[[STRIDE_GEP:.*]] = llvm.getelementptr %[[EFFECTIVE_STRIDE_PTR]]
   // CHECK: %[[STRIDE0:.*]] = llvm.load %[[STRIDE_GEP]]
   // CHECK: %[[MEMREF_WITH_SHAPE:.*]] = llvm.insertvalue %[[SHAPE0]], %{{.*}}[3, 0]
   // CHECK: %[[MEMREF_RESULT:.*]] = llvm.insertvalue %[[STRIDE0]], %[[MEMREF_WITH_SHAPE]][4, 0]

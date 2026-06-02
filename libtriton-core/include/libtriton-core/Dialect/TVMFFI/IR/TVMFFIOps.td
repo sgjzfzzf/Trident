@@ -16,17 +16,14 @@ class TVMFFI_Op<string mnemonic, list<Trait> traits = []>
 
 def TVMFFI_ToOp : TVMFFI_Op<"to", [MemoryEffects<[MemRead]>]> {
   let summary = "Convert values across the TVMFFI bridge type set";
+  // clang-format off
   let description = [{
-    Performs type -
-        directed conversion between TVMFFI boundary types.Supported types
-    are: integer types,
-    f64,
-    !llvm.ptr,
-    !tvm_ffi.any,
-    !tvm_ffi.object_handle,
-    and !dlpack.tensor
-        .The concrete lowering is selected from input and output types.
+    Performs type-directed conversion between TVMFFI boundary types.
+    Supported types are integer types, f64, !llvm.ptr, !tvm_ffi.any,
+    !tvm_ffi.object_handle, and !dlpack.tensor. The concrete lowering is
+    selected from input and output types.
   }];
+  // clang-format on
   let arguments = (ins AnyType : $input);
   let results = (outs AnyType : $output);
   let hasVerifier = 1;
@@ -34,9 +31,10 @@ def TVMFFI_ToOp : TVMFFI_Op<"to", [MemoryEffects<[MemRead]>]> {
 
 def TVMFFI_AsOp : TVMFFI_Op<"as", [Pure]> {
   let summary = "Convert between !tvm_ffi.any and its LLVM descriptor struct";
-  let description = [{Bridges !tvm_ffi
-                          .any and the LLVM struct value carrying the TVMFFIAny
-                              ABI in either direction.}];
+  // clang-format off
+  let description = [{Bridges !tvm_ffi.any and the LLVM struct value carrying
+                      the TVMFFIAny ABI in either direction.}];
+  // clang-format on
   let arguments = (ins AnyTypeOf<[TVMFFI_AnyType, LLVM_AnyStruct]> : $input);
   let results = (outs AnyTypeOf<[TVMFFI_AnyType, LLVM_AnyStruct]> : $output);
   let hasVerifier = 1;
@@ -72,10 +70,12 @@ def TVMFFI_TensorFromDLPackOp
 def TVMFFI_EnvTensorAllocOp
     : TVMFFI_Op<"env_tensor_alloc", [MemoryEffects<[MemRead, MemWrite]>]> {
   let summary = "Allocate tensor from TVMFFI environment allocator";
+  // clang-format off
   let description =
       [{Builds a DLTensor prototype from the provided static shape and dtype,
-        then allocates through `TVMFFIEnvTensorAlloc`
-            .Device information is sourced from runtime lowering.}];
+        then allocates through `TVMFFIEnvTensorAlloc`. Device information is
+        sourced from runtime lowering.}];
+  // clang-format on
   let arguments = (ins TypeAttr : $dtype, DenseI64ArrayAttr : $shape);
   let results = (outs TVMFFI_ObjectHandleType : $output);
   let hasVerifier = 1;

@@ -1,7 +1,7 @@
 from __future__ import annotations
+from dataclasses import dataclass
 from functools import cached_property
 import inspect
-from itertools import starmap
 from typing import (
     Any,
     Callable,
@@ -42,13 +42,21 @@ from .guards import Guards, parse_guards
 from .importer import LibTritonFxImporter
 
 
+@dataclass(frozen=True)
+class GuardVariant(object):
+    guard: Guards
+    module: ir.Module
+    wrapper_name: str
+    wrapper_type: ir.FunctionType
+
+
 class TritonGraphModule(object):
     """Compiles a torch.fx.GraphModule containing triton ops via LibTritonFxImporter."""
 
     def __init__(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.fn: Final[Callable[..., Any]] = fn
-        self.guard_to_fx_map: Dict[Guards, ir.Module] = {}
+        self.guard_variants: List[GuardVariant] = []
         self.ctx: ir.Context = ir.Context()
         register_all_dialects(self.ctx)
         register_all_passes()
@@ -136,10 +144,7 @@ class TritonGraphModule(object):
 
     def stub_compile(self) -> Callable[..., Any]:
         module: ir.Module = self._build_ir_module()
-        return TritonGraphModule._build_execution_engine_callable(
-            module,
-            fn_name=self.fn.__name__,
-        )
+        return self._build_execution_engine_callable(module)
 
     def compile(self, *args: Any, **kwargs: Any) -> Any:
         gm, gs = torch._dynamo.export(
@@ -158,7 +163,18 @@ class TritonGraphModule(object):
             passmanager.PassManager.parse(
                 TritonGraphModule._build_torch_pipeline()
             ).run(module.operation)
-        self.guard_to_fx_map[guards] = module
+            wrapper_name, wrapper_type = self._emit_submodule_wrapper(
+                module,
+                guards,
+            )
+        self.guard_variants.append(
+            GuardVariant(
+                guard=guards,
+                module=module,
+                wrapper_name=wrapper_name,
+                wrapper_type=wrapper_type,
+            )
+        )
         self.executor = self.stub_compile()
         return ret
 
@@ -257,20 +273,23 @@ class TritonGraphModule(object):
 
     def _emit_dispatch_call(
         self,
+        packed_values_ptr: ir.Value,
         packed_args_ptr: ir.Value,
+        num_args: ir.Value,
         packed_result_ptr: ir.Value,
         callee_name: str,
         callee_ty: ir.FunctionType,
     ) -> ir.Value:
-        call_args: List[ir.Value] = [
-            self._emit_unbox_any_arg(packed_args_ptr, idx, target_ty)
-            for idx, target_ty in enumerate(callee_ty.inputs)
-        ]
-        result_types: Sequence[ir.Type] = callee_ty.results
-        call_op: func.CallOp = func.CallOp(result_types, callee_name, call_args)
-        [result] = call_op.results
-        self._emit_box_return(packed_result_ptr, result)
-        return arith.constant(self._i32_type, 0)
+        assert len(callee_ty.inputs) == 4 and len(callee_ty.results) == 1, (
+            f"submodule wrapper signature mismatch: {callee_name}: {callee_ty}"
+        )
+        call_op: func.CallOp = func.CallOp(
+            [self._i32_type],
+            callee_name,
+            [packed_values_ptr, packed_args_ptr, num_args, packed_result_ptr],
+        )
+        [status] = call_op.results
+        return status
 
     def _emit_fallback_error(self) -> ir.Value:
         kind_ptr: ir.Value = llvm.AddressOfOp(
@@ -285,7 +304,9 @@ class TritonGraphModule(object):
     def _emit_dispatch_if_chain(
         self,
         dispatch_iter: Iterator[Tuple[Guards, str, ir.FunctionType]],
+        packed_values_ptr: ir.Value,
         packed_args_ptr: ir.Value,
+        num_args: ir.Value,
         packed_result_ptr: ir.Value,
         symbol_table: Optional[Dict[str, ir.Value]] = None,
     ) -> ir.Value:
@@ -302,7 +323,9 @@ class TritonGraphModule(object):
         if_op: scf.IfOp = scf.IfOp(cond, [self._i32_type], has_else=True)
         with ir.InsertionPoint(if_op.then_block):
             success: ir.Value = self._emit_dispatch_call(
+                packed_values_ptr,
                 packed_args_ptr,
+                num_args,
                 packed_result_ptr,
                 callee_name,
                 callee_ty,
@@ -311,7 +334,9 @@ class TritonGraphModule(object):
         with ir.InsertionPoint(if_op.else_block):
             fallback: ir.Value = self._emit_dispatch_if_chain(
                 dispatch_iter,
+                packed_values_ptr,
                 packed_args_ptr,
+                num_args,
                 packed_result_ptr,
                 symbol_table,
             )
@@ -319,22 +344,102 @@ class TritonGraphModule(object):
         [result] = if_op.results
         return result
 
+    def _emit_submodule_wrapper(
+        self,
+        module: ir.Module,
+        guards: Guards,
+    ) -> Tuple[str, ir.FunctionType]:
+        callee_name: str
+        callee_ty: ir.FunctionType
+        callee_name, callee_ty = TritonGraphModule._lookup_func_type(
+            module,
+            self.fn.__name__,
+        )
+        num_user_args: int = len(self._parameters)
+        assert len(callee_ty.inputs) >= num_user_args, (
+            f"submodule input arity mismatch: {callee_name}: {callee_ty}"
+        )
+        call_input_tys: Sequence[ir.Type] = callee_ty.inputs[:num_user_args]
+        out_param_tys: Sequence[ir.Type] = callee_ty.inputs[num_user_args:]
+        if len(out_param_tys) == 0:
+            assert len(callee_ty.results) == 1, (
+                "submodule must either expose exactly one return or one out-param: "
+                f"{callee_name}: {callee_ty}"
+            )
+        else:
+            assert len(out_param_tys) == 1 and len(callee_ty.results) == 0, (
+                "submodule out-param arity > 1 is unsupported: "
+                f"{callee_name}: {callee_ty}"
+            )
+            [out_param_ty] = out_param_tys
+            assert isinstance(out_param_ty, ir.MemRefType), (
+                f"submodule out-param type must be memref: {callee_name}: {callee_ty}"
+            )
+        wrapper_name: str = f"__tvm_ffi_{self.fn.__name__}_guard_{abs(hash(guards))}"
+        with ir.InsertionPoint(module.body), ir.Location.unknown():
+            wrapper_op: func.FuncOp = func.FuncOp(wrapper_name, self._func_type)
+            entry_block: ir.Block = ir.Block.create_at_start(
+                wrapper_op.body,
+                [self._ptr_type, self._ptr_type, self._i32_type, self._ptr_type],
+            )
+            _, packed_args_ptr, _, packed_result_ptr = entry_block.arguments
+            with ir.InsertionPoint(entry_block):
+                call_args: List[ir.Value] = [
+                    self._emit_unbox_any_arg(packed_args_ptr, idx, target_ty)
+                    for idx, target_ty in enumerate(call_input_tys)
+                ]
+                if len(out_param_tys) == 0:
+                    call_op: func.CallOp = func.CallOp(
+                        callee_ty.results,
+                        callee_name,
+                        call_args,
+                    )
+                    [result] = call_op.results
+                    self._emit_box_return(packed_result_ptr, result)
+                    func.return_([arith.constant(self._i32_type, 0)])
+                else:
+                    [out_param_ty] = out_param_tys
+                    out_handle: ir.Value = tvm_ffi_d.env_tensor_alloc(
+                        self._object_handle_type,
+                        out_param_ty.element_type,
+                        out_param_ty.shape,
+                    )
+                    out_any: ir.Value = tvm_ffi_d.ToOp(
+                        self._any_type, out_handle
+                    ).output
+                    dl_tensor: ir.Value = tvm_ffi_d.ToOp(
+                        self._dl_tensor_type,
+                        out_any,
+                    ).output
+                    out_memref: ir.Value = dlpack.ToMemRefOp(
+                        out_param_ty,
+                        dl_tensor,
+                    ).output
+                    call_op: func.CallOp = func.CallOp(
+                        callee_ty.results,
+                        callee_name,
+                        call_args + [out_memref],
+                    )
+                    assert len(call_op.results) == 0
+                    self._emit_box_return(packed_result_ptr, out_memref)
+                    func.return_([arith.constant(self._i32_type, 0)])
+        return wrapper_name, ir.FunctionType(wrapper_op.type)
+
     def _build_ir_module(self) -> ir.Module:
         """Build an IR module with a guard-dispatch TVM-FFI wrapper.
 
         The wrapper iterates all compiled guard variants and emits a conditional
-        dispatch chain. On the first matched guard it unboxes packed
-        tvm_ffi.any arguments into the callee parameter types, invokes the
-        corresponding submodule main function, boxes the optional single return
-        value back to tvm_ffi.any, and returns success (0). If no guard matches,
-        it sets the GuardMatchException and returns -1.
+        dispatch chain. On the first matched guard it forwards packed call
+        buffers to the corresponding submodule TVM-FFI wrapper and returns the
+        submodule status code. If no guard matches, it sets the
+        GuardMatchException and returns -1.
         """
         with self.ctx, ir.Location.unknown():
             module: ir.Module = ir.Module.create()
             module.operation.attributes["gpu.container_module"] = ir.UnitAttr.get()
-            for imported_module in self.guard_to_fx_map.values():
+            for variant in self.guard_variants:
                 transform.interpreter.copy_symbols_and_merge_into(
-                    module, imported_module
+                    module, variant.module
                 )
             with ir.InsertionPoint(module.body):
                 llvm.GlobalOp(
@@ -356,20 +461,28 @@ class TritonGraphModule(object):
                     func_op.body,
                     [self._ptr_type, self._ptr_type, self._i32_type, self._ptr_type],
                 )
-                _, packed_args_ptr, _, packed_result_ptr = entry_block.arguments
+                (
+                    packed_values_ptr,
+                    packed_args_ptr,
+                    num_args,
+                    packed_result_ptr,
+                ) = entry_block.arguments
                 with ir.InsertionPoint(entry_block):
                     status: ir.Value = self._emit_dispatch_if_chain(
-                        starmap(
-                            lambda guards, m: (
-                                guards,
-                                *TritonGraphModule._lookup_func_type(
-                                    m,
-                                    self.fn.__name__,
-                                ),
+                        map(
+                            lambda variant: (
+                                variant.guard,
+                                variant.wrapper_name,
+                                variant.wrapper_type,
                             ),
-                            self.guard_to_fx_map.items(),
+                            sorted(
+                                self.guard_variants,
+                                key=lambda variant: hash(variant.guard),
+                            ),
                         ),
+                        packed_values_ptr,
                         packed_args_ptr,
+                        num_args,
                         packed_result_ptr,
                     )
                     func.return_([status])
@@ -377,14 +490,12 @@ class TritonGraphModule(object):
             pipeline: str = TritonGraphModule._build_builtin_pipeline(
                 chip=f"sm_{major}{minor}"
             )
-            pm = passmanager.PassManager.parse(pipeline)
-            pm.run(module.operation)
+            passmanager.PassManager.parse(pipeline).run(module.operation)
             return module
 
-    @staticmethod
     def _build_execution_engine_callable(
+        self,
         module: ir.Module,
-        fn_name: str,
     ) -> Callable[..., Any]:
         engine: execution_engine.ExecutionEngine = execution_engine.ExecutionEngine(
             module,
@@ -392,12 +503,11 @@ class TritonGraphModule(object):
         )
 
         engine.initialize()
-        # Find the unique function symbol starting with fn_name
+        # Find the unique dispatch function symbol.
         [symbol] = [
             op.sym_name.value
             for op in module.body.operations
-            if isinstance(op, llvm.LLVMFuncOp)
-            and op.sym_name.value.startswith(f"__tvm_ffi_{fn_name}")
+            if isinstance(op, llvm.LLVMFuncOp) and op.sym_name.value == self._func_name
         ]
         ptr: Callable[..., Any] = engine.raw_lookup(symbol)
         assert ptr is not None, f"symbol not found: {symbol}"
@@ -420,8 +530,6 @@ class TritonGraphModule(object):
     def _build_builtin_pipeline(chip: str) -> str:
         passes: List[str] = [
             "func.func(canonicalize,sccp,canonicalize,cse)",
-            "one-shot-bufferize{bufferize-function-boundaries=1 function-boundary-type-conversion=identity-layout-map}",
-            "convert-linalg-to-parallel-loops",
             "func.func(gpu-map-parallel-loops)",
             "convert-parallel-loops-to-gpu",
             "gpu-kernel-outlining",
@@ -454,6 +562,10 @@ class TritonGraphModule(object):
             "torch-func-backend-type-conversion",
             "func.func(canonicalize,cse)",
             "func.func(torch-finalizing-backend-type-conversion)",
+            "func.func(canonicalize,sccp,canonicalize,cse)",
+            "one-shot-bufferize{bufferize-function-boundaries=1 function-boundary-type-conversion=identity-layout-map}",
+            "buffer-results-to-out-params{hoist-dynamic-allocs hoist-static-allocs modify-public-functions}",
+            "convert-linalg-to-parallel-loops",
         ]
         return "builtin.module({})".format(", ".join(passes))
 

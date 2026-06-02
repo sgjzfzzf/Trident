@@ -5,7 +5,8 @@
 // CHECK-DAG: llvm.func @TVMFFIObjectDecRef
 // CHECK-DAG: llvm.func @TVMFFIObjectIncRef
 // CHECK-DAG: llvm.func @TVMFFITensorFromDLPack
-// CHECK-DAG: llvm.func @__libtriton_tvmffi_env_tensor_alloc
+// CHECK-DAG: llvm.func @TVMFFIEnvTensorAlloc
+// CHECK-DAG: llvm.func @__libtriton_get_current_device
 
 // CHECK-LABEL: func.func @lower_any_from_i64
 // CHECK-SAME: (%[[FROM_INT_ARG:.*]]: i64) -> !llvm.struct<(i32, i32, i64)>
@@ -233,7 +234,11 @@ func.func @lower_tensor_from_any(%a: !tvm_ffi.any) -> !dlpack.tensor {
 func.func @lower_any_from_object_handle(%h: !tvm_ffi.object_handle) -> !tvm_ffi.any {
   // CHECK-NOT: tvm_ffi.
   // CHECK-NOT: builtin.unrealized_conversion_cast
-  // CHECK: %[[FROM_OBJECT_TYPE:.*]] = llvm.mlir.constant(70 : i32) : i32
+  // CHECK: %[[FROM_OBJECT_TENSOR_TYPE:.*]] = llvm.mlir.constant(70 : i32) : i32
+  // CHECK: %[[FROM_OBJECT_NONE_TYPE:.*]] = llvm.mlir.constant(0 : i32) : i32
+  // CHECK: %[[FROM_OBJECT_NULL:.*]] = llvm.mlir.zero : !llvm.ptr
+  // CHECK: %[[FROM_OBJECT_IS_NULL:.*]] = llvm.icmp "eq" %[[FROM_OBJECT_ARG]], %[[FROM_OBJECT_NULL]] : !llvm.ptr
+  // CHECK: %[[FROM_OBJECT_TYPE:.*]] = llvm.select %[[FROM_OBJECT_IS_NULL]], %[[FROM_OBJECT_NONE_TYPE]], %[[FROM_OBJECT_TENSOR_TYPE]] : i1, i32
   // CHECK: %[[FROM_OBJECT_BITS:.*]] = llvm.ptrtoint %[[FROM_OBJECT_ARG]] : !llvm.ptr to i64
   // CHECK: %[[FROM_OBJECT_ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
   // CHECK: %[[FROM_OBJECT_INIT:.*]] = llvm.mlir.poison : !llvm.struct<(i32, i32, i64)>
@@ -299,7 +304,12 @@ func.func @lower_object_handle_env_tensor_alloc() -> !tvm_ffi.object_handle {
   // CHECK: %[[DTYPE_WITH_BITS:.*]] = llvm.insertvalue %[[DTYPE_BITS]], %[[DTYPE_WITH_CODE]][1] : !llvm.struct<packed (i8, i8, i16)>
   // CHECK: %[[DTYPE:.*]] = llvm.insertvalue %[[DTYPE_LANES]], %[[DTYPE_WITH_BITS]][2] : !llvm.struct<packed (i8, i8, i16)>
   // CHECK: %[[NDIM:.*]] = llvm.mlir.constant(2 : i32)
-  // CHECK: %[[HANDLE:.*]] = llvm.call @__libtriton_tvmffi_env_tensor_alloc(%[[DTYPE]], %[[NDIM]], %[[SHAPE_SLOT]]) : (!llvm.struct<packed (i8, i8, i16)>, i32, !llvm.ptr) -> !llvm.ptr
+  // CHECK: %[[DEVICE:.*]] = llvm.call @__libtriton_get_current_device() : () -> !llvm.struct<packed (i32, i32)>
+  // CHECK: %[[TENSOR_INIT:.*]] = llvm.mlir.poison : !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
+  // CHECK: %[[TENSOR_WITH_DEVICE:.*]] = llvm.insertvalue %[[DEVICE]], %{{.*}}[1] : !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
+  // CHECK: %[[OUT_SLOT:.*]] = llvm.alloca %{{.*}} x !llvm.ptr : (i64) -> !llvm.ptr
+  // CHECK: llvm.call @TVMFFIEnvTensorAlloc(%{{.*}}, %[[OUT_SLOT]]) : (!llvm.ptr, !llvm.ptr) -> i32
+  // CHECK: %[[HANDLE:.*]] = llvm.load %[[OUT_SLOT]] : !llvm.ptr -> !llvm.ptr
   // CHECK-NOT: tvm_ffi.env_tensor_alloc
   // CHECK: return %[[HANDLE]] : !llvm.ptr
   %h = tvm_ffi.env_tensor_alloc dtype = f32, shape = [16, 32] : !tvm_ffi.object_handle

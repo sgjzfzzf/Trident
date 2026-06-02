@@ -33,75 +33,74 @@ namespace libtriton::dlpack {
 namespace {
 
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-allocateArrayWithMalloc(mlir::ConversionPatternRewriter &rewriter,
-                        mlir::ModuleOp moduleOp, mlir::Location loc,
-                        const std::uint32_t count, mlir::Type i64Ty,
-                        mlir::Type i8Ty, mlir::Type ptrTy) {
+allocateArrayWithMalloc(mlir::OpBuilder &builder, mlir::ModuleOp moduleOp,
+                        mlir::Location loc, const uint32_t count,
+                        mlir::Type i64Ty, mlir::Type i8Ty, mlir::Type ptrTy) {
   // Call malloc(count * sizeof(int64_t))
   mlir::FailureOr<mlir::LLVM::LLVMFuncOp> mallocOrErr =
       conversion::utils::getOrCreateMalloc(moduleOp);
-  if (mlir::failed(mallocOrErr))
+  if (mlir::failed(mallocOrErr)) {
     return nullptr;
+  }
 
-  mlir::Value sizeVal = mlir::LLVM::ConstantOp::create(
-      rewriter, loc, i64Ty, static_cast<int64_t>(count * sizeof(int64_t)));
+  mlir::Value sizeVal = mlir::LLVM::ConstantOp::create(builder, loc, i64Ty,
+                                                       count * sizeof(int64_t));
   mlir::LLVM::CallOp callOp = mlir::LLVM::CallOp::create(
-      rewriter, loc, *mallocOrErr, mlir::ValueRange{sizeVal});
+      builder, loc, *mallocOrErr, mlir::ValueRange{sizeVal});
 
   return mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
       callOp.getResult());
 }
 
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-copyShapeFromMemRefDescriptorToArray(mlir::ConversionPatternRewriter &rewriter,
+copyShapeFromMemRefDescriptorToArray(mlir::OpBuilder &builder,
                                      mlir::ModuleOp moduleOp,
                                      mlir::Location loc,
                                      mlir::MemRefDescriptor memRefDescriptor,
-                                     const std::uint32_t rank, mlir::Type i64Ty,
+                                     const uint32_t rank, mlir::Type i64Ty,
                                      mlir::Type i8Ty, mlir::Type ptrTy) {
   mlir::MLIRContext *context = moduleOp.getContext();
 
   mlir::TypedValue<mlir::LLVM::LLVMPointerType> shapeAlloc =
-      allocateArrayWithMalloc(rewriter, moduleOp, loc, rank, i64Ty, i8Ty,
-                              ptrTy);
-  if (!shapeAlloc)
+      allocateArrayWithMalloc(builder, moduleOp, loc, rank, i64Ty, i8Ty, ptrTy);
+  if (!shapeAlloc) {
     return nullptr;
+  }
 
-  for (std::uint32_t i = 0; i < rank; ++i) {
-    mlir::Value shapeElem = memRefDescriptor.size(rewriter, loc, i);
+  for (uint32_t i = 0; i < rank; ++i) {
+    mlir::Value shapeElem = memRefDescriptor.size(builder, loc, i);
 
     mlir::Value shapeGep = mlir::LLVM::GEPOp::create(
-        rewriter, loc, ptrTy, i64Ty, shapeAlloc,
+        builder, loc, ptrTy, i64Ty, shapeAlloc,
         llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(i)});
-    mlir::LLVM::StoreOp::create(rewriter, loc, shapeElem, shapeGep);
+    mlir::LLVM::StoreOp::create(builder, loc, shapeElem, shapeGep);
   }
 
   return shapeAlloc;
 }
 
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-copyStrideFromMemRefDescriptorToArray(mlir::ConversionPatternRewriter &rewriter,
+copyStrideFromMemRefDescriptorToArray(mlir::OpBuilder &builder,
                                       mlir::ModuleOp moduleOp,
                                       mlir::Location loc,
                                       mlir::MemRefDescriptor memRefDescriptor,
-                                      const std::uint32_t rank,
-                                      mlir::Type i64Ty, mlir::Type i8Ty,
-                                      mlir::Type ptrTy) {
+                                      const uint32_t rank, mlir::Type i64Ty,
+                                      mlir::Type i8Ty, mlir::Type ptrTy) {
   mlir::MLIRContext *context = moduleOp.getContext();
 
   mlir::TypedValue<mlir::LLVM::LLVMPointerType> stridesAlloc =
-      allocateArrayWithMalloc(rewriter, moduleOp, loc, rank, i64Ty, i8Ty,
-                              ptrTy);
-  if (!stridesAlloc)
+      allocateArrayWithMalloc(builder, moduleOp, loc, rank, i64Ty, i8Ty, ptrTy);
+  if (!stridesAlloc) {
     return nullptr;
+  }
 
-  for (std::uint32_t i = 0; i < rank; ++i) {
-    mlir::Value strideElem = memRefDescriptor.stride(rewriter, loc, i);
+  for (uint32_t i = 0; i < rank; ++i) {
+    mlir::Value strideElem = memRefDescriptor.stride(builder, loc, i);
 
     mlir::Value stridesGep = mlir::LLVM::GEPOp::create(
-        rewriter, loc, ptrTy, i64Ty, stridesAlloc,
+        builder, loc, ptrTy, i64Ty, stridesAlloc,
         llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(i)});
-    mlir::LLVM::StoreOp::create(rewriter, loc, strideElem, stridesGep);
+    mlir::LLVM::StoreOp::create(builder, loc, strideElem, stridesGep);
   }
 
   return stridesAlloc;
@@ -109,71 +108,92 @@ copyStrideFromMemRefDescriptorToArray(mlir::ConversionPatternRewriter &rewriter,
 
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
 copyShapeFromMemRefDescriptorToStackArray(
-    mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-    mlir::MemRefDescriptor memRefDescriptor, const std::uint32_t rank,
+    mlir::OpBuilder &builder, mlir::Location loc,
+    mlir::MemRefDescriptor memRefDescriptor, const uint32_t rank,
     mlir::Type i64Ty, mlir::Type ptrTy) {
   mlir::Value rankValue =
-      mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, rank).getResult();
+      mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, rank).getResult();
   mlir::TypedValue<mlir::LLVM::LLVMPointerType> shapeAlloca =
       mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
-          mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, i64Ty, rankValue)
+          mlir::LLVM::AllocaOp::create(builder, loc, ptrTy, i64Ty, rankValue)
               .getResult());
-  for (std::uint32_t i = 0; i < rank; ++i) {
-    mlir::Value shapeElem = memRefDescriptor.size(rewriter, loc, i);
+  for (uint32_t i = 0; i < rank; ++i) {
+    mlir::Value shapeElem = memRefDescriptor.size(builder, loc, i);
     mlir::Value shapeGep = mlir::LLVM::GEPOp::create(
-        rewriter, loc, ptrTy, i64Ty, shapeAlloca,
+        builder, loc, ptrTy, i64Ty, shapeAlloca,
         llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(i)});
-    mlir::LLVM::StoreOp::create(rewriter, loc, shapeElem, shapeGep);
+    mlir::LLVM::StoreOp::create(builder, loc, shapeElem, shapeGep);
   }
   return shapeAlloca;
 }
 
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
 copyStrideFromMemRefDescriptorToStackArray(
-    mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-    mlir::MemRefDescriptor memRefDescriptor, const std::uint32_t rank,
+    mlir::OpBuilder &builder, mlir::Location loc,
+    mlir::MemRefDescriptor memRefDescriptor, const uint32_t rank,
     mlir::Type i64Ty, mlir::Type ptrTy) {
   mlir::Value rankValue =
-      mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, rank).getResult();
+      mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, rank).getResult();
   mlir::TypedValue<mlir::LLVM::LLVMPointerType> stridesAlloca =
       mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
-          mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, i64Ty, rankValue)
+          mlir::LLVM::AllocaOp::create(builder, loc, ptrTy, i64Ty, rankValue)
               .getResult());
-  for (std::uint32_t i = 0; i < rank; ++i) {
-    mlir::Value strideElem = memRefDescriptor.stride(rewriter, loc, i);
+  for (uint32_t i = 0; i < rank; ++i) {
+    mlir::Value strideElem = memRefDescriptor.stride(builder, loc, i);
     mlir::Value stridesGep = mlir::LLVM::GEPOp::create(
-        rewriter, loc, ptrTy, i64Ty, stridesAlloca,
+        builder, loc, ptrTy, i64Ty, stridesAlloca,
         llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(i)});
-    mlir::LLVM::StoreOp::create(rewriter, loc, strideElem, stridesGep);
+    mlir::LLVM::StoreOp::create(builder, loc, strideElem, stridesGep);
   }
   return stridesAlloca;
 }
 
 std::tuple<llvm::SmallVector<mlir::Value>, llvm::SmallVector<mlir::Value>>
 extractShapeAndStrideFromArrays(
-    mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
+    mlir::OpBuilder &builder, mlir::Location loc,
     mlir::TypedValue<mlir::LLVM::LLVMPointerType> shapePtr,
     mlir::TypedValue<mlir::LLVM::LLVMPointerType> stridesPtr,
-    const std::uint32_t rank, mlir::Type i64Ty, mlir::Type ptrTy) {
+    const uint32_t rank, mlir::Type i64Ty, mlir::Type ptrTy) {
   llvm::SmallVector<mlir::Value> shapeValues;
   llvm::SmallVector<mlir::Value> strideValues;
-  shapeValues.reserve(rank);
-  strideValues.reserve(rank);
 
-  for (std::uint32_t i = 0; i < rank; ++i) {
+  for (uint32_t i = 0; i < rank; ++i) {
     mlir::Value shapeGep = mlir::LLVM::GEPOp::create(
-        rewriter, loc, ptrTy, i64Ty, shapePtr,
+        builder, loc, ptrTy, i64Ty, shapePtr,
         llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(i)});
-    mlir::Value shapeElem =
-        mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, shapeGep);
-    shapeValues.push_back(shapeElem);
+    shapeValues.emplace_back(
+        mlir::LLVM::LoadOp::create(builder, loc, i64Ty, shapeGep));
+  }
 
+  mlir::Value rankValue =
+      mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, rank).getResult();
+  mlir::Value fallbackStridesAlloca =
+      mlir::LLVM::AllocaOp::create(builder, loc, ptrTy, i64Ty, rankValue)
+          .getResult();
+
+  mlir::Value runningStride =
+      mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1).getResult();
+  for (int32_t i = rank - 1; i >= 0; --i) {
+    mlir::Value strideGep = mlir::LLVM::GEPOp::create(
+        builder, loc, ptrTy, i64Ty, fallbackStridesAlloca,
+        llvm::ArrayRef<mlir::LLVM::GEPArg>{i});
+    mlir::LLVM::StoreOp::create(builder, loc, runningStride, strideGep);
+    runningStride = mlir::LLVM::MulOp::create(builder, loc, i64Ty,
+                                              runningStride, shapeValues[i]);
+  }
+
+  mlir::Value nullPtr = mlir::LLVM::ZeroOp::create(builder, loc, ptrTy);
+  mlir::Value useFallback = mlir::LLVM::ICmpOp::create(
+      builder, loc, mlir::LLVM::ICmpPredicate::eq, stridesPtr, nullPtr);
+  mlir::Value effectiveStridesPtr = mlir::LLVM::SelectOp::create(
+      builder, loc, ptrTy, useFallback, fallbackStridesAlloca, stridesPtr);
+
+  for (uint32_t i = 0; i < rank; ++i) {
     mlir::Value stridesGep = mlir::LLVM::GEPOp::create(
-        rewriter, loc, ptrTy, i64Ty, stridesPtr,
+        builder, loc, ptrTy, i64Ty, effectiveStridesPtr,
         llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(i)});
-    mlir::Value strideElem =
-        mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, stridesGep);
-    strideValues.push_back(strideElem);
+    strideValues.emplace_back(
+        mlir::LLVM::LoadOp::create(builder, loc, i64Ty, stridesGep));
   }
 
   return std::make_tuple(shapeValues, strideValues);
@@ -194,7 +214,7 @@ struct LowerFromMemRefOwnedOp
 
     mlir::MemRefType memRefType =
         mlir::cast<mlir::MemRefType>(op.getInput().getType());
-    const std::uint32_t rank = static_cast<std::uint32_t>(memRefType.getRank());
+    const uint32_t rank = static_cast<uint32_t>(memRefType.getRank());
 
     // adaptor.getInput() is the LLVM memref descriptor struct after type
     // conversion
@@ -230,9 +250,9 @@ struct LowerFromMemRefOwnedOp
       return mlir::failure();
 
     // Determine DLDataType fields from the memref element type
-    std::uint8_t dtypeCode;
-    std::uint8_t dtypeBits;
-    const std::uint16_t dtypeLanes = 1;
+    uint8_t dtypeCode;
+    uint8_t dtypeBits;
+    const uint16_t dtypeLanes = 1;
     mlir::Type elemTy = memRefType.getElementType();
     if (elemTy.isF16()) {
       dtypeCode = kDLFloat;
@@ -246,7 +266,7 @@ struct LowerFromMemRefOwnedOp
     } else if (mlir::IntegerType integerType =
                    mlir::dyn_cast<mlir::IntegerType>(elemTy)) {
       dtypeCode = integerType.isUnsigned() ? kDLUInt : kDLInt;
-      dtypeBits = static_cast<std::uint8_t>(integerType.getWidth());
+      dtypeBits = static_cast<uint8_t>(integerType.getWidth());
     } else {
       return mlir::failure();
     }
@@ -381,7 +401,7 @@ struct LowerFromMemRefBorrowedOp
 
     mlir::MemRefType memRefType =
         mlir::cast<mlir::MemRefType>(op.getInput().getType());
-    const std::uint32_t rank = static_cast<std::uint32_t>(memRefType.getRank());
+    const uint32_t rank = static_cast<uint32_t>(memRefType.getRank());
 
     mlir::MemRefDescriptor memDesc(adaptor.getInput());
 
@@ -409,9 +429,9 @@ struct LowerFromMemRefBorrowedOp
     if (!dlTensorTy || !dlDeviceTy || !dlDataTypeTy)
       return mlir::failure();
 
-    std::uint8_t dtypeCode;
-    std::uint8_t dtypeBits;
-    const std::uint16_t dtypeLanes = 1;
+    uint8_t dtypeCode;
+    uint8_t dtypeBits;
+    const uint16_t dtypeLanes = 1;
     mlir::Type elemTy = memRefType.getElementType();
     if (elemTy.isF16()) {
       dtypeCode = kDLFloat;
@@ -425,7 +445,7 @@ struct LowerFromMemRefBorrowedOp
     } else if (mlir::IntegerType integerType =
                    mlir::dyn_cast<mlir::IntegerType>(elemTy)) {
       dtypeCode = integerType.isUnsigned() ? kDLUInt : kDLInt;
-      dtypeBits = static_cast<std::uint8_t>(integerType.getWidth());
+      dtypeBits = static_cast<uint8_t>(integerType.getWidth());
     } else {
       return mlir::failure();
     }
@@ -510,7 +530,7 @@ struct LowerToMemRefOp : public mlir::OpConversionPattern<ToMemRefOp> {
 
     mlir::MemRefType memRefType =
         mlir::cast<mlir::MemRefType>(op.getOutput().getType());
-    const std::uint32_t rank = static_cast<std::uint32_t>(memRefType.getRank());
+    const uint32_t rank = static_cast<uint32_t>(memRefType.getRank());
 
     mlir::Type outputType =
         getTypeConverter()->convertType(op.getOutput().getType());
@@ -555,7 +575,7 @@ struct LowerToMemRefOp : public mlir::OpConversionPattern<ToMemRefOp> {
         shapeAndStrideValues = extractShapeAndStrideFromArrays(
             rewriter, loc, shapePtr, stridesPtr, rank, i64Ty, ptrTy);
     auto [shapeValues, strideValues] = std::move(shapeAndStrideValues);
-    for (std::uint32_t i = 0; i < rank; ++i) {
+    for (uint32_t i = 0; i < rank; ++i) {
       memDesc.setSize(rewriter, loc, i, shapeValues[i]);
       memDesc.setStride(rewriter, loc, i, strideValues[i]);
     }

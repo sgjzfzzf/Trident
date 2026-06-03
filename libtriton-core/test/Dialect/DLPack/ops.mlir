@@ -1,14 +1,5 @@
 // RUN: libtriton-core-opt %s -split-input-file | FileCheck %s
 
-// CHECK-LABEL: func.func @from_memref_owned
-func.func @from_memref_owned(%arg0: memref<?xf32>) {
-  // CHECK: %[[VALUE:.*]] = dlpack.from_memref_owned %arg0 : memref<?xf32> -> !dlpack.managed_tensor
-  %0 = dlpack.from_memref_owned %arg0 : memref<?xf32> -> !dlpack.managed_tensor
-  return
-}
-
-// -----
-
 // CHECK-LABEL: func.func @view_managed_tensor
 func.func @view_managed_tensor(%arg0: !dlpack.managed_tensor) {
   // CHECK: %[[VALUE:.*]] = dlpack.view %arg0 : !dlpack.managed_tensor -> !dlpack.tensor

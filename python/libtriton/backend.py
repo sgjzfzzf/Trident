@@ -369,9 +369,13 @@ class LibTritonGraphModule(object):
                         self._ptr_type,
                         out_handle,
                     )
-                    dl_tensor: ir.Value = tvm_ffi_d.load(
-                        self._dl_tensor_type,
+                    managed_tensor: ir.Value = tvm_ffi_d.load(
+                        ir.Type.parse("!dlpack.managed_tensor"),
                         opaque_ptr,
+                    )
+                    dl_tensor: ir.Value = dlpack.view(
+                        self._dl_tensor_type,
+                        managed_tensor,
                     )
                     out_memref: ir.Value = dlpack.to_memref(
                         out_param_ty,
@@ -496,7 +500,7 @@ class LibTritonGraphModule(object):
             "func.func(gpu-map-parallel-loops)",
             "convert-parallel-loops-to-gpu",
             "gpu-kernel-outlining",
-            "finalize-memref-to-llvm{use-generic-functions}",
+            "finalize-memref-to-llvm",
             f"nvvm-attach-target{{O=3 chip={chip}}}",
             "gpu.module(convert-gpu-to-nvvm{index-bitwidth=64})",
             "gpu-module-to-binary{format=fatbin}",

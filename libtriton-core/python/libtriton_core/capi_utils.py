@@ -14,10 +14,11 @@ def find_capi_runtime_library() -> str:
         RuntimeError: If the library is not found
     """
     module_dir = pathlib.Path(__file__).resolve().parent
-    runtime_lib = module_dir / "_runtime_libs" / "libLibTritonCoreRuntime.so"
-    if not runtime_lib.is_file():
-        raise RuntimeError(f"missing LibTriton Runtime library: {runtime_lib}")
-    return str(runtime_lib)
+    capi_runtime_lib = module_dir / "_runtime_libs" / "libLibTritonCoreRuntime.so"
+    assert capi_runtime_lib.is_file(), (
+        f"missing LibTriton Runtime library: {capi_runtime_lib}"
+    )
+    return f"{capi_runtime_lib}"
 
 
 def find_mlir_cuda_runtime_library() -> str:
@@ -31,9 +32,10 @@ def find_mlir_cuda_runtime_library() -> str:
     """
     module_dir = pathlib.Path(__file__).resolve().parent
     cuda_runtime_lib = module_dir / "_runtime_libs" / "libmlir_cuda_runtime.so"
-    if not cuda_runtime_lib.is_file():
-        raise RuntimeError(f"missing MLIR CUDA runtime library: {cuda_runtime_lib}")
-    return str(cuda_runtime_lib)
+    assert cuda_runtime_lib.is_file(), (
+        f"missing MLIR CUDA runtime library: {cuda_runtime_lib}"
+    )
+    return f"{cuda_runtime_lib}"
 
 
 def find_runtime_libraries() -> List[str]:

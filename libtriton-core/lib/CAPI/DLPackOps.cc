@@ -46,15 +46,6 @@ template <typename OpTy> MlirValue getOutputValue(MlirOperation operation) {
 
 } // namespace
 
-bool libtritonCoreOperationIsADLPackFromMemRefOwnedOp(MlirOperation operation) {
-  return isOpType<libtriton::dlpack::FromMemRefOwnedOp>(operation);
-}
-
-bool libtritonCoreOperationIsADLPackFromMemRefBorrowedOp(
-    MlirOperation operation) {
-  return isOpType<libtriton::dlpack::FromMemRefBorrowedOp>(operation);
-}
-
 bool libtritonCoreOperationIsADLPackViewOp(MlirOperation operation) {
   return isOpType<libtriton::dlpack::ViewOp>(operation);
 }
@@ -105,24 +96,6 @@ bool libtritonCoreOperationIsADLPackDeviceIdOp(MlirOperation operation) {
 
 bool libtritonCoreOperationIsADLPackDeviceTypeOp(MlirOperation operation) {
   return isOpType<libtriton::dlpack::DeviceTypeOp>(operation);
-}
-
-MlirValue libtritonCoreDLPackFromMemRefOwnedGetInput(MlirOperation operation) {
-  return getInputValue<libtriton::dlpack::FromMemRefOwnedOp>(operation);
-}
-
-MlirValue libtritonCoreDLPackFromMemRefOwnedGetOutput(MlirOperation operation) {
-  return getOutputValue<libtriton::dlpack::FromMemRefOwnedOp>(operation);
-}
-
-MlirValue
-libtritonCoreDLPackFromMemRefBorrowedGetInput(MlirOperation operation) {
-  return getInputValue<libtriton::dlpack::FromMemRefBorrowedOp>(operation);
-}
-
-MlirValue
-libtritonCoreDLPackFromMemRefBorrowedGetOutput(MlirOperation operation) {
-  return getOutputValue<libtriton::dlpack::FromMemRefBorrowedOp>(operation);
 }
 
 MlirValue libtritonCoreDLPackViewGetInput(MlirOperation operation) {

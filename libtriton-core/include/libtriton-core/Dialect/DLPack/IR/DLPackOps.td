@@ -10,12 +10,6 @@ include "libtriton-core/Dialect/DLPack/IR/DLPackTypes.td"
 class DLPack_Op<string mnemonic, list<Trait> traits = []>
     : Op<DLPack_Dialect, mnemonic, traits>;
 
-class DLPack_MemRefOp<string mnemonic, list<Trait> traits = []>
-    : DLPack_Op<mnemonic, traits> {
-  let assemblyFormat = "$input attr-dict `:` type($input) `->` type($output)";
-  let arguments = (ins AnyMemRef : $input);
-}
-
 class DLPack_TensorOp<string mnemonic, list<Trait> traits = []>
     : DLPack_Op<mnemonic, traits> {
   let assemblyFormat = "$input attr-dict `:` type($input) `->` type($output)";
@@ -39,31 +33,6 @@ class DLPack_IndexedOp<string mnemonic, list<Trait> traits = []>
   let assemblyFormat = "$input `[` $index `]` attr-dict `:` type($input) `,` "
                        "type($index) `->` type($output)";
   let arguments = (ins DLPack_DLTensor : $input, Index : $index);
-}
-
-def DLPack_FromMemRefOwnedOp
-    : DLPack_MemRefOp<"from_memref_owned", [MemoryEffects<[MemWrite]>]> {
-  let summary = "Convert an MLIR memref value to a DLManagedTensor handle";
-  // clang-format off
-  let description =
-      [{Bridges an MLIR memref-typed value to a DLPack DLManagedTensor handle.
-        This op is intended as an interoperability scaffold and can be lowered
-        during conversion to LLVM dialect.}];
-  // clang-format on
-  let results = (outs DLPack_DLManagedTensor : $output);
-}
-
-def DLPack_FromMemRefBorrowedOp
-    : DLPack_MemRefOp<"from_memref_borrowed", [MemoryEffects<[MemWrite]>]> {
-  let summary = "Convert an MLIR memref value to a borrowed DLTensor handle";
-  // clang-format off
-  let description = [{Bridges an MLIR memref-typed value to a non-owning
-                      DLPack DLTensor handle value. This op is intended for
-                      short-lived adapter paths and can be lowered during
-                      conversion to LLVM dialect.
-  }];
-  // clang-format on
-  let results = (outs DLPack_DLTensor : $output);
 }
 
 def DLPack_ViewOp : DLPack_Op<"view", [Pure]> {
@@ -158,26 +127,6 @@ def DLPack_DeviceTypeOp : DLPack_DeviceFieldOp<"device_type", [Pure]> {
   let summary = "Get the device type of a DLPack device descriptor";
   let description = [{Extracts the device_type field from a DLPack DLDevice.}];
   let results = (outs I32 : $output);
-}
-
-def DLPack_TensorFromLLVMOp : DLPack_Op<"tensor_from_llvm", [Pure]> {
-  let assemblyFormat = "$input attr-dict `:` type($input) `->` type($output)";
-  let summary = "Convert an LLVM DLTensor descriptor struct to !dlpack.tensor";
-  let description = [{Bridges an LLVM struct value following the DLTensor ABI
-                      into !dlpack.tensor for high-level tensor interop ops.
-  }];
-  let arguments = (ins LLVM_AnyStruct : $input);
-  let results = (outs DLPack_DLTensor : $output);
-}
-
-def DLPack_TensorToLLVMOp : DLPack_TensorOp<"tensor_to_llvm", [Pure]> {
-  let summary = "Convert !dlpack.tensor to its LLVM descriptor struct";
-  // clang-format off
-  let description = [{
-      Bridges !dlpack.tensor into the LLVM struct descriptor form used by
-      low-level LLVM dialect ops.}];
-  // clang-format on
-  let results = (outs LLVM_AnyStruct : $output);
 }
 
 #endif // LIBTRITON_CORE_DIALECT_DLPACK_IR_DLPACKOPS_TD_

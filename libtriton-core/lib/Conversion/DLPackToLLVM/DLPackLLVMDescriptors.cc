@@ -131,16 +131,4 @@ DLManagedTensorLLVMDescriptor::getLLVMType(mlir::MLIRContext *context) {
   return type;
 }
 
-mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-DLManagedTensorLLVMDescriptor::managerCtx(mlir::OpBuilder &builder,
-                                          mlir::Location loc) const {
-  return this->template get<1>(builder, loc);
-}
-
-mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-DLManagedTensorLLVMDescriptor::deleter(mlir::OpBuilder &builder,
-                                       mlir::Location loc) const {
-  return this->template get<2>(builder, loc);
-}
-
 } // namespace libtriton::conversion::utils

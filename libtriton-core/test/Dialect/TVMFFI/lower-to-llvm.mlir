@@ -234,28 +234,6 @@ func.func @lower_tensor_from_object_handle(%h: !tvm_ffi.object_handle) -> !dlpac
   return %0 : !dlpack.tensor
 }
 
-// CHECK-LABEL: func.func @lower_tensor_from_llvm_struct
-// CHECK-SAME: (%[[TENSOR_FROM_LLVM_ARG:.*]]: !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>)
-// CHECK-SAME: -> !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
-func.func @lower_tensor_from_llvm_struct(%x: !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>) -> !dlpack.tensor {
-  // CHECK-NOT: dlpack.
-  // CHECK-NOT: builtin.unrealized_conversion_cast
-  // CHECK: return %[[TENSOR_FROM_LLVM_ARG]] : !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
-  %0 = dlpack.tensor_from_llvm %x : !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)> -> !dlpack.tensor
-  return %0 : !dlpack.tensor
-}
-
-// CHECK-LABEL: func.func @lower_llvm_struct_from_tensor
-// CHECK-SAME: (%[[TENSOR_TO_LLVM_ARG:.*]]: !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>)
-// CHECK-SAME: -> !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
-func.func @lower_llvm_struct_from_tensor(%x: !dlpack.tensor) -> !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)> {
-  // CHECK-NOT: dlpack.
-  // CHECK-NOT: builtin.unrealized_conversion_cast
-  // CHECK: return %[[TENSOR_TO_LLVM_ARG]] : !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
-  %0 = dlpack.tensor_to_llvm %x : !dlpack.tensor -> !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
-  return %0 : !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
-}
-
 // CHECK-LABEL: func.func @lower_object_handle_env_tensor_alloc
 // CHECK-SAME: () -> !llvm.ptr
 func.func @lower_object_handle_env_tensor_alloc() -> !tvm_ffi.object_handle {

@@ -49,7 +49,6 @@ def TVMFFI_GetOpaquePtrOp
   // clang-format on
   let arguments = (ins TVMFFI_ObjectHandleType : $input);
   let results = (outs LLVM_AnyPointer : $output);
-  let hasVerifier = 1;
 }
 
 def TVMFFI_LoadOp : TVMFFI_Op<"load", [MemoryEffects<[MemRead]>]> {
@@ -63,7 +62,6 @@ def TVMFFI_LoadOp : TVMFFI_Op<"load", [MemoryEffects<[MemRead]>]> {
   // clang-format on
   let arguments = (ins LLVM_AnyPointer : $input);
   let results = (outs AnyType : $output);
-  let hasVerifier = 1;
 }
 
 def TVMFFI_StoreOp : Op<TVMFFI_Dialect, "store", [MemoryEffects<[MemWrite]>]> {
@@ -78,7 +76,6 @@ def TVMFFI_StoreOp : Op<TVMFFI_Dialect, "store", [MemoryEffects<[MemWrite]>]> {
   // clang-format on
   let arguments = (ins AnyType : $value, LLVM_AnyPointer : $ptr);
   let results = (outs);
-  let hasVerifier = 1;
   let assemblyFormat =
       "$value `,` $ptr attr-dict `:` type($value) `,` type($ptr)";
 }

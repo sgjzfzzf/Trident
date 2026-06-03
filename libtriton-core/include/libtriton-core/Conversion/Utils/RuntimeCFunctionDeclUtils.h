@@ -6,9 +6,6 @@
 
 namespace libtriton::conversion::utils::runtime {
 
-LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(
-    __libtriton_dlpack_default_managed_tensor_deleter,
-    DefaultManagedTensorDeleter)
 LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(__libtriton_get_current_device,
                                            GetCurrentDevice)
 LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(__libtriton_get_current_stream,

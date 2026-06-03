@@ -147,12 +147,6 @@ public:
   DLTensorLLVMDescriptor tensor(mlir::OpBuilder &builder,
                                 mlir::Location loc) const;
 
-  mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-  managerCtx(mlir::OpBuilder &builder, mlir::Location loc) const;
-
-  mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-  deleter(mlir::OpBuilder &builder, mlir::Location loc) const;
-
 private:
   friend Base;
 };

@@ -9,10 +9,6 @@ extern "C" {
 #endif
 
 MLIR_CAPI_EXPORTED bool
-libtritonCoreOperationIsADLPackFromMemRefOwnedOp(MlirOperation operation);
-MLIR_CAPI_EXPORTED bool
-libtritonCoreOperationIsADLPackFromMemRefBorrowedOp(MlirOperation operation);
-MLIR_CAPI_EXPORTED bool
 libtritonCoreOperationIsADLPackViewOp(MlirOperation operation);
 MLIR_CAPI_EXPORTED bool
 libtritonCoreOperationIsADLPackToMemRefOp(MlirOperation operation);
@@ -38,16 +34,6 @@ MLIR_CAPI_EXPORTED bool
 libtritonCoreOperationIsADLPackDeviceIdOp(MlirOperation operation);
 MLIR_CAPI_EXPORTED bool
 libtritonCoreOperationIsADLPackDeviceTypeOp(MlirOperation operation);
-
-MLIR_CAPI_EXPORTED MlirValue
-libtritonCoreDLPackFromMemRefOwnedGetInput(MlirOperation operation);
-MLIR_CAPI_EXPORTED MlirValue
-libtritonCoreDLPackFromMemRefOwnedGetOutput(MlirOperation operation);
-
-MLIR_CAPI_EXPORTED MlirValue
-libtritonCoreDLPackFromMemRefBorrowedGetInput(MlirOperation operation);
-MLIR_CAPI_EXPORTED MlirValue
-libtritonCoreDLPackFromMemRefBorrowedGetOutput(MlirOperation operation);
 
 MLIR_CAPI_EXPORTED MlirValue
 libtritonCoreDLPackViewGetInput(MlirOperation operation);

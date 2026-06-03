@@ -10,22 +10,10 @@ extern "C" {
 
 MLIR_CAPI_EXPORTED bool
 libtritonCoreOperationIsATVMFFIToOp(MlirOperation operation);
-MLIR_CAPI_EXPORTED bool
-libtritonCoreOperationIsATVMFFITensorFromDLPackOp(MlirOperation operation);
-
 MLIR_CAPI_EXPORTED MlirValue
 libtritonCoreTVMFFIToGetInput(MlirOperation operation);
 MLIR_CAPI_EXPORTED MlirValue
 libtritonCoreTVMFFIToGetOutput(MlirOperation operation);
-MLIR_CAPI_EXPORTED MlirValue
-libtritonCoreTVMFFITensorFromDLPackGetFrom(MlirOperation operation);
-MLIR_CAPI_EXPORTED MlirValue
-libtritonCoreTVMFFITensorFromDLPackGetRequireAlignment(MlirOperation operation);
-MLIR_CAPI_EXPORTED MlirValue
-libtritonCoreTVMFFITensorFromDLPackGetRequireContiguous(
-    MlirOperation operation);
-MLIR_CAPI_EXPORTED MlirValue
-libtritonCoreTVMFFITensorFromDLPackGetOutput(MlirOperation operation);
 
 #ifdef __cplusplus
 }

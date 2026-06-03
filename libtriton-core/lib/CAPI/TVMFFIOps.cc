@@ -50,61 +50,10 @@ bool libtritonCoreOperationIsATVMFFIToOp(MlirOperation operation) {
   return isOpType<libtriton::tvm_ffi::ToOp>(operation);
 }
 
-bool libtritonCoreOperationIsATVMFFITensorFromDLPackOp(
-    MlirOperation operation) {
-  return isOpType<libtriton::tvm_ffi::TensorFromDLPackOp>(operation);
-}
-
 MlirValue libtritonCoreTVMFFIToGetInput(MlirOperation operation) {
   return getInputValue<libtriton::tvm_ffi::ToOp>(operation);
 }
 
 MlirValue libtritonCoreTVMFFIToGetOutput(MlirOperation operation) {
   return getOutputValue<libtriton::tvm_ffi::ToOp>(operation);
-}
-
-MlirValue libtritonCoreTVMFFITensorFromDLPackGetFrom(MlirOperation operation) {
-  mlir::Operation *op = unwrap(operation);
-  if (!op) {
-    return getNullValue();
-  }
-  libtriton::tvm_ffi::TensorFromDLPackOp typedOp =
-      llvm::dyn_cast<libtriton::tvm_ffi::TensorFromDLPackOp>(op);
-  if (!typedOp) {
-    return getNullValue();
-  }
-  return wrap(typedOp.getFrom());
-}
-
-MlirValue libtritonCoreTVMFFITensorFromDLPackGetRequireAlignment(
-    MlirOperation operation) {
-  mlir::Operation *op = unwrap(operation);
-  if (!op) {
-    return getNullValue();
-  }
-  libtriton::tvm_ffi::TensorFromDLPackOp typedOp =
-      llvm::dyn_cast<libtriton::tvm_ffi::TensorFromDLPackOp>(op);
-  if (!typedOp) {
-    return getNullValue();
-  }
-  return wrap(typedOp.getRequireAlignment());
-}
-
-MlirValue libtritonCoreTVMFFITensorFromDLPackGetRequireContiguous(
-    MlirOperation operation) {
-  mlir::Operation *op = unwrap(operation);
-  if (!op) {
-    return getNullValue();
-  }
-  libtriton::tvm_ffi::TensorFromDLPackOp typedOp =
-      llvm::dyn_cast<libtriton::tvm_ffi::TensorFromDLPackOp>(op);
-  if (!typedOp) {
-    return getNullValue();
-  }
-  return wrap(typedOp.getRequireContiguous());
-}
-
-MlirValue
-libtritonCoreTVMFFITensorFromDLPackGetOutput(MlirOperation operation) {
-  return getOutputValue<libtriton::tvm_ffi::TensorFromDLPackOp>(operation);
 }

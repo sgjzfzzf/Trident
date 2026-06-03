@@ -36,53 +36,6 @@ namespace libtriton::tvm_ffi {
 #define GEN_PASS_DEF_CONVERTTVMFFITOLLVM
 #include "libtriton-core/Conversion/Passes.h.inc"
 
-mlir::FailureOr<mlir::Value> emitTensorFromDLPackAsObjectHandle(
-    mlir::ModuleOp moduleOp, mlir::ConversionPatternRewriter &rewriter,
-    mlir::Location loc, mlir::Value fromManaged, mlir::Value requireAlignment,
-    mlir::Value requireContiguous) {
-  mlir::MLIRContext *context = moduleOp.getContext();
-  const mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
-  const mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
-  const mlir::Type managedTy = fromManaged.getType();
-  const mlir::Value one =
-      mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1LL).getResult();
-  const mlir::FailureOr<mlir::LLVM::LLVMFuncOp> mallocOrErr =
-      conversion::utils::getOrCreateMalloc(moduleOp);
-  if (mlir::failed(mallocOrErr)) {
-    return mlir::failure();
-  }
-  const mlir::DataLayout layout(moduleOp);
-  const std::optional<int64_t> managedSize =
-      layout.getTypeSizeInBits(managedTy).getFixedValue();
-  if (!managedSize.has_value() || *managedSize <= 0) {
-    return mlir::failure();
-  }
-  const mlir::Value managedSizeBytes =
-      mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, *managedSize / 8)
-          .getResult();
-  mlir::LLVM::CallOp managedAllocCall = mlir::LLVM::CallOp::create(
-      rewriter, loc, *mallocOrErr, mlir::ValueRange{managedSizeBytes});
-  const mlir::TypedValue<mlir::LLVM::LLVMPointerType> fromSlot =
-      mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
-          managedAllocCall.getResult());
-  mlir::LLVM::StoreOp::create(rewriter, loc, fromManaged, fromSlot);
-  const mlir::TypedValue<mlir::LLVM::LLVMPointerType> outSlot =
-      mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
-          mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, i64Ty, one)
-              .getResult());
-  const mlir::Value zeroPtr = mlir::LLVM::ZeroOp::create(rewriter, loc, ptrTy);
-  mlir::LLVM::StoreOp::create(rewriter, loc, zeroPtr, outSlot);
-  const mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
-      capi::getOrCreateTVMFFITensorFromDLPack(moduleOp);
-  if (mlir::failed(calleeOrErr)) {
-    return mlir::failure();
-  }
-  mlir::LLVM::CallOp::create(
-      rewriter, loc, *calleeOrErr,
-      mlir::ValueRange{fromSlot, requireAlignment, requireContiguous, outSlot});
-  return mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, outSlot).getResult();
-}
-
 mlir::FailureOr<mlir::Value> emitEnvTensorAllocAsObjectHandle(
     mlir::ModuleOp moduleOp, mlir::ConversionPatternRewriter &rewriter,
     mlir::Location loc, mlir::Type dtype, llvm::ArrayRef<int64_t> shape) {
@@ -183,31 +136,6 @@ mlir::FailureOr<mlir::Value> emitEnvTensorAllocAsObjectHandle(
   return mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, outSlotValue)
       .getResult();
 }
-
-struct LowerTensorFromDLPackOp
-    : public mlir::OpConversionPattern<TensorFromDLPackOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(TensorFromDLPackOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
-    if (!moduleOp) {
-      return mlir::failure();
-    }
-    mlir::Location loc = op.getLoc();
-    mlir::FailureOr<mlir::Value> objectHandle =
-        emitTensorFromDLPackAsObjectHandle(
-            moduleOp, rewriter, loc, adaptor.getFrom(),
-            adaptor.getRequireAlignment(), adaptor.getRequireContiguous());
-    if (mlir::failed(objectHandle)) {
-      return mlir::failure();
-    } else {
-      rewriter.replaceOp(op, *objectHandle);
-      return mlir::success();
-    }
-  }
-};
 
 struct LowerEnvTensorAllocOp
     : public mlir::OpConversionPattern<EnvTensorAllocOp> {
@@ -417,10 +345,9 @@ void populateTVMFFIToLLVMConversionPatterns(
     return conversion::utils::TVMFFIObjectHandleLLVMDescriptor::getLLVMType(
         type.getContext());
   });
-  patterns.add<LowerGetTypeIndexOp, LowerToOp, LowerTensorFromDLPackOp,
-               LowerEnvTensorAllocOp, LowerAsOp, LowerObjectIncRefOp,
-               LowerObjectDecRefOp, LowerErrorSetRaisedFromCStrOp>(
-      typeConverter, context);
+  patterns.add<LowerGetTypeIndexOp, LowerToOp, LowerEnvTensorAllocOp, LowerAsOp,
+               LowerObjectIncRefOp, LowerObjectDecRefOp,
+               LowerErrorSetRaisedFromCStrOp>(typeConverter, context);
   target.addIllegalDialect<TVMFFIDialect>();
 }
 

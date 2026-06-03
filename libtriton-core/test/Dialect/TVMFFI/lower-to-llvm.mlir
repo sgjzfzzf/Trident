@@ -5,7 +5,6 @@
 // CHECK-DAG: llvm.func @TVMFFIErrorSetRaisedFromCStr
 // CHECK-DAG: llvm.func @TVMFFIObjectDecRef
 // CHECK-DAG: llvm.func @TVMFFIObjectIncRef
-// CHECK-DAG: llvm.func @TVMFFITensorFromDLPack
 // CHECK-DAG: llvm.func @TVMFFIEnvTensorAlloc
 // CHECK-DAG: llvm.func @__libtriton_get_current_device
 
@@ -173,38 +172,6 @@ func.func @lower_object_handle_dec_ref(%obj: !tvm_ffi.object_handle) {
   // CHECK: return
   tvm_ffi.object_dec_ref %obj : !tvm_ffi.object_handle
   return
-}
-
-// CHECK-LABEL: func.func @lower_any_from_managed_tensor
-// CHECK-SAME: (%[[FROM_DLPACK_ARG:.*]]: !llvm.struct<packed (struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>, ptr, ptr)>, %[[FROM_TENSOR_ALIGN:.*]]: i32, %[[FROM_TENSOR_CONTIG:.*]]: i32)
-// CHECK-SAME: -> !llvm.struct<(i32, i32, i64)>
-// NO-CAST-LABEL: func.func @lower_any_from_managed_tensor
-func.func @lower_any_from_managed_tensor(%from: !dlpack.managed_tensor, %align: i32, %contig: i32) -> !tvm_ffi.any {
-  // CHECK-NOT: builtin.unrealized_conversion_cast
-  // NO-CAST-NOT: builtin.unrealized_conversion_cast
-  // CHECK: %[[ONE:.*]] = llvm.mlir.constant(1 : i64)
-  // CHECK: %[[FROM_SIZE:.*]] = llvm.mlir.constant(64 : i64)
-  // CHECK: %[[FROM_SLOT:.*]] = llvm.call @malloc(%[[FROM_SIZE]]) : (i64) -> !llvm.ptr
-  // CHECK: llvm.store %[[FROM_DLPACK_ARG]], %[[FROM_SLOT]] : !llvm.struct<packed (struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>, ptr, ptr)>, !llvm.ptr
-  // CHECK: %[[OUT_SLOT:.*]] = llvm.alloca %[[ONE]] x i64 : (i64) -> !llvm.ptr
-  // CHECK: %[[ZERO_PTR:.*]] = llvm.mlir.zero : !llvm.ptr
-  // CHECK: llvm.store %[[ZERO_PTR]], %[[OUT_SLOT]]
-  // CHECK: llvm.call @TVMFFITensorFromDLPack(%[[FROM_SLOT]],
-  // CHECK-SAME: %[[FROM_TENSOR_ALIGN]], %[[FROM_TENSOR_CONTIG]], %[[OUT_SLOT]])
-  // CHECK: %[[HANDLE:.*]] = llvm.load %[[OUT_SLOT]] : !llvm.ptr -> !llvm.ptr
-  // CHECK: %[[PAYLOAD_BITS:.*]] = llvm.ptrtoint %[[HANDLE]] : !llvm.ptr to i64
-  // CHECK: %[[ANY_INIT:.*]] = llvm.mlir.poison : !llvm.struct<(i32, i32, i64)>
-  // CHECK: %[[ANY_WITH_TYPE:.*]] = llvm.insertvalue %{{.*}}, %[[ANY_INIT]][0]
-  // CHECK: %[[ANY_WITH_AUX:.*]] = llvm.insertvalue %{{.*}}, %[[ANY_WITH_TYPE]][1]
-  // CHECK: %[[ANY_VALUE:.*]] = llvm.insertvalue %[[PAYLOAD_BITS]], %[[ANY_WITH_AUX]][2]
-  // CHECK-NOT: tvm_ffi.tensor_from_dlpack
-  // CHECK-NOT: tvm_ffi.to
-  // CHECK-NOT: builtin.unrealized_conversion_cast
-  // CHECK: return %[[ANY_VALUE]] : !llvm.struct<(i32, i32, i64)>
-  // NO-CAST: return
-  %h = tvm_ffi.tensor_from_dlpack %from, %align, %contig : !dlpack.managed_tensor, i32, i32 -> !tvm_ffi.object_handle
-  %0 = tvm_ffi.to %h : !tvm_ffi.object_handle -> !tvm_ffi.any
-  return %0 : !tvm_ffi.any
 }
 
 // CHECK-LABEL: func.func @lower_tensor_from_any

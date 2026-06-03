@@ -67,10 +67,6 @@ class LibTritonGraphModule(object):
         return ir.Type.parse("!dlpack.tensor")
 
     @property
-    def _managed_tensor_type(self) -> ir.Type:
-        return ir.Type.parse("!dlpack.managed_tensor")
-
-    @property
     def _object_handle_type(self) -> ir.Type:
         return ir.Type.parse("!tvm_ffi.object_handle")
 
@@ -235,39 +231,7 @@ class LibTritonGraphModule(object):
             return tvm_ffi_d.to(target_ty, any_value)
 
     def _emit_box_return(self, packed_result_ptr: ir.Value, value: ir.Value) -> None:
-        value_type: ir.Type = value.type
-        zero: ir.Value = arith.constant(self._i32_type, 0)
-        if isinstance(value_type, ir.RankedTensorType):
-            memref_ty: ir.Type = ir.MemRefType.get(
-                value_type.shape,
-                value_type.element_type,
-            )
-            memref: ir.Value = bufferization.ToBufferOp(memref_ty, value).buffer
-            managed: ir.Value = dlpack.from_memref_owned(
-                self._managed_tensor_type,
-                memref,
-            )
-            handle: ir.Value = tvm_ffi_d.tensor_from_dlpack(
-                self._object_handle_type,
-                managed,
-                zero,
-                zero,
-            )
-            boxed: ir.Value = tvm_ffi_d.to(self._any_type, handle)
-        elif isinstance(value_type, ir.MemRefType):
-            managed: ir.Value = dlpack.from_memref_owned(
-                self._managed_tensor_type,
-                value,
-            )
-            handle: ir.Value = tvm_ffi_d.tensor_from_dlpack(
-                self._object_handle_type,
-                managed,
-                zero,
-                zero,
-            )
-            boxed = tvm_ffi_d.to(self._any_type, handle)
-        else:
-            boxed = tvm_ffi_d.to(self._any_type, value)
+        boxed: ir.Value = tvm_ffi_d.to(self._any_type, value)
         boxed_llvm: ir.Value = tvm_ffi_d.as_(self._any_llvm_type, boxed)
         llvm.StoreOp(boxed_llvm, packed_result_ptr)
 
@@ -487,6 +451,7 @@ class LibTritonGraphModule(object):
             pipeline: str = LibTritonGraphModule._build_builtin_pipeline(
                 chip=f"sm_{major}{minor}"
             )
+            # print(module)
             passmanager.PassManager.parse(pipeline).run(module.operation)
             return module
 

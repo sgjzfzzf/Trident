@@ -15,7 +15,6 @@ add_mlir_public_c_api_library(
   MLIRConvertToLLVMPass
   DLPackDialect
   DLPackToLLVM
-  MemRefOriginAnalysis
   MLIRIR
   MLIRSupport
   TorchMLIRCAPI

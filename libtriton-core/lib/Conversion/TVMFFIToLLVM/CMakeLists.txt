@@ -9,7 +9,6 @@ add_mlir_conversion_library(
   PUBLIC
   ConversionUtils
   DLPackToLLVM
-  MemRefOriginAnalysis
   MLIRPass
   TVMFFIDialect
   tvm_ffi::header)

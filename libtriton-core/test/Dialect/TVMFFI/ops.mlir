@@ -81,19 +81,10 @@ func.func @i32_from_any(%arg0: !tvm_ffi.any) {
 
 // -----
 
-// CHECK-LABEL: func.func @any_from_llvm_struct
-func.func @any_from_llvm_struct(%arg0: !llvm.struct<(i32, i32, i64)>) {
-  // CHECK: %[[VALUE:.*]] = tvm_ffi.as %arg0 : !llvm.struct<(i32, i32, i64)> -> !tvm_ffi.any
-  %0 = tvm_ffi.as %arg0 : !llvm.struct<(i32, i32, i64)> -> !tvm_ffi.any
-  return
-}
-
-// -----
-
-// CHECK-LABEL: func.func @llvm_struct_from_any
-func.func @llvm_struct_from_any(%arg0: !tvm_ffi.any) {
-  // CHECK: %[[VALUE:.*]] = tvm_ffi.as %arg0 : !tvm_ffi.any -> !llvm.struct<(i32, i32, i64)>
-  %0 = tvm_ffi.as %arg0 : !tvm_ffi.any -> !llvm.struct<(i32, i32, i64)>
+// CHECK-LABEL: func.func @any_from_ptr
+func.func @any_from_ptr(%arg0: !llvm.ptr) {
+  // CHECK: %[[VALUE:.*]] = tvm_ffi.load %arg0 : !llvm.ptr -> !tvm_ffi.any
+  %0 = tvm_ffi.load %arg0 : !llvm.ptr -> !tvm_ffi.any
   return
 }
 
@@ -155,5 +146,23 @@ func.func @object_handle_inc_ref(%arg0: !tvm_ffi.object_handle) {
 func.func @object_handle_dec_ref(%arg0: !tvm_ffi.object_handle) {
   // CHECK: tvm_ffi.object_dec_ref %arg0 : !tvm_ffi.object_handle
   tvm_ffi.object_dec_ref %arg0 : !tvm_ffi.object_handle
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @get_opaque_ptr
+func.func @get_opaque_ptr(%arg0: !tvm_ffi.object_handle) {
+  // CHECK: %[[VALUE:.*]] = tvm_ffi.get_opaque_ptr %arg0 : !tvm_ffi.object_handle -> !llvm.ptr
+  %0 = tvm_ffi.get_opaque_ptr %arg0 : !tvm_ffi.object_handle -> !llvm.ptr
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @load_tensor_from_opaque
+func.func @load_tensor_from_opaque(%arg0: !llvm.ptr) {
+  // CHECK: %[[VALUE:.*]] = tvm_ffi.load %arg0 : !llvm.ptr -> !dlpack.tensor
+  %0 = tvm_ffi.load %arg0 : !llvm.ptr -> !dlpack.tensor
   return
 }

@@ -44,6 +44,30 @@ template <typename OpTy> MlirValue getOutputValue(MlirOperation operation) {
   return wrap(typedOp.getOutput());
 }
 
+template <typename OpTy> MlirValue getStoreValue(MlirOperation operation) {
+  mlir::Operation *op = unwrap(operation);
+  if (!op) {
+    return getNullValue();
+  }
+  OpTy typedOp = llvm::dyn_cast<OpTy>(op);
+  if (!typedOp) {
+    return getNullValue();
+  }
+  return wrap(typedOp.getValue());
+}
+
+template <typename OpTy> MlirValue getStorePtr(MlirOperation operation) {
+  mlir::Operation *op = unwrap(operation);
+  if (!op) {
+    return getNullValue();
+  }
+  OpTy typedOp = llvm::dyn_cast<OpTy>(op);
+  if (!typedOp) {
+    return getNullValue();
+  }
+  return wrap(typedOp.getPtr());
+}
+
 } // namespace
 
 bool libtritonCoreOperationIsATVMFFIToOp(MlirOperation operation) {
@@ -56,4 +80,16 @@ MlirValue libtritonCoreTVMFFIToGetInput(MlirOperation operation) {
 
 MlirValue libtritonCoreTVMFFIToGetOutput(MlirOperation operation) {
   return getOutputValue<libtriton::tvm_ffi::ToOp>(operation);
+}
+
+bool libtritonCoreOperationIsATVMFFIStoreOp(MlirOperation operation) {
+  return isOpType<libtriton::tvm_ffi::StoreOp>(operation);
+}
+
+MlirValue libtritonCoreTVMFFIStoreGetValue(MlirOperation operation) {
+  return getStoreValue<libtriton::tvm_ffi::StoreOp>(operation);
+}
+
+MlirValue libtritonCoreTVMFFIStoreGetPtr(MlirOperation operation) {
+  return getStorePtr<libtriton::tvm_ffi::StoreOp>(operation);
 }

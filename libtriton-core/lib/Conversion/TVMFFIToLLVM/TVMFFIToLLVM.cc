@@ -178,24 +178,6 @@ struct LowerToOp : public mlir::OpConversionPattern<ToOp> {
   }
 };
 
-struct LowerAsOp : public mlir::OpConversionPattern<AsOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(AsOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const final {
-    mlir::Type convertedOutputType =
-        getTypeConverter()->convertType(op.getOutput().getType());
-    if (!convertedOutputType ||
-        adaptor.getInput().getType() != convertedOutputType) {
-      return mlir::failure();
-    } else {
-      rewriter.replaceOp(op, adaptor.getInput());
-      return mlir::success();
-    }
-  }
-};
-
 struct LowerGetTypeIndexOp : public mlir::OpConversionPattern<GetTypeIndexOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -278,6 +260,65 @@ struct LowerObjectDecRefOp : public mlir::OpConversionPattern<ObjectDecRefOp> {
   }
 };
 
+struct LowerGetOpaquePtrOp : public mlir::OpConversionPattern<GetOpaquePtrOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(GetOpaquePtrOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    mlir::MLIRContext *context = op.getContext();
+    const mlir::Type i8Ty = mlir::IntegerType::get(context, 8);
+    const mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
+    const mlir::Value cellPtr = mlir::LLVM::GEPOp::create(
+        rewriter, loc, ptrTy, i8Ty, adaptor.getInput(),
+        llvm::ArrayRef<mlir::LLVM::GEPArg>{sizeof(TVMFFIObject)});
+    rewriter.replaceOp(op, cellPtr);
+    return mlir::success();
+  }
+};
+
+struct LowerLoadOp : public mlir::OpConversionPattern<LoadOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(LoadOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    const mlir::Type convertedType =
+        getTypeConverter()->convertType(op.getOutput().getType());
+    if (!convertedType) {
+      return mlir::failure();
+    }
+    const mlir::Value loaded = mlir::LLVM::LoadOp::create(
+        rewriter, loc, convertedType, adaptor.getInput());
+    rewriter.replaceOp(op, loaded);
+    return mlir::success();
+  }
+};
+
+struct LowerStoreOp : public mlir::OpConversionPattern<StoreOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(StoreOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    const mlir::Location loc = op.getLoc();
+    const mlir::Value adaptedValue = adaptor.getValue();
+    const mlir::Value adaptedPtr = adaptor.getPtr();
+    const mlir::Type originalValueType = op.getValue().getType();
+
+    const std::optional<mlir::Value> anyStruct = toAnyStruct(
+        adaptedValue, originalValueType, rewriter, loc, getTypeConverter());
+    if (!anyStruct.has_value()) {
+      return mlir::failure();
+    }
+    mlir::LLVM::StoreOp::create(rewriter, loc, *anyStruct, adaptedPtr);
+    rewriter.eraseOp(op);
+    return mlir::success();
+  }
+};
+
 class ConvertTVMFFIToLLVMPass
     : public impl::ConvertTVMFFIToLLVMBase<ConvertTVMFFIToLLVMPass> {
 public:
@@ -345,9 +386,10 @@ void populateTVMFFIToLLVMConversionPatterns(
     return conversion::utils::TVMFFIObjectHandleLLVMDescriptor::getLLVMType(
         type.getContext());
   });
-  patterns.add<LowerGetTypeIndexOp, LowerToOp, LowerEnvTensorAllocOp, LowerAsOp,
+  patterns.add<LowerGetTypeIndexOp, LowerToOp, LowerEnvTensorAllocOp,
                LowerObjectIncRefOp, LowerObjectDecRefOp,
-               LowerErrorSetRaisedFromCStrOp>(typeConverter, context);
+               LowerErrorSetRaisedFromCStrOp, LowerGetOpaquePtrOp, LowerLoadOp,
+               LowerStoreOp>(typeConverter, context);
   target.addIllegalDialect<TVMFFIDialect>();
 }
 

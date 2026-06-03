@@ -25,77 +25,91 @@ template <typename SourceType, typename TargetType> struct ConverterBase {
 };
 
 std::optional<mlir::Value>
-buildAny(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
+buildAny(mlir::OpBuilder &builder, mlir::Location loc,
          const mlir::TypeConverter *typeConverter, mlir::Type anyType,
          mlir::TypedValue<mlir::IntegerType> typeIndexValue,
          mlir::TypedValue<mlir::IntegerType> payloadBitsValue);
 
+/// Convert a typed value to the LLVM struct representation of !tvm_ffi.any.
+///
+/// This is equivalent to the conversion performed by tvm_ffi.to when the
+/// target type is !tvm_ffi.any, but does not require a ToOp.  The caller
+/// provides the adapted (type-converted) \p adaptedInput together with the
+/// \p originalInputType to select the right conversion strategy.
+///
+/// Returns the LLVM struct (!llvm.struct<(i32, i32, i64)>) that carries the
+/// TVMFFIAny ABI representation, or std::nullopt on failure.
+std::optional<mlir::Value>
+toAnyStruct(mlir::Value adaptedInput, mlir::Type originalInputType,
+            mlir::OpBuilder &builder, mlir::Location loc,
+            const mlir::TypeConverter *typeConverter);
+
 struct AnyToAnyPattern : ConverterBase<AnyType, AnyType> {
   static mlir::Value convert(ToOp /*op*/, ToOp::Adaptor adaptor,
-                             mlir::ConversionPatternRewriter & /*rewriter*/,
+                             mlir::OpBuilder & /*builder*/,
                              const mlir::TypeConverter * /*typeConverter*/);
-};
-
-struct ObjectHandleToAnyPattern : ConverterBase<ObjectHandleType, AnyType> {
-  static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
-                             mlir::ConversionPatternRewriter &rewriter,
-                             const mlir::TypeConverter *typeConverter);
-};
-
-struct PointerToAnyPattern
-    : ConverterBase<mlir::LLVM::LLVMPointerType, AnyType> {
-  static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
-                             mlir::ConversionPatternRewriter &rewriter,
-                             const mlir::TypeConverter *typeConverter);
-};
-
-struct Float64ToAnyPattern : ConverterBase<mlir::Float64Type, AnyType> {
-  static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
-                             mlir::ConversionPatternRewriter &rewriter,
-                             const mlir::TypeConverter *typeConverter);
-};
-
-struct IntegerToAnyPattern : ConverterBase<mlir::IntegerType, AnyType> {
-  static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
-                             mlir::ConversionPatternRewriter &rewriter,
-                             const mlir::TypeConverter *typeConverter);
 };
 
 struct AnyToDLTensorPattern : ConverterBase<AnyType, dlpack::DLTensorType> {
   static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
-                             mlir::ConversionPatternRewriter &rewriter,
+                             mlir::OpBuilder &builder,
                              const mlir::TypeConverter *typeConverter);
 };
 
 struct AnyToFloat64Pattern : ConverterBase<AnyType, mlir::Float64Type> {
   static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
-                             mlir::ConversionPatternRewriter &rewriter,
+                             mlir::OpBuilder &builder,
+                             const mlir::TypeConverter *typeConverter);
+};
+
+struct AnyToIntegerPattern : ConverterBase<AnyType, mlir::IntegerType> {
+  static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
+                             mlir::OpBuilder &builder,
                              const mlir::TypeConverter *typeConverter);
 };
 
 struct AnyToObjectHandlePattern : ConverterBase<AnyType, ObjectHandleType> {
   static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
-                             mlir::ConversionPatternRewriter &rewriter,
+                             mlir::OpBuilder &builder,
                              const mlir::TypeConverter *typeConverter);
 };
 
 struct AnyToPointerPattern
     : ConverterBase<AnyType, mlir::LLVM::LLVMPointerType> {
   static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
-                             mlir::ConversionPatternRewriter &rewriter,
+                             mlir::OpBuilder &builder,
                              const mlir::TypeConverter *typeConverter);
 };
 
-struct AnyToIntegerPattern : ConverterBase<AnyType, mlir::IntegerType> {
+struct Float64ToAnyPattern : ConverterBase<mlir::Float64Type, AnyType> {
   static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
-                             mlir::ConversionPatternRewriter &rewriter,
+                             mlir::OpBuilder &builder,
+                             const mlir::TypeConverter *typeConverter);
+};
+
+struct IntegerToAnyPattern : ConverterBase<mlir::IntegerType, AnyType> {
+  static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
+                             mlir::OpBuilder &builder,
+                             const mlir::TypeConverter *typeConverter);
+};
+
+struct ObjectHandleToAnyPattern : ConverterBase<ObjectHandleType, AnyType> {
+  static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
+                             mlir::OpBuilder &builder,
                              const mlir::TypeConverter *typeConverter);
 };
 
 struct ObjectHandleToDLTensorPattern
     : ConverterBase<ObjectHandleType, dlpack::DLTensorType> {
   static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
-                             mlir::ConversionPatternRewriter &rewriter,
+                             mlir::OpBuilder &builder,
+                             const mlir::TypeConverter *typeConverter);
+};
+
+struct PointerToAnyPattern
+    : ConverterBase<mlir::LLVM::LLVMPointerType, AnyType> {
+  static mlir::Value convert(ToOp op, ToOp::Adaptor adaptor,
+                             mlir::OpBuilder &builder,
                              const mlir::TypeConverter *typeConverter);
 };
 
@@ -105,14 +119,13 @@ template <typename... Patterns> struct PatternSet {
   }
 
   static std::optional<mlir::Value>
-  convert(ToOp op, ToOp::Adaptor adaptor,
-          mlir::ConversionPatternRewriter &rewriter,
+  convert(ToOp op, ToOp::Adaptor adaptor, mlir::OpBuilder &builder,
           const mlir::TypeConverter *typeConverter) {
     std::optional<mlir::Value> convertedValue;
     const bool matched =
         ((Patterns::match(op.getInput().getType(), op.getOutput().getType()) &&
           (convertedValue =
-               Patterns::convert(op, adaptor, rewriter, typeConverter),
+               Patterns::convert(op, adaptor, builder, typeConverter),
            true)) ||
          ...);
     if (matched) {

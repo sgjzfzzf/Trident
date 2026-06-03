@@ -14,21 +14,21 @@ TVMFFIAnyLLVMDescriptor::getLLVMType(mlir::MLIRContext *context) {
 }
 
 mlir::TypedValue<mlir::IntegerType>
-TVMFFIAnyLLVMDescriptor::typeIndex(mlir::ConversionPatternRewriter &rewriter,
+TVMFFIAnyLLVMDescriptor::typeIndex(mlir::OpBuilder &builder,
                                    mlir::Location loc) const {
-  return this->template get<0>(rewriter, loc);
+  return this->template get<0>(builder, loc);
 }
 
 mlir::TypedValue<mlir::IntegerType>
-TVMFFIAnyLLVMDescriptor::zeroPadding(mlir::ConversionPatternRewriter &rewriter,
+TVMFFIAnyLLVMDescriptor::zeroPadding(mlir::OpBuilder &builder,
                                      mlir::Location loc) const {
-  return this->template get<1>(rewriter, loc);
+  return this->template get<1>(builder, loc);
 }
 
 mlir::TypedValue<mlir::IntegerType>
-TVMFFIAnyLLVMDescriptor::payloadBits(mlir::ConversionPatternRewriter &rewriter,
+TVMFFIAnyLLVMDescriptor::payloadBits(mlir::OpBuilder &builder,
                                      mlir::Location loc) const {
-  return this->template get<2>(rewriter, loc);
+  return this->template get<2>(builder, loc);
 }
 
 } // namespace libtriton::conversion::utils

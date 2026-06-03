@@ -35,19 +35,18 @@ public:
   using StructValue = mlir::TypedValue<mlir::LLVM::LLVMStructType>;
 
   template <typename... Args>
-  static StructValue
-  build(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-        mlir::LLVM::LLVMStructType structType, Args &&...args);
+  static StructValue build(mlir::OpBuilder &builder, mlir::Location loc,
+                           mlir::LLVM::LLVMStructType structType,
+                           Args &&...args);
 
   template <std::size_t Index>
   static typename Fields::template FieldType<Index>
-  extract(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
+  extract(mlir::OpBuilder &builder, mlir::Location loc,
           StructValue structValue);
 
   template <std::size_t Index, typename T>
-  static StructValue insert(mlir::ConversionPatternRewriter &rewriter,
-                            mlir::Location loc, StructValue structValue,
-                            T &&fieldValue);
+  static StructValue insert(mlir::OpBuilder &builder, mlir::Location loc,
+                            StructValue structValue, T &&fieldValue);
 
 private:
   template <typename T, std::enable_if_t<HasAs<T>::value, int> = 0>
@@ -59,24 +58,24 @@ private:
   template <typename T> static T convertExtracted(mlir::Value extractedValue);
 
   template <typename Tuple, std::size_t... Indices>
-  static StructValue buildImpl(mlir::ConversionPatternRewriter &rewriter,
-                               mlir::Location loc, StructValue structValue,
-                               Tuple &&fields, std::index_sequence<Indices...>);
+  static StructValue buildImpl(mlir::OpBuilder &builder, mlir::Location loc,
+                               StructValue structValue, Tuple &&fields,
+                               std::index_sequence<Indices...>);
 };
 
 template <typename... FieldTypes>
 template <typename... Args>
 typename LLVMStructBuilder<LLVMStructFieldList<FieldTypes...>>::StructValue
 LLVMStructBuilder<LLVMStructFieldList<FieldTypes...>>::build(
-    mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
+    mlir::OpBuilder &builder, mlir::Location loc,
     mlir::LLVM::LLVMStructType structType, Args &&...args) {
   static_assert(sizeof...(Args) == sizeof...(FieldTypes),
                 "field count does not match the LLVM struct field list");
 
   StructValue structValue = mlir::cast<StructValue>(
-      mlir::LLVM::PoisonOp::create(rewriter, loc, structType).getResult());
+      mlir::LLVM::PoisonOp::create(builder, loc, structType).getResult());
   std::tuple<Args &&...> fields(std::forward<Args>(args)...);
-  return buildImpl(rewriter, loc, structValue, fields,
+  return buildImpl(builder, loc, structValue, fields,
                    std::index_sequence_for<FieldTypes...>{});
 }
 
@@ -85,11 +84,10 @@ template <std::size_t Index>
 typename LLVMStructBuilder<
     LLVMStructFieldList<FieldTypes...>>::Fields::template FieldType<Index>
 LLVMStructBuilder<LLVMStructFieldList<FieldTypes...>>::extract(
-    mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-    StructValue structValue) {
+    mlir::OpBuilder &builder, mlir::Location loc, StructValue structValue) {
   using ResultType = typename Fields::template FieldType<Index>;
   mlir::Value extracted =
-      mlir::LLVM::ExtractValueOp::create(rewriter, loc, structValue,
+      mlir::LLVM::ExtractValueOp::create(builder, loc, structValue,
                                          llvm::ArrayRef<int64_t>{Index})
           .getResult();
   return convertExtracted<ResultType>(extracted);
@@ -99,11 +97,11 @@ template <typename... FieldTypes>
 template <std::size_t Index, typename T>
 typename LLVMStructBuilder<LLVMStructFieldList<FieldTypes...>>::StructValue
 LLVMStructBuilder<LLVMStructFieldList<FieldTypes...>>::insert(
-    mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-    StructValue structValue, T &&fieldValue) {
+    mlir::OpBuilder &builder, mlir::Location loc, StructValue structValue,
+    T &&fieldValue) {
   return mlir::cast<StructValue>(
       mlir::LLVM::InsertValueOp::create(
-          rewriter, loc, structValue,
+          builder, loc, structValue,
           unwrapFieldValue(std::forward<T>(fieldValue)),
           llvm::ArrayRef<int64_t>{static_cast<int64_t>(Index)})
           .getResult());
@@ -145,11 +143,11 @@ template <typename... FieldTypes>
 template <typename Tuple, std::size_t... Indices>
 typename LLVMStructBuilder<LLVMStructFieldList<FieldTypes...>>::StructValue
 LLVMStructBuilder<LLVMStructFieldList<FieldTypes...>>::buildImpl(
-    mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-    StructValue structValue, Tuple &&fields, std::index_sequence<Indices...>) {
+    mlir::OpBuilder &builder, mlir::Location loc, StructValue structValue,
+    Tuple &&fields, std::index_sequence<Indices...>) {
   StructValue currentValue = structValue;
   ((currentValue =
-        insert<Indices>(rewriter, loc, currentValue,
+        insert<Indices>(builder, loc, currentValue,
                         std::get<Indices>(std::forward<Tuple>(fields)))),
    ...);
   return currentValue;

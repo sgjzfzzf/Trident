@@ -28,6 +28,7 @@ def TorchExt_TritonKernelLaunchOp : TorchExt_Op<"triton_kernel_launch", [
   ]>
 ]> {
   let summary = "Launch a Torch kernel entry point";
+  // clang-format off
   let description = [{
     Models launching a Torch kernel symbol with explicit grid/block sizes.
     Except for TorchExt-specific kernel operand types and the final lowered
@@ -47,6 +48,7 @@ def TorchExt_TritonKernelLaunchOp : TorchExt_Op<"triton_kernel_launch", [
     is launched with the specified thread-block cluster size. This feature
     is exclusive to certain architectures (e.g. NVIDIA Hopper and later).
   }];
+  // clang-format on
 
   let arguments = (ins Variadic<GPU_AsyncToken>:$asyncDependencies,
                    SymbolRefAttr:$kernel,
@@ -97,11 +99,13 @@ def TorchExt_GetCurrentDeviceOp : TorchExt_Op<"get_current_device", [Pure]> {
 
 def TorchExt_GetCurrentStreamOp : TorchExt_Op<"get_current_stream", [Pure]> {
   let summary = "Get current CUDA stream async token";
+  // clang-format off
   let description = [{
     Returns a gpu async token associated with the current CUDA stream for the
     provided device index. If the optional device attribute is omitted, lowering
     materializes -1.
   }];
+  // clang-format on
 
   let arguments = (ins DefaultValuedAttr<I8Attr, "-1"> : $device);
   let results = (outs GPU_AsyncToken : $output);

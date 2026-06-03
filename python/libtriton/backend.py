@@ -198,8 +198,7 @@ class LibTritonGraphModule(object):
             self._any_llvm_type,
             None,
         ).result
-        any_value_llvm: ir.Value = llvm.load(self._any_llvm_type, arg_slot_ptr)
-        return tvm_ffi_d.as_(self._any_type, any_value_llvm)
+        return tvm_ffi_d.load(self._any_type, arg_slot_ptr)
 
     def _emit_unbox_any_arg(
         self,
@@ -231,9 +230,7 @@ class LibTritonGraphModule(object):
             return tvm_ffi_d.to(target_ty, any_value)
 
     def _emit_box_return(self, packed_result_ptr: ir.Value, value: ir.Value) -> None:
-        boxed: ir.Value = tvm_ffi_d.to(self._any_type, value)
-        boxed_llvm: ir.Value = tvm_ffi_d.as_(self._any_llvm_type, boxed)
-        llvm.StoreOp(boxed_llvm, packed_result_ptr)
+        tvm_ffi_d.store(value, packed_result_ptr)
 
     def _emit_dispatch_call(
         self,
@@ -368,9 +365,13 @@ class LibTritonGraphModule(object):
                         out_param_ty.element_type,
                         out_param_ty.shape,
                     )
-                    dl_tensor: ir.Value = tvm_ffi_d.to(
-                        self._dl_tensor_type,
+                    opaque_ptr: ir.Value = tvm_ffi_d.get_opaque_ptr(
+                        self._ptr_type,
                         out_handle,
+                    )
+                    dl_tensor: ir.Value = tvm_ffi_d.load(
+                        self._dl_tensor_type,
+                        opaque_ptr,
                     )
                     out_memref: ir.Value = dlpack.to_memref(
                         out_param_ty,

@@ -34,17 +34,14 @@ public:
 
   static mlir::LLVM::LLVMStructType getLLVMType(mlir::MLIRContext *context);
 
-  mlir::TypedValue<mlir::IntegerType>
-  typeIndex(mlir::ConversionPatternRewriter &rewriter,
-            mlir::Location loc) const;
+  mlir::TypedValue<mlir::IntegerType> typeIndex(mlir::OpBuilder &builder,
+                                                mlir::Location loc) const;
 
-  mlir::TypedValue<mlir::IntegerType>
-  zeroPadding(mlir::ConversionPatternRewriter &rewriter,
-              mlir::Location loc) const;
+  mlir::TypedValue<mlir::IntegerType> zeroPadding(mlir::OpBuilder &builder,
+                                                  mlir::Location loc) const;
 
-  mlir::TypedValue<mlir::IntegerType>
-  payloadBits(mlir::ConversionPatternRewriter &rewriter,
-              mlir::Location loc) const;
+  mlir::TypedValue<mlir::IntegerType> payloadBits(mlir::OpBuilder &builder,
+                                                  mlir::Location loc) const;
 
 private:
   friend Base;

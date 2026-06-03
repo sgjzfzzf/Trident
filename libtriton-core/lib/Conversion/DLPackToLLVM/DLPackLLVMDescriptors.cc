@@ -8,9 +8,9 @@
 namespace libtriton::conversion::utils {
 
 mlir::TypedValue<mlir::IntegerType>
-DLDeviceLLVMDescriptor::deviceType(mlir::ConversionPatternRewriter &rewriter,
+DLDeviceLLVMDescriptor::deviceType(mlir::OpBuilder &builder,
                                    mlir::Location loc) const {
-  return this->template get<0>(rewriter, loc);
+  return this->template get<0>(builder, loc);
 }
 
 mlir::LLVM::LLVMStructType
@@ -24,15 +24,15 @@ DLDeviceLLVMDescriptor::getLLVMType(mlir::MLIRContext *context) {
 }
 
 mlir::TypedValue<mlir::IntegerType>
-DLDeviceLLVMDescriptor::deviceId(mlir::ConversionPatternRewriter &rewriter,
+DLDeviceLLVMDescriptor::deviceId(mlir::OpBuilder &builder,
                                  mlir::Location loc) const {
-  return this->template get<1>(rewriter, loc);
+  return this->template get<1>(builder, loc);
 }
 
 mlir::TypedValue<mlir::IntegerType>
-DLDataTypeLLVMDescriptor::code(mlir::ConversionPatternRewriter &rewriter,
+DLDataTypeLLVMDescriptor::code(mlir::OpBuilder &builder,
                                mlir::Location loc) const {
-  return this->template get<0>(rewriter, loc);
+  return this->template get<0>(builder, loc);
 }
 
 mlir::LLVM::LLVMStructType
@@ -46,21 +46,21 @@ DLDataTypeLLVMDescriptor::getLLVMType(mlir::MLIRContext *context) {
 }
 
 mlir::TypedValue<mlir::IntegerType>
-DLDataTypeLLVMDescriptor::bits(mlir::ConversionPatternRewriter &rewriter,
+DLDataTypeLLVMDescriptor::bits(mlir::OpBuilder &builder,
                                mlir::Location loc) const {
-  return this->template get<1>(rewriter, loc);
+  return this->template get<1>(builder, loc);
 }
 
 mlir::TypedValue<mlir::IntegerType>
-DLDataTypeLLVMDescriptor::lanes(mlir::ConversionPatternRewriter &rewriter,
+DLDataTypeLLVMDescriptor::lanes(mlir::OpBuilder &builder,
                                 mlir::Location loc) const {
-  return this->template get<2>(rewriter, loc);
+  return this->template get<2>(builder, loc);
 }
 
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-DLTensorLLVMDescriptor::data(mlir::ConversionPatternRewriter &rewriter,
+DLTensorLLVMDescriptor::data(mlir::OpBuilder &builder,
                              mlir::Location loc) const {
-  return this->template get<0>(rewriter, loc);
+  return this->template get<0>(builder, loc);
 }
 
 mlir::LLVM::LLVMStructType
@@ -79,45 +79,45 @@ DLTensorLLVMDescriptor::getLLVMType(mlir::MLIRContext *context) {
 }
 
 DLDeviceLLVMDescriptor
-DLTensorLLVMDescriptor::device(mlir::ConversionPatternRewriter &rewriter,
+DLTensorLLVMDescriptor::device(mlir::OpBuilder &builder,
                                mlir::Location loc) const {
-  return this->template get<1>(rewriter, loc);
+  return this->template get<1>(builder, loc);
 }
 
 mlir::TypedValue<mlir::IntegerType>
-DLTensorLLVMDescriptor::ndim(mlir::ConversionPatternRewriter &rewriter,
+DLTensorLLVMDescriptor::ndim(mlir::OpBuilder &builder,
                              mlir::Location loc) const {
-  return this->template get<2>(rewriter, loc);
+  return this->template get<2>(builder, loc);
 }
 
 DLDataTypeLLVMDescriptor
-DLTensorLLVMDescriptor::dtype(mlir::ConversionPatternRewriter &rewriter,
+DLTensorLLVMDescriptor::dtype(mlir::OpBuilder &builder,
                               mlir::Location loc) const {
-  return this->template get<3>(rewriter, loc);
+  return this->template get<3>(builder, loc);
 }
 
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-DLTensorLLVMDescriptor::shape(mlir::ConversionPatternRewriter &rewriter,
+DLTensorLLVMDescriptor::shape(mlir::OpBuilder &builder,
                               mlir::Location loc) const {
-  return this->template get<4>(rewriter, loc);
+  return this->template get<4>(builder, loc);
 }
 
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-DLTensorLLVMDescriptor::strides(mlir::ConversionPatternRewriter &rewriter,
+DLTensorLLVMDescriptor::strides(mlir::OpBuilder &builder,
                                 mlir::Location loc) const {
-  return this->template get<5>(rewriter, loc);
+  return this->template get<5>(builder, loc);
 }
 
 mlir::TypedValue<mlir::IntegerType>
-DLTensorLLVMDescriptor::byteOffset(mlir::ConversionPatternRewriter &rewriter,
+DLTensorLLVMDescriptor::byteOffset(mlir::OpBuilder &builder,
                                    mlir::Location loc) const {
-  return this->template get<6>(rewriter, loc);
+  return this->template get<6>(builder, loc);
 }
 
 DLTensorLLVMDescriptor
-DLManagedTensorLLVMDescriptor::tensor(mlir::ConversionPatternRewriter &rewriter,
+DLManagedTensorLLVMDescriptor::tensor(mlir::OpBuilder &builder,
                                       mlir::Location loc) const {
-  return this->template get<0>(rewriter, loc);
+  return this->template get<0>(builder, loc);
 }
 
 mlir::LLVM::LLVMStructType
@@ -132,15 +132,15 @@ DLManagedTensorLLVMDescriptor::getLLVMType(mlir::MLIRContext *context) {
 }
 
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-DLManagedTensorLLVMDescriptor::managerCtx(
-    mlir::ConversionPatternRewriter &rewriter, mlir::Location loc) const {
-  return this->template get<1>(rewriter, loc);
+DLManagedTensorLLVMDescriptor::managerCtx(mlir::OpBuilder &builder,
+                                          mlir::Location loc) const {
+  return this->template get<1>(builder, loc);
 }
 
 mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-DLManagedTensorLLVMDescriptor::deleter(
-    mlir::ConversionPatternRewriter &rewriter, mlir::Location loc) const {
-  return this->template get<2>(rewriter, loc);
+DLManagedTensorLLVMDescriptor::deleter(mlir::OpBuilder &builder,
+                                       mlir::Location loc) const {
+  return this->template get<2>(builder, loc);
 }
 
 } // namespace libtriton::conversion::utils

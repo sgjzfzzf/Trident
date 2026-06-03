@@ -8,9 +8,12 @@ def TorchExt_Dialect : Dialect {
   let cppNamespace = "::libtriton::torch_ext";
   let useDefaultTypePrinterParser = 0;
   let summary = "Torch extension dialect";
-  let description = [{The TorchExt dialect models runtime -
-                      facing Torch kernel launch semantics and related ABI -
-                      level constructs.}];
+  // clang-format off
+  let description = [{
+    The TorchExt dialect models runtime-facing Torch kernel launch semantics
+    and related ABI-level constructs.
+  }];
+  // clang-format on
 }
 
 #endif // LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTBASE_TD_

@@ -9,24 +9,28 @@
 
 namespace libtriton::conversion::utils {
 
-mlir::TypedValue<mlir::IntegerType>
-emitI8Constant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-               mlir::MLIRContext *context, int64_t value);
+mlir::TypedValue<mlir::IntegerType> emitI8Constant(mlir::OpBuilder &builder,
+                                                   mlir::Location loc,
+                                                   mlir::MLIRContext *context,
+                                                   int64_t value);
+
+mlir::TypedValue<mlir::IntegerType> emitI16Constant(mlir::OpBuilder &builder,
+                                                    mlir::Location loc,
+                                                    mlir::MLIRContext *context,
+                                                    int64_t value);
+
+mlir::TypedValue<mlir::IntegerType> emitI32Constant(mlir::OpBuilder &builder,
+                                                    mlir::Location loc,
+                                                    mlir::MLIRContext *context,
+                                                    int64_t value);
+
+mlir::TypedValue<mlir::IntegerType> emitI64Constant(mlir::OpBuilder &builder,
+                                                    mlir::Location loc,
+                                                    mlir::MLIRContext *context,
+                                                    int64_t value);
 
 mlir::TypedValue<mlir::IntegerType>
-emitI16Constant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-                mlir::MLIRContext *context, int64_t value);
-
-mlir::TypedValue<mlir::IntegerType>
-emitI32Constant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-                mlir::MLIRContext *context, int64_t value);
-
-mlir::TypedValue<mlir::IntegerType>
-emitI64Constant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-                mlir::MLIRContext *context, int64_t value);
-
-mlir::TypedValue<mlir::IntegerType>
-castIntegerTo(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
+castIntegerTo(mlir::OpBuilder &builder, mlir::Location loc,
               mlir::IntegerType targetType,
               mlir::TypedValue<mlir::IntegerType> integerValue);
 

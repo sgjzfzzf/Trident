@@ -15,6 +15,13 @@ libtritonCoreTVMFFIToGetInput(MlirOperation operation);
 MLIR_CAPI_EXPORTED MlirValue
 libtritonCoreTVMFFIToGetOutput(MlirOperation operation);
 
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsATVMFFIStoreOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIStoreGetValue(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIStoreGetPtr(MlirOperation operation);
+
 #ifdef __cplusplus
 }
 #endif

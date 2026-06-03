@@ -28,12 +28,11 @@ public:
 
   static mlir::LLVM::LLVMStructType getLLVMType(mlir::MLIRContext *context);
 
-  mlir::TypedValue<mlir::IntegerType>
-  deviceType(mlir::ConversionPatternRewriter &rewriter,
-             mlir::Location loc) const;
+  mlir::TypedValue<mlir::IntegerType> deviceType(mlir::OpBuilder &builder,
+                                                 mlir::Location loc) const;
 
-  mlir::TypedValue<mlir::IntegerType>
-  deviceId(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc) const;
+  mlir::TypedValue<mlir::IntegerType> deviceId(mlir::OpBuilder &builder,
+                                               mlir::Location loc) const;
 
 private:
   friend Base;
@@ -59,14 +58,14 @@ public:
 
   static mlir::LLVM::LLVMStructType getLLVMType(mlir::MLIRContext *context);
 
-  mlir::TypedValue<mlir::IntegerType>
-  code(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc) const;
+  mlir::TypedValue<mlir::IntegerType> code(mlir::OpBuilder &builder,
+                                           mlir::Location loc) const;
 
-  mlir::TypedValue<mlir::IntegerType>
-  bits(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc) const;
+  mlir::TypedValue<mlir::IntegerType> bits(mlir::OpBuilder &builder,
+                                           mlir::Location loc) const;
 
-  mlir::TypedValue<mlir::IntegerType>
-  lanes(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc) const;
+  mlir::TypedValue<mlir::IntegerType> lanes(mlir::OpBuilder &builder,
+                                            mlir::Location loc) const;
 
 private:
   friend Base;
@@ -99,27 +98,26 @@ public:
 
   static mlir::LLVM::LLVMStructType getLLVMType(mlir::MLIRContext *context);
 
-  mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-  data(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc) const;
+  mlir::TypedValue<mlir::LLVM::LLVMPointerType> data(mlir::OpBuilder &builder,
+                                                     mlir::Location loc) const;
 
-  DLDeviceLLVMDescriptor device(mlir::ConversionPatternRewriter &rewriter,
+  DLDeviceLLVMDescriptor device(mlir::OpBuilder &builder,
                                 mlir::Location loc) const;
 
-  mlir::TypedValue<mlir::IntegerType>
-  ndim(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc) const;
+  mlir::TypedValue<mlir::IntegerType> ndim(mlir::OpBuilder &builder,
+                                           mlir::Location loc) const;
 
-  DLDataTypeLLVMDescriptor dtype(mlir::ConversionPatternRewriter &rewriter,
+  DLDataTypeLLVMDescriptor dtype(mlir::OpBuilder &builder,
                                  mlir::Location loc) const;
 
-  mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-  shape(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc) const;
+  mlir::TypedValue<mlir::LLVM::LLVMPointerType> shape(mlir::OpBuilder &builder,
+                                                      mlir::Location loc) const;
 
   mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-  strides(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc) const;
+  strides(mlir::OpBuilder &builder, mlir::Location loc) const;
 
-  mlir::TypedValue<mlir::IntegerType>
-  byteOffset(mlir::ConversionPatternRewriter &rewriter,
-             mlir::Location loc) const;
+  mlir::TypedValue<mlir::IntegerType> byteOffset(mlir::OpBuilder &builder,
+                                                 mlir::Location loc) const;
 
 private:
   friend Base;
@@ -146,15 +144,14 @@ public:
 
   static mlir::LLVM::LLVMStructType getLLVMType(mlir::MLIRContext *context);
 
-  DLTensorLLVMDescriptor tensor(mlir::ConversionPatternRewriter &rewriter,
+  DLTensorLLVMDescriptor tensor(mlir::OpBuilder &builder,
                                 mlir::Location loc) const;
 
   mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-  managerCtx(mlir::ConversionPatternRewriter &rewriter,
-             mlir::Location loc) const;
+  managerCtx(mlir::OpBuilder &builder, mlir::Location loc) const;
 
   mlir::TypedValue<mlir::LLVM::LLVMPointerType>
-  deleter(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc) const;
+  deleter(mlir::OpBuilder &builder, mlir::Location loc) const;
 
 private:
   friend Base;

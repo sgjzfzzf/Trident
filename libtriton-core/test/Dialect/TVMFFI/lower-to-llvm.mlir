@@ -52,24 +52,15 @@ func.func @lower_any_from_i32(%i: i32) -> !tvm_ffi.any {
   return %0 : !tvm_ffi.any
 }
 
-// CHECK-LABEL: func.func @lower_any_from_llvm_struct
-// CHECK-SAME: (%[[AS_FROM_LLVM_ARG:.*]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
-func.func @lower_any_from_llvm_struct(%a: !llvm.struct<(i32, i32, i64)>) -> !tvm_ffi.any {
+// CHECK-LABEL: func.func @lower_load_any_from_ptr
+// CHECK-SAME: (%[[LOAD_ARG:.*]]: !llvm.ptr) -> !llvm.struct<(i32, i32, i64)>
+func.func @lower_load_any_from_ptr(%p: !llvm.ptr) -> !tvm_ffi.any {
   // CHECK-NOT: tvm_ffi.
   // CHECK-NOT: builtin.unrealized_conversion_cast
-  // CHECK: return %[[AS_FROM_LLVM_ARG]] : !llvm.struct<(i32, i32, i64)>
-  %0 = tvm_ffi.as %a : !llvm.struct<(i32, i32, i64)> -> !tvm_ffi.any
+  // CHECK: %[[LOADED:.*]] = llvm.load %[[LOAD_ARG]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+  // CHECK: return %[[LOADED]] : !llvm.struct<(i32, i32, i64)>
+  %0 = tvm_ffi.load %p : !llvm.ptr -> !tvm_ffi.any
   return %0 : !tvm_ffi.any
-}
-
-// CHECK-LABEL: func.func @lower_llvm_struct_from_any
-// CHECK-SAME: (%[[AS_TO_LLVM_ARG:.*]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
-func.func @lower_llvm_struct_from_any(%a: !tvm_ffi.any) -> !llvm.struct<(i32, i32, i64)> {
-  // CHECK-NOT: tvm_ffi.
-  // CHECK-NOT: builtin.unrealized_conversion_cast
-  // CHECK: return %[[AS_TO_LLVM_ARG]] : !llvm.struct<(i32, i32, i64)>
-  %0 = tvm_ffi.as %a : !tvm_ffi.any -> !llvm.struct<(i32, i32, i64)>
-  return %0 : !llvm.struct<(i32, i32, i64)>
 }
 
 // CHECK-LABEL: func.func @lower_any_from_f64
@@ -295,4 +286,29 @@ func.func @lower_object_handle_env_tensor_alloc() -> !tvm_ffi.object_handle {
   // CHECK: return %[[HANDLE]] : !llvm.ptr
   %h = tvm_ffi.env_tensor_alloc dtype = f32, shape = [16, 32] : !tvm_ffi.object_handle
   return %h : !tvm_ffi.object_handle
+}
+
+// CHECK-LABEL: func.func @lower_get_opaque_ptr
+// CHECK-SAME: (%[[GET_OPAQUE_ARG:.*]]: !llvm.ptr) -> !llvm.ptr
+func.func @lower_get_opaque_ptr(%h: !tvm_ffi.object_handle) -> !llvm.ptr {
+  // CHECK-NOT: tvm_ffi.
+  // CHECK-NOT: builtin.unrealized_conversion_cast
+  // CHECK: %[[GET_OPAQUE_CELL_PTR:.*]] = llvm.getelementptr %[[GET_OPAQUE_ARG]][24] : (!llvm.ptr) -> !llvm.ptr, i8
+  // CHECK-NOT: tvm_ffi.
+  // CHECK: return %[[GET_OPAQUE_CELL_PTR]] : !llvm.ptr
+  %0 = tvm_ffi.get_opaque_ptr %h : !tvm_ffi.object_handle -> !llvm.ptr
+  return %0 : !llvm.ptr
+}
+
+// CHECK-LABEL: func.func @lower_load_tensor_from_opaque
+// CHECK-SAME: (%[[LOAD_TENSOR_ARG:.*]]: !llvm.ptr)
+// CHECK-SAME: -> !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
+func.func @lower_load_tensor_from_opaque(%p: !llvm.ptr) -> !dlpack.tensor {
+  // CHECK-NOT: tvm_ffi.
+  // CHECK-NOT: builtin.unrealized_conversion_cast
+  // CHECK: %[[LOAD_TENSOR_VALUE:.*]] = llvm.load %[[LOAD_TENSOR_ARG]] : !llvm.ptr -> !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
+  // CHECK-NOT: tvm_ffi.
+  // CHECK: return %[[LOAD_TENSOR_VALUE]] : !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
+  %0 = tvm_ffi.load %p : !llvm.ptr -> !dlpack.tensor
+  return %0 : !dlpack.tensor
 }

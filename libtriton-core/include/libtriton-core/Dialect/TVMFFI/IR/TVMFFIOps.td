@@ -29,22 +29,58 @@ def TVMFFI_ToOp : TVMFFI_Op<"to", [MemoryEffects<[MemRead]>]> {
   let hasVerifier = 1;
 }
 
-def TVMFFI_AsOp : TVMFFI_Op<"as", [Pure]> {
-  let summary = "Convert between !tvm_ffi.any and its LLVM descriptor struct";
-  // clang-format off
-  let description = [{Bridges !tvm_ffi.any and the LLVM struct value carrying
-                      the TVMFFIAny ABI in either direction.}];
-  // clang-format on
-  let arguments = (ins AnyTypeOf<[TVMFFI_AnyType, LLVM_AnyStruct]> : $input);
-  let results = (outs AnyTypeOf<[TVMFFI_AnyType, LLVM_AnyStruct]> : $output);
-  let hasVerifier = 1;
-}
-
 def TVMFFI_GetTypeIndexOp : TVMFFI_Op<"get_type_index", [Pure]> {
   let summary = "Extract the TVMFFIAny type index as i32";
   let description = [{Returns the type tag stored in a !tvm_ffi.any value.}];
   let arguments = (ins TVMFFI_AnyType : $input);
   let results = (outs I32 : $output);
+}
+
+def TVMFFI_GetOpaquePtrOp
+    : TVMFFI_Op<"get_opaque_ptr", [MemoryEffects<[MemRead]>]> {
+  let summary = "Extract the cell pointer from a tvm_ffi.object_handle";
+  // clang-format off
+  let description = [{
+    Given a !tvm_ffi.object_handle, computes a pointer to the cell data that
+    follows the TVMFFIObject header by offsetting by sizeof(TVMFFIObject).
+    The result is a !llvm.ptr.
+    This is the MLIR equivalent of TVMFFITensorGetDLTensorPtr().
+  }];
+  // clang-format on
+  let arguments = (ins TVMFFI_ObjectHandleType : $input);
+  let results = (outs LLVM_AnyPointer : $output);
+  let hasVerifier = 1;
+}
+
+def TVMFFI_LoadOp : TVMFFI_Op<"load", [MemoryEffects<[MemRead]>]> {
+  let summary = "Load a typed value from a !llvm.ptr";
+  // clang-format off
+  let description = [{
+    Loads a typed value (e.g. !dlpack.tensor) from the memory pointed to by
+    a !llvm.ptr. The output type determines the LLVM struct type used for the
+    load. Currently supports !dlpack.tensor.
+  }];
+  // clang-format on
+  let arguments = (ins LLVM_AnyPointer : $input);
+  let results = (outs AnyType : $output);
+  let hasVerifier = 1;
+}
+
+def TVMFFI_StoreOp : Op<TVMFFI_Dialect, "store", [MemoryEffects<[MemWrite]>]> {
+  let summary = "Store a typed value as TVMFFIAny at the given pointer";
+  // clang-format off
+  let description = [{
+    Stores the input value as a !tvm_ffi.any at the specified pointer.
+    This is equivalent to to(input, !tvm_ffi.any) -> as(!llvm.struct) -> store,
+    but as a single operation that avoids intermediate IR.
+    Supported input types are those supported by tvm_ffi.to.
+  }];
+  // clang-format on
+  let arguments = (ins AnyType : $value, LLVM_AnyPointer : $ptr);
+  let results = (outs);
+  let hasVerifier = 1;
+  let assemblyFormat =
+      "$value `,` $ptr attr-dict `:` type($value) `,` type($ptr)";
 }
 
 def TVMFFI_EnvTensorAllocOp

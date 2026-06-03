@@ -8,6 +8,7 @@
 #include <cstdint>
 
 #include "libtriton-core/Conversion/TVMFFIToLLVM/ToConvertPatterns.h"
+#include "libtriton-core/Dialect/DLPack/IR/DLPackTypes.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFITypes.h"
@@ -29,20 +30,13 @@ namespace libtriton::tvm_ffi {
 
 namespace {
 
-bool isSupportedAsType(mlir::Type type) {
-  return mlir::isa<AnyType, mlir::LLVM::LLVMStructType>(type);
-}
-
-bool isSupportedAsConversionPair(mlir::Type inputType, mlir::Type outputType) {
-  return (mlir::isa<AnyType>(inputType) &&
-          mlir::isa<mlir::LLVM::LLVMStructType>(outputType)) ||
-         (mlir::isa<AnyType>(outputType) &&
-          mlir::isa<mlir::LLVM::LLVMStructType>(inputType));
-}
-
 bool isSupportedEnvTensorDType(mlir::Type type) {
   return mlir::isa<mlir::IntegerType>(type) || type.isF16() || type.isF32() ||
          type.isF64() || type.isBF16();
+}
+
+bool isSupportedLoadType(mlir::Type type) {
+  return mlir::isa<dlpack::DLTensorType>(type) || mlir::isa<AnyType>(type);
 }
 
 } // namespace
@@ -63,23 +57,6 @@ mlir::LogicalResult ToOp::verify() {
   const mlir::Type outputType = getOutput().getType();
   if (!ToPatternSet::supports(inputType, outputType)) {
     return emitOpError() << "unsupported tvm_ffi.to conversion from "
-                         << inputType << " to " << outputType;
-  } else {
-    return mlir::success();
-  }
-}
-
-mlir::LogicalResult AsOp::verify() {
-  const mlir::Type inputType = getInput().getType();
-  const mlir::Type outputType = getOutput().getType();
-  if (!isSupportedAsType(inputType)) {
-    return emitOpError() << "unsupported input type for tvm_ffi.as: "
-                         << inputType;
-  } else if (!isSupportedAsType(outputType)) {
-    return emitOpError() << "unsupported output type for tvm_ffi.as: "
-                         << outputType;
-  } else if (!isSupportedAsConversionPair(inputType, outputType)) {
-    return emitOpError() << "unsupported tvm_ffi.as conversion from "
                          << inputType << " to " << outputType;
   } else {
     return mlir::success();
@@ -109,6 +86,38 @@ mlir::LogicalResult EnvTensorAllocOp::verify() {
     }
   }
 
+  return mlir::success();
+}
+
+mlir::LogicalResult GetOpaquePtrOp::verify() {
+  if (!mlir::isa<mlir::LLVM::LLVMPointerType>(getOutput().getType())) {
+    return emitOpError() << "output must be !llvm.ptr";
+  }
+  return mlir::success();
+}
+
+mlir::LogicalResult LoadOp::verify() {
+  if (!mlir::isa<mlir::LLVM::LLVMPointerType>(getInput().getType())) {
+    return emitOpError() << "input must be !llvm.ptr, got "
+                         << getInput().getType();
+  }
+  if (!isSupportedLoadType(getOutput().getType())) {
+    return emitOpError() << "unsupported output type for tvm_ffi.load: "
+                         << getOutput().getType();
+  }
+  return mlir::success();
+}
+
+mlir::LogicalResult StoreOp::verify() {
+  if (!mlir::isa<mlir::LLVM::LLVMPointerType>(getPtr().getType())) {
+    return emitOpError() << "ptr must be !llvm.ptr, got " << getPtr().getType();
+  }
+  const mlir::Type valueType = getValue().getType();
+  const mlir::Type anyType = AnyType::get(getContext());
+  if (!ToPatternSet::supports(valueType, anyType)) {
+    return emitOpError() << "unsupported value type for tvm_ffi.store: "
+                         << valueType;
+  }
   return mlir::success();
 }
 

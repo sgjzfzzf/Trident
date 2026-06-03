@@ -7,7 +7,8 @@
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFICAPIDescriptors.h"
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFILLVMDescriptors.h"
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
-#include "libtriton-core/Conversion/TVMFFIToLLVM/ToRules.h"
+#include "libtriton-core/Conversion/TVMFFIToLLVM/ToConvertPatterns.h"
+#include "libtriton-core/Conversion/Utils/IConstantUtils.h"
 #include "libtriton-core/Conversion/Utils/RuntimeCFunctionDeclUtils.h"
 #include "libtriton-core/Conversion/Utils/StdLibCFunctionDeclUtils.h"
 #include "libtriton-core/Dialect/DLPack/IR/DLPackDialect.h"
@@ -34,89 +35,6 @@ namespace libtriton::tvm_ffi {
 
 #define GEN_PASS_DEF_CONVERTTVMFFITOLLVM
 #include "libtriton-core/Conversion/Passes.h.inc"
-
-namespace {
-
-template <unsigned BitWidth>
-mlir::TypedValue<mlir::IntegerType>
-emitIConstant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-              mlir::MLIRContext *context, int64_t value) {
-  mlir::Type iTy = mlir::IntegerType::get(context, BitWidth);
-  return mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
-      mlir::LLVM::ConstantOp::create(rewriter, loc, iTy, value).getResult());
-}
-
-mlir::TypedValue<mlir::IntegerType>
-emitI8Constant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-               mlir::MLIRContext *context, int64_t value) {
-  return emitIConstant<8>(rewriter, loc, context, value);
-}
-
-mlir::TypedValue<mlir::IntegerType>
-emitI16Constant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-                mlir::MLIRContext *context, int64_t value) {
-  return emitIConstant<16>(rewriter, loc, context, value);
-}
-
-mlir::TypedValue<mlir::IntegerType>
-emitI32Constant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-                mlir::MLIRContext *context, int64_t value) {
-  return emitIConstant<32>(rewriter, loc, context, value);
-}
-
-mlir::TypedValue<mlir::IntegerType>
-emitI64Constant(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-                mlir::MLIRContext *context, int64_t value) {
-  return emitIConstant<64>(rewriter, loc, context, value);
-}
-
-mlir::FailureOr<mlir::LLVM::LLVMStructType>
-getConvertedAnyLLVMType(const mlir::TypeConverter *typeConverter,
-                        mlir::Type anyType) {
-  mlir::Type convertedAnyType = typeConverter->convertType(anyType);
-  mlir::LLVM::LLVMStructType anyLLVMType =
-      mlir::dyn_cast<mlir::LLVM::LLVMStructType>(convertedAnyType);
-  if (!anyLLVMType)
-    return mlir::failure();
-  return anyLLVMType;
-}
-
-mlir::FailureOr<mlir::Value>
-buildAnyValue(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-              const mlir::TypeConverter *typeConverter, mlir::Type anyType,
-              mlir::TypedValue<mlir::IntegerType> typeIndexValue,
-              mlir::TypedValue<mlir::IntegerType> payloadBitsValue) {
-  mlir::FailureOr<mlir::LLVM::LLVMStructType> anyLLVMType =
-      getConvertedAnyLLVMType(typeConverter, anyType);
-  if (mlir::failed(anyLLVMType))
-    return mlir::failure();
-
-  mlir::TypedValue<mlir::IntegerType> zeroPaddingValue =
-      emitI32Constant(rewriter, loc, rewriter.getContext(), 0LL);
-
-  return conversion::utils::TVMFFIAnyLLVMDescriptor::build(
-             rewriter, loc, *anyLLVMType, typeIndexValue, zeroPaddingValue,
-             payloadBitsValue)
-      .as();
-}
-
-mlir::FailureOr<mlir::TypedValue<mlir::IntegerType>>
-castIntegerToI64Payload(mlir::ConversionPatternRewriter &rewriter,
-                        mlir::Location loc, mlir::Type i64Ty,
-                        mlir::TypedValue<mlir::IntegerType> integerValue) {
-  const int32_t width = integerValue.getType().getWidth();
-  if (width == 64) {
-    return integerValue;
-  } else if (width < 64) {
-    return mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
-        mlir::LLVM::ZExtOp::create(rewriter, loc, i64Ty, integerValue)
-            .getResult());
-  } else {
-    return mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
-        mlir::LLVM::TruncOp::create(rewriter, loc, i64Ty, integerValue)
-            .getResult());
-  }
-}
 
 mlir::FailureOr<mlir::Value> emitTensorFromDLPackAsObjectHandle(
     mlir::ModuleOp moduleOp, mlir::ConversionPatternRewriter &rewriter,
@@ -198,31 +116,35 @@ mlir::FailureOr<mlir::Value> emitEnvTensorAllocAsObjectHandle(
   }
 
   const mlir::Value shapeSlot =
-      mlir::LLVM::AllocaOp::create(
-          rewriter, loc, ptrTy, i64Ty,
-          emitI64Constant(rewriter, loc, context, shape.size()))
+      mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, i64Ty,
+                                   conversion::utils::emitI64Constant(
+                                       rewriter, loc, context, shape.size()))
           .getResult();
   for (size_t i = 0; i < shape.size(); ++i) {
     const mlir::Value dimPtr =
         mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, i64Ty, shapeSlot, {i})
             .getResult();
     mlir::LLVM::StoreOp::create(
-        rewriter, loc, emitI64Constant(rewriter, loc, context, shape[i]),
+        rewriter, loc,
+        conversion::utils::emitI64Constant(rewriter, loc, context, shape[i]),
         dimPtr);
   }
 
   const mlir::TypedValue<mlir::IntegerType> dtypeCodeValue =
-      emitI8Constant(rewriter, loc, context, dtypeInfo->code);
+      conversion::utils::emitI8Constant(rewriter, loc, context,
+                                        dtypeInfo->code);
   const mlir::TypedValue<mlir::IntegerType> dtypeBitsValue =
-      emitI8Constant(rewriter, loc, context, dtypeInfo->bits);
+      conversion::utils::emitI8Constant(rewriter, loc, context,
+                                        dtypeInfo->bits);
   const mlir::TypedValue<mlir::IntegerType> dtypeLanesValue =
-      emitI16Constant(rewriter, loc, context, dtypeInfo->lanes);
+      conversion::utils::emitI16Constant(rewriter, loc, context,
+                                         dtypeInfo->lanes);
   const conversion::utils::DLDataTypeLLVMDescriptor dlDataTypeValue =
       conversion::utils::DLDataTypeLLVMDescriptor::build(
           rewriter, loc, mlir::cast<mlir::LLVM::LLVMStructType>(dlDataTypeTy),
           dtypeCodeValue, dtypeBitsValue, dtypeLanesValue);
   const mlir::TypedValue<mlir::IntegerType> ndimValue =
-      emitI32Constant(rewriter, loc, context, shape.size());
+      conversion::utils::emitI32Constant(rewriter, loc, context, shape.size());
   mlir::LLVM::CallOp currentDeviceCall = mlir::LLVM::CallOp::create(
       rewriter, loc, *currentDeviceOrErr, mlir::ValueRange{});
   conversion::utils::DLDeviceLLVMDescriptor deviceValue =
@@ -233,7 +155,7 @@ mlir::FailureOr<mlir::Value> emitEnvTensorAllocAsObjectHandle(
       mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
           mlir::LLVM::ZeroOp::create(rewriter, loc, ptrTy).getResult());
   const mlir::TypedValue<mlir::IntegerType> zeroOffsetValue =
-      emitI64Constant(rewriter, loc, context, 0);
+      conversion::utils::emitI64Constant(rewriter, loc, context, 0);
   const mlir::TypedValue<mlir::LLVM::LLVMPointerType> shapeSlotValue =
       mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(shapeSlot);
   const conversion::utils::DLTensorLLVMDescriptor tensorValue =
@@ -243,7 +165,7 @@ mlir::FailureOr<mlir::Value> emitEnvTensorAllocAsObjectHandle(
           nullPtrValue, zeroOffsetValue);
 
   const mlir::TypedValue<mlir::IntegerType> oneValue =
-      emitI64Constant(rewriter, loc, context, 1);
+      conversion::utils::emitI64Constant(rewriter, loc, context, 1);
   const mlir::TypedValue<mlir::LLVM::LLVMPointerType> tensorSlotValue =
       mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
           mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, dlTensorTy,
@@ -318,7 +240,7 @@ struct LowerToOp : public mlir::OpConversionPattern<ToOp> {
   matchAndRewrite(ToOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const final {
     const std::optional<mlir::Value> convertedValue =
-        to::ToRuleSet::convert(op, adaptor, rewriter, getTypeConverter());
+        ToPatternSet::convert(op, adaptor, rewriter, getTypeConverter());
     if (!convertedValue.has_value()) {
       return mlir::failure();
     } else {
@@ -473,8 +395,6 @@ struct TVMFFIToLLVMDialectInterface
     populateTVMFFIToLLVMConversionPatterns(target, typeConverter, patterns);
   }
 };
-
-} // namespace
 
 void populateTVMFFIToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,

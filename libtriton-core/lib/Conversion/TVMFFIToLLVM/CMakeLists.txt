@@ -1,12 +1,13 @@
 add_mlir_conversion_library(
   TVMFFIToLLVM
-  ToRules.cc
+  ToConvertPatterns.cc
   TVMFFIToLLVM.cc
   TVMFFILLVMDescriptors.cc
   DEPENDS
   MLIRConversionPassIncGen
   LINK_LIBS
   PUBLIC
+  ConversionUtils
   DLPackToLLVM
   MemRefOriginAnalysis
   MLIRPass

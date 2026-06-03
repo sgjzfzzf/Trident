@@ -1,9 +1,9 @@
-#include "libtriton-core/Conversion/TVMFFIToLLVM/ToRules.h"
+#include "libtriton-core/Conversion/TVMFFIToLLVM/ToConvertPatterns.h"
 
 #include <cstdint>
 #include <optional>
 
-namespace libtriton::tvm_ffi::to::convert {
+namespace libtriton::tvm_ffi {
 
 std::optional<mlir::Value>
 buildAny(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
@@ -17,50 +17,33 @@ buildAny(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
     return std::nullopt;
   }
   const mlir::TypedValue<mlir::IntegerType> zeroPaddingValue =
-      emitIConstant<32>(rewriter, loc, rewriter.getContext(), 0);
+      conversion::utils::emitI32Constant(rewriter, loc, rewriter.getContext(),
+                                         0);
   return conversion::utils::TVMFFIAnyLLVMDescriptor::build(
              rewriter, loc, anyLLVMType, typeIndexValue, zeroPaddingValue,
              payloadBitsValue)
       .as();
 }
 
-mlir::TypedValue<mlir::IntegerType>
-castIntegerToI64(mlir::ConversionPatternRewriter &rewriter, mlir::Location loc,
-                 mlir::Type i64Ty,
-                 mlir::TypedValue<mlir::IntegerType> integerValue) {
-  const int32_t width = integerValue.getType().getWidth();
-  if (width == 64) {
-    return integerValue;
-  }
-  if (width < 64) {
-    return mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
-        mlir::LLVM::ZExtOp::create(rewriter, loc, i64Ty, integerValue)
-            .getResult());
-  }
-  return mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
-      mlir::LLVM::TruncOp::create(rewriter, loc, i64Ty, integerValue)
-          .getResult());
-}
-
 mlir::Value
-AnyToAnyConverter::convert(ToOp /*op*/, ToOp::Adaptor adaptor,
-                           mlir::ConversionPatternRewriter & /*rewriter*/,
-                           const mlir::TypeConverter * /*typeConverter*/) {
+AnyToAnyPattern::convert(ToOp /*op*/, ToOp::Adaptor adaptor,
+                         mlir::ConversionPatternRewriter & /*rewriter*/,
+                         const mlir::TypeConverter * /*typeConverter*/) {
   return adaptor.getInput();
 }
 
 mlir::Value
-ObjectHandleToAnyConverter::convert(ToOp op, ToOp::Adaptor adaptor,
-                                    mlir::ConversionPatternRewriter &rewriter,
-                                    const mlir::TypeConverter *typeConverter) {
+ObjectHandleToAnyPattern::convert(ToOp op, ToOp::Adaptor adaptor,
+                                  mlir::ConversionPatternRewriter &rewriter,
+                                  const mlir::TypeConverter *typeConverter) {
   const mlir::Location loc = op.getLoc();
   mlir::MLIRContext *context = op.getContext();
   const mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
   const mlir::Type i32Ty = mlir::IntegerType::get(context, 32);
   const mlir::TypedValue<mlir::IntegerType> tensorTypeIndexValue =
-      emitIConstant<32>(rewriter, loc, context, kTVMFFITensor);
+      conversion::utils::emitI32Constant(rewriter, loc, context, kTVMFFITensor);
   const mlir::TypedValue<mlir::IntegerType> noneTypeIndexValue =
-      emitIConstant<32>(rewriter, loc, context, kTVMFFINone);
+      conversion::utils::emitI32Constant(rewriter, loc, context, kTVMFFINone);
   const mlir::TypedValue<mlir::LLVM::LLVMPointerType> nullHandleValue =
       mlir::cast<mlir::TypedValue<mlir::LLVM::LLVMPointerType>>(
           mlir::LLVM::ZeroOp::create(rewriter, loc,
@@ -86,14 +69,14 @@ ObjectHandleToAnyConverter::convert(ToOp op, ToOp::Adaptor adaptor,
 }
 
 mlir::Value
-PointerToAnyConverter::convert(ToOp op, ToOp::Adaptor adaptor,
-                               mlir::ConversionPatternRewriter &rewriter,
-                               const mlir::TypeConverter *typeConverter) {
+PointerToAnyPattern::convert(ToOp op, ToOp::Adaptor adaptor,
+                             mlir::ConversionPatternRewriter &rewriter,
+                             const mlir::TypeConverter *typeConverter) {
   const mlir::Location loc = op.getLoc();
   mlir::MLIRContext *context = op.getContext();
   const mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
   const mlir::TypedValue<mlir::IntegerType> typeIndexValue =
-      emitIConstant<32>(rewriter, loc, context, kTVMFFIRawStr);
+      conversion::utils::emitI32Constant(rewriter, loc, context, kTVMFFIRawStr);
   const mlir::TypedValue<mlir::IntegerType> payloadBitsValue =
       mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
           mlir::LLVM::PtrToIntOp::create(rewriter, loc, i64Ty,
@@ -104,14 +87,14 @@ PointerToAnyConverter::convert(ToOp op, ToOp::Adaptor adaptor,
 }
 
 mlir::Value
-Float64ToAnyConverter::convert(ToOp op, ToOp::Adaptor adaptor,
-                               mlir::ConversionPatternRewriter &rewriter,
-                               const mlir::TypeConverter *typeConverter) {
+Float64ToAnyPattern::convert(ToOp op, ToOp::Adaptor adaptor,
+                             mlir::ConversionPatternRewriter &rewriter,
+                             const mlir::TypeConverter *typeConverter) {
   const mlir::Location loc = op.getLoc();
   mlir::MLIRContext *context = op.getContext();
   const mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
   const mlir::TypedValue<mlir::IntegerType> typeIndexValue =
-      emitIConstant<32>(rewriter, loc, context, kTVMFFIFloat);
+      conversion::utils::emitI32Constant(rewriter, loc, context, kTVMFFIFloat);
   const mlir::TypedValue<mlir::IntegerType> payloadBitsValue =
       mlir::cast<mlir::TypedValue<mlir::IntegerType>>(
           mlir::LLVM::BitcastOp::create(rewriter, loc, i64Ty,
@@ -122,25 +105,26 @@ Float64ToAnyConverter::convert(ToOp op, ToOp::Adaptor adaptor,
 }
 
 mlir::Value
-IntegerToAnyConverter::convert(ToOp op, ToOp::Adaptor adaptor,
-                               mlir::ConversionPatternRewriter &rewriter,
-                               const mlir::TypeConverter *typeConverter) {
+IntegerToAnyPattern::convert(ToOp op, ToOp::Adaptor adaptor,
+                             mlir::ConversionPatternRewriter &rewriter,
+                             const mlir::TypeConverter *typeConverter) {
   const mlir::Location loc = op.getLoc();
   mlir::MLIRContext *context = op.getContext();
-  const mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
+  const mlir::IntegerType i64Ty = mlir::IntegerType::get(context, 64);
   const mlir::TypedValue<mlir::IntegerType> typeIndexValue =
-      emitIConstant<32>(rewriter, loc, context, kTVMFFIInt);
-  const mlir::TypedValue<mlir::IntegerType> payload = castIntegerToI64(
-      rewriter, loc, i64Ty,
-      mlir::cast<mlir::TypedValue<mlir::IntegerType>>(adaptor.getInput()));
+      conversion::utils::emitI32Constant(rewriter, loc, context, kTVMFFIInt);
+  const mlir::TypedValue<mlir::IntegerType> payload =
+      conversion::utils::castIntegerTo(
+          rewriter, loc, i64Ty,
+          mlir::cast<mlir::TypedValue<mlir::IntegerType>>(adaptor.getInput()));
   return *buildAny(rewriter, loc, typeConverter, op.getOutput().getType(),
                    typeIndexValue, payload);
 }
 
 mlir::Value
-AnyToDLTensorConverter::convert(ToOp op, ToOp::Adaptor adaptor,
-                                mlir::ConversionPatternRewriter &rewriter,
-                                const mlir::TypeConverter *typeConverter) {
+AnyToDLTensorPattern::convert(ToOp op, ToOp::Adaptor adaptor,
+                              mlir::ConversionPatternRewriter &rewriter,
+                              const mlir::TypeConverter *typeConverter) {
   const mlir::Location loc = op.getLoc();
   mlir::MLIRContext *context = op.getContext();
   const mlir::Type i32Ty = mlir::IntegerType::get(context, 32);
@@ -175,9 +159,9 @@ AnyToDLTensorConverter::convert(ToOp op, ToOp::Adaptor adaptor,
 }
 
 mlir::Value
-AnyToFloat64Converter::convert(ToOp op, ToOp::Adaptor adaptor,
-                               mlir::ConversionPatternRewriter &rewriter,
-                               const mlir::TypeConverter *typeConverter) {
+AnyToFloat64Pattern::convert(ToOp op, ToOp::Adaptor adaptor,
+                             mlir::ConversionPatternRewriter &rewriter,
+                             const mlir::TypeConverter *typeConverter) {
   const mlir::Location loc = op.getLoc();
   const conversion::utils::TVMFFIAnyLLVMDescriptor anyValue =
       conversion::utils::TVMFFIAnyLLVMDescriptor::from(adaptor.getInput());
@@ -191,9 +175,9 @@ AnyToFloat64Converter::convert(ToOp op, ToOp::Adaptor adaptor,
 }
 
 mlir::Value
-AnyToObjectHandleConverter::convert(ToOp op, ToOp::Adaptor adaptor,
-                                    mlir::ConversionPatternRewriter &rewriter,
-                                    const mlir::TypeConverter *typeConverter) {
+AnyToObjectHandlePattern::convert(ToOp op, ToOp::Adaptor adaptor,
+                                  mlir::ConversionPatternRewriter &rewriter,
+                                  const mlir::TypeConverter *typeConverter) {
   const mlir::Location loc = op.getLoc();
   const conversion::utils::TVMFFIAnyLLVMDescriptor anyValue =
       conversion::utils::TVMFFIAnyLLVMDescriptor::from(adaptor.getInput());
@@ -207,9 +191,9 @@ AnyToObjectHandleConverter::convert(ToOp op, ToOp::Adaptor adaptor,
 }
 
 mlir::Value
-AnyToPointerConverter::convert(ToOp op, ToOp::Adaptor adaptor,
-                               mlir::ConversionPatternRewriter &rewriter,
-                               const mlir::TypeConverter *typeConverter) {
+AnyToPointerPattern::convert(ToOp op, ToOp::Adaptor adaptor,
+                             mlir::ConversionPatternRewriter &rewriter,
+                             const mlir::TypeConverter *typeConverter) {
   const mlir::Location loc = op.getLoc();
   const conversion::utils::TVMFFIAnyLLVMDescriptor anyValue =
       conversion::utils::TVMFFIAnyLLVMDescriptor::from(adaptor.getInput());
@@ -223,9 +207,9 @@ AnyToPointerConverter::convert(ToOp op, ToOp::Adaptor adaptor,
 }
 
 mlir::Value
-AnyToIntegerConverter::convert(ToOp op, ToOp::Adaptor adaptor,
-                               mlir::ConversionPatternRewriter &rewriter,
-                               const mlir::TypeConverter *typeConverter) {
+AnyToIntegerPattern::convert(ToOp op, ToOp::Adaptor adaptor,
+                             mlir::ConversionPatternRewriter &rewriter,
+                             const mlir::TypeConverter *typeConverter) {
   const mlir::Location loc = op.getLoc();
   const conversion::utils::TVMFFIAnyLLVMDescriptor anyValue =
       conversion::utils::TVMFFIAnyLLVMDescriptor::from(adaptor.getInput());
@@ -249,7 +233,7 @@ AnyToIntegerConverter::convert(ToOp op, ToOp::Adaptor adaptor,
       .getResult();
 }
 
-mlir::Value ObjectHandleToDLTensorConverter::convert(
+mlir::Value ObjectHandleToDLTensorPattern::convert(
     ToOp op, ToOp::Adaptor adaptor, mlir::ConversionPatternRewriter &rewriter,
     const mlir::TypeConverter *typeConverter) {
   const mlir::Location loc = op.getLoc();
@@ -266,4 +250,4 @@ mlir::Value ObjectHandleToDLTensorConverter::convert(
       .getResult();
 }
 
-} // namespace libtriton::tvm_ffi::to::convert
+} // namespace libtriton::tvm_ffi

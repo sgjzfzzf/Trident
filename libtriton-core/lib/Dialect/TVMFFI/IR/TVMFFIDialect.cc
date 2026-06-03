@@ -7,7 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "libtriton-core/Conversion/TVMFFIToLLVM/ToRules.h"
+#include "libtriton-core/Conversion/TVMFFIToLLVM/ToConvertPatterns.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFITypes.h"
@@ -61,7 +61,7 @@ void TVMFFIDialect::initialize() {
 mlir::LogicalResult ToOp::verify() {
   const mlir::Type inputType = getInput().getType();
   const mlir::Type outputType = getOutput().getType();
-  if (!to::ToRuleSet::supports(inputType, outputType)) {
+  if (!ToPatternSet::supports(inputType, outputType)) {
     return emitOpError() << "unsupported tvm_ffi.to conversion from "
                          << inputType << " to " << outputType;
   } else {

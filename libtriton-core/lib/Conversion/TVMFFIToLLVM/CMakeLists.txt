@@ -1,5 +1,6 @@
 add_mlir_conversion_library(
   TVMFFIToLLVM
+  ToRules.cc
   TVMFFIToLLVM.cc
   TVMFFILLVMDescriptors.cc
   DEPENDS

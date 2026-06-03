@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "libtriton-core/Conversion/TVMFFIToLLVM/ToRules.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFITypes.h"
@@ -27,26 +28,6 @@
 namespace libtriton::tvm_ffi {
 
 namespace {
-
-bool isSupportedToType(mlir::Type type) {
-  return mlir::isa<AnyType, ObjectHandleType, dlpack::DLTensorType,
-                   mlir::LLVM::LLVMPointerType, mlir::Float64Type,
-                   mlir::IntegerType>(type);
-}
-
-bool isSupportedToConversionPair(mlir::Type inputType, mlir::Type outputType) {
-  const bool inputIsAny = mlir::isa<AnyType>(inputType);
-  const bool outputIsAny = mlir::isa<AnyType>(outputType);
-  return (inputIsAny && outputIsAny) ||
-         (inputIsAny && mlir::isa<mlir::IntegerType, mlir::Float64Type,
-                                  mlir::LLVM::LLVMPointerType, ObjectHandleType,
-                                  dlpack::DLTensorType>(outputType)) ||
-         (mlir::isa<ObjectHandleType>(inputType) &&
-          mlir::isa<dlpack::DLTensorType>(outputType)) ||
-         (outputIsAny &&
-          mlir::isa<mlir::IntegerType, mlir::Float64Type,
-                    mlir::LLVM::LLVMPointerType, ObjectHandleType>(inputType));
-}
 
 bool isSupportedAsType(mlir::Type type) {
   return mlir::isa<AnyType, mlir::LLVM::LLVMStructType>(type);
@@ -80,13 +61,7 @@ void TVMFFIDialect::initialize() {
 mlir::LogicalResult ToOp::verify() {
   const mlir::Type inputType = getInput().getType();
   const mlir::Type outputType = getOutput().getType();
-  if (!isSupportedToType(inputType)) {
-    return emitOpError() << "unsupported input type for tvm_ffi.to: "
-                         << inputType;
-  } else if (!isSupportedToType(outputType)) {
-    return emitOpError() << "unsupported output type for tvm_ffi.to: "
-                         << outputType;
-  } else if (!isSupportedToConversionPair(inputType, outputType)) {
+  if (!to::ToRuleSet::supports(inputType, outputType)) {
     return emitOpError() << "unsupported tvm_ffi.to conversion from "
                          << inputType << " to " << outputType;
   } else {

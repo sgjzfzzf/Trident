@@ -155,4 +155,22 @@ def TVMFFI_FunctionCallOp : Op<TVMFFI_Dialect, "function_call",
                        "`->` type($result)";
 }
 
+def TVMFFI_CallOp
+    : Op<TVMFFI_Dialect, "call", [MemoryEffects<[MemRead, MemWrite]>]> {
+  let summary = "Call a TVM FFI function by name";
+  // clang-format off
+  let description = [{
+    Calls a TVM FFI function identified by a string name with the given
+    arguments and returns the result. The function handle is resolved at
+    module init time via `TVMFFIFunctionGetGlobal` and cached in a global
+    variable by the `finalize-tvm-ffi-call` pass.
+  }];
+  // clang-format on
+  let arguments = (ins StrAttr : $func_name, Variadic<TVMFFI_AnyType> : $args);
+  let results = (outs TVMFFI_AnyType : $result);
+  let assemblyFormat =
+      "$func_name `(` $args `)` attr-dict `:` `(` type($args) `)` "
+      "`->` type($result)";
+}
+
 #endif // LIBTRITON_CORE_DIALECT_TVMFFI_IR_TVMFFIOPS_TD_

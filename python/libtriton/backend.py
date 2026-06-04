@@ -456,7 +456,6 @@ class LibTritonGraphModule(object):
             pipeline: str = LibTritonGraphModule._build_builtin_pipeline(
                 chip=f"sm_{major}{minor}"
             )
-            # print(module)
             passmanager.PassManager.parse(pipeline).run(module.operation)
             return module
 

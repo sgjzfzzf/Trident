@@ -20,4 +20,5 @@ add_mlir_library(
   TorchExtDialect
   TorchExtToLLVM
   TVMFFIDialect
-  TVMFFIToLLVM)
+  TVMFFIToLLVM
+  TVMFFITransforms)

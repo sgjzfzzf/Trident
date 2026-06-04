@@ -25,7 +25,8 @@ namespace libtriton::torch_ext {
 namespace {
 
 static bool isMemRefDescriptorLikeStructType(mlir::Type type) {
-  auto structType = mlir::dyn_cast<mlir::LLVM::LLVMStructType>(type);
+  mlir::LLVM::LLVMStructType structType =
+      mlir::dyn_cast<mlir::LLVM::LLVMStructType>(type);
   if (!structType) {
     return false;
   }

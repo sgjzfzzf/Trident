@@ -1,0 +1,10 @@
+add_mlir_library(
+  TVMFFITransforms
+  ResolveCallOp.cc
+  DEPENDS
+  MLIRTVMFFIPassIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRFuncDialect
+  MLIRLLVMDialect
+  TVMFFIDialect)

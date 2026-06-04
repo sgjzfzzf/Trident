@@ -184,3 +184,12 @@ func.func @function_call_with_args(%arg0: !tvm_ffi.object_handle, %arg1: !tvm_ff
   %0 = tvm_ffi.function_call %arg0(%arg1, %arg2) : (!tvm_ffi.any, !tvm_ffi.any) -> !tvm_ffi.any
   return %0 : !tvm_ffi.any
 }
+
+// -----
+
+// CHECK-LABEL: func.func @call_with_args
+func.func @call_with_args(%arg0: !tvm_ffi.any, %arg1: !tvm_ffi.any) -> !tvm_ffi.any {
+  // CHECK: %[[VALUE:.*]] = tvm_ffi.call "foo.bar.baz"(%arg0, %arg1) : (!tvm_ffi.any, !tvm_ffi.any) -> !tvm_ffi.any
+  %0 = tvm_ffi.call "foo.bar.baz"(%arg0, %arg1) : (!tvm_ffi.any, !tvm_ffi.any) -> !tvm_ffi.any
+  return %0 : !tvm_ffi.any
+}

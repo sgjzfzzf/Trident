@@ -1,6 +1,6 @@
 add_mlir_library(
   TVMFFITransforms
-  ResolveCallOp.cc
+  FinalizeTVMFFICall.cc
   DEPENDS
   MLIRTVMFFIPassIncGen
   LINK_LIBS

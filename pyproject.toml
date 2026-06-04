@@ -1,7 +1,9 @@
 [project]
 name = "libtriton"
 version = "0.1.0"
-dependencies = ["apache-tvm-ffi", "torch", "triton"]
+# Lock triton to 3.6.0 because version 3.7 changed the cache calculation API,
+# causing errors when re-finding the cache.
+dependencies = ["apache-tvm-ffi", "torch", "triton==3.6.0"]
 
 [build-system]
 requires = ["cmake", "nanobind", "ninja", "scikit-build-core"]

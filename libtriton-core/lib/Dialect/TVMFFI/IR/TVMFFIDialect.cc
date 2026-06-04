@@ -67,9 +67,6 @@ mlir::LogicalResult EnvTensorAllocOp::verify() {
   }
 
   llvm::ArrayRef<int64_t> shape = getShape();
-  if (shape.empty()) {
-    return emitOpError() << "shape must be non-empty";
-  }
 
   constexpr int64_t kI32Max = std::numeric_limits<int32_t>::max();
   if (shape.size() > kI32Max) {

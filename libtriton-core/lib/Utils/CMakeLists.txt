@@ -5,13 +5,8 @@ add_mlir_library(
   PUBLIC
   DLPackDialect
   DLPackToLLVM
-  MLIRArithDialect
-  MLIRControlFlowDialect
-  MLIRConvertToLLVMPass
-  MLIRFuncDialect
-  MLIRLLVMDialect
-  MLIRMemRefDialect
-  MLIRNVVMDialect
+  MLIRRegisterAllDialects
+  MLIRRegisterAllExtensions
   MLIRRegisterAllPasses
   MLIRSCFDialect
   TorchMLIRCAPI

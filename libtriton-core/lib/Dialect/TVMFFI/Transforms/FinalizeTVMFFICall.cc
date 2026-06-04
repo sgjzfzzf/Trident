@@ -1,4 +1,4 @@
-//===- ResolveCallOp.cc ---------------------------------------------------===//
+//===- FinalizeTVMFFICall.cc ----------------------------------------------===//
 //  The `finalize-tvm-ffi-call` pass implementation.
 //
 //  Resolves each `tvm_ffi.call "name"(args)` by:

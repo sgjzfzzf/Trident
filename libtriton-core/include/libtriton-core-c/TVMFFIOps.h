@@ -22,6 +22,17 @@ libtritonCoreTVMFFIStoreGetValue(MlirOperation operation);
 MLIR_CAPI_EXPORTED MlirValue
 libtritonCoreTVMFFIStoreGetPtr(MlirOperation operation);
 
+MLIR_CAPI_EXPORTED bool
+libtritonCoreOperationIsATVMFFIFunctionCallOp(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIFunctionCallGetFunc(MlirOperation operation);
+MLIR_CAPI_EXPORTED int32_t
+libtritonCoreTVMFFIFunctionCallGetNumArgs(MlirOperation operation);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIFunctionCallGetArg(MlirOperation operation, int32_t index);
+MLIR_CAPI_EXPORTED MlirValue
+libtritonCoreTVMFFIFunctionCallGetResult(MlirOperation operation);
+
 #ifdef __cplusplus
 }
 #endif

@@ -122,4 +122,37 @@ def TVMFFI_ErrorSetRaisedFromCStrOp
                        "type($message)";
 }
 
+def TVMFFI_FunctionGetGlobalOp : Op<TVMFFI_Dialect, "function_get_global",
+                                    [MemoryEffects<[MemRead, MemWrite]>]> {
+  let summary = "Lookup a global TVM FFI function by name";
+  // clang-format off
+  let description = [{
+    Looks up a global TVM FFI function registered in the system by name.
+    Returns a handle to the function, or a null handle if not found.
+    Models `TVMFFIFunctionGetGlobal(name, &out)`.
+  }];
+  // clang-format on
+  let arguments = (ins StrAttr : $func_name);
+  let results = (outs TVMFFI_ObjectHandleType : $output);
+  let assemblyFormat = "$func_name attr-dict `:` type($output)";
+}
+
+def TVMFFI_FunctionCallOp : Op<TVMFFI_Dialect, "function_call",
+                               [MemoryEffects<[MemRead, MemWrite]>]> {
+  let summary = "Call a TVM FFI function";
+  // clang-format off
+  let description = [{
+    Calls a TVM FFI function with the given arguments and returns the result.
+    Models `TVMFFIFunctionCall(func, args, num_args, &result)`.
+  }];
+  // clang-format on
+  let arguments = (ins
+    TVMFFI_ObjectHandleType:$func,
+    Variadic<TVMFFI_AnyType>:$args
+  );
+  let results = (outs TVMFFI_AnyType : $result);
+  let assemblyFormat = "$func `(` $args `)` attr-dict `:` `(` type($args) `)` "
+                       "`->` type($result)";
+}
+
 #endif // LIBTRITON_CORE_DIALECT_TVMFFI_IR_TVMFFIOPS_TD_

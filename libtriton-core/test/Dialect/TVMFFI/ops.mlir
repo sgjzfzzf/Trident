@@ -166,3 +166,21 @@ func.func @load_tensor_from_opaque(%arg0: !llvm.ptr) {
   %0 = tvm_ffi.load %arg0 : !llvm.ptr -> !dlpack.tensor
   return
 }
+
+// -----
+
+// CHECK-LABEL: func.func @function_get_global
+func.func @function_get_global() {
+  // CHECK: %[[VALUE:.*]] = tvm_ffi.function_get_global "foo" : !tvm_ffi.object_handle
+  %0 = tvm_ffi.function_get_global "foo" : !tvm_ffi.object_handle
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @function_call_with_args
+func.func @function_call_with_args(%arg0: !tvm_ffi.object_handle, %arg1: !tvm_ffi.any, %arg2: !tvm_ffi.any) -> !tvm_ffi.any {
+  // CHECK: %[[VALUE:.*]] = tvm_ffi.function_call %arg0(%arg1, %arg2) : (!tvm_ffi.any, !tvm_ffi.any) -> !tvm_ffi.any
+  %0 = tvm_ffi.function_call %arg0(%arg1, %arg2) : (!tvm_ffi.any, !tvm_ffi.any) -> !tvm_ffi.any
+  return %0 : !tvm_ffi.any
+}

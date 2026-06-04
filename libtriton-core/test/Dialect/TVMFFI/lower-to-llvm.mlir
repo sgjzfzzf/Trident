@@ -7,6 +7,9 @@
 // CHECK-DAG: llvm.func @TVMFFIObjectIncRef
 // CHECK-DAG: llvm.func @TVMFFIEnvTensorAlloc
 // CHECK-DAG: llvm.func @__libtriton_get_current_device
+// CHECK-DAG: llvm.func @TVMFFIFunctionGetGlobal
+// CHECK-DAG: llvm.func @TVMFFIFunctionCall
+// CHECK-DAG: llvm.mlir.global internal constant @__libtriton_tvm_ffi_func_name_foo("foo")
 
 // CHECK-LABEL: func.func @lower_any_from_i64
 // CHECK-SAME: (%[[FROM_INT_ARG:.*]]: i64) -> !llvm.struct<(i32, i32, i64)>
@@ -289,4 +292,52 @@ func.func @lower_load_tensor_from_opaque(%p: !llvm.ptr) -> !dlpack.tensor {
   // CHECK: return %[[LOAD_TENSOR_VALUE]] : !llvm.struct<packed (ptr, struct<packed (i32, i32)>, i32, struct<packed (i8, i8, i16)>, ptr, ptr, i64)>
   %0 = tvm_ffi.load %p : !llvm.ptr -> !dlpack.tensor
   return %0 : !dlpack.tensor
+}
+
+// CHECK-LABEL: func.func @lower_function_get_global
+// CHECK-SAME: () -> !llvm.ptr
+func.func @lower_function_get_global() -> !tvm_ffi.object_handle {
+  // CHECK: %[[STR_PTR:.*]] = llvm.mlir.addressof @__libtriton_tvm_ffi_func_name_foo : !llvm.ptr
+  // CHECK: %[[LEN:.*]] = llvm.mlir.constant(3 : i64)
+  // CHECK: %[[ONE:.*]] = llvm.mlir.constant(1 : i64)
+  // CHECK: %[[BA_SLOT:.*]] = llvm.alloca %[[ONE]] x !llvm.struct<(ptr, i64)> : (i64) -> !llvm.ptr
+  // CHECK: %[[DATA_GEP:.*]] = llvm.getelementptr %[[BA_SLOT]][0, 0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(ptr, i64)>
+  // CHECK: llvm.store %[[STR_PTR]], %[[DATA_GEP]] : !llvm.ptr, !llvm.ptr
+  // CHECK: %[[SIZE_GEP:.*]] = llvm.getelementptr %[[BA_SLOT]][0, 1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(ptr, i64)>
+  // CHECK: llvm.store %[[LEN]], %[[SIZE_GEP]] : i64, !llvm.ptr
+  // CHECK: %[[NULL:.*]] = llvm.mlir.zero : !llvm.ptr
+  // CHECK: %[[OUT_SLOT:.*]] = llvm.alloca %[[ONE]] x !llvm.ptr : (i64) -> !llvm.ptr
+  // CHECK: llvm.store %[[NULL]], %[[OUT_SLOT]] : !llvm.ptr, !llvm.ptr
+  // CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[BA_SLOT]], %[[OUT_SLOT]]) : (!llvm.ptr, !llvm.ptr) -> i32
+  // CHECK: %[[HANDLE:.*]] = llvm.load %[[OUT_SLOT]] : !llvm.ptr -> !llvm.ptr
+  // CHECK: return %[[HANDLE]] : !llvm.ptr
+  %0 = tvm_ffi.function_get_global "foo" : !tvm_ffi.object_handle
+  return %0 : !tvm_ffi.object_handle
+}
+
+// CHECK-LABEL: func.func @lower_function_call
+// CHECK-SAME: (%[[FC_FUNC:.*]]: !llvm.ptr,
+// CHECK-SAME: %[[FC_ARG0:.*]]: !llvm.struct<(i32, i32, i64)>,
+// CHECK-SAME: %[[FC_ARG1:.*]]: !llvm.struct<(i32, i32, i64)>)
+// CHECK-SAME: -> !llvm.struct<(i32, i32, i64)>
+func.func @lower_function_call(%func: !tvm_ffi.object_handle, %arg0: !tvm_ffi.any, %arg1: !tvm_ffi.any) -> !tvm_ffi.any {
+  // CHECK-NOT: tvm_ffi.
+  // CHECK-NOT: builtin.unrealized_conversion_cast
+  // CHECK: %[[FC_NUM_ARGS:.*]] = llvm.mlir.constant(2 : i64)
+  // CHECK: %[[FC_ARGS_SLOT:.*]] = llvm.alloca %[[FC_NUM_ARGS]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
+  // CHECK: %[[FC_ARG0_PTR:.*]] = llvm.getelementptr %[[FC_ARGS_SLOT]][0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
+  // CHECK: llvm.store %[[FC_ARG0]], %[[FC_ARG0_PTR]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+  // CHECK: %[[FC_ARG1_PTR:.*]] = llvm.getelementptr %[[FC_ARGS_SLOT]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
+  // CHECK: llvm.store %[[FC_ARG1]], %[[FC_ARG1_PTR]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+  // CHECK: %[[FC_ONE:.*]] = llvm.mlir.constant(1 : i64)
+  // CHECK: %[[FC_RESULT_SLOT:.*]] = llvm.alloca %[[FC_ONE]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
+  // CHECK: %[[FC_ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
+  // CHECK: %[[FC_TI_PTR:.*]] = llvm.getelementptr %[[FC_RESULT_SLOT]][0, 0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
+  // CHECK: llvm.store %[[FC_ZERO]], %[[FC_TI_PTR]] : i32, !llvm.ptr
+  // CHECK: %[[FC_NUM_ARGS_I32:.*]] = llvm.mlir.constant(2 : i32) : i32
+  // CHECK: llvm.call @TVMFFIFunctionCall(%[[FC_FUNC]], %[[FC_ARGS_SLOT]], %[[FC_NUM_ARGS_I32]], %[[FC_RESULT_SLOT]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
+  // CHECK: %[[FC_RESULT:.*]] = llvm.load %[[FC_RESULT_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+  // CHECK: return %[[FC_RESULT]] : !llvm.struct<(i32, i32, i64)>
+  %0 = tvm_ffi.function_call %func(%arg0, %arg1) : (!tvm_ffi.any, !tvm_ffi.any) -> !tvm_ffi.any
+  return %0 : !tvm_ffi.any
 }

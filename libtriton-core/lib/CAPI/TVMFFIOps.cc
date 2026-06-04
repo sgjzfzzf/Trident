@@ -93,3 +93,63 @@ MlirValue libtritonCoreTVMFFIStoreGetValue(MlirOperation operation) {
 MlirValue libtritonCoreTVMFFIStoreGetPtr(MlirOperation operation) {
   return getStorePtr<libtriton::tvm_ffi::StoreOp>(operation);
 }
+
+bool libtritonCoreOperationIsATVMFFIFunctionCallOp(MlirOperation operation) {
+  return isOpType<libtriton::tvm_ffi::FunctionCallOp>(operation);
+}
+
+MlirValue libtritonCoreTVMFFIFunctionCallGetFunc(MlirOperation operation) {
+  mlir::Operation *op = unwrap(operation);
+  if (!op) {
+    return getNullValue();
+  }
+  libtriton::tvm_ffi::FunctionCallOp typedOp =
+      llvm::dyn_cast<libtriton::tvm_ffi::FunctionCallOp>(op);
+  if (!typedOp) {
+    return getNullValue();
+  }
+  return wrap(typedOp.getFunc());
+}
+
+int32_t libtritonCoreTVMFFIFunctionCallGetNumArgs(MlirOperation operation) {
+  mlir::Operation *op = unwrap(operation);
+  if (!op) {
+    return 0;
+  }
+  libtriton::tvm_ffi::FunctionCallOp typedOp =
+      llvm::dyn_cast<libtriton::tvm_ffi::FunctionCallOp>(op);
+  if (!typedOp) {
+    return 0;
+  }
+  return typedOp.getArgs().size();
+}
+
+MlirValue libtritonCoreTVMFFIFunctionCallGetArg(MlirOperation operation,
+                                                int32_t index) {
+  mlir::Operation *op = unwrap(operation);
+  if (!op) {
+    return getNullValue();
+  }
+  libtriton::tvm_ffi::FunctionCallOp typedOp =
+      llvm::dyn_cast<libtriton::tvm_ffi::FunctionCallOp>(op);
+  if (!typedOp) {
+    return getNullValue();
+  }
+  if (index < 0 || index >= typedOp.getArgs().size()) {
+    return getNullValue();
+  }
+  return wrap(typedOp.getArgs()[index]);
+}
+
+MlirValue libtritonCoreTVMFFIFunctionCallGetResult(MlirOperation operation) {
+  mlir::Operation *op = unwrap(operation);
+  if (!op) {
+    return getNullValue();
+  }
+  libtriton::tvm_ffi::FunctionCallOp typedOp =
+      llvm::dyn_cast<libtriton::tvm_ffi::FunctionCallOp>(op);
+  if (!typedOp) {
+    return getNullValue();
+  }
+  return wrap(typedOp.getResult());
+}

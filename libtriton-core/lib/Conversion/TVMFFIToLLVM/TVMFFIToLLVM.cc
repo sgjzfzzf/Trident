@@ -30,6 +30,7 @@
 #include "tvm/ffi/c_api.h"
 #include "tvm/ffi/extra/c_env_api.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/FormatVariadic.h"
 
 namespace libtriton::tvm_ffi {
 
@@ -319,6 +320,178 @@ struct LowerStoreOp : public mlir::OpConversionPattern<StoreOp> {
   }
 };
 
+struct LowerFunctionGetGlobalOp
+    : public mlir::OpConversionPattern<FunctionGetGlobalOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(FunctionGetGlobalOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    if (!moduleOp) {
+      return mlir::failure();
+    }
+    mlir::Location loc = op.getLoc();
+    mlir::MLIRContext *context = op.getContext();
+    const mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
+    const mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
+    const mlir::Type i8Ty = mlir::IntegerType::get(context, 8);
+
+    llvm::StringRef funcName = op.getFuncName();
+    const size_t nameLen = funcName.size();
+
+    // Get or create TVMFFIFunctionGetGlobal function declaration.
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
+        capi::getOrCreateTVMFFIFunctionGetGlobal(moduleOp);
+    if (mlir::failed(calleeOrErr)) {
+      return mlir::failure();
+    }
+
+    // Create a global string constant for the function name at module level.
+    const std::string globalSymName =
+        llvm::formatv("__libtriton_tvm_ffi_func_name_{0}", funcName);
+    const mlir::LLVM::LLVMArrayType arrayType =
+        mlir::LLVM::LLVMArrayType::get(i8Ty, nameLen);
+    {
+      mlir::OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(moduleOp.getBody());
+      mlir::LLVM::GlobalOp::create(
+          rewriter, loc, arrayType, /*isConstant=*/true,
+          mlir::LLVM::linkage::Linkage::Internal, globalSymName,
+          /*value=*/rewriter.getStringAttr(funcName));
+    }
+
+    // Get the address of the global string.
+    const mlir::Value addrOfOp =
+        mlir::LLVM::AddressOfOp::create(rewriter, loc, ptrTy, globalSymName)
+            .getResult();
+
+    // String length in i64.
+    const mlir::Value lenValue =
+        conversion::utils::emitI64Constant(rewriter, loc, context, nameLen);
+
+    // Alloca the TVMFFIByteArray struct = {ptr, i64}.
+    const mlir::LLVM::LLVMStructType byteArrayStructTy =
+        mlir::LLVM::LLVMStructType::getLiteral(context, {ptrTy, i64Ty});
+    const mlir::Value oneValue =
+        conversion::utils::emitI64Constant(rewriter, loc, context, 1);
+    const mlir::Value byteArraySlot =
+        mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, byteArrayStructTy,
+                                     oneValue)
+            .getResult();
+
+    // Store data pointer (field 0).
+    const mlir::Value dataPtrGep =
+        mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, byteArrayStructTy,
+                                  byteArraySlot,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0})
+            .getResult();
+    mlir::LLVM::StoreOp::create(rewriter, loc, addrOfOp, dataPtrGep);
+
+    // Store size (field 1).
+    const mlir::Value sizeGep =
+        mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, byteArrayStructTy,
+                                  byteArraySlot,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 1})
+            .getResult();
+    mlir::LLVM::StoreOp::create(rewriter, loc, lenValue, sizeGep);
+
+    // Alloca output slot (ptr = TVMFFIObjectHandle) initialized to null.
+    const mlir::Value nullPtr =
+        mlir::LLVM::ZeroOp::create(rewriter, loc, ptrTy).getResult();
+    const mlir::Value outSlot =
+        mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, ptrTy, oneValue)
+            .getResult();
+    mlir::LLVM::StoreOp::create(rewriter, loc, nullPtr, outSlot);
+
+    // Call TVMFFIFunctionGetGlobal(bytearray_ptr, out_slot).
+    mlir::LLVM::CallOp::create(rewriter, loc, *calleeOrErr,
+                               mlir::ValueRange{byteArraySlot, outSlot});
+
+    // Load the result.
+    rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(op, ptrTy, outSlot);
+    return mlir::success();
+  }
+};
+
+struct LowerFunctionCallOp : public mlir::OpConversionPattern<FunctionCallOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(FunctionCallOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const final {
+    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    if (!moduleOp) {
+      return mlir::failure();
+    }
+    mlir::Location loc = op.getLoc();
+    mlir::MLIRContext *context = op.getContext();
+    const mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
+    const mlir::Type i32Ty = mlir::IntegerType::get(context, 32);
+    const mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
+    const mlir::Type anyStructTy =
+        conversion::utils::TVMFFIAnyLLVMDescriptor::getLLVMType(context);
+
+    // Get or create TVMFFIFunctionCall function declaration.
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
+        capi::getOrCreateTVMFFIFunctionCall(moduleOp);
+    if (mlir::failed(calleeOrErr)) {
+      return mlir::failure();
+    }
+
+    size_t numArgs = adaptor.getArgs().size();
+
+    // Allocate the args array: TVMFFIAny[numArgs].
+    const mlir::TypedValue<mlir::IntegerType> numArgsI64 =
+        conversion::utils::emitI64Constant(rewriter, loc, context, numArgs);
+    const mlir::Value argsSlot =
+        mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, anyStructTy,
+                                     numArgsI64)
+            .getResult();
+
+    // Store each argument into the args array.
+    for (size_t i = 0; i < numArgs; ++i) {
+      const mlir::Value argPtr =
+          mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, anyStructTy, argsSlot,
+                                    llvm::ArrayRef<mlir::LLVM::GEPArg>{i})
+              .getResult();
+      mlir::LLVM::StoreOp::create(rewriter, loc, adaptor.getArgs()[i], argPtr);
+    }
+
+    // Allocate the result slot.
+    const mlir::TypedValue<mlir::IntegerType> oneValue =
+        conversion::utils::emitI64Constant(rewriter, loc, context, 1);
+    const mlir::Value resultSlot =
+        mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, anyStructTy,
+                                     oneValue)
+            .getResult();
+
+    // Initialize result slot to zero.
+    const mlir::TypedValue<mlir::IntegerType> zeroI32 =
+        conversion::utils::emitI32Constant(rewriter, loc, context, 0);
+    const mlir::Value resultTypeIndexPtr =
+        mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, anyStructTy, resultSlot,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0})
+            .getResult();
+    mlir::LLVM::StoreOp::create(rewriter, loc, zeroI32, resultTypeIndexPtr);
+
+    // Call TVMFFIFunctionCall(func, args, num_args, &result).
+    const mlir::TypedValue<mlir::IntegerType> numArgsI32 =
+        conversion::utils::emitI32Constant(rewriter, loc, context, numArgs);
+    mlir::LLVM::CallOp::create(
+        rewriter, loc, *calleeOrErr,
+        mlir::ValueRange{adaptor.getFunc(), argsSlot, numArgsI32, resultSlot});
+
+    // Load the result.
+    const mlir::Value result =
+        mlir::LLVM::LoadOp::create(rewriter, loc, anyStructTy, resultSlot)
+            .getResult();
+
+    rewriter.replaceOp(op, result);
+    return mlir::success();
+  }
+};
+
 class ConvertTVMFFIToLLVMPass
     : public impl::ConvertTVMFFIToLLVMBase<ConvertTVMFFIToLLVMPass> {
 public:
@@ -386,6 +559,8 @@ void populateTVMFFIToLLVMConversionPatterns(
     return conversion::utils::TVMFFIObjectHandleLLVMDescriptor::getLLVMType(
         type.getContext());
   });
+  patterns.insert<LowerFunctionGetGlobalOp, LowerFunctionCallOp>(typeConverter,
+                                                                 context);
   patterns.add<LowerGetTypeIndexOp, LowerToOp, LowerEnvTensorAllocOp,
                LowerObjectIncRefOp, LowerObjectDecRefOp,
                LowerErrorSetRaisedFromCStrOp, LowerGetOpaquePtrOp, LowerLoadOp,

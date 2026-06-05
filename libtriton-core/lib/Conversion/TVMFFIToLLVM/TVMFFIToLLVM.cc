@@ -209,10 +209,9 @@ struct LowerErrorSetRaisedFromCStrOp
     if (mlir::failed(calleeOrErr)) {
       return mlir::failure();
     }
-    mlir::LLVM::CallOp::create(
-        rewriter, op.getLoc(), *calleeOrErr,
+    rewriter.replaceOpWithNewOp<mlir::LLVM::CallOp>(
+        op, *calleeOrErr,
         mlir::ValueRange{adaptor.getKind(), adaptor.getMessage()});
-    rewriter.eraseOp(op);
     return mlir::success();
   }
 };
@@ -232,7 +231,7 @@ struct LowerObjectIncRefOp : public mlir::OpConversionPattern<ObjectIncRefOp> {
     if (mlir::failed(calleeOrErr)) {
       return mlir::failure();
     }
-    mlir::LLVM::CallOp::create(rewriter, op.getLoc(), *calleeOrErr,
+    mlir::LLVM::CallOp::create(rewriter, op->getLoc(), *calleeOrErr,
                                mlir::ValueRange{adaptor.getObject()});
     rewriter.eraseOp(op);
     return mlir::success();
@@ -254,7 +253,11 @@ struct LowerObjectDecRefOp : public mlir::OpConversionPattern<ObjectDecRefOp> {
     if (mlir::failed(calleeOrErr)) {
       return mlir::failure();
     }
-    mlir::LLVM::CallOp::create(rewriter, op.getLoc(), *calleeOrErr,
+    // Create the call and erase the old op separately instead of using
+    // replaceOpWithNewOp, because ObjectDecRefOp has 0 results but the
+    // CallOp has 1 result (i32 return). The conversion framework does not
+    // handle mismatched result counts correctly.
+    mlir::LLVM::CallOp::create(rewriter, op->getLoc(), *calleeOrErr,
                                mlir::ValueRange{adaptor.getObject()});
     rewriter.eraseOp(op);
     return mlir::success();
@@ -309,13 +312,22 @@ struct LowerStoreOp : public mlir::OpConversionPattern<StoreOp> {
     const mlir::Value adaptedPtr = adaptor.getPtr();
     const mlir::Type originalValueType = op.getValue().getType();
 
+    // ObjectHandleType is just !llvm.ptr at the LLVM level — store the raw
+    // pointer directly so that a subsequent tvm_ffi.load :
+    // !tvm_ffi.object_handle (which also loads !llvm.ptr) is size-compatible.
+    if (mlir::isa<ObjectHandleType>(originalValueType)) {
+      rewriter.replaceOpWithNewOp<mlir::LLVM::StoreOp>(op, adaptedValue,
+                                                       adaptedPtr);
+      return mlir::success();
+    }
+
     const std::optional<mlir::Value> anyStruct = toAnyStruct(
         adaptedValue, originalValueType, rewriter, loc, getTypeConverter());
     if (!anyStruct.has_value()) {
       return mlir::failure();
     }
-    mlir::LLVM::StoreOp::create(rewriter, loc, *anyStruct, adaptedPtr);
-    rewriter.eraseOp(op);
+    rewriter.replaceOpWithNewOp<mlir::LLVM::StoreOp>(op, *anyStruct,
+                                                     adaptedPtr);
     return mlir::success();
   }
 };

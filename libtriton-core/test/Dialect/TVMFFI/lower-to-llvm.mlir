@@ -341,3 +341,36 @@ func.func @lower_function_call(%func: !tvm_ffi.object_handle, %arg0: !tvm_ffi.an
   %0 = tvm_ffi.function_call %func(%arg0, %arg1) : (!tvm_ffi.any, !tvm_ffi.any) -> !tvm_ffi.any
   return %0 : !tvm_ffi.any
 }
+
+// CHECK-LABEL: func.func @lower_store_object_handle_to_ptr
+// CHECK-SAME: (%[[STORE_OBJ_ARG:.*]]: !llvm.ptr, %[[STORE_OBJ_PTR:.*]]: !llvm.ptr)
+func.func @lower_store_object_handle_to_ptr(%h: !tvm_ffi.object_handle, %p: !llvm.ptr) {
+  // CHECK-NOT: tvm_ffi.
+  // CHECK-NOT: builtin.unrealized_conversion_cast
+  // CHECK: llvm.store %[[STORE_OBJ_ARG]], %[[STORE_OBJ_PTR]] : !llvm.ptr, !llvm.ptr
+  // CHECK: return
+  tvm_ffi.store %h, %p : !tvm_ffi.object_handle, !llvm.ptr
+  return
+}
+
+// CHECK-LABEL: func.func @lower_load_object_handle_from_ptr
+// CHECK-SAME: (%[[LOAD_OBJ_PTR:.*]]: !llvm.ptr) -> !llvm.ptr
+func.func @lower_load_object_handle_from_ptr(%p: !llvm.ptr) -> !tvm_ffi.object_handle {
+  // CHECK-NOT: tvm_ffi.
+  // CHECK-NOT: builtin.unrealized_conversion_cast
+  // CHECK: %[[LOADED:.*]] = llvm.load %[[LOAD_OBJ_PTR]] : !llvm.ptr -> !llvm.ptr
+  // CHECK: return %[[LOADED]] : !llvm.ptr
+  %0 = tvm_ffi.load %p : !llvm.ptr -> !tvm_ffi.object_handle
+  return %0 : !tvm_ffi.object_handle
+}
+
+// CHECK-LABEL: func.func @lower_store_any_to_ptr
+// CHECK-SAME: (%[[STORE_ANY_ARG:.*]]: !llvm.struct<(i32, i32, i64)>, %[[STORE_ANY_PTR:.*]]: !llvm.ptr)
+func.func @lower_store_any_to_ptr(%a: !tvm_ffi.any, %p: !llvm.ptr) {
+  // CHECK-NOT: tvm_ffi.
+  // CHECK-NOT: builtin.unrealized_conversion_cast
+  // CHECK: llvm.store %[[STORE_ANY_ARG]], %[[STORE_ANY_PTR]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+  // CHECK: return
+  tvm_ffi.store %a, %p : !tvm_ffi.any, !llvm.ptr
+  return
+}

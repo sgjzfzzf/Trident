@@ -7,17 +7,11 @@
 
 namespace {
 
-MlirValue getNullValue() {
-  MlirValue value = {nullptr};
-  return value;
-}
+MlirValue getNullValue() { return MlirValue{nullptr}; }
 
 template <typename OpTy> bool isOpType(MlirOperation operation) {
   mlir::Operation *op = unwrap(operation);
-  if (!op) {
-    return false;
-  }
-  return llvm::isa<OpTy>(op);
+  return op && llvm::isa<OpTy>(op);
 }
 
 template <typename OpTy> MlirValue getInputValue(MlirOperation operation) {

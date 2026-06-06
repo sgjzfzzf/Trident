@@ -1,0 +1,9 @@
+add_mlir_dialect_library(
+  TVMFFIDialect
+  TVMFFIDialect.cc
+  DEPENDS
+  MLIRTVMFFIIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRSideEffectInterfaces)

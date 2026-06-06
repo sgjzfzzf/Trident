@@ -11,7 +11,6 @@
 #include "llvm/ADT/TypeSwitch.h"
 
 #include "libtriton-core/Dialect/AOTInductor/IR/AOTInductorDialect.cpp.inc"
-
 #define GET_OP_CLASSES
 #include "libtriton-core/Dialect/AOTInductor/IR/AOTInductor.cpp.inc"
 

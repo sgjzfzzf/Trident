@@ -1,4 +1,5 @@
 add_subdirectory(AOTIToLLVM)
+add_subdirectory(TVMFFIToLLVM)
 add_subdirectory(TorchConversionToLLVM)
 add_subdirectory(Pipeline)
 add_subdirectory(TorchToCf)

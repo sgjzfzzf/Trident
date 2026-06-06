@@ -10,6 +10,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
@@ -60,93 +61,83 @@ template <typename TorchType> struct TypeHandlerBase {
 };
 
 struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
-  static mlir::LogicalResult store(mlir::OpBuilder &rewriter,
-                                   mlir::Location loc, mlir::Value adaptedInput,
-                                   mlir::Value slotPtr, mlir::Type i64Ty,
-                                   mlir::MLIRContext *) {
-    mlir::Value ptrInt =
-        mlir::LLVM::PtrToIntOp::create(rewriter, loc, i64Ty, adaptedInput);
-    mlir::LLVM::StoreOp::create(rewriter, loc, ptrInt, slotPtr);
+  static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value input,
+                                   mlir::Value ptr) {
+    mlir::Location loc = input.getLoc();
+    mlir::Value ptrInt = mlir::LLVM::PtrToIntOp::create(
+        builder, loc, mlir::IntegerType::get(builder.getContext(), 64), input);
+    mlir::LLVM::StoreOp::create(builder, loc, ptrInt, ptr);
     return mlir::success();
   }
   static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &rewriter,
-                                           mlir::Location loc,
-                                           mlir::Value loaded, mlir::Type i64Ty,
-                                           mlir::MLIRContext *context) {
+                                           mlir::Value loaded) {
     return mlir::LLVM::IntToPtrOp::create(
-               rewriter, loc, mlir::LLVM::LLVMPointerType::get(context), loaded)
+               rewriter, loaded.getLoc(),
+               mlir::LLVM::LLVMPointerType::get(rewriter.getContext()), loaded)
         .getResult();
   }
 };
 
 struct BoolHandler : TypeHandlerBase<mlir::torch::Torch::BoolType> {
-  static mlir::LogicalResult store(mlir::OpBuilder &rewriter,
-                                   mlir::Location loc, mlir::Value adaptedInput,
-                                   mlir::Value slotPtr, mlir::Type i64Ty,
-                                   mlir::MLIRContext *) {
-    mlir::Value ext =
-        mlir::LLVM::ZExtOp::create(rewriter, loc, i64Ty, adaptedInput);
-    mlir::LLVM::StoreOp::create(rewriter, loc, ext, slotPtr);
+  static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value input,
+                                   mlir::Value ptr) {
+    mlir::Location loc = input.getLoc();
+    mlir::Value ext = mlir::LLVM::ZExtOp::create(
+        builder, loc, mlir::IntegerType::get(builder.getContext(), 64), input);
+    mlir::LLVM::StoreOp::create(builder, loc, ext, ptr);
     return mlir::success();
   }
   static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &rewriter,
-                                           mlir::Location loc,
-                                           mlir::Value loaded, mlir::Type i64Ty,
-                                           mlir::MLIRContext *context) {
+                                           mlir::Value loaded) {
     return mlir::LLVM::TruncOp::create(
-               rewriter, loc, mlir::IntegerType::get(context, 1), loaded)
+               rewriter, loaded.getLoc(),
+               mlir::IntegerType::get(rewriter.getContext(), 1), loaded)
         .getResult();
   }
 };
 
 struct IntHandler : TypeHandlerBase<mlir::torch::Torch::IntType> {
-  static mlir::LogicalResult store(mlir::OpBuilder &rewriter,
-                                   mlir::Location loc, mlir::Value adaptedInput,
-                                   mlir::Value slotPtr, mlir::Type,
-                                   mlir::MLIRContext *) {
-    mlir::LLVM::StoreOp::create(rewriter, loc, adaptedInput, slotPtr);
+  static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value input,
+                                   mlir::Value ptr) {
+    mlir::LLVM::StoreOp::create(builder, input.getLoc(), input, ptr);
     return mlir::success();
   }
-  static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &, mlir::Location,
-                                           mlir::Value loaded, mlir::Type,
-                                           mlir::MLIRContext *) {
+  static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &,
+                                           mlir::Value loaded) {
     return loaded;
   }
 };
 
 struct FloatHandler : TypeHandlerBase<mlir::torch::Torch::FloatType> {
-  static mlir::LogicalResult store(mlir::OpBuilder &rewriter,
-                                   mlir::Location loc, mlir::Value adaptedInput,
-                                   mlir::Value slotPtr, mlir::Type i64Ty,
-                                   mlir::MLIRContext *) {
-    mlir::Value bits =
-        mlir::LLVM::BitcastOp::create(rewriter, loc, i64Ty, adaptedInput);
-    mlir::LLVM::StoreOp::create(rewriter, loc, bits, slotPtr);
+  static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value input,
+                                   mlir::Value ptr) {
+    mlir::Location loc = input.getLoc();
+    mlir::Value bits = mlir::LLVM::BitcastOp::create(
+        builder, loc, mlir::IntegerType::get(builder.getContext(), 64), input);
+    mlir::LLVM::StoreOp::create(builder, loc, bits, ptr);
     return mlir::success();
   }
   static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &rewriter,
-                                           mlir::Location loc,
-                                           mlir::Value loaded, mlir::Type i64Ty,
-                                           mlir::MLIRContext *context) {
+                                           mlir::Value loaded) {
     return mlir::LLVM::BitcastOp::create(
-               rewriter, loc, mlir::Float64Type::get(context), loaded)
+               rewriter, loaded.getLoc(),
+               mlir::Float64Type::get(rewriter.getContext()), loaded)
         .getResult();
   }
 };
 
 struct NoneHandler : TypeHandlerBase<mlir::torch::Torch::NoneType> {
-  static mlir::LogicalResult store(mlir::OpBuilder &rewriter,
-                                   mlir::Location loc, mlir::Value,
-                                   mlir::Value slotPtr, mlir::Type i64Ty,
-                                   mlir::MLIRContext *context) {
+  static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value,
+                                   mlir::Value ptr) {
+    mlir::Location loc = ptr.getLoc();
     mlir::LLVM::StoreOp::create(
-        rewriter, loc,
-        conversion::utils::emitI64Constant(rewriter, loc, context, 0), slotPtr);
+        builder, loc,
+        mlir::LLVM::ConstantOp::create(
+            builder, loc, mlir::IntegerType::get(builder.getContext(), 64), 0),
+        ptr);
     return mlir::success();
   }
-  static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &, mlir::Location,
-                                           mlir::Value, mlir::Type,
-                                           mlir::MLIRContext *) {
+  static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &, mlir::Value) {
     // None → no value produced.
     return mlir::Value();
   }
@@ -157,24 +148,24 @@ struct NoneHandler : TypeHandlerBase<mlir::torch::Torch::NoneType> {
 //===----------------------------------------------------------------------===//
 
 template <typename... Handlers> struct TypeDispatch {
-  template <typename... Args>
-  static mlir::LogicalResult store(mlir::Type type, Args &&...args) {
+  static mlir::LogicalResult store(mlir::Type type, mlir::OpBuilder &builder,
+                                   mlir::Value input, mlir::Value ptr) {
     mlir::LogicalResult result = mlir::failure();
     auto tryHandler = [&](auto handler) {
       if (mlir::failed(result) && decltype(handler)::matches(type)) {
-        result = decltype(handler)::store(std::forward<Args>(args)...);
+        result = decltype(handler)::store(builder, input, ptr);
       }
     };
     (tryHandler(Handlers{}), ...);
     return result;
   }
 
-  template <typename... Args>
-  static mlir::FailureOr<mlir::Value> load(mlir::Type type, Args &&...args) {
+  static mlir::FailureOr<mlir::Value>
+  load(mlir::Type type, mlir::OpBuilder &builder, mlir::Value ptr) {
     mlir::FailureOr<mlir::Value> result = mlir::failure();
     auto tryHandler = [&](auto handler) {
       if (mlir::failed(result) && decltype(handler)::matches(type)) {
-        result = decltype(handler)::load(std::forward<Args>(args)...);
+        result = decltype(handler)::load(builder, ptr);
       }
     };
     (tryHandler(Handlers{}), ...);
@@ -219,8 +210,8 @@ public:
       mlir::Value slotPtr = mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy,
                                                       i64Ty, slotArray, {i});
 
-      if (mlir::failed(AllHandlers::store(origType, rewriter, loc, adaptedInput,
-                                          slotPtr, i64Ty, context))) {
+      if (mlir::failed(
+              AllHandlers::store(origType, rewriter, adaptedInput, slotPtr))) {
         return op.emitError("unsupported input type: ") << origType;
       }
     }
@@ -255,7 +246,7 @@ public:
       mlir::Value loaded =
           mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, slotPtr);
       mlir::FailureOr<mlir::Value> converted =
-          AllHandlers::load(resultType, rewriter, loc, loaded, i64Ty, context);
+          AllHandlers::load(resultType, rewriter, loaded);
       if (mlir::failed(converted)) {
         return op.emitError("unsupported result type: ") << resultType;
       }

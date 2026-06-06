@@ -5,6 +5,13 @@ def ConvertAOTIToLLVM : Pass<"convert-aoti-to-llvm", "mlir::ModuleOp"> {
   let description = [{Lower AOTInductor dialect operations to LLVM dialect.}];
 }
 
+def ConvertTVMFFIToLLVM : Pass<"convert-tvm-ffi-to-llvm", "mlir::ModuleOp"> {
+  let summary = "Lower TVMFFI dialect operations to LLVM dialect";
+  let description = [{Lower TVMFFI dialect operations to LLVM dialect.}];
+  let dependentDialects =
+      ["mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect"];
+}
+
 def ConvertTorchToCf : Pass<"convert-torch-to-cf", "mlir::ModuleOp"> {
   let summary = "Lower Torch dialect runtime ops to ControlFlow dialect";
   let description = [{Lower Torch dialect runtime ops to ControlFlow dialect.}];

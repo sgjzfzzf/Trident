@@ -30,7 +30,7 @@ public:
   mlir::LogicalResult
   matchAndRewrite(mlir::torch::Torch::ConstantBoolOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    auto ty = getTypeConverter()->convertType(op.getType());
+    mlir::Type ty = getTypeConverter()->convertType(op.getType());
     rewriter.replaceOpWithNewOp<mlir::LLVM::ConstantOp>(
         op, ty, rewriter.getIntegerAttr(ty, op.getValue() ? 1 : 0));
     return mlir::success();
@@ -47,7 +47,7 @@ public:
   mlir::LogicalResult
   matchAndRewrite(mlir::torch::Torch::ConstantIntOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    auto ty = getTypeConverter()->convertType(op.getType());
+    mlir::Type ty = getTypeConverter()->convertType(op.getType());
     rewriter.replaceOpWithNewOp<mlir::LLVM::ConstantOp>(
         op, ty, rewriter.getIntegerAttr(ty, op.getValue()));
     return mlir::success();
@@ -64,7 +64,7 @@ public:
   mlir::LogicalResult
   matchAndRewrite(mlir::torch::Torch::ConstantFloatOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    auto ty = getTypeConverter()->convertType(op.getType());
+    mlir::Type ty = getTypeConverter()->convertType(op.getType());
     rewriter.replaceOpWithNewOp<mlir::LLVM::ConstantOp>(
         op, ty, rewriter.getFloatAttr(ty, op.getValue()));
     return mlir::success();

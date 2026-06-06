@@ -5,6 +5,8 @@ add_mlir_library(
   PUBLIC
   AOTInductorTransforms
   AOTIToLLVM
+  TVMFFIDialect
+  TVMFFIToLLVM
   MLIRRegisterAllDialects
   MLIRRegisterAllExtensions
   MLIRRegisterAllPasses

@@ -18,33 +18,30 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
 
-using namespace mlir;
-using namespace mlir::torch;
-
 //===----------------------------------------------------------------------===//
-// Type conversion setup.
+// mlir::Type conversion setup.
 //===----------------------------------------------------------------------===//
 
 /// Convert Torch tensor types (ValueTensorType, NonValueTensorType) to
 /// LLVM pointer type.
 static void
-setupTorchTensorToLLVMPtrConversion(LLVMTypeConverter &typeConverter) {
+setupTorchTensorToLLVMPtrConversion(mlir::LLVMTypeConverter &typeConverter) {
   typeConverter.addConversion(
-      [](Torch::BaseTensorType type) -> std::optional<Type> {
-        return LLVM::LLVMPointerType::get(type.getContext());
+      [](mlir::torch::Torch::BaseTensorType type) -> std::optional<mlir::Type> {
+        return mlir::LLVM::LLVMPointerType::get(type.getContext());
       });
   typeConverter.addTargetMaterialization(
-      [](OpBuilder &builder, LLVM::LLVMPointerType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::LLVM::LLVMPointerType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
   typeConverter.addSourceMaterialization(
-      [](OpBuilder &builder, Torch::BaseTensorType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::torch::Torch::BaseTensorType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
 }
@@ -52,50 +49,53 @@ setupTorchTensorToLLVMPtrConversion(LLVMTypeConverter &typeConverter) {
 /// Convert Torch OptionalType to an LLVM struct with an i1 tag + contained
 /// type. The i1 field indicates whether the optional is None (false) or has a
 /// value (true).
-static void
-setupTorchOptionalToLLVMStructConversion(LLVMTypeConverter &typeConverter) {
+static void setupTorchOptionalToLLVMStructConversion(
+    mlir::LLVMTypeConverter &typeConverter) {
   typeConverter.addConversion(
-      [&typeConverter](Torch::OptionalType type) -> std::optional<Type> {
-        MLIRContext *ctx = type.getContext();
-        Type containedType = type.getContainedType();
-        Type convertedContained = typeConverter.convertType(containedType);
-        return LLVM::LLVMStructType::getLiteral(
-            ctx, {IntegerType::get(ctx, 1), convertedContained});
+      [&typeConverter](
+          mlir::torch::Torch::OptionalType type) -> std::optional<mlir::Type> {
+        mlir::MLIRContext *ctx = type.getContext();
+        mlir::Type containedType = type.getContainedType();
+        mlir::Type convertedContained =
+            typeConverter.convertType(containedType);
+        return mlir::LLVM::LLVMStructType::getLiteral(
+            ctx, {mlir::IntegerType::get(ctx, 1), convertedContained});
       });
   typeConverter.addTargetMaterialization(
-      [](OpBuilder &builder, LLVM::LLVMStructType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::LLVM::LLVMStructType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
   typeConverter.addSourceMaterialization(
-      [](OpBuilder &builder, Torch::OptionalType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::torch::Torch::OptionalType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
 }
 
 /// Convert Torch ListType to LLVM pointer type.
 static void
-setupTorchListToLLVMPtrConversion(LLVMTypeConverter &typeConverter) {
-  typeConverter.addConversion([](Torch::ListType type) -> std::optional<Type> {
-    return LLVM::LLVMPointerType::get(type.getContext());
-  });
+setupTorchListToLLVMPtrConversion(mlir::LLVMTypeConverter &typeConverter) {
+  typeConverter.addConversion(
+      [](mlir::torch::Torch::ListType type) -> std::optional<mlir::Type> {
+        return mlir::LLVM::LLVMPointerType::get(type.getContext());
+      });
   typeConverter.addTargetMaterialization(
-      [](OpBuilder &builder, LLVM::LLVMPointerType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::LLVM::LLVMPointerType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
   typeConverter.addSourceMaterialization(
-      [](OpBuilder &builder, Torch::ListType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::torch::Torch::ListType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
 }
@@ -103,94 +103,101 @@ setupTorchListToLLVMPtrConversion(LLVMTypeConverter &typeConverter) {
 /// Convert Torch TupleType to an LLVM struct with each contained type
 /// converted via the type converter.
 static void
-setupTorchTupleToLLVMStructConversion(LLVMTypeConverter &typeConverter) {
+setupTorchTupleToLLVMStructConversion(mlir::LLVMTypeConverter &typeConverter) {
   typeConverter.addConversion(
-      [&typeConverter](Torch::TupleType type) -> std::optional<Type> {
-        MLIRContext *ctx = type.getContext();
-        SmallVector<Type> convertedTypes;
-        for (Type contained : type.getContainedTypes()) {
-          Type converted = typeConverter.convertType(contained);
+      [&typeConverter](
+          mlir::torch::Torch::TupleType type) -> std::optional<mlir::Type> {
+        mlir::MLIRContext *ctx = type.getContext();
+        llvm::SmallVector<mlir::Type> convertedTypes;
+        for (mlir::Type contained : type.getContainedTypes()) {
+          mlir::Type converted = typeConverter.convertType(contained);
           if (!converted)
             return std::nullopt;
           convertedTypes.push_back(converted);
         }
-        return LLVM::LLVMStructType::getLiteral(ctx, convertedTypes);
+        return mlir::LLVM::LLVMStructType::getLiteral(ctx, convertedTypes);
       });
   typeConverter.addTargetMaterialization(
-      [](OpBuilder &builder, LLVM::LLVMStructType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::LLVM::LLVMStructType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
   typeConverter.addSourceMaterialization(
-      [](OpBuilder &builder, Torch::TupleType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::torch::Torch::TupleType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
 }
 
 /// Convert Torch BoolType to builtin i1.
-static void setupTorchBoolToI1Conversion(LLVMTypeConverter &typeConverter) {
-  typeConverter.addConversion([](Torch::BoolType type) -> std::optional<Type> {
-    return IntegerType::get(type.getContext(), 1);
-  });
-  typeConverter.addTargetMaterialization([](OpBuilder &builder,
-                                            IntegerType type, ValueRange inputs,
-                                            Location loc) -> Value {
-    return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                              inputs)
-        .getResult(0);
-  });
+static void
+setupTorchBoolToI1Conversion(mlir::LLVMTypeConverter &typeConverter) {
+  typeConverter.addConversion(
+      [](mlir::torch::Torch::BoolType type) -> std::optional<mlir::Type> {
+        return mlir::IntegerType::get(type.getContext(), 1);
+      });
+  typeConverter.addTargetMaterialization(
+      [](mlir::OpBuilder &builder, mlir::IntegerType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
+            .getResult(0);
+      });
   typeConverter.addSourceMaterialization(
-      [](OpBuilder &builder, Torch::BoolType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::torch::Torch::BoolType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
 }
 
 /// Convert Torch IntType to builtin i64.
-static void setupTorchIntToI64Conversion(LLVMTypeConverter &typeConverter) {
-  typeConverter.addConversion([](Torch::IntType type) -> std::optional<Type> {
-    return IntegerType::get(type.getContext(), 64);
-  });
-  typeConverter.addTargetMaterialization([](OpBuilder &builder,
-                                            IntegerType type, ValueRange inputs,
-                                            Location loc) -> Value {
-    return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                              inputs)
-        .getResult(0);
-  });
+static void
+setupTorchIntToI64Conversion(mlir::LLVMTypeConverter &typeConverter) {
+  typeConverter.addConversion(
+      [](mlir::torch::Torch::IntType type) -> std::optional<mlir::Type> {
+        return mlir::IntegerType::get(type.getContext(), 64);
+      });
+  typeConverter.addTargetMaterialization(
+      [](mlir::OpBuilder &builder, mlir::IntegerType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
+            .getResult(0);
+      });
   typeConverter.addSourceMaterialization(
-      [](OpBuilder &builder, Torch::IntType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::torch::Torch::IntType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
 }
 
 /// Convert Torch FloatType to builtin f64.
-static void setupTorchFloatToF64Conversion(LLVMTypeConverter &typeConverter) {
-  typeConverter.addConversion([](Torch::FloatType type) -> std::optional<Type> {
-    return Float64Type::get(type.getContext());
-  });
-  typeConverter.addTargetMaterialization([](OpBuilder &builder,
-                                            Float64Type type, ValueRange inputs,
-                                            Location loc) -> Value {
-    return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                              inputs)
-        .getResult(0);
-  });
+static void
+setupTorchFloatToF64Conversion(mlir::LLVMTypeConverter &typeConverter) {
+  typeConverter.addConversion(
+      [](mlir::torch::Torch::FloatType type) -> std::optional<mlir::Type> {
+        return mlir::Float64Type::get(type.getContext());
+      });
+  typeConverter.addTargetMaterialization(
+      [](mlir::OpBuilder &builder, mlir::Float64Type type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
+            .getResult(0);
+      });
   typeConverter.addSourceMaterialization(
-      [](OpBuilder &builder, Torch::FloatType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::torch::Torch::FloatType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
 }
@@ -199,100 +206,103 @@ static void setupTorchFloatToF64Conversion(LLVMTypeConverter &typeConverter) {
 /// The first i32 represents the device type (e.g., CPU=0, CUDA=1),
 /// and the second i32 represents the device index.
 static void
-setupTorchDeviceToLLVMStructConversion(LLVMTypeConverter &typeConverter) {
+setupTorchDeviceToLLVMStructConversion(mlir::LLVMTypeConverter &typeConverter) {
   typeConverter.addConversion(
-      [](Torch::DeviceType type) -> std::optional<Type> {
-        MLIRContext *ctx = type.getContext();
-        return LLVM::LLVMStructType::getLiteral(
-            ctx, {IntegerType::get(ctx, 32), IntegerType::get(ctx, 32)});
+      [](mlir::torch::Torch::DeviceType type) -> std::optional<mlir::Type> {
+        mlir::MLIRContext *ctx = type.getContext();
+        return mlir::LLVM::LLVMStructType::getLiteral(
+            ctx,
+            {mlir::IntegerType::get(ctx, 32), mlir::IntegerType::get(ctx, 32)});
       });
   typeConverter.addTargetMaterialization(
-      [](OpBuilder &builder, LLVM::LLVMStructType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::LLVM::LLVMStructType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
   typeConverter.addSourceMaterialization(
-      [](OpBuilder &builder, Torch::DeviceType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::torch::Torch::DeviceType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
 }
 
 /// Convert Torch NoneType to i64 (zero-initialized placeholder).
-static void setupTorchNoneToI64Conversion(LLVMTypeConverter &typeConverter) {
-  typeConverter.addConversion([](Torch::NoneType type) -> std::optional<Type> {
-    return IntegerType::get(type.getContext(), 64);
-  });
-  typeConverter.addTargetMaterialization([](OpBuilder &builder,
-                                            IntegerType type, ValueRange inputs,
-                                            Location loc) -> Value {
-    return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                              inputs)
-        .getResult(0);
-  });
+static void
+setupTorchNoneToI64Conversion(mlir::LLVMTypeConverter &typeConverter) {
+  typeConverter.addConversion(
+      [](mlir::torch::Torch::NoneType type) -> std::optional<mlir::Type> {
+        return mlir::IntegerType::get(type.getContext(), 64);
+      });
+  typeConverter.addTargetMaterialization(
+      [](mlir::OpBuilder &builder, mlir::IntegerType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
+            .getResult(0);
+      });
   typeConverter.addSourceMaterialization(
-      [](OpBuilder &builder, Torch::NoneType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::torch::Torch::NoneType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
 }
 
 /// Convert Torch StringType to LLVM pointer type.
 static void
-setupTorchStringToLLVMPtrConversion(LLVMTypeConverter &typeConverter) {
+setupTorchStringToLLVMPtrConversion(mlir::LLVMTypeConverter &typeConverter) {
   typeConverter.addConversion(
-      [](Torch::StringType type) -> std::optional<Type> {
-        return LLVM::LLVMPointerType::get(type.getContext());
+      [](mlir::torch::Torch::StringType type) -> std::optional<mlir::Type> {
+        return mlir::LLVM::LLVMPointerType::get(type.getContext());
       });
   typeConverter.addTargetMaterialization(
-      [](OpBuilder &builder, LLVM::LLVMPointerType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::LLVM::LLVMPointerType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
   typeConverter.addSourceMaterialization(
-      [](OpBuilder &builder, Torch::StringType type, ValueRange inputs,
-         Location loc) -> Value {
-        return UnrealizedConversionCastOp::create(builder, loc, TypeRange(type),
-                                                  inputs)
+      [](mlir::OpBuilder &builder, mlir::torch::Torch::StringType type,
+         mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
 }
 
 void libtriton::torch::populateFuncBackendTypeConversionPatterns(
-    TypeConverter &typeConverter, RewritePatternSet &patterns,
-    ConversionTarget &target) {
-  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
-                                                                 typeConverter);
-  target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+    mlir::TypeConverter &typeConverter, mlir::RewritePatternSet &patterns,
+    mlir::ConversionTarget &target) {
+  mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
+      patterns, typeConverter);
+  target.addDynamicallyLegalOp<mlir::func::FuncOp>([&](mlir::func::FuncOp op) {
     return typeConverter.isSignatureLegal(op.getFunctionType());
   });
-  populateCallOpTypeConversionPattern(patterns, typeConverter);
-  target.addDynamicallyLegalOp<func::CallOp>(
-      [&](func::CallOp op) { return typeConverter.isLegal(op); });
+  mlir::populateCallOpTypeConversionPattern(patterns, typeConverter);
+  target.addDynamicallyLegalOp<mlir::func::CallOp>(
+      [&](mlir::func::CallOp op) { return typeConverter.isLegal(op); });
 
-  cf::populateCFStructuralTypeConversionsAndLegality(typeConverter, patterns,
-                                                     target);
-  populateReturnOpTypeConversionPattern(patterns, typeConverter);
-  target.addLegalOp<ModuleOp>();
+  mlir::cf::populateCFStructuralTypeConversionsAndLegality(typeConverter,
+                                                           patterns, target);
+  mlir::populateReturnOpTypeConversionPattern(patterns, typeConverter);
+  target.addLegalOp<mlir::ModuleOp>();
 
-  target.markUnknownOpDynamicallyLegal([&](Operation *op) {
-    return isNotBranchOpInterfaceOrReturnLikeOp(op) ||
-           isLegalForBranchOpInterfaceTypeConversionPattern(op,
-                                                            typeConverter) ||
-           isLegalForReturnOpTypeConversionPattern(op, typeConverter);
+  target.markUnknownOpDynamicallyLegal([&](mlir::Operation *op) {
+    return mlir::isNotBranchOpInterfaceOrReturnLikeOp(op) ||
+           mlir::isLegalForBranchOpInterfaceTypeConversionPattern(
+               op, typeConverter) ||
+           mlir::isLegalForReturnOpTypeConversionPattern(op, typeConverter);
   });
 }
 
 void libtriton::torch::setupBackendTypeConversion(
-    ConversionTarget &target, LLVMTypeConverter &typeConverter) {
+    mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter) {
   setupTorchTensorToLLVMPtrConversion(typeConverter);
   setupTorchOptionalToLLVMStructConversion(typeConverter);
   setupTorchListToLLVMPtrConversion(typeConverter);

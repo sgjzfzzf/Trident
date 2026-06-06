@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(AOTInductor, aoti);
+MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(TVMFFI, tvmffi);
 
 #ifdef __cplusplus
 }

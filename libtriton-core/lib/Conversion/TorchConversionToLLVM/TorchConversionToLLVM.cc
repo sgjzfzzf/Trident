@@ -90,15 +90,19 @@ void populateTorchConversionToLLVMConversionPatterns(
   setupBackendTypeConversion(target, typeConverter);
 
   // Order matches TorchConversionOps.td.
-  using namespace mlir::torch::TorchConversion;
-  patterns.add<ConvertDirectOp<ToBuiltinTensorOp>,
-               ConvertDirectOp<FromBuiltinTensorOp>, ConvertDirectOp<ToI1Op>,
-               ConvertDirectOp<FromI1Op>, ConvertDirectOp<ToI64Op>,
-               ConvertDirectOp<FromI64Op>, ConvertDirectOp<ToF64Op>,
-               ConvertDirectOp<FromF64Op>>(typeConverter,
-                                           patterns.getContext());
+  patterns
+      .add<ConvertDirectOp<mlir::torch::TorchConversion::ToBuiltinTensorOp>,
+           ConvertDirectOp<mlir::torch::TorchConversion::FromBuiltinTensorOp>,
+           ConvertDirectOp<mlir::torch::TorchConversion::ToI1Op>,
+           ConvertDirectOp<mlir::torch::TorchConversion::FromI1Op>,
+           ConvertDirectOp<mlir::torch::TorchConversion::ToI64Op>,
+           ConvertDirectOp<mlir::torch::TorchConversion::FromI64Op>,
+           ConvertDirectOp<mlir::torch::TorchConversion::ToF64Op>,
+           ConvertDirectOp<mlir::torch::TorchConversion::FromF64Op>>(
+          typeConverter, patterns.getContext());
 
-  target.addIllegalDialect<TorchConversionDialect>();
+  target.addIllegalDialect<
+      mlir::torch::TorchConversion::TorchConversionDialect>();
   target.addLegalDialect<mlir::BuiltinDialect, mlir::LLVM::LLVMDialect>();
 }
 

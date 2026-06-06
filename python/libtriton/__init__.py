@@ -5,11 +5,9 @@ import pkgutil
 __path__ = pkgutil.extend_path(__path__, __name__)
 
 from .compile import compile, jit
-from .error import GuardMatchException
 
 
 __all__ = [
     "compile",
     "jit",
-    "GuardMatchException",
 ]

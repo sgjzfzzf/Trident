@@ -7,7 +7,7 @@ def compile(fn: Callable[..., Any]) -> Callable[..., Callable[..., Any]]:
     def f(*args: Any, **kwargs: Any) -> Any:
         gm: LibTritonGraphModule = LibTritonGraphModule(fn)
         gm.compile(*args, **kwargs)
-        return gm.executor
+        return gm.gm
 
     return f
 

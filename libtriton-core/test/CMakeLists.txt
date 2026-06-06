@@ -13,11 +13,7 @@ configure_lit_site_cfg(
   ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py MAIN_CONFIG
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.cfg.py)
 
-# Build integration test tools.
-add_subdirectory(CAPI)
-
-set(LIBTRITON_CORE_TEST_DEPENDS FileCheck ${CAPI_TEST_TARGETS}
-                                libtriton-core-opt)
+set(LIBTRITON_CORE_TEST_DEPENDS FileCheck libtriton-core-opt)
 
 add_lit_testsuite(
   check-libtriton-core "Running the TVM FFI bindings regression tests"

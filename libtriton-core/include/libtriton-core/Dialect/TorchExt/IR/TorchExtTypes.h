@@ -1,9 +1,0 @@
-#ifndef LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTTYPES_H_
-#define LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTTYPES_H_
-
-#include "mlir/IR/BuiltinTypes.h"
-
-#define GET_TYPEDEF_CLASSES
-#include "libtriton-core/Dialect/TorchExt/IR/TorchExtTypes.h.inc"
-
-#endif // LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTTYPES_H_

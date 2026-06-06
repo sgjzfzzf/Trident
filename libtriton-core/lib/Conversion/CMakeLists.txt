@@ -1,5 +1,7 @@
 add_subdirectory(DLPackToLLVM)
 add_subdirectory(TorchExtToLLVM)
+add_subdirectory(TorchToArith)
+add_subdirectory(TorchToAOTInductor)
 add_subdirectory(TorchToCf)
 add_subdirectory(TorchToLLVM)
 add_subdirectory(TVMFFIToLLVM)

@@ -3,6 +3,8 @@
 #include "libtriton-core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "libtriton-core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
+#include "libtriton-core/Conversion/TorchToAOTInductor/TorchToAOTInductor.h"
+#include "libtriton-core/Conversion/TorchToArith/TorchToArith.h"
 #include "libtriton-core/Conversion/TorchToCf/TorchToCf.h"
 #include "libtriton-core/Conversion/TorchToLLVM/TorchToLLVM.h"
 #include "libtriton-core/Dialect/AOTInductor/IR/AOTInductorDialect.h"
@@ -27,6 +29,8 @@ void libtriton::conversion::registerAllPasses() {
   mlir::registerReconcileUnrealizedCastsPass();
   libtriton::dlpack::registerConvertDLPackToLLVMPass();
   libtriton::torch_ext::registerConvertTorchExtToLLVMPass();
+  libtriton::torch::registerConvertTorchToAOTInductorPass();
+  libtriton::torch::registerConvertTorchToArithPass();
   libtriton::torch::registerConvertTorchToCfPass();
   libtriton::torch::registerConvertTorchToLLVMPass();
   libtriton::tvm_ffi::registerConvertTVMFFIToLLVMPass();

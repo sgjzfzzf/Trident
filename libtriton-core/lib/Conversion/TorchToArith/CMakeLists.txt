@@ -1,0 +1,10 @@
+add_mlir_conversion_library(
+  TorchToArith
+  TorchToArith.cc
+  DEPENDS
+  MLIRConversionPassIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRArithDialect
+  MLIRPass
+  TorchMLIRTorchDialect)

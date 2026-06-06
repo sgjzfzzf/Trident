@@ -14,6 +14,8 @@ add_mlir_library(
   TorchExtBufferize
   TorchExtDialect
   TorchExtToLLVM
+  TorchToArith
+  TorchToAOTInductor
   TorchToCf
   TorchToLLVM
   TVMFFIDialect

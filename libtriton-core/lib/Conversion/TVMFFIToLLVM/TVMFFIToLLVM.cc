@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
+#include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFICAPIDescriptors.h"
 #include "libtriton-core/Conversion/Utils/IConstantUtils.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIOps.h"
@@ -77,9 +78,100 @@ struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
     // TODO: Implement tensor argument packing for TVM FFI.
     return mlir::failure();
   }
-  static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &, mlir::Value) {
-    // TODO: Implement tensor result unpacking for TVM FFI.
-    return mlir::failure();
+  static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &builder,
+                                           mlir::Value ptr) {
+    mlir::Location loc = ptr.getLoc();
+    mlir::MLIRContext *context = builder.getContext();
+    mlir::Type i8Ty = mlir::IntegerType::get(context, 8);
+    mlir::Type i32Ty = mlir::IntegerType::get(context, 32);
+    mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
+    mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
+
+    //===------------------------------------------------------------------===//
+    // Define DLTensor LLVM struct type  (packed, matching C layout).
+    //   {ptr,          {i32, i32},  i32, {i8, i8, i16}, ptr, ptr, i64}
+    //    data          device       ndim dtype           shape strides boff
+    //===------------------------------------------------------------------===//
+    mlir::Type dlDeviceTy =
+        mlir::LLVM::LLVMStructType::getLiteral(context, {i32Ty, i32Ty}, true);
+    mlir::Type dlDataTypeTy = mlir::LLVM::LLVMStructType::getLiteral(
+        context, {i8Ty, i8Ty, mlir::IntegerType::get(context, 16)}, true);
+    mlir::Type dltensorTy = mlir::LLVM::LLVMStructType::getLiteral(
+        context, {ptrTy, dlDeviceTy, i32Ty, dlDataTypeTy, ptrTy, ptrTy, i64Ty},
+        true);
+
+    // Load DLTensor* from the TVMFFIAny payload field (i64).
+    mlir::Value payloadPtr = getTVMFFIAnyPayloadPtr(builder, loc, ptr);
+    mlir::Value dltensorPtrInt =
+        mlir::LLVM::LoadOp::create(builder, loc, i64Ty, payloadPtr);
+    mlir::Value dltensorRawPtr =
+        mlir::LLVM::IntToPtrOp::create(builder, loc, ptrTy, dltensorPtrInt);
+
+    // Load DLTensor fields via GEP + Load.
+    auto field = [&](mlir::Type ty,
+                     llvm::ArrayRef<mlir::LLVM::GEPArg> indices) {
+      mlir::Value fieldPtr = mlir::LLVM::GEPOp::create(
+          builder, loc, ptrTy, dltensorTy, dltensorRawPtr, indices);
+      return mlir::LLVM::LoadOp::create(builder, loc, ty, fieldPtr);
+    };
+    mlir::Value data = field(ptrTy, {0, 0});
+    mlir::Value dlDevType = field(i32Ty, {0, 1, 0});
+    mlir::Value deviceId = field(i32Ty, {0, 1, 1});
+    mlir::Value ndim = field(i32Ty, {0, 2});
+    mlir::Value dtypeCode = field(i8Ty, {0, 3, 0});
+    mlir::Value dtypeBits = field(i8Ty, {0, 3, 1});
+    mlir::Value shape = field(ptrTy, {0, 4});
+    mlir::Value strides = field(ptrTy, {0, 5});
+    mlir::Value byteOff = field(i64Ty, {0, 6});
+
+    //===------------------------------------------------------------------===//
+    // Map DLPack dtype → Torch dtype via runtime helper.
+    //===------------------------------------------------------------------===//
+    mlir::ModuleOp moduleOp =
+        ptr.getDefiningOp()->getParentOfType<mlir::ModuleOp>();
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> dtypeHelper =
+        capi::getOrCreateTVMFFIToTorchType(moduleOp);
+    if (mlir::failed(dtypeHelper)) {
+      return mlir::failure();
+    }
+    mlir::Value torchDtype =
+        mlir::LLVM::CallOp::create(builder, loc, *dtypeHelper,
+                                   mlir::ValueRange{dtypeCode, dtypeBits})
+            .getResult();
+
+    //===------------------------------------------------------------------===//
+    // Map DLPack device type → Torch device type via runtime helper.
+    //===------------------------------------------------------------------===//
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> devTypeFn =
+        capi::getOrCreateTVMFFIDeviceToTorchDeviceType(moduleOp);
+    if (mlir::failed(devTypeFn)) {
+      return mlir::failure();
+    }
+    mlir::Value deviceType =
+        mlir::LLVM::CallOp::create(builder, loc, *devTypeFn,
+                                   mlir::ValueRange{dlDevType})
+            .getResult();
+
+    //===------------------------------------------------------------------===//
+    // Call aoti_torch_create_tensor_from_blob with all extracted fields.
+    //===------------------------------------------------------------------===//
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> createFn =
+        capi::getOrCreateAOTITorchCreateTensorFromBlob(moduleOp);
+    if (mlir::failed(createFn)) {
+      return mlir::failure();
+    }
+    mlir::Value handleSlot = mlir::LLVM::AllocaOp::create(
+        builder, loc, ptrTy, ptrTy,
+        conversion::utils::emitI64Constant(builder, loc, context, 1));
+    mlir::Value ndimI64 = mlir::LLVM::SExtOp::create(builder, loc, i64Ty, ndim);
+
+    mlir::LLVM::CallOp::create(builder, loc, *createFn,
+                               mlir::ValueRange{data, ndimI64, shape, strides,
+                                                byteOff, torchDtype, deviceType,
+                                                deviceId, handleSlot});
+
+    return mlir::LLVM::LoadOp::create(builder, loc, ptrTy, handleSlot)
+        .getResult();
   }
 };
 
@@ -239,11 +331,13 @@ public:
     }
 
     // The first block is the entry; add ABI arguments to it.
+    // TVM-FFI C ABI: int32_t(void* handle, TVMFFIAny* args, int32_t num_args,
+    // TVMFFIAny* result)
     mlir::Block *entryBlock = &region.front();
-    mlir::Value argsPtr = entryBlock->addArgument(ptrTy, loc);
-    entryBlock->addArgument(ptrTy, loc); // type_codes (unused)
+    entryBlock->addArgument(ptrTy, loc); // handle (unused)
+    mlir::Value argsPtr = entryBlock->addArgument(ptrTy, loc); // args
     entryBlock->addArgument(i32Ty, loc); // num_args (unused)
-    mlir::Value retPtr = entryBlock->addArgument(ptrTy, loc);
+    mlir::Value retPtr = entryBlock->addArgument(ptrTy, loc); // result
 
     // Load input payloads via AllHandlers::load, cast to Torch, map to
     // original block args.

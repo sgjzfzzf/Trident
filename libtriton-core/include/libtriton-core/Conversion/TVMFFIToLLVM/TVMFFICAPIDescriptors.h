@@ -63,8 +63,7 @@ LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(mLibTritonUnpackTVMFFIAnyToTensor,
 LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(malloc, Malloc)
 
 // TVM FFI error reporting.
-LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(TVMFFIErrorSetRaisedFromCStr,
-                                           TVMFFIErrorSetRaisedFromCStr)
+LIBTRITON_DECLARE_CAPI_GET_OR_CREATE(TVMFFIErrorSetRaisedFromCStr)
 
 } // namespace libtriton::tvm_ffi::capi
 

@@ -2,6 +2,7 @@ import pathlib
 from typing import List
 
 import torch
+import tvm_ffi
 
 
 def find_capi_runtime_library() -> str:
@@ -51,4 +52,5 @@ def find_runtime_libraries() -> List[str]:
         find_capi_runtime_library(),
         find_mlir_cuda_runtime_library(),
         torch._C.__file__,
+        tvm_ffi.libinfo.find_libtvm_ffi(),
     ]

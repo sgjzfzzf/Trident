@@ -1,5 +1,6 @@
 #include "libtriton-core/Conversion/AOTIToLLVM/AOTIToLLVM.h"
 #include "libtriton-core/Conversion/AOTIToLLVM/AOTICAPIDescriptors.h"
+#include "libtriton-core/Conversion/Utils/GlobalString.h"
 #include "libtriton-core/Conversion/Utils/IConstantUtils.h"
 #include "libtriton-core/Dialect/AOTInductor/IR/AOTInductorDialect.h"
 #include "libtriton-core/Dialect/AOTInductor/IR/AOTInductorOps.h"
@@ -25,31 +26,6 @@ namespace libtriton::aoti {
 #include "libtriton-core/Conversion/Passes.h.inc"
 
 namespace {
-
-/// Creates an LLVM global string constant and returns a pointer to it.
-static mlir::Value createGlobalString(mlir::OpBuilder &builder,
-                                      mlir::Location loc,
-                                      mlir::ModuleOp moduleOp,
-                                      llvm::StringRef name,
-                                      llvm::StringRef content) {
-  mlir::MLIRContext *context = moduleOp.getContext();
-  const mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
-  const mlir::Type i8Ty = mlir::IntegerType::get(context, 8);
-  std::string globalSymName =
-      llvm::formatv("__aoti_op_name_{0}_{1}", name, content);
-  const mlir::LLVM::LLVMArrayType arrayType =
-      mlir::LLVM::LLVMArrayType::get(i8Ty, content.size());
-  {
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    builder.setInsertionPointToStart(moduleOp.getBody());
-    mlir::LLVM::GlobalOp::create(builder, loc, arrayType, /*isConstant=*/true,
-                                 mlir::LLVM::linkage::Linkage::Internal,
-                                 globalSymName,
-                                 /*value=*/builder.getStringAttr(content));
-  }
-  return mlir::LLVM::AddressOfOp::create(builder, loc, ptrTy, globalSymName)
-      .getResult();
-}
 
 //===----------------------------------------------------------------------===//
 // Type conversion handlers
@@ -228,9 +204,9 @@ public:
     }
 
     // Create global string constants for op_name and overload_name.
-    mlir::Value opNamePtr =
-        createGlobalString(rewriter, loc, moduleOp, "op", op.getOpName());
-    mlir::Value overloadNamePtr = createGlobalString(
+    mlir::Value opNamePtr = conversion::utils::createGlobalString(
+        rewriter, loc, moduleOp, "op", op.getOpName());
+    mlir::Value overloadNamePtr = conversion::utils::createGlobalString(
         rewriter, loc, moduleOp, "overload", op.getOverloadName());
 
     // Call aoti_torch_call_dispatcher(opName, overloadName, slotArray).
@@ -241,8 +217,8 @@ public:
     // Replace the original op with results loaded and converted from slots.
     llvm::SmallVector<mlir::Value> results;
     for (auto [i, resultType] : llvm::enumerate(op.getResultTypes())) {
-      mlir::Value slotPtr = mlir::LLVM::GEPOp::create(
-          rewriter, loc, ptrTy, i64Ty, slotArray, {numInputs + i});
+      mlir::Value slotPtr = mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy,
+                                                      i64Ty, slotArray, {i});
       mlir::Value loaded =
           mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, slotPtr);
       mlir::FailureOr<mlir::Value> converted =

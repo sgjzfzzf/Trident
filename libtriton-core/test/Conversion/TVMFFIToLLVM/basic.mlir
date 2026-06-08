@@ -45,8 +45,8 @@ tvm_ffi.func @make_int() -> !torch.int {
 // CHECK-NEXT:    [[MISMATCH:%[a-z0-9]+]] = llvm.icmp "ne" [[TYPE_IDX]], [[EXPECTED]] : i32
 // CHECK-NEXT:    llvm.cond_br [[MISMATCH]], ^bb1, ^bb2
 // CHECK:       ^bb1:
-// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__tvm_ffi_err_kind_TypeError : !llvm.ptr
-// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__tvm_ffi_err_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
+// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__libtriton_constant_kind_TypeError : !llvm.ptr
+// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__libtriton_constant_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
 // CHECK-NEXT:    llvm.call @TVMFFIErrorSetRaisedFromCStr([[KIND]], [[MSG]]) : (!llvm.ptr, !llvm.ptr) -> ()
 // CHECK-NEXT:    [[MINUS1:%[a-z0-9]+]] = llvm.mlir.constant(-1 : i32) : i32
 // CHECK-NEXT:    llvm.return [[MINUS1]] : i32
@@ -77,8 +77,8 @@ tvm_ffi.func @print_int(%arg0: !torch.int) {
 // CHECK-NEXT:    [[MISMATCH:%[a-z0-9]+]] = llvm.icmp "ne" [[TYPE_IDX]], [[EXPECTED]] : i32
 // CHECK-NEXT:    llvm.cond_br [[MISMATCH]], ^bb1, ^bb2
 // CHECK:       ^bb1:
-// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__tvm_ffi_err_kind_TypeError : !llvm.ptr
-// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__tvm_ffi_err_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
+// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__libtriton_constant_kind_TypeError : !llvm.ptr
+// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__libtriton_constant_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
 // CHECK-NEXT:    llvm.call @TVMFFIErrorSetRaisedFromCStr([[KIND]], [[MSG]]) : (!llvm.ptr, !llvm.ptr) -> ()
 // CHECK-NEXT:    [[MINUS1:%[a-z0-9]+]] = llvm.mlir.constant(-1 : i32) : i32
 // CHECK-NEXT:    llvm.return [[MINUS1]] : i32
@@ -115,8 +115,8 @@ tvm_ffi.func @identity_bool(%arg0: !torch.bool) -> !torch.bool {
 // CHECK-NEXT:    [[MISMATCH:%[a-z0-9]+]] = llvm.icmp "ne" [[TYPE_IDX]], [[EXPECTED]] : i32
 // CHECK-NEXT:    llvm.cond_br [[MISMATCH]], ^bb1, ^bb2
 // CHECK:       ^bb1:
-// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__tvm_ffi_err_kind_TypeError : !llvm.ptr
-// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__tvm_ffi_err_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
+// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__libtriton_constant_kind_TypeError : !llvm.ptr
+// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__libtriton_constant_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
 // CHECK-NEXT:    llvm.call @TVMFFIErrorSetRaisedFromCStr([[KIND]], [[MSG]]) : (!llvm.ptr, !llvm.ptr) -> ()
 // CHECK-NEXT:    [[MINUS1:%[a-z0-9]+]] = llvm.mlir.constant(-1 : i32) : i32
 // CHECK-NEXT:    llvm.return [[MINUS1]] : i32
@@ -154,8 +154,8 @@ tvm_ffi.func @identity_float(%arg0: !torch.float) -> !torch.float {
 // CHECK-NEXT:    [[MISMATCH:%[a-z0-9]+]] = llvm.icmp "eq" [[RET]], [[MINUS1]] : i32
 // CHECK-NEXT:    llvm.cond_br [[MISMATCH]], ^bb1, ^bb2
 // CHECK:       ^bb1:
-// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__tvm_ffi_err_kind_TypeError : !llvm.ptr
-// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__tvm_ffi_err_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
+// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__libtriton_constant_kind_TypeError : !llvm.ptr
+// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__libtriton_constant_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
 // CHECK-NEXT:    llvm.call @TVMFFIErrorSetRaisedFromCStr([[KIND]], [[MSG]]) : (!llvm.ptr, !llvm.ptr) -> ()
 // CHECK-NEXT:    llvm.return [[MINUS1]] : i32
 // CHECK:       ^bb2:

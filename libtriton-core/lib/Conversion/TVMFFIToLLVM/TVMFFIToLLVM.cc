@@ -8,6 +8,7 @@
 
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFICAPIDescriptors.h"
+#include "libtriton-core/Conversion/Utils/GlobalString.h"
 #include "libtriton-core/Conversion/Utils/IConstantUtils.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIOps.h"
@@ -75,32 +76,6 @@ static mlir::Value getTVMFFIAnyTypeIndexPtr(mlir::OpBuilder &rewriter,
                                    mlir::ArrayRef<mlir::LLVM::GEPArg>{0, 0});
 }
 
-/// Creates an LLVM global string constant and returns a pointer to it.
-/// Skips creation if an identically-named global already exists.
-static mlir::Value createGlobalString(mlir::OpBuilder &builder,
-                                      mlir::Location loc,
-                                      mlir::ModuleOp moduleOp,
-                                      llvm::StringRef name,
-                                      llvm::StringRef content) {
-  mlir::MLIRContext *context = moduleOp.getContext();
-  const mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
-  const mlir::Type i8Ty = mlir::IntegerType::get(context, 8);
-  std::string globalSymName =
-      llvm::formatv("__tvm_ffi_err_{0}_{1}", name, content);
-  if (!moduleOp.lookupSymbol<mlir::LLVM::GlobalOp>(globalSymName)) {
-    const mlir::LLVM::LLVMArrayType arrayType =
-        mlir::LLVM::LLVMArrayType::get(i8Ty, content.size());
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    builder.setInsertionPointToStart(moduleOp.getBody());
-    mlir::LLVM::GlobalOp::create(builder, loc, arrayType, /*isConstant=*/true,
-                                 mlir::LLVM::linkage::Linkage::Internal,
-                                 globalSymName,
-                                 /*value=*/builder.getStringAttr(content));
-  }
-  return mlir::LLVM::AddressOfOp::create(builder, loc, ptrTy, globalSymName)
-      .getResult();
-}
-
 //===----------------------------------------------------------------------===//
 // Type conversion handlers for packing/unpacking TVM FFI arguments
 //===----------------------------------------------------------------------===//
@@ -149,10 +124,10 @@ struct PodTypeHandlerBase : TypeHandlerBase<TorchType> {
     if (mlir::failed(errorFn)) {
       return nullptr;
     }
-    mlir::Value kindStr =
-        createGlobalString(builder, loc, moduleOp, "kind", "TypeError");
-    mlir::Value msgStr = createGlobalString(builder, loc, moduleOp, "msg",
-                                            "tvm_ffi: argument type mismatch");
+    mlir::Value kindStr = conversion::utils::createGlobalString(
+        builder, loc, moduleOp, "kind", "TypeError");
+    mlir::Value msgStr = conversion::utils::createGlobalString(
+        builder, loc, moduleOp, "msg", "tvm_ffi: argument type mismatch");
     mlir::LLVM::CallOp::create(builder, loc, *errorFn,
                                mlir::ValueRange{kindStr, msgStr});
     mlir::Value minusOne =
@@ -251,10 +226,10 @@ struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
     if (mlir::failed(errorFn)) {
       return mlir::failure();
     }
-    mlir::Value kindStr =
-        createGlobalString(builder, loc, moduleOp, "kind", "TypeError");
-    mlir::Value msgStr = createGlobalString(builder, loc, moduleOp, "msg",
-                                            "tvm_ffi: argument type mismatch");
+    mlir::Value kindStr = conversion::utils::createGlobalString(
+        builder, loc, moduleOp, "kind", "TypeError");
+    mlir::Value msgStr = conversion::utils::createGlobalString(
+        builder, loc, moduleOp, "msg", "tvm_ffi: argument type mismatch");
     mlir::LLVM::CallOp::create(builder, loc, *errorFn,
                                mlir::ValueRange{kindStr, msgStr});
     mlir::LLVM::ReturnOp::create(builder, loc, minusOne);

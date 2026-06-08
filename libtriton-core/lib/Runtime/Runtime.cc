@@ -37,8 +37,7 @@
 /// Maps DLDataType (code + bits) to the corresponding PyTorch dtype value.
 int32_t mLibTritonTVMFFIToTorchType(uint8_t dtype_code, uint8_t dtype_bits) {
 #define X(dlpack_code, dlpack_bits, torch_fn)                                  \
-  if (dtype_code == static_cast<uint8_t>(dlpack_code) &&                       \
-      dtype_bits == static_cast<uint8_t>(dlpack_bits)) {                       \
+  if (dtype_code == dlpack_code && dtype_bits == dlpack_bits) {                \
     return torch_fn();                                                         \
   }
   LIBTRITON_TVMFFI_DTYPE_PAIR(X)
@@ -57,7 +56,7 @@ int32_t mLibTritonTVMFFIToTorchType(uint8_t dtype_code, uint8_t dtype_bits) {
 /// Falls back to passthrough (returns the input) for unknown device types.
 int32_t mLibTritonTVMFFIDeviceToTorchDeviceType(int32_t dlDeviceType) {
 #define X(dlpack_device, torch_fn)                                             \
-  if (dlDeviceType == static_cast<int32_t>(dlpack_device)) {                   \
+  if (dlDeviceType == dlpack_device) {                                         \
     return torch_fn();                                                         \
   }
   LIBTRITON_TVMFFI_DEVICE_PAIR(X)
@@ -72,13 +71,12 @@ int32_t mLibTritonTVMFFIDeviceToTorchDeviceType(int32_t dlDeviceType) {
 DLDataType mLibTritonTorchToTVMFFIDtype(int32_t torch_dtype) {
 #define X(dlpack_code, dlpack_bits, torch_fn)                                  \
   if (torch_dtype == torch_fn()) {                                             \
-    return DLDataType{static_cast<uint8_t>(dlpack_code),                       \
-                      static_cast<uint8_t>(dlpack_bits), /*lanes=*/1};         \
+    return DLDataType{dlpack_code, dlpack_bits, /*lanes=*/1};                  \
   }
   LIBTRITON_TVMFFI_DTYPE_PAIR(X)
 #undef X
   // Fallback: kDLFloat / 32 / lanes=1.
-  return DLDataType{static_cast<uint8_t>(kDLFloat), 32, 1};
+  return DLDataType{kDLFloat, 32, 1};
 }
 
 /// Reverse mapping: Torch device type → DLPack device type.
@@ -150,11 +148,11 @@ mLibTritonPackTensorToTVMFFIAny(AtenTensorHandle input, TVMFFIAny *ptr) {
 
   dl_managed->dl_tensor.data = data_ptr;
   dl_managed->dl_tensor.device = DLDevice{dl_device, device_index};
-  dl_managed->dl_tensor.ndim = static_cast<int32_t>(ndim_i64);
+  dl_managed->dl_tensor.ndim = ndim_i64;
   dl_managed->dl_tensor.dtype = dl_dtype;
   dl_managed->dl_tensor.shape = sizes_ptr;
   dl_managed->dl_tensor.strides = strides_ptr;
-  dl_managed->dl_tensor.byte_offset = static_cast<uint64_t>(storage_offset);
+  dl_managed->dl_tensor.byte_offset = storage_offset;
 
   // manager_ctx = AtenTensorHandle.
   dl_managed->manager_ctx = input;
@@ -217,7 +215,7 @@ LIBTRITON_CORE_RUNTIME_EXPORT int32_t mLibTritonUnpackTVMFFIAnyToTensor(
 
   // Call aoti_torch_create_tensor_from_blob with all extracted fields.
   return aoti_torch_create_tensor_from_blob(
-      dl_tensor->data, static_cast<int64_t>(dl_tensor->ndim), dl_tensor->shape,
-      dl_tensor->strides, static_cast<int64_t>(dl_tensor->byte_offset),
-      torch_dtype, torch_device_type, dl_tensor->device.device_id, output);
+      dl_tensor->data, dl_tensor->ndim, dl_tensor->shape, dl_tensor->strides,
+      static_cast<int64_t>(dl_tensor->byte_offset), torch_dtype,
+      torch_device_type, dl_tensor->device.device_id, output);
 }

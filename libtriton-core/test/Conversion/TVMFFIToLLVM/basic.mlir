@@ -1,23 +1,31 @@
 // RUN: libtriton-core-opt %s -split-input-file -convert-tvm-ffi-to-llvm | FileCheck %s
 
+
+// void_func:
 // CHECK-LABEL: llvm.func @__tvm_ffi_void_func(
-// CHECK-SAME:    %{{.*}}: !llvm.ptr, %[[ARGS_PTR:.*]]: !llvm.ptr, %[[NUM_ARGS:.*]]: i32, %[[RET_PTR:.*]]: !llvm.ptr
-// CHECK-NEXT:    %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT:    llvm.return %[[ZERO]] : i32
+// CHECK-SAME:      %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
+// CHECK:         llvm.br ^bb1
+// CHECK-NEXT:  ^bb1:
+// CHECK-NEXT:    [[ZERO:%[a-z0-9]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT:    llvm.return [[ZERO]] : i32
 tvm_ffi.func @void_func() {
   tvm_ffi.return
 }
 
 // -----
 
+// make_int:
 // CHECK-LABEL: llvm.func @__tvm_ffi_make_int(
-// CHECK-SAME:    %{{.*}}: !llvm.ptr, %[[ARGS_PTR:.*]]: !llvm.ptr, %[[NUM_ARGS:.*]]: i32, %[[RET_PTR:.*]]: !llvm.ptr
-// CHECK:         %[[C42:.*]] = torch.constant.int 42
-// CHECK-NEXT:    %[[CAST:.*]] = builtin.unrealized_conversion_cast %[[C42]] : !torch.int to i64
-// CHECK-NEXT:    %[[PAYLOAD:.*]] = llvm.getelementptr %[[RET_PTR]]{{\[}}0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    llvm.store %[[CAST]], %[[PAYLOAD]] : i64, !llvm.ptr
-// CHECK-NEXT:    %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT:    llvm.return %[[ZERO]] : i32
+// CHECK-SAME:      %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
+// CHECK:         llvm.br ^bb1
+// CHECK-NEXT:  ^bb1:
+// CHECK-NEXT:    %int42 = torch.constant.int 42
+// CHECK-NEXT:    [[CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast %int42 : !torch.int to i64
+// CHECK-NEXT:    [[GEP:%[a-z0-9]+]] = llvm.getelementptr %arg3[0, 2]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    llvm.store [[CAST]], [[GEP]] : i64, !llvm.ptr
+// CHECK-NEXT:    [[ZERO:%[a-z0-9]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT:    llvm.return [[ZERO]] : i32
 tvm_ffi.func @make_int() -> !torch.int {
   %0 = torch.constant.int 42
   tvm_ffi.return %0 : !torch.int
@@ -25,167 +33,166 @@ tvm_ffi.func @make_int() -> !torch.int {
 
 // -----
 
+// print_int:
 // CHECK-LABEL: llvm.func @__tvm_ffi_print_int(
-// CHECK-SAME:    %{{.*}}: !llvm.ptr, %[[ARGS_PTR:.*]]: !llvm.ptr, %[[NUM_ARGS:.*]]: i32, %[[RET_PTR:.*]]: !llvm.ptr
-// CHECK:         %[[SLOT:.*]] = llvm.getelementptr %[[ARGS_PTR]][0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    %[[PAY:.*]] = llvm.getelementptr %[[SLOT]]{{\[}}0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    %[[RAW:.*]] = llvm.load %[[PAY]] : !llvm.ptr -> i64
-// CHECK-NEXT:    %[[CAST:.*]] = builtin.unrealized_conversion_cast %[[RAW]] : i64 to !torch.int
-// CHECK-NEXT:    %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT:    llvm.return %[[ZERO]] : i32
+// CHECK-SAME:      %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
+// CHECK:         [[ARG_GEP:%[a-z0-9]+]] = llvm.getelementptr %arg1[0]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[IDX_GEP:%[a-z0-9]+]] = llvm.getelementptr [[ARG_GEP]][0, 0]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[TYPE_IDX:%[a-z0-9]+]] = llvm.load [[IDX_GEP]] : !llvm.ptr -> i32
+// CHECK-NEXT:    [[EXPECTED:%[a-z0-9]+]] = llvm.mlir.constant(1 : i32) : i32
+// CHECK-NEXT:    [[MISMATCH:%[a-z0-9]+]] = llvm.icmp "ne" [[TYPE_IDX]], [[EXPECTED]] : i32
+// CHECK-NEXT:    llvm.cond_br [[MISMATCH]], ^bb1, ^bb2
+// CHECK:       ^bb1:
+// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__tvm_ffi_err_kind_TypeError : !llvm.ptr
+// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__tvm_ffi_err_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
+// CHECK-NEXT:    llvm.call @TVMFFIErrorSetRaisedFromCStr([[KIND]], [[MSG]]) : (!llvm.ptr, !llvm.ptr) -> ()
+// CHECK-NEXT:    [[MINUS1:%[a-z0-9]+]] = llvm.mlir.constant(-1 : i32) : i32
+// CHECK-NEXT:    llvm.return [[MINUS1]] : i32
+// CHECK:       ^bb2:
+// CHECK-NEXT:    [[PAYLOAD_GEP:%[a-z0-9]+]] = llvm.getelementptr [[ARG_GEP]][0, 2]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[PAYLOAD:%[a-z0-9]+]] = llvm.load [[PAYLOAD_GEP]] : !llvm.ptr -> i64
+// CHECK-NEXT:    [[CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[PAYLOAD]] : i64 to !torch.int
+// CHECK-NEXT:    llvm.br ^bb3
+// CHECK:       ^bb3:
+// CHECK-NEXT:    [[ZERO:%[a-z0-9]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT:    llvm.return [[ZERO]] : i32
 tvm_ffi.func @print_int(%arg0: !torch.int) {
   tvm_ffi.return
 }
 
 // -----
 
-// CHECK-LABEL: llvm.func @__tvm_ffi_identity(
-// CHECK-SAME:    %{{.*}}: !llvm.ptr, %[[ARGS_PTR:.*]]: !llvm.ptr, %[[NUM_ARGS:.*]]: i32, %[[RET_PTR:.*]]: !llvm.ptr
-// CHECK:         %[[SLOT:.*]] = llvm.getelementptr %[[ARGS_PTR]][0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK:         %[[PAY:.*]] = llvm.getelementptr %[[SLOT]]{{\[}}0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK:         %[[RAW:.*]] = llvm.load %[[PAY]] : !llvm.ptr -> i64
-// CHECK-NEXT:    %[[TO_TORCH:.*]] = builtin.unrealized_conversion_cast %[[RAW]] : i64 to !torch.int
-// CHECK-NEXT:    %[[TO_LLVM:.*]] = builtin.unrealized_conversion_cast %[[TO_TORCH]] : !torch.int to i64
-// CHECK-NEXT:    %[[RET_PAY:.*]] = llvm.getelementptr %[[RET_PTR]]{{\[}}0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    llvm.store %[[TO_LLVM]], %[[RET_PAY]] : i64, !llvm.ptr
-// CHECK-NEXT:    %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT:    llvm.return %[[ZERO]] : i32
-tvm_ffi.func @identity(%arg0: !torch.int) -> !torch.int {
-  tvm_ffi.return %arg0 : !torch.int
-}
-
-// -----
-
+// identity_bool:
 // CHECK-LABEL: llvm.func @__tvm_ffi_identity_bool(
-// CHECK-SAME:    %{{.*}}: !llvm.ptr, %[[ARGS_PTR:.*]]: !llvm.ptr, %[[NUM_ARGS:.*]]: i32, %[[RET_PTR:.*]]: !llvm.ptr
-// CHECK:         %[[SLOT:.*]] = llvm.getelementptr %[[ARGS_PTR]][0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK:         %[[PAY:.*]] = llvm.getelementptr %[[SLOT]]{{\[}}0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK:         %[[RAW:.*]] = llvm.load %[[PAY]] : !llvm.ptr -> i64
-// CHECK-NEXT:    %[[TRUNC:.*]] = llvm.trunc %[[RAW]] : i64 to i1
-// CHECK-NEXT:    %[[TO_TORCH:.*]] = builtin.unrealized_conversion_cast %[[TRUNC]] : i1 to !torch.bool
-// CHECK-NEXT:    %[[TO_I1:.*]] = builtin.unrealized_conversion_cast %[[TO_TORCH]] : !torch.bool to i1
-// CHECK:         %[[RET_PAY:.*]] = llvm.getelementptr %[[RET_PTR]]{{\[}}0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    %[[ZEXT:.*]] = llvm.zext %[[TO_I1]] : i1 to i64
-// CHECK-NEXT:    llvm.store %[[ZEXT]], %[[RET_PAY]] : i64, !llvm.ptr
-// CHECK-NEXT:    %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT:    llvm.return %[[ZERO]] : i32
+// CHECK-SAME:      %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
+// CHECK:         [[ARG_GEP:%[a-z0-9]+]] = llvm.getelementptr %arg1[0]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[IDX_GEP:%[a-z0-9]+]] = llvm.getelementptr [[ARG_GEP]][0, 0]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[TYPE_IDX:%[a-z0-9]+]] = llvm.load [[IDX_GEP]] : !llvm.ptr -> i32
+// CHECK-NEXT:    [[EXPECTED:%[a-z0-9]+]] = llvm.mlir.constant(2 : i32) : i32
+// CHECK-NEXT:    [[MISMATCH:%[a-z0-9]+]] = llvm.icmp "ne" [[TYPE_IDX]], [[EXPECTED]] : i32
+// CHECK-NEXT:    llvm.cond_br [[MISMATCH]], ^bb1, ^bb2
+// CHECK:       ^bb1:
+// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__tvm_ffi_err_kind_TypeError : !llvm.ptr
+// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__tvm_ffi_err_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
+// CHECK-NEXT:    llvm.call @TVMFFIErrorSetRaisedFromCStr([[KIND]], [[MSG]]) : (!llvm.ptr, !llvm.ptr) -> ()
+// CHECK-NEXT:    [[MINUS1:%[a-z0-9]+]] = llvm.mlir.constant(-1 : i32) : i32
+// CHECK-NEXT:    llvm.return [[MINUS1]] : i32
+// CHECK:       ^bb2:
+// CHECK-NEXT:    [[PAYLOAD_GEP:%[a-z0-9]+]] = llvm.getelementptr [[ARG_GEP]][0, 2]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[PAYLOAD:%[a-z0-9]+]] = llvm.load [[PAYLOAD_GEP]] : !llvm.ptr -> i64
+// CHECK-NEXT:    [[TRUNC:%[a-z0-9]+]] = llvm.trunc [[PAYLOAD]] : i64 to i1
+// CHECK-NEXT:    [[ARG_CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[TRUNC]] : i1 to !torch.bool
+// CHECK-NEXT:    llvm.br ^bb3
+// CHECK:       ^bb3:
+// CHECK-NEXT:    [[RET_CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[ARG_CAST]] : !torch.bool to i1
+// CHECK-NEXT:    [[RET_GEP:%[a-z0-9]+]] = llvm.getelementptr %arg3[0, 2]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[EXT:%[a-z0-9]+]] = llvm.zext [[RET_CAST]] : i1 to i64
+// CHECK-NEXT:    llvm.store [[EXT]], [[RET_GEP]] : i64, !llvm.ptr
+// CHECK-NEXT:    [[ZERO:%[a-z0-9]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT:    llvm.return [[ZERO]] : i32
 tvm_ffi.func @identity_bool(%arg0: !torch.bool) -> !torch.bool {
   tvm_ffi.return %arg0 : !torch.bool
 }
 
 // -----
 
+// identity_float:
 // CHECK-LABEL: llvm.func @__tvm_ffi_identity_float(
-// CHECK-SAME:    %{{.*}}: !llvm.ptr, %[[ARGS_PTR:.*]]: !llvm.ptr, %[[NUM_ARGS:.*]]: i32, %[[RET_PTR:.*]]: !llvm.ptr
-// CHECK:         %[[SLOT:.*]] = llvm.getelementptr %[[ARGS_PTR]][0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK:         %[[PAY:.*]] = llvm.getelementptr %[[SLOT]]{{\[}}0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK:         %[[RAW:.*]] = llvm.load %[[PAY]] : !llvm.ptr -> i64
-// CHECK-NEXT:    %[[TO_F64:.*]] = llvm.bitcast %[[RAW]] : i64 to f64
-// CHECK-NEXT:    %[[TO_TORCH:.*]] = builtin.unrealized_conversion_cast %[[TO_F64]] : f64 to !torch.float
-// CHECK-NEXT:    %[[TO_F64_2:.*]] = builtin.unrealized_conversion_cast %[[TO_TORCH]] : !torch.float to f64
-// CHECK:         %[[RET_PAY:.*]] = llvm.getelementptr %[[RET_PTR]]{{\[}}0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    %[[TO_I64:.*]] = llvm.bitcast %[[TO_F64_2]] : f64 to i64
-// CHECK-NEXT:    llvm.store %[[TO_I64]], %[[RET_PAY]] : i64, !llvm.ptr
-// CHECK-NEXT:    %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT:    llvm.return %[[ZERO]] : i32
+// CHECK-SAME:      %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
+// CHECK:         [[ARG_GEP:%[a-z0-9]+]] = llvm.getelementptr %arg1[0]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[IDX_GEP:%[a-z0-9]+]] = llvm.getelementptr [[ARG_GEP]][0, 0]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[TYPE_IDX:%[a-z0-9]+]] = llvm.load [[IDX_GEP]] : !llvm.ptr -> i32
+// CHECK-NEXT:    [[EXPECTED:%[a-z0-9]+]] = llvm.mlir.constant(3 : i32) : i32
+// CHECK-NEXT:    [[MISMATCH:%[a-z0-9]+]] = llvm.icmp "ne" [[TYPE_IDX]], [[EXPECTED]] : i32
+// CHECK-NEXT:    llvm.cond_br [[MISMATCH]], ^bb1, ^bb2
+// CHECK:       ^bb1:
+// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__tvm_ffi_err_kind_TypeError : !llvm.ptr
+// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__tvm_ffi_err_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
+// CHECK-NEXT:    llvm.call @TVMFFIErrorSetRaisedFromCStr([[KIND]], [[MSG]]) : (!llvm.ptr, !llvm.ptr) -> ()
+// CHECK-NEXT:    [[MINUS1:%[a-z0-9]+]] = llvm.mlir.constant(-1 : i32) : i32
+// CHECK-NEXT:    llvm.return [[MINUS1]] : i32
+// CHECK:       ^bb2:
+// CHECK-NEXT:    [[PAYLOAD_GEP:%[a-z0-9]+]] = llvm.getelementptr [[ARG_GEP]][0, 2]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[PAYLOAD:%[a-z0-9]+]] = llvm.load [[PAYLOAD_GEP]] : !llvm.ptr -> i64
+// CHECK-NEXT:    [[BC:%[a-z0-9]+]] = llvm.bitcast [[PAYLOAD]] : i64 to f64
+// CHECK-NEXT:    [[ARG_CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[BC]] : f64 to !torch.float
+// CHECK-NEXT:    llvm.br ^bb3
+// CHECK:       ^bb3:
+// CHECK-NEXT:    [[RET_CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[ARG_CAST]] : !torch.float to f64
+// CHECK-NEXT:    [[RET_GEP:%[a-z0-9]+]] = llvm.getelementptr %arg3[0, 2]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[RET_BC:%[a-z0-9]+]] = llvm.bitcast [[RET_CAST]] : f64 to i64
+// CHECK-NEXT:    llvm.store [[RET_BC]], [[RET_GEP]] : i64, !llvm.ptr
+// CHECK-NEXT:    [[ZERO:%[a-z0-9]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT:    llvm.return [[ZERO]] : i32
 tvm_ffi.func @identity_float(%arg0: !torch.float) -> !torch.float {
   tvm_ffi.return %arg0 : !torch.float
 }
 
 // -----
 
-// CHECK-LABEL: llvm.func @__tvm_ffi_add(
-// CHECK-SAME:    %{{.*}}: !llvm.ptr, %[[ARGS_PTR:.*]]: !llvm.ptr, %[[NUM_ARGS:.*]]: i32, %[[RET_PTR:.*]]: !llvm.ptr
-// CHECK:         %[[SLOT0:.*]] = llvm.getelementptr %[[ARGS_PTR]][0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK:         %[[PAY0:.*]] = llvm.getelementptr %[[SLOT0]]{{\[}}0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK:         %[[RAW0:.*]] = llvm.load %[[PAY0]] : !llvm.ptr -> i64
-// CHECK:         %[[ARG0:.*]] = builtin.unrealized_conversion_cast %[[RAW0]] : i64 to !torch.int
-// CHECK:         %[[SLOT1:.*]] = llvm.getelementptr %[[ARGS_PTR]][1]
-// CHECK:         %[[PAY1:.*]] = llvm.getelementptr %[[SLOT1]]{{\[}}0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK:         %[[RAW1:.*]] = llvm.load %[[PAY1]] : !llvm.ptr -> i64
-// CHECK:         %[[ARG1:.*]] = builtin.unrealized_conversion_cast %[[RAW1]] : i64 to !torch.int
-// CHECK:         %[[ADD:.*]] = torch.aten.add %[[ARG0]], %[[ARG1]] : !torch.int, !torch.int -> !torch.int
-// CHECK:         %[[TO_I64:.*]] = builtin.unrealized_conversion_cast %[[ADD]] : !torch.int to i64
-// CHECK-NEXT:    %[[RET_PAY:.*]] = llvm.getelementptr %[[RET_PTR]]{{\[}}0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    llvm.store %[[TO_I64]], %[[RET_PAY]] : i64, !llvm.ptr
-// CHECK-NEXT:    %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT:    llvm.return %[[ZERO]] : i32
-tvm_ffi.func @add(%arg0: !torch.int, %arg1: !torch.int) -> !torch.int {
-  %0 = torch.aten.add %arg0, %arg1 : !torch.int, !torch.int -> !torch.int
-  tvm_ffi.return %0 : !torch.int
-}
-
-// -----
-
-// Multi-block: a conditional branch using torch.prim.If.
-// CHECK-LABEL: llvm.func @__tvm_ffi_cond_identity(
-// CHECK-SAME:    %{{.*}}: !llvm.ptr, %[[ARGS_PTR:.*]]: !llvm.ptr, %[[NUM_ARGS:.*]]: i32, %[[RET_PTR:.*]]: !llvm.ptr
-// CHECK:         %[[SLOT:.*]] = llvm.getelementptr %[[ARGS_PTR]][0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK:         %[[PAY:.*]] = llvm.getelementptr %[[SLOT]]{{\[}}0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK:         %[[RAW:.*]] = llvm.load %[[PAY]] : !llvm.ptr -> i64
-// CHECK:         %[[ARG:.*]] = builtin.unrealized_conversion_cast %[[RAW]] : i64 to !torch.int
-// CHECK:         %[[GT:.*]] = torch.aten.gt.int %[[ARG]], %[[ARG]] : !torch.int, !torch.int -> !torch.bool
-// CHECK:         %[[RESULT:.*]] = torch.prim.If %[[GT]] -> (!torch.int) {
-// CHECK:         }
-// CHECK:         %[[TO_I64:.*]] = builtin.unrealized_conversion_cast %[[RESULT]] : !torch.int to i64
-// CHECK:         %[[RET_PAY:.*]] = llvm.getelementptr %[[RET_PTR]]{{\[}}0, 2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK:         llvm.store %[[TO_I64]], %[[RET_PAY]] : i64, !llvm.ptr
-// CHECK:         %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK:         llvm.return %[[ZERO]] : i32
-tvm_ffi.func @cond_identity(%arg0: !torch.int) -> !torch.int {
-  %cond = torch.aten.gt.int %arg0, %arg0 : !torch.int, !torch.int -> !torch.bool
-  %result = torch.prim.If %cond -> (!torch.int) {
-    torch.prim.If.yield %arg0 : !torch.int
-  } else {
-    %zero = torch.constant.int 0
-    torch.prim.If.yield %zero : !torch.int
-  }
-  tvm_ffi.return %result : !torch.int
-}
-
-// -----
-
-// Tensor input: load DLTensor from TVMFFIAny and convert to AtenTensorHandle.
-// Now delegated to the runtime function mLibTritonUnpackTVMFFIAnyToTensor.
+// tensor_func:
 // CHECK-LABEL: llvm.func @__tvm_ffi_tensor_func(
-// CHECK-SAME:    %{{.*}}: !llvm.ptr, %[[ARGS_PTR:.*]]: !llvm.ptr,
-// CHECK-SAME:    %[[NUM_ARGS:.*]]: i32, %[[RET_PTR:.*]]: !llvm.ptr
-// CHECK:         %[[SLOT:.*]] = llvm.getelementptr %[[ARGS_PTR]][0]
-// CHECK-NEXT:    %[[ONE:.*]] = llvm.mlir.constant(1 : i64) : i64
-// CHECK-NEXT:    %[[HANDLE_SLOT:.*]] = llvm.alloca %[[ONE]] x !llvm.ptr : (i64) -> !llvm.ptr
-// CHECK-NEXT:    %[[RET:.*]] = llvm.call @mLibTritonUnpackTVMFFIAnyToTensor(%[[SLOT]], %[[HANDLE_SLOT]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK-NEXT:    %[[HANDLE:.*]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
-// CHECK-NEXT:    %[[CAST:.*]] = builtin.unrealized_conversion_cast %[[HANDLE]] : !llvm.ptr to !torch.tensor
-// CHECK-NEXT:    %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT:    llvm.return %[[ZERO]] : i32
+// CHECK-SAME:      %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
+// CHECK:         [[ARG_GEP:%[a-z0-9]+]] = llvm.getelementptr %arg1[0]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[C1:%[a-z0-9]+]] = llvm.mlir.constant(1 : i64) : i64
+// CHECK-NEXT:    [[SLOT:%[a-z0-9]+]] = llvm.alloca [[C1]] x !llvm.ptr : (i64) -> !llvm.ptr
+// CHECK-NEXT:    [[RET:%[a-z0-9]+]] = llvm.call @mLibTritonUnpackTVMFFIAnyToTensor([[ARG_GEP]], [[SLOT]])
+// CHECK-SAME:      : (!llvm.ptr, !llvm.ptr) -> i32
+// CHECK-NEXT:    [[MINUS1:%[a-z0-9]+]] = llvm.mlir.constant(-1 : i32) : i32
+// CHECK-NEXT:    [[MISMATCH:%[a-z0-9]+]] = llvm.icmp "eq" [[RET]], [[MINUS1]] : i32
+// CHECK-NEXT:    llvm.cond_br [[MISMATCH]], ^bb1, ^bb2
+// CHECK:       ^bb1:
+// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__tvm_ffi_err_kind_TypeError : !llvm.ptr
+// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__tvm_ffi_err_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
+// CHECK-NEXT:    llvm.call @TVMFFIErrorSetRaisedFromCStr([[KIND]], [[MSG]]) : (!llvm.ptr, !llvm.ptr) -> ()
+// CHECK-NEXT:    llvm.return [[MINUS1]] : i32
+// CHECK:       ^bb2:
+// CHECK-NEXT:    [[HANDLE:%[a-z0-9]+]] = llvm.load [[SLOT]] : !llvm.ptr -> !llvm.ptr
+// CHECK-NEXT:    [[CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[HANDLE]] : !llvm.ptr to !torch.tensor
+// CHECK-NEXT:    llvm.br ^bb3
+// CHECK:       ^bb3:
+// CHECK-NEXT:    [[ZERO:%[a-z0-9]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT:    llvm.return [[ZERO]] : i32
 tvm_ffi.func @tensor_func(%arg0: !torch.tensor) {
   tvm_ffi.return
 }
 
 // -----
 
-// Tensor identity: loads tensor from input TVMFFIAny slot, stores it back to
-// the output TVMFFIAny slot. Exercises both BaseTensorHandler::load and ::store.
-// Now delegated to runtime functions mLibTritonUnpackTVMFFIAnyToTensor and
-// mLibTritonPackTensorToTVMFFIAny.
-// CHECK-LABEL: llvm.func @__tvm_ffi_tensor_identity(
-// CHECK-SAME:    %{{.*}}: !llvm.ptr, %[[ARGS_PTR:.*]]: !llvm.ptr,
-// CHECK-SAME:    %[[NUM_ARGS:.*]]: i32, %[[RET_PTR:.*]]: !llvm.ptr
-//
-// --- Load path: call runtime unpack function ---
-// CHECK:         %[[SLOT:.*]] = llvm.getelementptr %[[ARGS_PTR]][0]
-// CHECK-NEXT:    %[[ONE:.*]] = llvm.mlir.constant(1 : i64) : i64
-// CHECK-NEXT:    %[[HANDLE_SLOT:.*]] = llvm.alloca %[[ONE]] x !llvm.ptr : (i64) -> !llvm.ptr
-// CHECK-NEXT:    %[[RET:.*]] = llvm.call @mLibTritonUnpackTVMFFIAnyToTensor(%[[SLOT]], %[[HANDLE_SLOT]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK-NEXT:    %[[TENSOR_HANDLE:.*]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
-// CHECK-NEXT:    %[[TO_TORCH:.*]] = builtin.unrealized_conversion_cast %[[TENSOR_HANDLE]] : !llvm.ptr to !torch.tensor
-// CHECK-NEXT:    %[[TO_LLVM:.*]] = builtin.unrealized_conversion_cast %[[TO_TORCH]] : !torch.tensor to !llvm.ptr
-//
-// --- Store path: call runtime pack function ---
-// CHECK-NEXT:    %[[STORE_RET:.*]] = llvm.call @mLibTritonPackTensorToTVMFFIAny(%[[TO_LLVM]], %[[RET_PTR]]) : (!llvm.ptr, !llvm.ptr) -> i32
-//
-// CHECK-NEXT:    %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK-NEXT:    llvm.return %[[ZERO]] : i32
-tvm_ffi.func @tensor_identity(%arg0: !torch.tensor) -> !torch.tensor {
-  tvm_ffi.return %arg0 : !torch.tensor
+// make_tensor:
+// CHECK-LABEL: llvm.func @__tvm_ffi_make_tensor(
+// CHECK-SAME:      %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
+// CHECK:         llvm.br ^bb1
+// CHECK-NEXT:  ^bb1:
+// CHECK-NEXT:    %int3 = torch.constant.int 3
+// CHECK-NEXT:    %int4 = torch.constant.int 4
+// CHECK-NEXT:    [[LIST:%[a-z0-9]+]] = torch.prim.ListConstruct %int3, %int4
+// CHECK-SAME:      : (!torch.int, !torch.int) -> !torch.list<int>
+// CHECK-NEXT:    %none = torch.constant.none
+// CHECK-NEXT:    [[TENSOR:%[a-z0-9]+]] = torch.aten.empty.memory_format [[LIST]], %none, %none, %none, %none, %none
+// CHECK-SAME:      : !torch.list<int>, !torch.none, !torch.none, !torch.none, !torch.none, !torch.none -> !torch.tensor
+// CHECK-NEXT:    [[CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[TENSOR]] : !torch.tensor to !llvm.ptr
+// CHECK-NEXT:    [[RET:%[a-z0-9]+]] = llvm.call @mLibTritonPackTensorToTVMFFIAny([[CAST]], %arg3)
+// CHECK-SAME:      : (!llvm.ptr, !llvm.ptr) -> i32
+// CHECK-NEXT:    [[ZERO:%[a-z0-9]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT:    llvm.return [[ZERO]] : i32
+tvm_ffi.func @make_tensor() -> !torch.tensor {
+  %int3 = torch.constant.int 3
+  %int4 = torch.constant.int 4
+  %shape = torch.prim.ListConstruct %int3, %int4 : (!torch.int, !torch.int) -> !torch.list<int>
+  %none = torch.constant.none
+  %tensor = torch.aten.empty.memory_format %shape, %none, %none, %none, %none, %none : !torch.list<int>, !torch.none, !torch.none, !torch.none, !torch.none, !torch.none -> !torch.tensor
+  tvm_ffi.return %tensor : !torch.tensor
 }

@@ -30,6 +30,22 @@ mLibTritonTorchToTVMFFIDtype(int32_t torch_dtype);
 
 /// Convert a Torch device type value to a DLPack device type.
 /// Falls back to kDLCPU.
-LIBTRITON_CORE_RUNTIME_EXPORT int32_t
+LIBTRITON_CORE_RUNTIME_EXPORT DLDeviceType
 mLibTritonTorchToTVMFFIDevice(int32_t torch_device_type);
+
+/// Pack an AtenTensorHandle into a TVMFFIAny slot as a kTVMFFITensor object.
+///
+/// On success, the TVMFFIAny owns the tensor object (ref-counted via TVM FFI).
+/// \return 0 on success, non-zero on failure.
+LIBTRITON_CORE_RUNTIME_EXPORT int32_t
+mLibTritonPackTensorToTVMFFIAny(AtenTensorHandle input, TVMFFIAny *ptr);
+
+/// Unpack a TVMFFIAny slot into an AtenTensorHandle.
+///
+/// The slot must contain a tensor (kTVMFFIDLTensorPtr or kTVMFFITensor).
+/// The caller owns the returned AtenTensorHandle and must delete it via
+/// aoti_torch_delete_tensor_object when done.
+/// \return 0 on success, non-zero on failure.
+LIBTRITON_CORE_RUNTIME_EXPORT int32_t mLibTritonUnpackTVMFFIAnyToTensor(
+    const TVMFFIAny *ptr, AtenTensorHandle *output);
 #endif // LIBTRITON_CORE_RUNTIME_RUNTIME_H_

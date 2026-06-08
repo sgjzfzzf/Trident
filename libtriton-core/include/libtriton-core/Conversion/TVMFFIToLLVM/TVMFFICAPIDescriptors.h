@@ -53,6 +53,12 @@ LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(mLibTritonTorchToTVMFFIDtype,
 LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(mLibTritonTorchToTVMFFIDevice,
                                            TorchToTVMFFIDevice)
 
+// Runtime tensor pack/unpack helpers.
+LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(mLibTritonPackTensorToTVMFFIAny,
+                                           PackTensorToTVMFFIAny)
+LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(mLibTritonUnpackTVMFFIAnyToTensor,
+                                           UnpackTVMFFIAnyToTensor)
+
 // Standard C library.
 LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(malloc, Malloc)
 

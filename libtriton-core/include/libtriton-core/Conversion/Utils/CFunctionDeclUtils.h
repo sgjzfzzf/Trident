@@ -34,6 +34,8 @@ template <typename CType> struct CTypeToLLVM {
           /*isPacked=*/true);
     } else if constexpr (std::is_integral_v<BaseType>) {
       return mlir::IntegerType::get(context, sizeof(BaseType) * 8);
+    } else if constexpr (std::is_enum_v<BaseType>) {
+      return mlir::IntegerType::get(context, sizeof(BaseType) * 8);
     } else if constexpr (std::is_same_v<BaseType, float>) {
       return mlir::Float32Type::get(context);
     } else if constexpr (std::is_same_v<BaseType, double>) {

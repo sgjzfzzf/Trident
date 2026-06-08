@@ -4,6 +4,15 @@
 
 #include <cstdlib>
 
+/// Check that a call returns 0 (success), or that a condition is false;
+/// return -1 on failure.
+#define LIBTRITON_TVMFFI_CHECK(cond)                                           \
+  do {                                                                         \
+    if (cond) {                                                                \
+      return -1;                                                               \
+    }                                                                          \
+  } while (0)
+
 // X-Macro: (DLDataTypeCode, bits, aoti_torch_dtype_* function name)
 #define LIBTRITON_TVMFFI_DTYPE_PAIR(X)                                         \
   X(kDLBfloat, 16, aoti_torch_dtype_bfloat16)                                  \
@@ -74,15 +83,15 @@ DLDataType mLibTritonTorchToTVMFFIDtype(int32_t torch_dtype) {
 
 /// Reverse mapping: Torch device type → DLPack device type.
 /// Uses the same X-Macro pairs as the forward mapping.
-int32_t mLibTritonTorchToTVMFFIDevice(int32_t torch_device_type) {
+DLDeviceType mLibTritonTorchToTVMFFIDevice(int32_t torch_device_type) {
 #define X(dlpack_device, torch_fn)                                             \
   if (torch_device_type == torch_fn()) {                                       \
-    return static_cast<int32_t>(dlpack_device);                                \
+    return dlpack_device;                                                      \
   }
   LIBTRITON_TVMFFI_DEVICE_PAIR(X)
 #undef X
   // Fallback: kDLCPU.
-  return static_cast<int32_t>(kDLCPU);
+  return kDLCPU;
 }
 
 /// DLPack-compatible deleter callback for TVM FFI tensor conversion.
@@ -97,4 +106,118 @@ extern "C" void mLibTritonDLManagedTensorDeleter(struct DLManagedTensor *self) {
     }
     std::free(self);
   }
+}
+
+/// Pack an AtenTensorHandle into a TVMFFIAny slot as a kTVMFFITensor object.
+///
+/// Flow:
+/// 1. Extract tensor properties via aoti_torch_get_* functions.
+/// 2. Reverse-map Torch dtype/device → DLPack.
+/// 3. Heap-allocate a DLManagedTensor, fill with extracted properties.
+/// 4. Convert to TVMFFIObjectHandle via TVMFFITensorFromDLPack.
+/// 5. Store type_index=kTVMFFITensor(70) and v_obj=handle in TVMFFIAny.
+///
+/// \return 0 on success, non-zero on failure.
+LIBTRITON_CORE_RUNTIME_EXPORT int32_t
+mLibTritonPackTensorToTVMFFIAny(AtenTensorHandle input, TVMFFIAny *ptr) {
+  // Step 1: Extract tensor properties via aoti_torch_get_*.
+  int64_t ndim_i64;
+  int64_t *sizes_ptr;
+  int64_t *strides_ptr;
+  void *data_ptr;
+  int32_t torch_dtype;
+  int32_t torch_device_type;
+  int32_t device_index;
+  int64_t storage_offset;
+
+  LIBTRITON_TVMFFI_CHECK(aoti_torch_get_dim(input, &ndim_i64));
+  LIBTRITON_TVMFFI_CHECK(aoti_torch_get_sizes(input, &sizes_ptr));
+  LIBTRITON_TVMFFI_CHECK(aoti_torch_get_strides(input, &strides_ptr));
+  LIBTRITON_TVMFFI_CHECK(aoti_torch_get_data_ptr(input, &data_ptr));
+  LIBTRITON_TVMFFI_CHECK(aoti_torch_get_dtype(input, &torch_dtype));
+  LIBTRITON_TVMFFI_CHECK(aoti_torch_get_device_type(input, &torch_device_type));
+  LIBTRITON_TVMFFI_CHECK(aoti_torch_get_device_index(input, &device_index));
+  LIBTRITON_TVMFFI_CHECK(aoti_torch_get_storage_offset(input, &storage_offset));
+
+  // Step 2: Reverse-map Torch dtype/device → DLPack.
+  DLDataType dl_dtype = mLibTritonTorchToTVMFFIDtype(torch_dtype);
+  DLDeviceType dl_device = mLibTritonTorchToTVMFFIDevice(torch_device_type);
+
+  // Step 3: malloc(sizeof(DLManagedTensor)) and fill fields.
+  DLManagedTensor *dl_managed =
+      static_cast<DLManagedTensor *>(std::malloc(sizeof(DLManagedTensor)));
+  LIBTRITON_TVMFFI_CHECK(dl_managed == nullptr);
+
+  dl_managed->dl_tensor.data = data_ptr;
+  dl_managed->dl_tensor.device = DLDevice{dl_device, device_index};
+  dl_managed->dl_tensor.ndim = static_cast<int32_t>(ndim_i64);
+  dl_managed->dl_tensor.dtype = dl_dtype;
+  dl_managed->dl_tensor.shape = sizes_ptr;
+  dl_managed->dl_tensor.strides = strides_ptr;
+  dl_managed->dl_tensor.byte_offset = static_cast<uint64_t>(storage_offset);
+
+  // manager_ctx = AtenTensorHandle.
+  dl_managed->manager_ctx = input;
+
+  // deleter = mLibTritonDLManagedTensorDeleter.
+  dl_managed->deleter = mLibTritonDLManagedTensorDeleter;
+
+  // Step 4: Call TVMFFITensorFromDLPack to create a TVM FFI tensor object.
+  TVMFFIObjectHandle obj_handle = nullptr;
+  int ret = TVMFFITensorFromDLPack(dl_managed, /*require_alignment=*/0,
+                                   /*require_contiguous=*/0, &obj_handle);
+  if (ret != 0) {
+    // TVMFFITensorFromDLPack takes ownership of dl_managed on success.
+    // On failure, we must clean up ourselves.
+    mLibTritonDLManagedTensorDeleter(dl_managed);
+    return ret;
+  }
+
+  // Step 5: Store into TVMFFIAny: type_index=kTVMFFITensor, payload=v_obj.
+  ptr->type_index = kTVMFFITensor;
+  ptr->zero_padding = 0;
+  ptr->v_obj = static_cast<TVMFFIObject *>(obj_handle);
+
+  return 0;
+}
+
+/// Unpack a TVMFFIAny slot into an AtenTensorHandle.
+///
+/// The payload may be:
+/// - kTVMFFIDLTensorPtr (7): direct DLTensor* pointer in v_ptr.
+/// - kTVMFFITensor (70) or other object types: TVMFFIObject* in v_obj;
+///   DLTensor starts at offset sizeof(TVMFFIObject)=24 from the object ptr.
+///
+/// \return 0 on success, non-zero on failure (e.g. not a tensor type).
+LIBTRITON_CORE_RUNTIME_EXPORT int32_t mLibTritonUnpackTVMFFIAnyToTensor(
+    const TVMFFIAny *ptr, AtenTensorHandle *output) {
+  DLTensor *dl_tensor = nullptr;
+
+  if (ptr->type_index == kTVMFFITensor && ptr->v_obj) {
+    // TVMFFIObject - DLTensor starts after the object header.
+    // TVMFFIObject layout: {uint64_t ref_count, int32_t type_index,
+    //                       uint32_t padding, union deleter} = 24 bytes.
+    dl_tensor = reinterpret_cast<DLTensor *>(
+        reinterpret_cast<uintptr_t>(ptr->v_obj) + sizeof(TVMFFIObject));
+  } else if (ptr->type_index == kTVMFFIDLTensorPtr && ptr->v_ptr) {
+    // Direct DLTensor* pointer.
+    dl_tensor = static_cast<DLTensor *>(ptr->v_ptr);
+  } else {
+    // Not a tensor type.
+    return -1;
+  }
+
+  // Map DLPack dtype → Torch dtype.
+  int32_t torch_dtype =
+      mLibTritonTVMFFIToTorchType(dl_tensor->dtype.code, dl_tensor->dtype.bits);
+
+  // Map DLPack device → Torch device type.
+  int32_t torch_device_type =
+      mLibTritonTVMFFIDeviceToTorchDeviceType(dl_tensor->device.device_type);
+
+  // Call aoti_torch_create_tensor_from_blob with all extracted fields.
+  return aoti_torch_create_tensor_from_blob(
+      dl_tensor->data, static_cast<int64_t>(dl_tensor->ndim), dl_tensor->shape,
+      dl_tensor->strides, static_cast<int64_t>(dl_tensor->byte_offset),
+      torch_dtype, torch_device_type, dl_tensor->device.device_id, output);
 }

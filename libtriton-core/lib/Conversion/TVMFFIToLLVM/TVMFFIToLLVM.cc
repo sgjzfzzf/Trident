@@ -44,6 +44,8 @@ namespace libtriton::tvm_ffi {
 
 namespace {
 
+class Aux {};
+
 static mlir::LLVM::LLVMStructType getTVMFFIAnyType(mlir::MLIRContext *context) {
   mlir::Type i32Ty = mlir::IntegerType::get(context, 32);
   mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
@@ -54,24 +56,22 @@ static mlir::LLVM::LLVMStructType getTVMFFIAnyType(mlir::MLIRContext *context) {
 /// Given a void* pointing to a TVMFFIAny ({i32, i32, i64}) struct in an array,
 /// return a pointer to its i64 payload field (field index 2).
 static mlir::Value getTVMFFIAnyPayloadPtr(mlir::OpBuilder &rewriter,
-                                          mlir::Value slotPtr) {
+                                          mlir::Value ptr) {
   mlir::MLIRContext *ctx = rewriter.getContext();
   mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
   mlir::LLVM::LLVMStructType anyTy = getTVMFFIAnyType(ctx);
-  return mlir::LLVM::GEPOp::create(rewriter, slotPtr.getLoc(), ptrTy, anyTy,
-                                   slotPtr,
+  return mlir::LLVM::GEPOp::create(rewriter, ptr.getLoc(), ptrTy, anyTy, ptr,
                                    mlir::ArrayRef<mlir::LLVM::GEPArg>{0, 2});
 }
 
 /// Given a void* pointing to a TVMFFIAny ({i32, i32, i64}) struct in an array,
 /// return a pointer to its i32 type_index field (field index 0).
 static mlir::Value getTVMFFIAnyTypeIndexPtr(mlir::OpBuilder &rewriter,
-                                            mlir::Value slotPtr) {
+                                            mlir::Value ptr) {
   mlir::MLIRContext *ctx = rewriter.getContext();
   mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
   mlir::LLVM::LLVMStructType anyTy = getTVMFFIAnyType(ctx);
-  return mlir::LLVM::GEPOp::create(rewriter, slotPtr.getLoc(), ptrTy, anyTy,
-                                   slotPtr,
+  return mlir::LLVM::GEPOp::create(rewriter, ptr.getLoc(), ptrTy, anyTy, ptr,
                                    mlir::ArrayRef<mlir::LLVM::GEPArg>{0, 0});
 }
 
@@ -152,7 +152,7 @@ struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
   /// 4. Convert to TVMFFIObjectHandle via TVMFFITensorFromDLPack.
   /// 5. Store type_index=kTVMFFITensor(70) and payload=handle in TVMFFIAny.
   static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value input,
-                                   mlir::Value ptr) {
+                                   mlir::Value ptr, Aux &aux) {
     mlir::Location loc = input.getLoc();
     mlir::MLIRContext *context = builder.getContext();
 
@@ -176,7 +176,7 @@ struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
     return mlir::success();
   }
   static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &builder,
-                                           mlir::Value ptr) {
+                                           mlir::Value ptr, Aux &aux) {
     mlir::Location loc = ptr.getLoc();
     mlir::MLIRContext *context = builder.getContext();
     mlir::Type i32Ty = mlir::IntegerType::get(context, 32);
@@ -194,19 +194,18 @@ struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
     }
 
     // Allocate slot for output AtenTensorHandle.
-    mlir::Value handleSlot = mlir::LLVM::AllocaOp::create(
+    mlir::Value slot = mlir::LLVM::AllocaOp::create(
         builder, loc, ptrTy, ptrTy,
         mlir::LLVM::ConstantOp::create(builder, loc,
                                        mlir::IntegerType::get(context, 64), 1)
             .getResult());
 
-    // Call mLibTritonUnpackTVMFFIAnyToTensor(ptr, &handleSlot).
+    // Call mLibTritonUnpackTVMFFIAnyToTensor(ptr, &slot).
     // Returns 0 on success, -1 on type mismatch (the runtime already checks
     // for kTVMFFITensor or kTVMFFIDLTensorPtr).
-    mlir::Value ret =
-        mlir::LLVM::CallOp::create(builder, loc, *unpackFn,
-                                   mlir::ValueRange{ptr, handleSlot})
-            .getResult();
+    mlir::Value ret = mlir::LLVM::CallOp::create(builder, loc, *unpackFn,
+                                                 mlir::ValueRange{ptr, slot})
+                          .getResult();
 
     // Check if return value is -1 (type mismatch).
     mlir::Value minusOne =
@@ -244,15 +243,14 @@ struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
 
     // Continue block: return loaded handle.
     builder.setInsertionPointToStart(continueBlock);
-    return mlir::LLVM::LoadOp::create(builder, loc, ptrTy, handleSlot)
-        .getResult();
+    return mlir::LLVM::LoadOp::create(builder, loc, ptrTy, slot).getResult();
   }
 };
 
 struct BoolHandler
     : PodTypeHandlerBase<mlir::torch::Torch::BoolType, kTVMFFIBool> {
   static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value input,
-                                   mlir::Value ptr) {
+                                   mlir::Value ptr, Aux &aux) {
     mlir::Location loc = input.getLoc();
     mlir::Value payloadPtr = getTVMFFIAnyPayloadPtr(builder, ptr);
     mlir::Value ext = mlir::LLVM::ZExtOp::create(
@@ -261,7 +259,7 @@ struct BoolHandler
     return mlir::success();
   }
   static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &builder,
-                                           mlir::Value ptr) {
+                                           mlir::Value ptr, Aux &aux) {
     mlir::Block *cb = check(builder, ptr);
     if (!cb) {
       return mlir::failure();
@@ -281,13 +279,13 @@ struct BoolHandler
 struct IntHandler
     : PodTypeHandlerBase<mlir::torch::Torch::IntType, kTVMFFIInt> {
   static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value input,
-                                   mlir::Value ptr) {
+                                   mlir::Value ptr, Aux &aux) {
     mlir::Value payload = getTVMFFIAnyPayloadPtr(builder, ptr);
     mlir::LLVM::StoreOp::create(builder, input.getLoc(), input, payload);
     return mlir::success();
   }
   static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &builder,
-                                           mlir::Value ptr) {
+                                           mlir::Value ptr, Aux &aux) {
     mlir::Block *cb = check(builder, ptr);
     if (!cb) {
       return mlir::failure();
@@ -304,7 +302,7 @@ struct IntHandler
 struct FloatHandler
     : PodTypeHandlerBase<mlir::torch::Torch::FloatType, kTVMFFIFloat> {
   static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value input,
-                                   mlir::Value ptr) {
+                                   mlir::Value ptr, Aux &aux) {
     mlir::Location loc = input.getLoc();
     mlir::Value payload = getTVMFFIAnyPayloadPtr(builder, ptr);
     mlir::Value bits = mlir::LLVM::BitcastOp::create(
@@ -313,7 +311,7 @@ struct FloatHandler
     return mlir::success();
   }
   static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &builder,
-                                           mlir::Value ptr) {
+                                           mlir::Value ptr, Aux &aux) {
     mlir::Block *cb = check(builder, ptr);
     if (!cb) {
       return mlir::failure();
@@ -333,7 +331,7 @@ struct FloatHandler
 struct NoneHandler
     : PodTypeHandlerBase<mlir::torch::Torch::NoneType, kTVMFFINone> {
   static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value,
-                                   mlir::Value ptr) {
+                                   mlir::Value ptr, Aux &aux) {
     mlir::Location loc = ptr.getLoc();
     mlir::Value payload = getTVMFFIAnyPayloadPtr(builder, ptr);
     mlir::LLVM::StoreOp::create(
@@ -345,7 +343,7 @@ struct NoneHandler
     return mlir::success();
   }
   static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &builder,
-                                           mlir::Value ptr) {
+                                           mlir::Value ptr, Aux &aux) {
     mlir::Block *cb = check(builder, ptr);
     if (!cb) {
       return mlir::failure();
@@ -361,34 +359,37 @@ struct NoneHandler
 
 template <typename Handler> struct HandlerCaller {
   static mlir::LogicalResult tryStore(mlir::Type type, mlir::OpBuilder &builder,
-                                      mlir::Value input, mlir::Value ptr) {
-    return Handler::matches(type) ? Handler::store(builder, input, ptr)
+                                      mlir::Value input, mlir::Value ptr,
+                                      Aux &aux) {
+    return Handler::matches(type) ? Handler::store(builder, input, ptr, aux)
                                   : mlir::failure();
   }
 
-  static mlir::FailureOr<mlir::Value>
-  tryLoad(mlir::Type type, mlir::OpBuilder &builder, mlir::Value ptr) {
-    return Handler::matches(type) ? Handler::load(builder, ptr)
+  static mlir::FailureOr<mlir::Value> tryLoad(mlir::Type type,
+                                              mlir::OpBuilder &builder,
+                                              mlir::Value ptr, Aux &aux) {
+    return Handler::matches(type) ? Handler::load(builder, ptr, aux)
                                   : mlir::FailureOr<mlir::Value>();
   }
 };
 
 template <typename... Handlers> struct TypeDispatch {
   static mlir::LogicalResult store(mlir::Type type, mlir::OpBuilder &builder,
-                                   mlir::Value input, mlir::Value ptr) {
+                                   mlir::Value input, mlir::Value ptr,
+                                   Aux &aux) {
     mlir::LogicalResult result = mlir::failure();
     bool matched = (mlir::succeeded(result = HandlerCaller<Handlers>::tryStore(
-                                        type, builder, input, ptr)) ||
+                                        type, builder, input, ptr, aux)) ||
                     ...);
     assert(matched && "no handler matched for type");
     return result;
   }
 
   static mlir::FailureOr<mlir::Value>
-  load(mlir::Type type, mlir::OpBuilder &builder, mlir::Value ptr) {
+  load(mlir::Type type, mlir::OpBuilder &builder, mlir::Value ptr, Aux &aux) {
     mlir::FailureOr<mlir::Value> result = mlir::failure();
     bool matched = (mlir::succeeded(result = HandlerCaller<Handlers>::tryLoad(
-                                        type, builder, ptr)) ||
+                                        type, builder, ptr, aux)) ||
                     ...);
     assert(matched && "no handler matched for type");
     return result;
@@ -443,6 +444,7 @@ public:
     // producing error/continue blocks that naturally precede the body.
     rewriter.setInsertionPointToStart(entryBlock);
     mlir::LLVM::LLVMStructType anyTy = getTVMFFIAnyType(context);
+    Aux aux;
     mlir::Block &entry = op.getBody().front();
     for (auto [i, arg] : llvm::enumerate(entry.getArguments())) {
       mlir::Value slot =
@@ -450,7 +452,7 @@ public:
                                     mlir::ArrayRef<mlir::LLVM::GEPArg>{i});
       mlir::Type argTy = arg.getType();
       mlir::FailureOr<mlir::Value> loaded =
-          AllHandlers::load(argTy, rewriter, slot);
+          AllHandlers::load(argTy, rewriter, slot, aux);
       if (mlir::failed(loaded)) {
         return op.emitError("unsupported input type: ") << argTy;
       }
@@ -489,8 +491,8 @@ public:
                     rewriter, loc, getTypeConverter()->convertType(operandTy),
                     retVal)
                     .getResult(0);
-            if (mlir::failed(
-                    AllHandlers::store(operandTy, rewriter, casted, retPtr))) {
+            if (mlir::failed(AllHandlers::store(operandTy, rewriter, casted,
+                                                retPtr, aux))) {
               return op.emitError("unsupported return type: ") << operandTy;
             }
           }

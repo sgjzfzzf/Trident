@@ -181,7 +181,7 @@ public:
     // Allocate an i64 (uint64) slot array with maxCount elements on the stack.
     mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
     mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
-    mlir::Value slotArray = mlir::LLVM::AllocaOp::create(
+    mlir::Value array = mlir::LLVM::AllocaOp::create(
         rewriter, loc, ptrTy, i64Ty,
         mlir::LLVM::ConstantOp::create(
             rewriter, loc, mlir::IntegerType::get(context, 64), maxCount)
@@ -194,11 +194,11 @@ public:
       mlir::Type origType = origInput.getType();
 
       // Get pointer to the i-th u64 slot.
-      mlir::Value slotPtr = mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy,
-                                                      i64Ty, slotArray, {i});
+      mlir::Value ptr =
+          mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, i64Ty, array, {i});
 
       if (mlir::failed(
-              AllHandlers::store(origType, rewriter, adaptedInput, slotPtr))) {
+              AllHandlers::store(origType, rewriter, adaptedInput, ptr))) {
         return op.emitError("unsupported input type: ") << origType;
       }
     }
@@ -223,19 +223,19 @@ public:
     // Call aoti_torch_call_dispatcher(opName, overloadName, slotArray).
     mlir::LLVM::CallOp callOp = mlir::LLVM::CallOp::create(
         rewriter, loc, *calleeOrErr,
-        mlir::ValueRange{opNamePtr, overloadNamePtr, slotArray});
+        mlir::ValueRange{opNamePtr, overloadNamePtr, array});
 
     // Replace the original op with results loaded and converted from slots.
     llvm::SmallVector<mlir::Value> results;
-    for (auto [i, resultType] : llvm::enumerate(op.getResultTypes())) {
-      mlir::Value slotPtr = mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy,
-                                                      i64Ty, slotArray, {i});
+    for (auto [i, type] : llvm::enumerate(op.getResultTypes())) {
+      mlir::Value ptr =
+          mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, i64Ty, array, {i});
       mlir::Value loaded =
-          mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, slotPtr);
+          mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, ptr);
       mlir::FailureOr<mlir::Value> converted =
-          AllHandlers::load(resultType, rewriter, loaded);
+          AllHandlers::load(type, rewriter, loaded);
       if (mlir::failed(converted)) {
-        return op.emitError("unsupported result type: ") << resultType;
+        return op.emitError("unsupported result type: ") << type;
       }
       if (mlir::Value val = converted.value()) {
         results.push_back(val);

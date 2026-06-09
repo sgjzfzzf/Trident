@@ -8,4 +8,5 @@ add_mlir_conversion_library(
   BackendTypeConversion
   MLIRControlFlowDialect
   MLIRPass
-  TorchMLIRTorchDialect)
+  TorchMLIRTorchDialect
+  TorchMLIRTorchUtils)

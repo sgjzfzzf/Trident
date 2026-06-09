@@ -32,12 +32,21 @@ set(TORCH_MLIR_PYTHON_PACKAGES_DIR
     "${CMAKE_BINARY_DIR}/python_packages"
     CACHE PATH "Torch-mlir python package output dir" FORCE)
 
+set(TORCH_MLIR_ENABLE_STABLEHLO
+    OFF
+    CACHE BOOL "Disable StableHLO in torch-mlir" FORCE)
+set(TORCH_MLIR_ENABLE_TOSA
+    OFF
+    CACHE BOOL "Disable TOSA in torch-mlir" FORCE)
+
 FetchContent_Declare(
   torch-mlir
   GIT_REPOSITORY https://github.com/llvm/torch-mlir.git
-  GIT_TAG 68213efa76ab3944445b0a0d6073efe7b7b3d039
-  GIT_SUBMODULES "externals/stablehlo")
+  GIT_TAG 68213efa76ab3944445b0a0d6073efe7b7b3d039)
 FetchContent_MakeAvailable(torch-mlir)
+
+unset(TORCH_MLIR_ENABLE_STABLEHLO)
+unset(TORCH_MLIR_ENABLE_TOSA)
 
 include(${LLVM_CMAKE_DIR}/AddLLVM.cmake)
 include(${MLIR_CMAKE_DIR}/AddMLIR.cmake)

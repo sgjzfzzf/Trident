@@ -5,15 +5,15 @@ add_mlir_library(
   PUBLIC
   AOTInductorTransforms
   AOTIToLLVM
-  TVMFFIDialect
-  TVMFFIToLLVM
   MLIRRegisterAllDialects
   MLIRRegisterAllExtensions
   MLIRRegisterAllPasses
   MLIRSCFDialect
+  TorchConversionToLLVM
   TorchMLIRCAPI
   TorchMLIRTorchConversionDialect
   TorchPipeline
   TorchToCf
-  TorchConversionToLLVM
-  TorchToLLVM)
+  TorchToLLVM
+  TVMFFIDialect
+  TVMFFIToLLVM)

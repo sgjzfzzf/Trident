@@ -7,12 +7,12 @@ add_mlir_public_c_api_library(
   ENABLE_AGGREGATION
   LINK_LIBS
   PUBLIC
-  LibTritonUtilsRegistration
   AOTInductorDialect
+  LibTritonUtilsRegistration
   MLIRConvertToLLVMPass
-  TVMFFIDialect
   MLIRIR
   MLIRSupport
+  TVMFFIDialect
   TorchMLIRCAPI
   TorchMLIRTorchConversionDialect)
 

@@ -123,7 +123,6 @@ declare_mlir_dialect_python_bindings(
   DIALECT_NAME
   tvm_ffi)
 
-
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT
   LibTritonCorePythonSources.Core
@@ -164,11 +163,11 @@ install(TARGETS LibTritonCoreRuntime
                 COMPONENT LibTritonCorePythonModules)
 
 get_filename_component(_mlir_lib_dir "${MLIR_DIR}/../.." ABSOLUTE)
+file(GLOB _mlir_runtime_libs "${_mlir_lib_dir}/*_runtime.so*")
 install(
-  FILES "${_mlir_lib_dir}/libmlir_cuda_runtime.so"
+  FILES ${_mlir_runtime_libs}
   DESTINATION ${LIBTRITON_CORE_PYTHON_INSTALL_ROOT}/_runtime_libs
-  COMPONENT LibTritonCorePythonModules
-  OPTIONAL)
+  COMPONENT LibTritonCorePythonModules)
 
 add_custom_target(
   LibTritonCorePythonModules ALL

@@ -6,4 +6,5 @@ add_mlir_library(
   MLIRLLVMCommonConversion
   MLIRLLVMDialect
   MLIRPass
-  TorchMLIRTorchDialect)
+  TorchMLIRTorchDialect
+  TorchMLIRTorchUtils)

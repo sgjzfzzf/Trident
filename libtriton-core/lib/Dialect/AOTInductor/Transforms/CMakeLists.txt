@@ -8,4 +8,5 @@ add_mlir_library(
   AOTInductorDialect
   MLIRIR
   MLIRPass
-  TorchMLIRTorchDialect)
+  TorchMLIRTorchDialect
+  TorchMLIRTorchUtils)

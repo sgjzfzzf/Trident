@@ -14,9 +14,10 @@
 
 namespace libtriton::conversion::utils {
 
-mlir::Value createGlobalString(mlir::OpBuilder &builder, mlir::Location loc,
-                               mlir::ModuleOp moduleOp, llvm::StringRef name,
-                               llvm::StringRef content) {
+mlir::Value getOrCreateGlobalString(mlir::OpBuilder &builder,
+                                    mlir::Location loc, mlir::ModuleOp moduleOp,
+                                    llvm::StringRef name,
+                                    llvm::StringRef content) {
   mlir::MLIRContext *context = moduleOp.getContext();
   const mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
   const mlir::Type i8Ty = mlir::IntegerType::get(context, 8);

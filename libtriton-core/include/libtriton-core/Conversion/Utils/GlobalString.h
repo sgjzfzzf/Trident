@@ -25,9 +25,10 @@ namespace libtriton::conversion::utils {
 ///                (e.g. ``"op"``, ``"overload"``, ``"kind"``, ``"msg"``).
 /// \param content The string content (without null terminator — it is added
 ///                automatically).
-mlir::Value createGlobalString(mlir::OpBuilder &builder, mlir::Location loc,
-                               mlir::ModuleOp moduleOp, llvm::StringRef name,
-                               llvm::StringRef content);
+mlir::Value getOrCreateGlobalString(mlir::OpBuilder &builder,
+                                    mlir::Location loc, mlir::ModuleOp moduleOp,
+                                    llvm::StringRef name,
+                                    llvm::StringRef content);
 
 } // namespace libtriton::conversion::utils
 

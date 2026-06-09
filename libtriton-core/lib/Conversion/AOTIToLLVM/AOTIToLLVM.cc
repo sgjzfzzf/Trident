@@ -1,7 +1,6 @@
 #include "libtriton-core/Conversion/AOTIToLLVM/AOTIToLLVM.h"
 #include "libtriton-core/Conversion/AOTIToLLVM/AOTICAPIDescriptors.h"
 #include "libtriton-core/Conversion/Utils/GlobalString.h"
-#include "libtriton-core/Conversion/Utils/IConstantUtils.h"
 #include "libtriton-core/Dialect/AOTInductor/IR/AOTInductorDialect.h"
 #include "libtriton-core/Dialect/AOTInductor/IR/AOTInductorOps.h"
 #include "libtriton-core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
@@ -123,28 +122,38 @@ struct NoneHandler : TypeHandlerBase<mlir::torch::Torch::NoneType> {
 // Variadic dispatch: folds over handlers, short-circuits on first match
 //===----------------------------------------------------------------------===//
 
+template <typename Handler> struct HandlerCaller {
+  static mlir::LogicalResult tryStore(mlir::Type type, mlir::OpBuilder &builder,
+                                      mlir::Value input, mlir::Value ptr) {
+    return Handler::matches(type) ? Handler::store(builder, input, ptr)
+                                  : mlir::failure();
+  }
+
+  static mlir::FailureOr<mlir::Value>
+  tryLoad(mlir::Type type, mlir::OpBuilder &builder, mlir::Value ptr) {
+    return Handler::matches(type) ? Handler::load(builder, ptr)
+                                  : mlir::FailureOr<mlir::Value>();
+  }
+};
+
 template <typename... Handlers> struct TypeDispatch {
   static mlir::LogicalResult store(mlir::Type type, mlir::OpBuilder &builder,
                                    mlir::Value input, mlir::Value ptr) {
     mlir::LogicalResult result = mlir::failure();
-    auto tryHandler = [&](auto handler) {
-      if (mlir::failed(result) && decltype(handler)::matches(type)) {
-        result = decltype(handler)::store(builder, input, ptr);
-      }
-    };
-    (tryHandler(Handlers{}), ...);
+    bool matched = (mlir::succeeded(result = HandlerCaller<Handlers>::tryStore(
+                                        type, builder, input, ptr)) ||
+                    ...);
+    assert(matched && "no handler matched for type");
     return result;
   }
 
   static mlir::FailureOr<mlir::Value>
   load(mlir::Type type, mlir::OpBuilder &builder, mlir::Value ptr) {
     mlir::FailureOr<mlir::Value> result = mlir::failure();
-    auto tryHandler = [&](auto handler) {
-      if (mlir::failed(result) && decltype(handler)::matches(type)) {
-        result = decltype(handler)::load(builder, ptr);
-      }
-    };
-    (tryHandler(Handlers{}), ...);
+    bool matched = (mlir::succeeded(result = HandlerCaller<Handlers>::tryLoad(
+                                        type, builder, ptr)) ||
+                    ...);
+    assert(matched && "no handler matched for type");
     return result;
   }
 };
@@ -174,7 +183,9 @@ public:
     mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
     mlir::Value slotArray = mlir::LLVM::AllocaOp::create(
         rewriter, loc, ptrTy, i64Ty,
-        conversion::utils::emitI64Constant(rewriter, loc, context, maxCount));
+        mlir::LLVM::ConstantOp::create(
+            rewriter, loc, mlir::IntegerType::get(context, 64), maxCount)
+            .getResult());
 
     // Store each adapted input into the corresponding slot.
     for (auto [i, pair] :
@@ -204,9 +215,9 @@ public:
     }
 
     // Create global string constants for op_name and overload_name.
-    mlir::Value opNamePtr = conversion::utils::createGlobalString(
+    mlir::Value opNamePtr = conversion::utils::getOrCreateGlobalString(
         rewriter, loc, moduleOp, "op", op.getOpName());
-    mlir::Value overloadNamePtr = conversion::utils::createGlobalString(
+    mlir::Value overloadNamePtr = conversion::utils::getOrCreateGlobalString(
         rewriter, loc, moduleOp, "overload", op.getOverloadName());
 
     // Call aoti_torch_call_dispatcher(opName, overloadName, slotArray).

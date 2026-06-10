@@ -1,15 +1,15 @@
-#ifndef LIBTRITON_CORE_DIALECT_AOTINDUCTOR_IR_AOTINDUCTORBASE_TD_
-#define LIBTRITON_CORE_DIALECT_AOTINDUCTOR_IR_AOTINDUCTORBASE_TD_
+#ifndef LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTBASE_TD_
+#define LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTBASE_TD_
 
 include "mlir/IR/DialectBase.td"
 
-def AOTInductor_Dialect : Dialect {
-  let name = "aoti";
-  let cppNamespace = "::libtriton::aoti";
-  let summary = "AOTInductor dialect";
+def TorchExt_Dialect : Dialect {
+  let name = "torchext";
+  let cppNamespace = "::libtriton::torchext";
+  let summary = "TorchExt dialect";
   // clang-format off
   let description = [{
-    The AOTInductor dialect models the stable C API defined in
+    The TorchExt dialect models the stable C API defined in
     torch/csrc/inductor/aoti_torch/c/shim.h. This C shim layer provides ABI
     compatibility for AOTInductor-compiled model.so, which must NOT directly
     depend on aten/c10 C++ APIs (which have no ABI guarantees). The dialect
@@ -30,4 +30,4 @@ def AOTInductor_Dialect : Dialect {
   // clang-format on
 }
 
-#endif // LIBTRITON_CORE_DIALECT_AOTINDUCTOR_IR_AOTINDUCTORBASE_TD_
+#endif // LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTBASE_TD_

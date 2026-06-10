@@ -5,8 +5,8 @@ add_mlir_conversion_library(
   MLIRConversionPassIncGen
   LINK_LIBS
   PUBLIC
-  AOTInductorTransforms
-  AOTIToLLVM
+  TorchExtTransforms
+  TorchExtToLLVM
   MLIRPass
   TorchToCf
   TorchToLLVM)

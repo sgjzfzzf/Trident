@@ -10,8 +10,8 @@
 #include "libtriton-core/Conversion/TorchToCf/TorchToCf.h"
 #include "libtriton-core/Conversion/TorchToLLVM/FuncBackendTypeConversion.h"
 #include "libtriton-core/Conversion/TorchToLLVM/TorchToLLVM.h"
-#include "libtriton-core/Dialect/AOTInductor/IR/AOTInductorDialect.h"
-#include "libtriton-core/Dialect/AOTInductor/Transforms/RewriteTorchAsAOTI.h"
+#include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "libtriton-core/Dialect/TorchExt/Transforms/RewriteTorchAsTorchExt.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMPass.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
@@ -35,7 +35,7 @@ public:
   void runOnOperation() final {
     mlir::OpPassManager pm(mlir::ModuleOp::getOperationName());
     pm.addPass(libtriton::torch::createFuncBackendTypeConversion());
-    pm.addPass(libtriton::aoti::createRewriteTorchAsAOTI());
+    pm.addPass(libtriton::torchext::createRewriteTorchAsTorchExt());
     pm.addPass(libtriton::torch::createConvertTorchToLLVM());
     pm.addPass(libtriton::torch::createConvertTorchToCf());
     pm.addPass(mlir::createConvertFuncToLLVMPass());

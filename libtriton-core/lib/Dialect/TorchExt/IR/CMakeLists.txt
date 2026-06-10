@@ -1,8 +1,8 @@
 add_mlir_dialect_library(
-  AOTInductorDialect
-  AOTInductorDialect.cc
+  TorchExtDialect
+  TorchExtDialect.cc
   DEPENDS
-  MLIRAOTInductorIncGen
+  MLIRTorchExtIncGen
   LINK_LIBS
   PUBLIC
   MLIRIR

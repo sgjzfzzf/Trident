@@ -3,8 +3,8 @@ add_mlir_library(
   Registration.cc
   LINK_LIBS
   PUBLIC
-  AOTInductorTransforms
-  AOTIToLLVM
+  TorchExtTransforms
+  TorchExtToLLVM
   MLIRRegisterAllDialects
   MLIRRegisterAllExtensions
   MLIRRegisterAllPasses

@@ -15,7 +15,7 @@ void registerDialect(MlirDialectHandle handle, MlirContext context, bool load) {
 }
 
 void registerLibTritonDialects(MlirContext context, bool load) {
-  registerDialect(mlirGetDialectHandle__aoti__(), context, load);
+  registerDialect(mlirGetDialectHandle__torchext__(), context, load);
   registerDialect(mlirGetDialectHandle__tvmffi__(), context, load);
   registerDialect(mlirGetDialectHandle__torch__(), context, load);
 }

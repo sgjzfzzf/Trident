@@ -1,23 +1,5 @@
 include "mlir/Pass/PassBase.td"
 
-def ConvertAOTIToLLVM : Pass<"convert-aoti-to-llvm", "mlir::ModuleOp"> {
-  let summary = "Lower AOTInductor dialect operations to LLVM dialect";
-  let description = [{Lower AOTInductor dialect operations to LLVM dialect.}];
-}
-
-def ConvertTVMFFIToLLVM : Pass<"convert-tvm-ffi-to-llvm", "mlir::ModuleOp"> {
-  let summary = "Lower TVMFFI dialect operations to LLVM dialect";
-  let description = [{Lower TVMFFI dialect operations to LLVM dialect.}];
-  let dependentDialects =
-      ["mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect"];
-}
-
-def ConvertTorchToCf : Pass<"convert-torch-to-cf", "mlir::ModuleOp"> {
-  let summary = "Lower Torch dialect runtime ops to ControlFlow dialect";
-  let description = [{Lower Torch dialect runtime ops to ControlFlow dialect.}];
-  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
-}
-
 def ConvertTorchConversionToLLVM
     : Pass<"convert-torch-conversion-to-llvm", "mlir::ModuleOp"> {
   let summary = "Lower TorchConversion dialect operations to LLVM dialect";
@@ -27,6 +9,17 @@ def ConvertTorchConversionToLLVM
     "mlir::LLVM::LLVMDialect",
     "mlir::torch::TorchConversion::TorchConversionDialect"
   ];
+}
+
+def ConvertTorchExtToLLVM : Pass<"convert-torchext-to-llvm", "mlir::ModuleOp"> {
+  let summary = "Lower TorchExt dialect operations to LLVM dialect";
+  let description = [{Lower TorchExt dialect operations to LLVM dialect.}];
+}
+
+def ConvertTorchToCf : Pass<"convert-torch-to-cf", "mlir::ModuleOp"> {
+  let summary = "Lower Torch dialect runtime ops to ControlFlow dialect";
+  let description = [{Lower Torch dialect runtime ops to ControlFlow dialect.}];
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
 }
 
 def ConvertTorchToLLVM : Pass<"convert-torch-to-llvm", "mlir::ModuleOp"> {
@@ -39,6 +32,13 @@ def ConvertTorchToLLVM : Pass<"convert-torch-to-llvm", "mlir::ModuleOp"> {
   }];
   // clang-format on
   let dependentDialects = ["mlir::LLVM::LLVMDialect"];
+}
+
+def ConvertTVMFFIToLLVM : Pass<"convert-tvm-ffi-to-llvm", "mlir::ModuleOp"> {
+  let summary = "Lower TVMFFI dialect operations to LLVM dialect";
+  let description = [{Lower TVMFFI dialect operations to LLVM dialect.}];
+  let dependentDialects =
+      ["mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect"];
 }
 
 def FuncBackendTypeConversion
@@ -58,7 +58,7 @@ def TorchToLLVMPipeline : Pass<"torch-to-llvm-pipeline", "mlir::ModuleOp"> {
   let summary = "Lower Torch dialect operations to LLVM dialect";
   let description = [{Lower Torch dialect operations to LLVM dialect.}];
   let dependentDialects = [
-    "libtriton::aoti::AOTInductorDialect", "mlir::LLVM::LLVMDialect",
+    "libtriton::torchext::TorchExtDialect", "mlir::LLVM::LLVMDialect",
     "mlir::torch::TorchConversion::TorchConversionDialect"
   ];
 }

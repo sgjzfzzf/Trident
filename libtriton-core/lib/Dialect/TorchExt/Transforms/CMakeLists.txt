@@ -8,3 +8,16 @@ add_mlir_library(
   MLIRPass
   TorchMLIRTorchDialect
   TorchMLIRTorchUtils)
+
+add_mlir_library(
+  TorchExtTransforms
+  RewriteTorchAsTorchExt.cc
+  DEPENDS
+  MLIRTorchExtPassIncGen
+  LINK_LIBS
+  PUBLIC
+  TorchExtDialect
+  MLIRIR
+  MLIRPass
+  TorchMLIRTorchDialect
+  TorchMLIRTorchUtils)

@@ -1,0 +1,8 @@
+#ifndef LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTDIALECT_H_
+#define LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTDIALECT_H_
+
+#include "mlir/IR/Dialect.h"
+
+#include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h.inc"
+
+#endif // LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTDIALECT_H_

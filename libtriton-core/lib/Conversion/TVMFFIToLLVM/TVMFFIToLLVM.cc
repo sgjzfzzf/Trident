@@ -7,8 +7,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
-#include "libtriton-core/Conversion/TVMFFIToLLVM/TVMFFICAPIDescriptors.h"
+#include "libtriton-core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "libtriton-core/Conversion/Utils/GlobalString.h"
+#include "libtriton-core/Conversion/Utils/LibTritonCAPIDescriptors.h"
+#include "libtriton-core/Conversion/Utils/StdLibCAPIDescriptors.h"
+#include "libtriton-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "libtriton-core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "libtriton-core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
@@ -122,7 +125,8 @@ struct PodTypeHandlerBase : TypeHandlerBase<TorchType> {
 
     builder.setInsertionPointToEnd(errorBlock);
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> errorFn =
-        capi::getOrCreateTVMFFIErrorSetRaisedFromCStr(moduleOp);
+        libtriton::conversion::utils::getOrCreateTVMFFIErrorSetRaisedFromCStr(
+            moduleOp);
     if (mlir::failed(errorFn)) {
       return nullptr;
     }
@@ -161,7 +165,8 @@ struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
 
     // Declare the runtime pack function.
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> packFn =
-        libtriton::tvm_ffi::capi::getOrCreatePackTensorToTVMFFIAny(moduleOp);
+        libtriton::conversion::utils::getOrCreatePackTensorToTVMFFIAny(
+            moduleOp);
     if (mlir::failed(packFn)) {
       return mlir::failure();
     }
@@ -188,7 +193,8 @@ struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
 
     // Declare the runtime unpack function.
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> unpackFn =
-        capi::getOrCreateUnpackTVMFFIAnyToTensor(moduleOp);
+        libtriton::conversion::utils::getOrCreateUnpackTVMFFIAnyToTensor(
+            moduleOp);
     if (mlir::failed(unpackFn)) {
       return mlir::failure();
     }
@@ -229,7 +235,8 @@ struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
     // Error block: set runtime error and propagate -1.
     builder.setInsertionPointToEnd(errorBlock);
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> errorFn =
-        capi::getOrCreateTVMFFIErrorSetRaisedFromCStr(moduleOp);
+        libtriton::conversion::utils::getOrCreateTVMFFIErrorSetRaisedFromCStr(
+            moduleOp);
     if (mlir::failed(errorFn)) {
       return mlir::failure();
     }

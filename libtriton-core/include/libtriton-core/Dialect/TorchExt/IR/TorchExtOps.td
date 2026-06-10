@@ -1,18 +1,17 @@
-#ifndef LIBTRITON_CORE_DIALECT_AOTINDUCTOR_IR_AOTINDUCTOROPS_TD_
-#define LIBTRITON_CORE_DIALECT_AOTINDUCTOR_IR_AOTINDUCTOROPS_TD_
+#ifndef LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTOPS_TD_
+#define LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTOPS_TD_
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/CommonTypeConstraints.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "torch-mlir/Dialect/Torch/IR/TorchTypes.td"
 
-include "libtriton-core/Dialect/AOTInductor/IR/AOTInductorBase.td"
+include "libtriton-core/Dialect/TorchExt/IR/TorchExtBase.td"
 
-class AOTInductor_Op<string mnemonic, list<Trait> traits = []>
-    : Op<AOTInductor_Dialect, mnemonic, traits>;
+class TorchExt_Op<string mnemonic, list<Trait> traits = []>
+    : Op<TorchExt_Dialect, mnemonic, traits>;
 
-def AOTInductor_TorchCallDispatcherOp
-    : AOTInductor_Op<"torch_call_dispatcher"> {
+def TorchExt_CallDispatcherOp : TorchExt_Op<"call_dispatcher"> {
   let summary = "Call a PyTorch operator through the AOTInductor dispatcher";
   // clang-format off
   let description = [{
@@ -37,4 +36,4 @@ def AOTInductor_TorchCallDispatcherOp
                        "`:` functional-type($inputs, $results)";
 }
 
-#endif // LIBTRITON_CORE_DIALECT_AOTINDUCTOR_IR_AOTINDUCTOROPS_TD_
+#endif // LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTOPS_TD_

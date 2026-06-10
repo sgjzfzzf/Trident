@@ -1,11 +1,11 @@
 add_mlir_conversion_library(
-  AOTIToLLVM
-  AOTIToLLVM.cc
+  TorchExtToLLVM
+  TorchExtToLLVM.cc
   DEPENDS
   MLIRConversionPassIncGen
   LINK_LIBS
   PUBLIC
-  AOTInductorDialect
+  TorchExtDialect
   BackendTypeConversion
   ConversionUtils
   MLIRLLVMCommonConversion

@@ -7,7 +7,7 @@ add_mlir_public_c_api_library(
   ENABLE_AGGREGATION
   LINK_LIBS
   PUBLIC
-  AOTInductorDialect
+  TorchExtDialect
   LibTritonUtilsRegistration
   MLIRConvertToLLVMPass
   MLIRIR

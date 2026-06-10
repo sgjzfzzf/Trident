@@ -1,8 +1,8 @@
-#include "libtriton-core/Conversion/AOTIToLLVM/AOTIToLLVM.h"
-#include "libtriton-core/Conversion/AOTIToLLVM/AOTICAPIDescriptors.h"
+#include "libtriton-core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
+#include "libtriton-core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "libtriton-core/Conversion/Utils/GlobalString.h"
-#include "libtriton-core/Dialect/AOTInductor/IR/AOTInductorDialect.h"
-#include "libtriton-core/Dialect/AOTInductor/IR/AOTInductorOps.h"
+#include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "libtriton-core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "libtriton-core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
 
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
@@ -19,9 +19,9 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/FormatVariadic.h"
 
-namespace libtriton::aoti {
+namespace libtriton::torchext {
 
-#define GEN_PASS_DEF_CONVERTAOTITOLLVM
+#define GEN_PASS_DEF_CONVERTTORCHEXTTOLLVM
 #include "libtriton-core/Conversion/Passes.h.inc"
 
 namespace {
@@ -161,15 +161,15 @@ template <typename... Handlers> struct TypeDispatch {
 using AllHandlers = TypeDispatch<BaseTensorHandler, BoolHandler, IntHandler,
                                  FloatHandler, NoneHandler>;
 
-/// Converts aoti.torch_call_dispatcher to an LLVM call to
+/// Converts torchext.call_dispatcher to an LLVM call to
 /// aoti_torch_call_dispatcher().
-class ConvertTorchCallDispatcherOp
-    : public mlir::OpConversionPattern<TorchCallDispatcherOp> {
+class ConvertCallDispatcherOp
+    : public mlir::OpConversionPattern<CallDispatcherOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
 
   mlir::LogicalResult
-  matchAndRewrite(TorchCallDispatcherOp op, OpAdaptor adaptor,
+  matchAndRewrite(CallDispatcherOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
     mlir::Location loc = op.getLoc();
     mlir::MLIRContext *context = op.getContext();
@@ -209,7 +209,8 @@ public:
       return op.emitError("op is not inside a module");
     }
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
-        capi::getOrCreateaoti_torch_call_dispatcher(moduleOp);
+        libtriton::conversion::utils::getOrCreateaoti_torch_call_dispatcher(
+            moduleOp);
     if (mlir::failed(calleeOrErr)) {
       return mlir::failure();
     }
@@ -246,8 +247,8 @@ public:
   }
 };
 
-class ConvertAOTIToLLVMPass
-    : public impl::ConvertAOTIToLLVMBase<ConvertAOTIToLLVMPass> {
+class ConvertTorchExtToLLVMPass
+    : public impl::ConvertTorchExtToLLVMBase<ConvertTorchExtToLLVMPass> {
 public:
   void runOnOperation() final {
     mlir::MLIRContext &context = getContext();
@@ -263,7 +264,8 @@ public:
   }
 };
 
-struct AOTIToLLVMDialectInterface : public mlir::ConvertToLLVMPatternInterface {
+struct TorchExtToLLVMDialectInterface
+    : public mlir::ConvertToLLVMPatternInterface {
   using ConvertToLLVMPatternInterface::ConvertToLLVMPatternInterface;
 
   void populateConvertToLLVMConversionPatterns(
@@ -273,26 +275,25 @@ struct AOTIToLLVMDialectInterface : public mlir::ConvertToLLVMPatternInterface {
     // the type converter can handle Torch tensor/bool/int/float/optional etc.
     // types when patterns query adaptor types.
     libtriton::torch::setupBackendTypeConversion(target, typeConverter);
-    populateAOTIToLLVMConversionPatterns(target, typeConverter, patterns);
+    populateTorchExtToLLVMConversionPatterns(target, typeConverter, patterns);
   }
 };
 
 } // namespace
 
-void populateAOTIToLLVMConversionPatterns(
+void populateTorchExtToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns) {
-  patterns.add<ConvertTorchCallDispatcherOp>(typeConverter,
-                                             patterns.getContext());
-  target.addIllegalDialect<AOTInductorDialect>();
+  patterns.add<ConvertCallDispatcherOp>(typeConverter, patterns.getContext());
+  target.addIllegalDialect<TorchExtDialect>();
   target.addLegalDialect<mlir::BuiltinDialect, mlir::LLVM::LLVMDialect>();
 }
 
-void registerConvertAOTIToLLVMInterface(mlir::DialectRegistry &registry) {
+void registerConvertTorchExtToLLVMInterface(mlir::DialectRegistry &registry) {
   registry.addExtension(+[](mlir::MLIRContext *ctx,
-                            libtriton::aoti::AOTInductorDialect *dialect) {
-    dialect->addInterfaces<AOTIToLLVMDialectInterface>();
+                            libtriton::torchext::TorchExtDialect *dialect) {
+    dialect->addInterfaces<TorchExtToLLVMDialectInterface>();
   });
 }
 
-} // namespace libtriton::aoti
+} // namespace libtriton::torchext

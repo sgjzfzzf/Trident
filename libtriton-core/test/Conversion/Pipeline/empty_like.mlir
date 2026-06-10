@@ -70,7 +70,9 @@ func.func @torch.aten.empty_like(%arg0: !torch.vtensor<[200,200,26],f64>) -> !to
 // CHECK:         %[[HANDLE:.*]] = llvm.load %{{.*}} : !llvm.ptr -> !llvm.ptr
 // CHECK:         %[[CALLEE_RET:.*]] = llvm.call @torch.aten.empty_like(%[[HANDLE]])
 // CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr
-// CHECK:         llvm.call @mLibTritonPackTensorToTVMFFIAny(%[[CALLEE_RET]], %[[WRAP_RET]])
+// CHECK:         llvm.call @mLibTritonPackTensorToTVMFFIAny(%[[CALLEE_RET]], %{{.*}})
+// CHECK:         llvm.load %{{.*}} : !llvm.ptr -> !llvm.struct<packed (i32, i32, i64)>
+// CHECK:         llvm.store %{{.*}}, %[[WRAP_RET]]
 // CHECK:         llvm.return %{{.*}} : i32
 
 tvm_ffi.func @empty_like(%arg0: !torch.vtensor<[200,200,26],f64>) -> !torch.vtensor<[200,200,26],f64> {

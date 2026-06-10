@@ -11,7 +11,7 @@ include "libtriton-core/Dialect/TorchExt/IR/TorchExtBase.td"
 class TorchExt_Op<string mnemonic, list<Trait> traits = []>
     : Op<TorchExt_Dialect, mnemonic, traits>;
 
-def TorchExt_CallDispatcherOp : TorchExt_Op<"call_dispatcher"> {
+def TorchExt_CallDispatcherOp : TorchExt_Op<"aoti.CallDispatcher"> {
   let summary = "Call a PyTorch operator through the AOTInductor dispatcher";
   // clang-format off
   let description = [{
@@ -34,6 +34,27 @@ def TorchExt_CallDispatcherOp : TorchExt_Op<"call_dispatcher"> {
 
   let assemblyFormat = "$op_name `:` $overload_name `(` $inputs `)` attr-dict "
                        "`:` functional-type($inputs, $results)";
+}
+
+//===----------------------------------------------------------------------===//
+// Stable list operations — map 1:1 to torch/csrc/stable/c/shim.h
+//===----------------------------------------------------------------------===//
+
+def TorchExt_ListDeleteListOp : TorchExt_Op<"aoti.ListDeleteList"> {
+  let summary = "Delete a StableList via torch_delete_list()";
+  // clang-format off
+  let description = [{
+    Deletes the underlying StableList referenced by the handle.
+
+    Corresponds to:
+      torch_delete_list(list_handle)
+  }];
+  // clang-format on
+
+  let arguments = (ins AnyTorchListType : $list);
+  let results = (outs);
+
+  let assemblyFormat = "$list attr-dict `:` type($list)";
 }
 
 #endif // LIBTRITON_CORE_DIALECT_TORCHEXT_IR_TORCHEXTOPS_TD_

@@ -1,6 +1,7 @@
 #include "libtriton-core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
 #include "libtriton-core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "libtriton-core/Conversion/Utils/GlobalString.h"
+#include "libtriton-core/Conversion/Utils/StableCAPIDescriptors.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "libtriton-core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
@@ -13,6 +14,8 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "torch-mlir/Dialect/Torch/IR/TorchDialect.h"
+#include "torch-mlir/Dialect/Torch/IR/TorchOps.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallString.h"
@@ -36,15 +39,15 @@ template <typename TorchType> struct TypeHandlerBase {
 };
 
 struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
-  static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value input,
-                                   mlir::Value ptr) {
+  static mlir::FailureOr<mlir::Value> to(mlir::OpBuilder &builder,
+                                         mlir::Value input) {
     mlir::Location loc = input.getLoc();
-    mlir::Value ptrInt = mlir::LLVM::PtrToIntOp::create(
-        builder, loc, mlir::IntegerType::get(builder.getContext(), 64), input);
-    mlir::LLVM::StoreOp::create(builder, loc, ptrInt, ptr);
-    return mlir::success();
+    return mlir::LLVM::PtrToIntOp::create(
+               builder, loc, mlir::IntegerType::get(builder.getContext(), 64),
+               input)
+        .getResult();
   }
-  static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &rewriter,
+  static mlir::FailureOr<mlir::Value> from(mlir::OpBuilder &rewriter,
                                            mlir::Value loaded) {
     return mlir::LLVM::IntToPtrOp::create(
                rewriter, loaded.getLoc(),
@@ -54,15 +57,15 @@ struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
 };
 
 struct BoolHandler : TypeHandlerBase<mlir::torch::Torch::BoolType> {
-  static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value input,
-                                   mlir::Value ptr) {
+  static mlir::FailureOr<mlir::Value> to(mlir::OpBuilder &builder,
+                                         mlir::Value input) {
     mlir::Location loc = input.getLoc();
-    mlir::Value ext = mlir::LLVM::ZExtOp::create(
-        builder, loc, mlir::IntegerType::get(builder.getContext(), 64), input);
-    mlir::LLVM::StoreOp::create(builder, loc, ext, ptr);
-    return mlir::success();
+    return mlir::LLVM::ZExtOp::create(
+               builder, loc, mlir::IntegerType::get(builder.getContext(), 64),
+               input)
+        .getResult();
   }
-  static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &rewriter,
+  static mlir::FailureOr<mlir::Value> from(mlir::OpBuilder &rewriter,
                                            mlir::Value loaded) {
     return mlir::LLVM::TruncOp::create(
                rewriter, loaded.getLoc(),
@@ -72,27 +75,25 @@ struct BoolHandler : TypeHandlerBase<mlir::torch::Torch::BoolType> {
 };
 
 struct IntHandler : TypeHandlerBase<mlir::torch::Torch::IntType> {
-  static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value input,
-                                   mlir::Value ptr) {
-    mlir::LLVM::StoreOp::create(builder, input.getLoc(), input, ptr);
-    return mlir::success();
+  static mlir::FailureOr<mlir::Value> to(mlir::OpBuilder &, mlir::Value input) {
+    return input;
   }
-  static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &,
+  static mlir::FailureOr<mlir::Value> from(mlir::OpBuilder &,
                                            mlir::Value loaded) {
     return loaded;
   }
 };
 
 struct FloatHandler : TypeHandlerBase<mlir::torch::Torch::FloatType> {
-  static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value input,
-                                   mlir::Value ptr) {
+  static mlir::FailureOr<mlir::Value> to(mlir::OpBuilder &builder,
+                                         mlir::Value input) {
     mlir::Location loc = input.getLoc();
-    mlir::Value bits = mlir::LLVM::BitcastOp::create(
-        builder, loc, mlir::IntegerType::get(builder.getContext(), 64), input);
-    mlir::LLVM::StoreOp::create(builder, loc, bits, ptr);
-    return mlir::success();
+    return mlir::LLVM::BitcastOp::create(
+               builder, loc, mlir::IntegerType::get(builder.getContext(), 64),
+               input)
+        .getResult();
   }
-  static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &rewriter,
+  static mlir::FailureOr<mlir::Value> from(mlir::OpBuilder &rewriter,
                                            mlir::Value loaded) {
     return mlir::LLVM::BitcastOp::create(
                rewriter, loaded.getLoc(),
@@ -102,17 +103,14 @@ struct FloatHandler : TypeHandlerBase<mlir::torch::Torch::FloatType> {
 };
 
 struct NoneHandler : TypeHandlerBase<mlir::torch::Torch::NoneType> {
-  static mlir::LogicalResult store(mlir::OpBuilder &builder, mlir::Value,
-                                   mlir::Value ptr) {
-    mlir::Location loc = ptr.getLoc();
-    mlir::LLVM::StoreOp::create(
-        builder, loc,
-        mlir::LLVM::ConstantOp::create(
-            builder, loc, mlir::IntegerType::get(builder.getContext(), 64), 0),
-        ptr);
-    return mlir::success();
+  static mlir::FailureOr<mlir::Value> to(mlir::OpBuilder &builder,
+                                         mlir::Value input) {
+    return mlir::LLVM::ConstantOp::create(
+               builder, input.getLoc(),
+               mlir::IntegerType::get(builder.getContext(), 64), 0)
+        .getResult();
   }
-  static mlir::FailureOr<mlir::Value> load(mlir::OpBuilder &, mlir::Value) {
+  static mlir::FailureOr<mlir::Value> from(mlir::OpBuilder &, mlir::Value) {
     // None → no value produced.
     return mlir::Value();
   }
@@ -123,37 +121,35 @@ struct NoneHandler : TypeHandlerBase<mlir::torch::Torch::NoneType> {
 //===----------------------------------------------------------------------===//
 
 template <typename Handler> struct HandlerCaller {
-  static mlir::LogicalResult tryStore(mlir::Type type, mlir::OpBuilder &builder,
-                                      mlir::Value input, mlir::Value ptr) {
-    return Handler::matches(type) ? Handler::store(builder, input, ptr)
-                                  : mlir::failure();
+  static mlir::FailureOr<mlir::Value>
+  tryTo(mlir::Type type, mlir::OpBuilder &builder, mlir::Value input) {
+    return Handler::matches(type) ? Handler::to(builder, input)
+                                  : mlir::FailureOr<mlir::Value>();
   }
 
   static mlir::FailureOr<mlir::Value>
-  tryLoad(mlir::Type type, mlir::OpBuilder &builder, mlir::Value ptr) {
-    return Handler::matches(type) ? Handler::load(builder, ptr)
+  tryFrom(mlir::Type type, mlir::OpBuilder &builder, mlir::Value ptr) {
+    return Handler::matches(type) ? Handler::from(builder, ptr)
                                   : mlir::FailureOr<mlir::Value>();
   }
 };
 
 template <typename... Handlers> struct TypeDispatch {
-  static mlir::LogicalResult store(mlir::Type type, mlir::OpBuilder &builder,
-                                   mlir::Value input, mlir::Value ptr) {
-    mlir::LogicalResult result = mlir::failure();
-    bool matched = (mlir::succeeded(result = HandlerCaller<Handlers>::tryStore(
-                                        type, builder, input, ptr)) ||
-                    ...);
-    assert(matched && "no handler matched for type");
+  static mlir::FailureOr<mlir::Value>
+  to(mlir::Type type, mlir::OpBuilder &builder, mlir::Value input) {
+    mlir::FailureOr<mlir::Value> result = mlir::failure();
+    (mlir::succeeded(
+         result = HandlerCaller<Handlers>::tryTo(type, builder, input)) ||
+     ...);
     return result;
   }
 
   static mlir::FailureOr<mlir::Value>
-  load(mlir::Type type, mlir::OpBuilder &builder, mlir::Value ptr) {
+  from(mlir::Type type, mlir::OpBuilder &builder, mlir::Value ptr) {
     mlir::FailureOr<mlir::Value> result = mlir::failure();
-    bool matched = (mlir::succeeded(result = HandlerCaller<Handlers>::tryLoad(
-                                        type, builder, ptr)) ||
-                    ...);
-    assert(matched && "no handler matched for type");
+    (mlir::succeeded(
+         result = HandlerCaller<Handlers>::tryFrom(type, builder, ptr)) ||
+     ...);
     return result;
   }
 };
@@ -179,8 +175,9 @@ public:
     const size_t maxCount = std::max(numInputs, numResults);
 
     // Allocate an i64 (uint64) slot array with maxCount elements on the stack.
-    mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
-    mlir::Type i64Ty = mlir::IntegerType::get(context, 64);
+    mlir::LLVM::LLVMPointerType ptrTy =
+        mlir::LLVM::LLVMPointerType::get(context);
+    mlir::IntegerType i64Ty = mlir::IntegerType::get(context, 64);
     mlir::Value array = mlir::LLVM::AllocaOp::create(
         rewriter, loc, ptrTy, i64Ty,
         mlir::LLVM::ConstantOp::create(
@@ -193,14 +190,17 @@ public:
       auto [origInput, adaptedInput] = pair;
       mlir::Type origType = origInput.getType();
 
-      // Get pointer to the i-th u64 slot.
-      mlir::Value ptr =
-          mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, i64Ty, array, {i});
-
-      if (mlir::failed(
-              AllHandlers::store(origType, rewriter, adaptedInput, ptr))) {
+      // Convert adapted input to i64 (type-erased StableIValue).
+      mlir::FailureOr<mlir::Value> ival =
+          AllHandlers::to(origType, rewriter, adaptedInput);
+      if (mlir::failed(ival)) {
         return op.emitError("unsupported input type: ") << origType;
       }
+
+      // Store the i64 into the corresponding slot.
+      mlir::Value ptr =
+          mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, i64Ty, array, {i});
+      mlir::LLVM::StoreOp::create(rewriter, loc, ival.value(), ptr);
     }
 
     // Get or create the aoti_torch_call_dispatcher function declaration.
@@ -234,7 +234,7 @@ public:
       mlir::Value loaded =
           mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, ptr);
       mlir::FailureOr<mlir::Value> converted =
-          AllHandlers::load(type, rewriter, loaded);
+          AllHandlers::from(type, rewriter, loaded);
       if (mlir::failed(converted)) {
         return op.emitError("unsupported result type: ") << type;
       }
@@ -243,6 +243,111 @@ public:
       }
     }
     rewriter.replaceOp(op, results);
+    return mlir::success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// StableList operations
+//===----------------------------------------------------------------------===//
+
+/// Converts torch.prim.ListConstruct to torch_new_list_reserve_size() +
+/// torch_list_push_back() LLVM calls.
+class ConvertPrimListConstructOp
+    : public mlir::OpConversionPattern<
+          mlir::torch::Torch::PrimListConstructOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(mlir::torch::Torch::PrimListConstructOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::Location loc = op.getLoc();
+    mlir::MLIRContext *ctx = op.getContext();
+    mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
+    mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
+
+    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    if (!moduleOp) {
+      return op.emitError("op is not inside a module");
+    }
+
+    int64_t numElements = static_cast<int64_t>(op.getElements().size());
+
+    // Allocate a stack slot for the StableListHandle* output.
+    mlir::Value listPtr = mlir::LLVM::AllocaOp::create(
+        rewriter, loc, ptrTy, ptrTy,
+        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1));
+
+    // Call torch_new_list_reserve_size(numElements, &listHandle).
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> newListCallee =
+        libtriton::conversion::utils::getOrCreateTorchNewListReserveSize(
+            moduleOp);
+    if (mlir::failed(newListCallee)) {
+      return mlir::failure();
+    }
+    mlir::Value numElementsVal =
+        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, numElements);
+    mlir::LLVM::CallOp::create(rewriter, loc, *newListCallee,
+                               mlir::ValueRange{numElementsVal, listPtr});
+
+    // Load the newly created list handle.
+    mlir::Value listHandle =
+        mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, listPtr);
+
+    // Get or create torch_list_push_back.
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> pushBackCallee =
+        libtriton::conversion::utils::getOrCreateTorchListPushBack(moduleOp);
+    if (mlir::failed(pushBackCallee)) {
+      return mlir::failure();
+    }
+
+    // Push each element into the list as a type-erased StableIValue.
+    for (auto pair : llvm::zip(op.getElements(), adaptor.getElements())) {
+      mlir::Value origElem = std::get<0>(pair);
+      mlir::Value adaptedElem = std::get<1>(pair);
+
+      mlir::FailureOr<mlir::Value> ival =
+          AllHandlers::to(origElem.getType(), rewriter, adaptedElem);
+      if (mlir::failed(ival)) {
+        return op.emitError("unsupported element type");
+      }
+
+      mlir::LLVM::CallOp::create(rewriter, loc, *pushBackCallee,
+                                 mlir::ValueRange{listHandle, ival.value()});
+    }
+
+    rewriter.replaceOp(op, listHandle);
+    return mlir::success();
+  }
+};
+
+/// Converts torchext.aoti.ListDeleteList to torch_delete_list() LLVM call.
+class ConvertListDeleteListOp
+    : public mlir::OpConversionPattern<ListDeleteListOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(ListDeleteListOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::Location loc = op.getLoc();
+    mlir::MLIRContext *ctx = op.getContext();
+
+    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    if (!moduleOp) {
+      return op.emitError("op is not inside a module");
+    }
+
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
+        libtriton::conversion::utils::getOrCreateTorchDeleteList(moduleOp);
+    if (mlir::failed(calleeOrErr)) {
+      return mlir::failure();
+    }
+
+    mlir::LLVM::CallOp::create(rewriter, loc, *calleeOrErr,
+                               mlir::ValueRange{adaptor.getList()});
+    rewriter.eraseOp(op);
     return mlir::success();
   }
 };
@@ -285,6 +390,9 @@ void populateTorchExtToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns) {
   patterns.add<ConvertCallDispatcherOp>(typeConverter, patterns.getContext());
+  patterns.add<ConvertPrimListConstructOp, ConvertListDeleteListOp>(
+      typeConverter, patterns.getContext());
+  target.addIllegalOp<mlir::torch::Torch::PrimListConstructOp>();
   target.addIllegalDialect<TorchExtDialect>();
   target.addLegalDialect<mlir::BuiltinDialect, mlir::LLVM::LLVMDialect>();
 }
@@ -294,6 +402,10 @@ void registerConvertTorchExtToLLVMInterface(mlir::DialectRegistry &registry) {
                             libtriton::torchext::TorchExtDialect *dialect) {
     dialect->addInterfaces<TorchExtToLLVMDialectInterface>();
   });
+  registry.addExtension(
+      +[](mlir::MLIRContext *ctx, mlir::torch::Torch::TorchDialect *dialect) {
+        dialect->addInterfaces<TorchExtToLLVMDialectInterface>();
+      });
 }
 
 } // namespace libtriton::torchext

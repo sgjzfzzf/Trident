@@ -9,12 +9,6 @@
 #define LIBTRITON_CORE_RUNTIME_EXPORT                                          \
   extern "C" __attribute__((visibility("default")))
 
-/// DLPack-compatible deleter callback for TVM FFI tensor conversion.
-/// Receives a DLManagedTensor*, extracts the AtenTensorHandle from
-/// self->manager_ctx, deletes the tensor, and frees the DLManagedTensor.
-LIBTRITON_CORE_RUNTIME_EXPORT void
-mLibTritonDLManagedTensorDeleter(struct DLManagedTensor *self);
-
 /// Convert a DLPack dtype (code + bits) to a Torch dtype value.
 /// Returns the Torch dtype on success, or -1 if the combination is unknown.
 LIBTRITON_CORE_RUNTIME_EXPORT int32_t
@@ -33,19 +27,19 @@ mLibTritonTorchToTVMFFIDtype(int32_t torch_dtype);
 LIBTRITON_CORE_RUNTIME_EXPORT DLDeviceType
 mLibTritonTorchToTVMFFIDevice(int32_t torch_device_type);
 
-/// Pack an AtenTensorHandle into a TVMFFIAny slot as a kTVMFFITensor object.
+/// Pack an AtenTensorHandle into a TVMFFIObjectHandle (kTVMFFITensor object).
 ///
-/// On success, the TVMFFIAny owns the tensor object (ref-counted via TVM FFI).
+/// On success, the caller owns the returned handle (ref-counted via TVM FFI).
 /// \return 0 on success, non-zero on failure.
-LIBTRITON_CORE_RUNTIME_EXPORT int32_t
-mLibTritonPackTensorToTVMFFIAny(AtenTensorHandle input, TVMFFIAny *ptr);
+LIBTRITON_CORE_RUNTIME_EXPORT int32_t mLibTritonTensorToTVMFFIObject(
+    AtenTensorHandle input, TVMFFIObjectHandle *out_handle);
 
-/// Unpack a TVMFFIAny slot into an AtenTensorHandle.
+/// Unpack a TVMFFIObjectHandle into an AtenTensorHandle.
 ///
-/// The slot must contain a tensor (kTVMFFIDLTensorPtr or kTVMFFITensor).
+/// The handle must be a kTVMFFITensor object (type_index=70).
 /// The caller owns the returned AtenTensorHandle and must delete it via
 /// aoti_torch_delete_tensor_object when done.
 /// \return 0 on success, non-zero on failure.
-LIBTRITON_CORE_RUNTIME_EXPORT int32_t mLibTritonUnpackTVMFFIAnyToTensor(
-    const TVMFFIAny *ptr, AtenTensorHandle *output);
+LIBTRITON_CORE_RUNTIME_EXPORT int32_t mLibTritonTVMFFIObjectToTensor(
+    TVMFFIObjectHandle handle, AtenTensorHandle *output);
 #endif // LIBTRITON_CORE_RUNTIME_RUNTIME_H_

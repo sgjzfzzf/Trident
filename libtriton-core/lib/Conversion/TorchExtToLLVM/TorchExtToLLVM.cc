@@ -1,6 +1,7 @@
 #include "libtriton-core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
 #include "libtriton-core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "libtriton-core/Conversion/Utils/GlobalString.h"
+#include "libtriton-core/Conversion/Utils/LibTritonCAPIDescriptors.h"
 #include "libtriton-core/Conversion/Utils/StableCAPIDescriptors.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtOps.h"
@@ -39,20 +40,73 @@ template <typename TorchType> struct TypeHandlerBase {
 };
 
 struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
+  /// Converts a TVMFFIObjectHandle to i64 (AtenTensorHandle) for the
+  /// dispatcher slot by calling mLibTritonTVMFFIObjectToTensor.
   static mlir::FailureOr<mlir::Value> to(mlir::OpBuilder &builder,
                                          mlir::Value input) {
     mlir::Location loc = input.getLoc();
-    return mlir::LLVM::PtrToIntOp::create(
-               builder, loc, mlir::IntegerType::get(builder.getContext(), 64),
-               input)
+    mlir::MLIRContext *context = builder.getContext();
+    mlir::LLVM::LLVMPointerType ptrTy =
+        mlir::LLVM::LLVMPointerType::get(context);
+    mlir::IntegerType i64Ty = mlir::IntegerType::get(context, 64);
+
+    mlir::ModuleOp moduleOp =
+        input.getDefiningOp()->getParentOfType<mlir::ModuleOp>();
+
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> unpackFn =
+        libtriton::conversion::utils::getOrCreateTVMFFIObjectToTensor(moduleOp);
+    if (mlir::failed(unpackFn))
+      return mlir::failure();
+
+    // Allocate slot for AtenTensorHandle output.
+    mlir::Value slot = mlir::LLVM::AllocaOp::create(
+        builder, loc, ptrTy, ptrTy,
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+
+    // Call mLibTritonTVMFFIObjectToTensor(handle, &slot).
+    mlir::LLVM::CallOp::create(builder, loc, *unpackFn,
+                               mlir::ValueRange{input, slot});
+
+    // Load the AtenTensorHandle and convert to i64 for the dispatcher.
+    mlir::Value atenHandle =
+        mlir::LLVM::LoadOp::create(builder, loc, ptrTy, slot).getResult();
+    return mlir::LLVM::PtrToIntOp::create(builder, loc, i64Ty, atenHandle)
         .getResult();
   }
-  static mlir::FailureOr<mlir::Value> from(mlir::OpBuilder &rewriter,
+
+  /// Converts i64 (AtenTensorHandle from dispatcher) back to a
+  /// TVMFFIObjectHandle by calling mLibTritonTensorToTVMFFIObject.
+  static mlir::FailureOr<mlir::Value> from(mlir::OpBuilder &builder,
                                            mlir::Value loaded) {
-    return mlir::LLVM::IntToPtrOp::create(
-               rewriter, loaded.getLoc(),
-               mlir::LLVM::LLVMPointerType::get(rewriter.getContext()), loaded)
-        .getResult();
+    mlir::Location loc = loaded.getLoc();
+    mlir::MLIRContext *context = builder.getContext();
+    mlir::LLVM::LLVMPointerType ptrTy =
+        mlir::LLVM::LLVMPointerType::get(context);
+    mlir::IntegerType i64Ty = mlir::IntegerType::get(context, 64);
+
+    mlir::ModuleOp moduleOp =
+        loaded.getDefiningOp()->getParentOfType<mlir::ModuleOp>();
+
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> packFn =
+        libtriton::conversion::utils::getOrCreateTensorToTVMFFIObject(moduleOp);
+    if (mlir::failed(packFn))
+      return mlir::failure();
+
+    // Convert i64 back to AtenTensorHandle pointer.
+    mlir::Value atenHandle =
+        mlir::LLVM::IntToPtrOp::create(builder, loc, ptrTy, loaded).getResult();
+
+    // Allocate slot for TVMFFIObjectHandle output.
+    mlir::Value outSlot = mlir::LLVM::AllocaOp::create(
+        builder, loc, ptrTy, ptrTy,
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+
+    // Call mLibTritonTensorToTVMFFIObject(atenHandle, &outSlot).
+    mlir::LLVM::CallOp::create(builder, loc, *packFn,
+                               mlir::ValueRange{atenHandle, outSlot});
+
+    // Load and return the TVMFFIObjectHandle.
+    return mlir::LLVM::LoadOp::create(builder, loc, ptrTy, outSlot).getResult();
   }
 };
 

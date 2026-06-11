@@ -40,26 +40,12 @@ tvm_ffi.func @make_int() -> !torch.int {
 // CHECK-SAME:      %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
 // CHECK:         [[ARG_GEP:%[a-z0-9]+]] = llvm.getelementptr %arg1[0]
 // CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    [[IDX_GEP:%[a-z0-9]+]] = llvm.getelementptr [[ARG_GEP]][0, 0]
-// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    [[TYPE_IDX:%[a-z0-9]+]] = llvm.load [[IDX_GEP]] : !llvm.ptr -> i32
-// CHECK-NEXT:    [[EXPECTED:%[a-z0-9]+]] = llvm.mlir.constant(1 : i32) : i32
-// CHECK-NEXT:    [[MISMATCH:%[a-z0-9]+]] = llvm.icmp "ne" [[TYPE_IDX]], [[EXPECTED]] : i32
-// CHECK-NEXT:    llvm.cond_br [[MISMATCH]], ^bb1, ^bb2
-// CHECK:       ^bb1:
-// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__libtriton_constant_kind_TypeError : !llvm.ptr
-// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__libtriton_constant_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
-// CHECK-NEXT:    llvm.call @TVMFFIErrorSetRaisedFromCStr([[KIND]], [[MSG]]) : (!llvm.ptr, !llvm.ptr) -> ()
-// CHECK-NEXT:    [[MINUS1:%[a-z0-9]+]] = llvm.mlir.constant(-1 : i32) : i32
-// CHECK-NEXT:    llvm.return [[MINUS1]] : i32
-// CHECK:       ^bb2:
 // CHECK-NEXT:    [[PAYLOAD_GEP:%[a-z0-9]+]] = llvm.getelementptr [[ARG_GEP]][0, 2]
 // CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
 // CHECK-NEXT:    [[PAYLOAD:%[a-z0-9]+]] = llvm.load [[PAYLOAD_GEP]] : !llvm.ptr -> i64
 // CHECK-NEXT:    [[CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[PAYLOAD]] : i64 to !torch.int
-// CHECK-NEXT:    llvm.br ^bb3
-// CHECK:       ^bb3:
-// CHECK-NEXT:    [[ZERO:%[a-z0-9]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT:    llvm.br
+// CHECK:         [[ZERO:%[a-z0-9]+]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK-NEXT:    llvm.return [[ZERO]] : i32
 tvm_ffi.func @print_int(%arg0: !torch.int) {
   tvm_ffi.return
@@ -72,27 +58,13 @@ tvm_ffi.func @print_int(%arg0: !torch.int) {
 // CHECK-SAME:      %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
 // CHECK:         [[ARG_GEP:%[a-z0-9]+]] = llvm.getelementptr %arg1[0]
 // CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    [[IDX_GEP:%[a-z0-9]+]] = llvm.getelementptr [[ARG_GEP]][0, 0]
-// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    [[TYPE_IDX:%[a-z0-9]+]] = llvm.load [[IDX_GEP]] : !llvm.ptr -> i32
-// CHECK-NEXT:    [[EXPECTED:%[a-z0-9]+]] = llvm.mlir.constant(2 : i32) : i32
-// CHECK-NEXT:    [[MISMATCH:%[a-z0-9]+]] = llvm.icmp "ne" [[TYPE_IDX]], [[EXPECTED]] : i32
-// CHECK-NEXT:    llvm.cond_br [[MISMATCH]], ^bb1, ^bb2
-// CHECK:       ^bb1:
-// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__libtriton_constant_kind_TypeError : !llvm.ptr
-// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__libtriton_constant_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
-// CHECK-NEXT:    llvm.call @TVMFFIErrorSetRaisedFromCStr([[KIND]], [[MSG]]) : (!llvm.ptr, !llvm.ptr) -> ()
-// CHECK-NEXT:    [[MINUS1:%[a-z0-9]+]] = llvm.mlir.constant(-1 : i32) : i32
-// CHECK-NEXT:    llvm.return [[MINUS1]] : i32
-// CHECK:       ^bb2:
 // CHECK-NEXT:    [[PAYLOAD_GEP:%[a-z0-9]+]] = llvm.getelementptr [[ARG_GEP]][0, 2]
 // CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
 // CHECK-NEXT:    [[PAYLOAD:%[a-z0-9]+]] = llvm.load [[PAYLOAD_GEP]] : !llvm.ptr -> i64
 // CHECK-NEXT:    [[TRUNC:%[a-z0-9]+]] = llvm.trunc [[PAYLOAD]] : i64 to i1
 // CHECK-NEXT:    [[ARG_CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[TRUNC]] : i1 to !torch.bool
-// CHECK-NEXT:    llvm.br ^bb3
-// CHECK:       ^bb3:
-// CHECK-NEXT:    [[RET_CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[ARG_CAST]] : !torch.bool to i1
+// CHECK-NEXT:    llvm.br
+// CHECK:         [[RET_CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[ARG_CAST]] : !torch.bool to i1
 // CHECK:         [[UNDEF:%[a-z0-9]+]] = llvm.mlir.undef : !llvm.struct<packed (i32, i32, i64)>
 // CHECK-NEXT:    [[TYPE_IDX:%[a-z0-9]+]] = llvm.mlir.constant(2 : i32) : i32
 // CHECK-NEXT:    [[WITH_IDX:%[a-z0-9]+]] = llvm.insertvalue [[TYPE_IDX]], [[UNDEF]][0]
@@ -112,27 +84,13 @@ tvm_ffi.func @identity_bool(%arg0: !torch.bool) -> !torch.bool {
 // CHECK-SAME:      %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
 // CHECK:         [[ARG_GEP:%[a-z0-9]+]] = llvm.getelementptr %arg1[0]
 // CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    [[IDX_GEP:%[a-z0-9]+]] = llvm.getelementptr [[ARG_GEP]][0, 0]
-// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    [[TYPE_IDX:%[a-z0-9]+]] = llvm.load [[IDX_GEP]] : !llvm.ptr -> i32
-// CHECK-NEXT:    [[EXPECTED:%[a-z0-9]+]] = llvm.mlir.constant(3 : i32) : i32
-// CHECK-NEXT:    [[MISMATCH:%[a-z0-9]+]] = llvm.icmp "ne" [[TYPE_IDX]], [[EXPECTED]] : i32
-// CHECK-NEXT:    llvm.cond_br [[MISMATCH]], ^bb1, ^bb2
-// CHECK:       ^bb1:
-// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__libtriton_constant_kind_TypeError : !llvm.ptr
-// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__libtriton_constant_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
-// CHECK-NEXT:    llvm.call @TVMFFIErrorSetRaisedFromCStr([[KIND]], [[MSG]]) : (!llvm.ptr, !llvm.ptr) -> ()
-// CHECK-NEXT:    [[MINUS1:%[a-z0-9]+]] = llvm.mlir.constant(-1 : i32) : i32
-// CHECK-NEXT:    llvm.return [[MINUS1]] : i32
-// CHECK:       ^bb2:
 // CHECK-NEXT:    [[PAYLOAD_GEP:%[a-z0-9]+]] = llvm.getelementptr [[ARG_GEP]][0, 2]
 // CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
 // CHECK-NEXT:    [[PAYLOAD:%[a-z0-9]+]] = llvm.load [[PAYLOAD_GEP]] : !llvm.ptr -> i64
 // CHECK-NEXT:    [[BC:%[a-z0-9]+]] = llvm.bitcast [[PAYLOAD]] : i64 to f64
 // CHECK-NEXT:    [[ARG_CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[BC]] : f64 to !torch.float
-// CHECK-NEXT:    llvm.br ^bb3
-// CHECK:       ^bb3:
-// CHECK-NEXT:    [[RET_CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[ARG_CAST]] : !torch.float to f64
+// CHECK-NEXT:    llvm.br
+// CHECK:         [[RET_CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[ARG_CAST]] : !torch.float to f64
 // CHECK:         [[UNDEF:%[a-z0-9]+]] = llvm.mlir.undef : !llvm.struct<packed (i32, i32, i64)>
 // CHECK-NEXT:    [[TYPE_IDX:%[a-z0-9]+]] = llvm.mlir.constant(3 : i32) : i32
 // CHECK-NEXT:    [[WITH_IDX:%[a-z0-9]+]] = llvm.insertvalue [[TYPE_IDX]], [[UNDEF]][0]
@@ -152,24 +110,13 @@ tvm_ffi.func @identity_float(%arg0: !torch.float) -> !torch.float {
 // CHECK-SAME:      %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
 // CHECK:         [[ARG_GEP:%[a-z0-9]+]] = llvm.getelementptr %arg1[0]
 // CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    [[C1:%[a-z0-9]+]] = llvm.mlir.constant(1 : i64) : i64
-// CHECK-NEXT:    [[SLOT:%[a-z0-9]+]] = llvm.alloca [[C1]] x !llvm.ptr : (i64) -> !llvm.ptr
-// CHECK-NEXT:    [[RET:%[a-z0-9]+]] = llvm.call @mLibTritonUnpackTVMFFIAnyToTensor([[ARG_GEP]], [[SLOT]])
-// CHECK-SAME:      : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK-NEXT:    [[MINUS1:%[a-z0-9]+]] = llvm.mlir.constant(-1 : i32) : i32
-// CHECK-NEXT:    [[MISMATCH:%[a-z0-9]+]] = llvm.icmp "eq" [[RET]], [[MINUS1]] : i32
-// CHECK-NEXT:    llvm.cond_br [[MISMATCH]], ^bb1, ^bb2
-// CHECK:       ^bb1:
-// CHECK-NEXT:    [[KIND:%[a-z0-9]+]] = llvm.mlir.addressof @__libtriton_constant_kind_TypeError : !llvm.ptr
-// CHECK-NEXT:    [[MSG:%[a-z0-9]+]] = llvm.mlir.addressof @"__libtriton_constant_msg_tvm_ffi: argument type mismatch" : !llvm.ptr
-// CHECK-NEXT:    llvm.call @TVMFFIErrorSetRaisedFromCStr([[KIND]], [[MSG]]) : (!llvm.ptr, !llvm.ptr) -> ()
-// CHECK-NEXT:    llvm.return [[MINUS1]] : i32
-// CHECK:       ^bb2:
-// CHECK-NEXT:    [[HANDLE:%[a-z0-9]+]] = llvm.load [[SLOT]] : !llvm.ptr -> !llvm.ptr
+// CHECK-NEXT:    [[VOBJ_GEP:%[a-z0-9]+]] = llvm.getelementptr [[ARG_GEP]][0, 2]
+// CHECK-SAME:      : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[VOBJ_I64:%[a-z0-9]+]] = llvm.load [[VOBJ_GEP]] : !llvm.ptr -> i64
+// CHECK-NEXT:    [[HANDLE:%[a-z0-9]+]] = llvm.inttoptr [[VOBJ_I64]] : i64 to !llvm.ptr
 // CHECK-NEXT:    [[CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[HANDLE]] : !llvm.ptr to !torch.tensor
-// CHECK-NEXT:    llvm.br ^bb3
-// CHECK:       ^bb3:
-// CHECK-NEXT:    [[ZERO:%[a-z0-9]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT:    llvm.br
+// CHECK:         [[ZERO:%[a-z0-9]+]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK-NEXT:    llvm.return [[ZERO]] : i32
 tvm_ffi.func @tensor_func(%arg0: !torch.tensor) {
   tvm_ffi.return
@@ -190,11 +137,12 @@ tvm_ffi.func @tensor_func(%arg0: !torch.tensor) {
 // CHECK-NEXT:    [[TENSOR:%[a-z0-9]+]] = torch.aten.empty.memory_format [[LIST]], %none, %none, %none, %none, %none
 // CHECK-SAME:      : !torch.list<int>, !torch.none, !torch.none, !torch.none, !torch.none, !torch.none -> !torch.tensor
 // CHECK-NEXT:    [[CAST:%[a-z0-9]+]] = builtin.unrealized_conversion_cast [[TENSOR]] : !torch.tensor to !llvm.ptr
-// CHECK:         [[ALLOCA:%[a-z0-9]+]] = llvm.alloca %{{.*}} x !llvm.struct<packed (i32, i32, i64)>
-// CHECK:         [[RET:%[a-z0-9]+]] = llvm.call @mLibTritonPackTensorToTVMFFIAny([[CAST]], [[ALLOCA]])
-// CHECK-NEXT:    [[LOAD:%[a-z0-9]+]] = llvm.load [[ALLOCA]]
-// CHECK-SAME:      : !llvm.ptr -> !llvm.struct<packed (i32, i32, i64)>
-// CHECK-NEXT:    llvm.store [[LOAD]], %arg3
+// CHECK-NEXT:    [[UNDEF:%[a-z0-9]+]] = llvm.mlir.undef : !llvm.struct<packed (i32, i32, i64)>
+// CHECK-NEXT:    [[IDX:%[a-z0-9]+]] = llvm.mlir.constant(70 : i32) : i32
+// CHECK-NEXT:    [[WITH_IDX:%[a-z0-9]+]] = llvm.insertvalue [[IDX]], [[UNDEF]][0]
+// CHECK-NEXT:    [[VOBJ:%[a-z0-9]+]] = llvm.ptrtoint [[CAST]]
+// CHECK-NEXT:    [[WITH_PAYLOAD:%[a-z0-9]+]] = llvm.insertvalue [[VOBJ]], [[WITH_IDX]][2]
+// CHECK-NEXT:    llvm.store [[WITH_PAYLOAD]], %arg3
 // CHECK-NEXT:    [[ZERO:%[a-z0-9]+]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK-NEXT:    llvm.return [[ZERO]] : i32
 tvm_ffi.func @make_tensor() -> !torch.tensor {

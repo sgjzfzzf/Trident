@@ -20,8 +20,6 @@ LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(
     mLibTritonTVMFFIDeviceToTorchDeviceType, TVMFFIDeviceToTorchDeviceType)
 LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(mLibTritonTVMFFIToTorchType,
                                            TVMFFIToTorchType)
-LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(mLibTritonDLManagedTensorDeleter,
-                                           DLManagedTensorDeleter)
 
 // Reverse Torch→DLPack dtype/device mapping.
 LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(mLibTritonTorchToTVMFFIDtype,
@@ -30,10 +28,10 @@ LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(mLibTritonTorchToTVMFFIDevice,
                                            TorchToTVMFFIDevice)
 
 // Runtime tensor pack/unpack helpers.
-LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(mLibTritonPackTensorToTVMFFIAny,
-                                           PackTensorToTVMFFIAny)
-LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(mLibTritonUnpackTVMFFIAnyToTensor,
-                                           UnpackTVMFFIAnyToTensor)
+LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(mLibTritonTensorToTVMFFIObject,
+                                           TensorToTVMFFIObject)
+LIBTRITON_DECLARE_CAPI_GET_OR_CREATE_NAMED(mLibTritonTVMFFIObjectToTensor,
+                                           TVMFFIObjectToTensor)
 
 } // namespace libtriton::conversion::utils
 

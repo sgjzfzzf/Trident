@@ -131,6 +131,17 @@ public:
     mlir::Value asyncObject =
         mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, streamSlot);
 
+    // Triton kernels always include 2 extra u64 pointer parameters in the
+    // PTX parameter list beyond the user-visible runtime parameters.
+    // These are never loaded by the kernel body but cuLaunchKernel still
+    // reads them from the params array.  Pad with null (zero) values to
+    // match the kernel's actual parameter count and avoid out-of-bounds
+    // reads that cause a segfault.
+    mlir::Value nullPtr =
+        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 0);
+    operands.push_back(nullPtr);
+    operands.push_back(nullPtr);
+
     // Create gpu.launch_func with the current stream as asyncObject.
     rewriter.replaceOpWithNewOp<mlir::gpu::LaunchFuncOp>(
         op, op.getKernel(), gridSize, blockSize, dynamicSharedMemorySize,

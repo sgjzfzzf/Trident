@@ -23,6 +23,8 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/FormatVariadic.h"
 
+#include <regex>
+
 namespace libtriton::torchext {
 
 #define GEN_PASS_DEF_CONVERTTORCHEXTTOLLVM
@@ -50,8 +52,16 @@ struct BaseTensorHandler : TypeHandlerBase<mlir::torch::Torch::BaseTensorType> {
         mlir::LLVM::LLVMPointerType::get(context);
     mlir::IntegerType i64Ty = mlir::IntegerType::get(context, 64);
 
-    mlir::ModuleOp moduleOp =
-        input.getDefiningOp()->getParentOfType<mlir::ModuleOp>();
+    // Find the parent module. The adapted input might be a block argument
+    // (e.g. after type conversion of function parameters), in which case
+    // getDefiningOp() is null and we traverse the parent region/block.
+    mlir::ModuleOp moduleOp;
+    if (auto *definingOp = input.getDefiningOp())
+      moduleOp = definingOp->getParentOfType<mlir::ModuleOp>();
+    else
+      moduleOp = input.getParentBlock()
+                     ->getParentOp()
+                     ->getParentOfType<mlir::ModuleOp>();
 
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> unpackFn =
         libtriton::conversion::utils::getOrCreateTVMFFIObjectToTensor(moduleOp);
@@ -286,21 +296,42 @@ using AllHandlers =
     TypeDispatch<BaseTensorHandler, BoolHandler, IntHandler, FloatHandler,
                  NoneHandler, ListHandler, DeviceHandler>;
 
-/// Converts torchext.call_dispatcher to an LLVM call to
-/// aoti_torch_call_dispatcher().
-class ConvertCallDispatcherOp
-    : public mlir::OpConversionPattern<CallDispatcherOp> {
+/// Converts torch.aten.* ops directly to aoti_torch_call_dispatcher() LLVM
+/// calls, preserving the original Torch dialect op schema for downstream
+/// inspection. The op name is regex-matched to extract the dispatcher
+/// op_name (e.g. "aten::empty_like") and optional overload_name.
+class ConvertAtenDispatcherOp : public mlir::ConversionPattern {
 public:
-  using OpConversionPattern::OpConversionPattern;
+  ConvertAtenDispatcherOp(const mlir::TypeConverter &typeConverter,
+                          mlir::MLIRContext *context)
+      : mlir::ConversionPattern(typeConverter,
+                                mlir::Pattern::MatchAnyOpTypeTag(),
+                                /*benefit=*/1, context) {}
 
   mlir::LogicalResult
-  matchAndRewrite(CallDispatcherOp op, OpAdaptor adaptor,
+  matchAndRewrite(mlir::Operation *op, llvm::ArrayRef<mlir::Value> operands,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Location loc = op.getLoc();
-    mlir::MLIRContext *context = op.getContext();
+    llvm::StringRef opName = op->getName().getStringRef();
 
-    const size_t numInputs = adaptor.getInputs().size();
-    const size_t numResults = op.getResults().size();
+    // Match "torch.aten.<OpName>[.<Overload>]" using std::regex.
+    static const std::regex re(
+        R"(^torch\.aten\.([_a-zA-Z]+)(?:\.([_a-zA-Z]+))?$)");
+    std::smatch m;
+    std::string opNameCopy = opName.str();
+    if (!llvm::isa<mlir::torch::Torch::TorchDialect>(op->getDialect()) ||
+        !std::regex_match(opNameCopy, m, re)) {
+      return mlir::failure();
+    }
+
+    // m[1] = base op name (e.g. "empty_like"), m[2] = overload (e.g. "Tensor").
+    const std::string dispatcherOpName = "aten::" + m[1].str();
+    const std::string dispatcherOverloadName = m[2].str();
+
+    mlir::Location loc = op->getLoc();
+    mlir::MLIRContext *context = op->getContext();
+
+    const size_t numInputs = op->getNumOperands();
+    const size_t numResults = op->getNumResults();
     const size_t maxCount = std::max(numInputs, numResults);
 
     // Allocate an i64 (uint64) slot array with maxCount elements on the stack.
@@ -315,15 +346,15 @@ public:
 
     // Store each adapted input into the corresponding slot.
     for (auto [i, pair] :
-         llvm::enumerate(llvm::zip(op.getInputs(), adaptor.getInputs()))) {
-      auto [origInput, adaptedInput] = pair;
-      mlir::Type origType = origInput.getType();
+         llvm::enumerate(llvm::zip(op->getOperands(), operands))) {
+      auto [origOperand, adaptedOperand] = pair;
+      mlir::Type origType = origOperand.getType();
 
       // Convert adapted input to i64 (type-erased StableIValue).
       mlir::FailureOr<mlir::Value> ival =
-          AllHandlers::to(origType, rewriter, adaptedInput);
+          AllHandlers::to(origType, rewriter, adaptedOperand);
       if (mlir::failed(ival)) {
-        return op.emitError("unsupported input type: ") << origType;
+        return op->emitError("unsupported input type: ") << origType;
       }
 
       // Store the i64 into the corresponding slot.
@@ -335,7 +366,7 @@ public:
     // Get or create the aoti_torch_call_dispatcher function declaration.
     mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
     if (!moduleOp) {
-      return op.emitError("op is not inside a module");
+      return op->emitError("op is not inside a module");
     }
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
         libtriton::conversion::utils::getOrCreateaoti_torch_call_dispatcher(
@@ -346,18 +377,18 @@ public:
 
     // Create global string constants for op_name and overload_name.
     mlir::Value opNamePtr = conversion::utils::getOrCreateGlobalString(
-        rewriter, loc, moduleOp, "op", op.getOpName());
+        rewriter, loc, moduleOp, "op", dispatcherOpName);
     mlir::Value overloadNamePtr = conversion::utils::getOrCreateGlobalString(
-        rewriter, loc, moduleOp, "overload", op.getOverloadName());
+        rewriter, loc, moduleOp, "overload", dispatcherOverloadName);
 
     // Call aoti_torch_call_dispatcher(opName, overloadName, slotArray).
-    mlir::LLVM::CallOp callOp = mlir::LLVM::CallOp::create(
+    mlir::LLVM::CallOp::create(
         rewriter, loc, *calleeOrErr,
         mlir::ValueRange{opNamePtr, overloadNamePtr, array});
 
     // Replace the original op with results loaded and converted from slots.
     llvm::SmallVector<mlir::Value> results;
-    for (auto [i, type] : llvm::enumerate(op.getResultTypes())) {
+    for (auto [i, type] : llvm::enumerate(op->getResultTypes())) {
       mlir::Value ptr =
           mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, i64Ty, array, {i});
       mlir::Value loaded =
@@ -365,7 +396,7 @@ public:
       mlir::FailureOr<mlir::Value> converted =
           AllHandlers::from(type, rewriter, loaded);
       if (mlir::failed(converted)) {
-        return op.emitError("unsupported result type: ") << type;
+        return op->emitError("unsupported result type: ") << type;
       }
       if (mlir::Value val = converted.value()) {
         results.push_back(val);
@@ -490,6 +521,7 @@ public:
     mlir::LLVMTypeConverter typeConverter(&context);
     mlir::RewritePatternSet patterns(&context);
     torch::setupBackendTypeConversion(target, typeConverter);
+    populateTorchExtToLLVMConversionPatterns(target, typeConverter, patterns);
 
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
@@ -518,9 +550,8 @@ struct TorchExtToLLVMDialectInterface
 void populateTorchExtToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns) {
-  patterns.add<ConvertCallDispatcherOp>(typeConverter, patterns.getContext());
-  patterns.add<ConvertPrimListConstructOp, ConvertListDeleteListOp>(
-      typeConverter, patterns.getContext());
+  patterns.add<ConvertAtenDispatcherOp, ConvertPrimListConstructOp,
+               ConvertListDeleteListOp>(typeConverter, patterns.getContext());
   target.addIllegalOp<mlir::torch::Torch::PrimListConstructOp>();
   target.addIllegalDialect<TorchExtDialect>();
   target.addLegalDialect<mlir::BuiltinDialect, mlir::LLVM::LLVMDialect>();

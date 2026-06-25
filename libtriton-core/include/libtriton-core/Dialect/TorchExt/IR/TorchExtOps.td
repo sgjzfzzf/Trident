@@ -65,35 +65,6 @@ def TorchExt_TritonKernelLaunchOp : TorchExt_Op<"triton_kernel_launch", [
 }
 
 //===----------------------------------------------------------------------===//
-// AOTInductor dispatcher
-//===----------------------------------------------------------------------===//
-
-def TorchExt_CallDispatcherOp : TorchExt_Op<"aoti.CallDispatcher"> {
-  let summary = "Call a PyTorch operator through the AOTInductor dispatcher";
-  // clang-format off
-  let description = [{
-    Invokes a PyTorch operator by name via `aoti_torch_call_dispatcher()`.
-    The op_name and overload_name strings identify the target operator.
-    Inputs and outputs are passed as type-erased StableIValue slots, modelled
-    here as variadic AnyTorchType values.
-
-    Corresponds to:
-      aoti_torch_call_dispatcher(opName, overloadName, stack)
-  }];
-  // clang-format on
-
-  let arguments = (ins
-    StrAttr:$op_name,
-    StrAttr:$overload_name,
-    Variadic<AnyTorchType>:$inputs
-  );
-  let results = (outs Variadic<AnyTorchType> : $results);
-
-  let assemblyFormat = "$op_name `:` $overload_name `(` $inputs `)` attr-dict "
-                       "`:` functional-type($inputs, $results)";
-}
-
-//===----------------------------------------------------------------------===//
 // Stable list operations — map 1:1 to torch/csrc/stable/c/shim.h
 //===----------------------------------------------------------------------===//
 

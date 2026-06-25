@@ -36,8 +36,9 @@ func.func @torch.constant.float() -> !torch.float {
 }
 
 // CHECK-LABEL:   func.func @torch.constant.none() -> !torch.none {
-// CHECK:           %[[NONE:.*]] = torch.constant.none
-// CHECK-NEXT:      return %[[NONE]] : !torch.none
+// CHECK:           %[[NONE:.*]] = llvm.mlir.constant(0 : i64) : i64
+// CHECK:           %[[C:.*]] = builtin.unrealized_conversion_cast %[[NONE]] : i64 to !torch.none
+// CHECK-NEXT:      return %[[C]] : !torch.none
 func.func @torch.constant.none() -> !torch.none {
   %none = torch.constant.none
   return %none : !torch.none

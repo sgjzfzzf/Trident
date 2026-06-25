@@ -3,7 +3,6 @@ add_mlir_library(
   Registration.cc
   LINK_LIBS
   PUBLIC
-  TorchExtTransforms
   TorchExtToGPU
   TorchExtToLLVM
   MLIRRegisterAllDialects

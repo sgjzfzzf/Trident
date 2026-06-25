@@ -12,7 +12,6 @@
 #include "libtriton-core/Conversion/TorchToLLVM/FuncBackendTypeConversion.h"
 #include "libtriton-core/Conversion/TorchToLLVM/TorchToLLVM.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
-#include "libtriton-core/Dialect/TorchExt/Transforms/RewriteTorchAsTorchExt.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMPass.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
@@ -38,7 +37,6 @@ public:
   void runOnOperation() final {
     mlir::OpPassManager pm(mlir::ModuleOp::getOperationName());
     pm.addPass(libtriton::torch::createFuncBackendTypeConversion());
-    pm.addPass(libtriton::torchext::createRewriteTorchAsTorchExt());
     pm.addPass(libtriton::torchext::createConvertTorchExtToGPU());
     pm.addPass(libtriton::torch::createConvertTorchToLLVM());
     pm.addPass(libtriton::torch::createConvertTorchToCf());

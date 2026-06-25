@@ -759,6 +759,7 @@ public:
 
     torch::setupBackendTypeConversion(target, typeConverter);
     target.addLegalOp<mlir::func::FuncOp, mlir::func::ReturnOp>();
+    target.addLegalDialect<mlir::torch::Torch::TorchDialect>();
     populateTVMFFIToLLVMConversionPatterns(target, typeConverter, patterns);
 
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
@@ -788,8 +789,7 @@ void populateTVMFFIToLLVMConversionPatterns(
   patterns.add<ConvertFuncOp>(typeConverter, patterns.getContext());
   target.addIllegalDialect<TVMFFIDialect>();
   target.addLegalDialect<mlir::BuiltinDialect, mlir::func::FuncDialect,
-                         mlir::LLVM::LLVMDialect,
-                         mlir::torch::Torch::TorchDialect>();
+                         mlir::LLVM::LLVMDialect>();
 }
 
 void registerConvertTVMFFIToLLVMInterface(mlir::DialectRegistry &registry) {

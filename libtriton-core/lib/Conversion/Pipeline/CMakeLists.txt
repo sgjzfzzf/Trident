@@ -6,7 +6,6 @@ add_mlir_conversion_library(
   LINK_LIBS
   PUBLIC
   TorchExtToGPU
-  TorchExtTransforms
   TorchExtToLLVM
   MLIRPass
   TorchToCf

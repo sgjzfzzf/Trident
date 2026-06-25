@@ -4,7 +4,7 @@
 // CHECK:      llvm.func @aoti_torch_get_current_stream(i32, !llvm.ptr) -> i32
 // CHECK:      llvm.func @aoti_torch_get_current_device_index(!llvm.ptr) -> i32
 // CHECK:      gpu.module @kernel {
-// CHECK:        gpu.func @entry(%{{.*}}: !llvm.ptr, %{{.*}}: i64)
+// CHECK:        gpu.func @entry(%{{.*}}: !llvm.ptr, %{{.*}}: i64, %{{.*}}: i64, %{{.*}}: i64)
 // CHECK-SAME:   kernel attributes {gpu.binary = ""}
 // CHECK-NEXT:     gpu.return
 // CHECK-NEXT:   }
@@ -32,12 +32,12 @@
 // CHECK:      blocks in (%[[C32]], %[[C16]], %[[C1]])
 // CHECK:      threads in (%[[C128]], %[[C1]], %[[C1]])
 // CHECK:      dynamic_shared_memory_size %[[SHMEM]]
-// CHECK:      args(%[[DATA_PTR]] : !llvm.ptr, %[[SCALAR_CAST]] : i64)
+// CHECK:      args(%[[DATA_PTR]] : !llvm.ptr, %[[SCALAR_CAST]] : i64, {{%.*}} : i64, {{%.*}} : i64)
 
 // CHECK-NOT: torchext.triton_kernel_launch
 module attributes { gpu.container_module } {
   gpu.module @kernel {
-    gpu.func @entry(%arg0: !llvm.ptr, %arg1: i64)
+    gpu.func @entry(%arg0: !llvm.ptr, %arg1: i64, %arg2: i64, %arg3: i64)
         attributes { gpu.binary = "", gpu.kernel } {
       gpu.return
     }

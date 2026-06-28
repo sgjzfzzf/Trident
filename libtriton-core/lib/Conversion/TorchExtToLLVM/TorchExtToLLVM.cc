@@ -1,8 +1,9 @@
 #include "libtriton-core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
 #include "SchemaLookup.h"
-#include "libtriton-core/Conversion/Utils/LibTritonCAPIDescriptors.h"
 #include "libtriton-core/Conversion/Utils/StableCAPIDescriptors.h"
 #include "libtriton-core/Conversion/Utils/StdLibCAPIDescriptors.h"
+#include "libtriton-core/Conversion/Utils/TVMFFIUtils.h"
+#include "libtriton-core/Conversion/Utils/Type.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "libtriton-core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
@@ -20,6 +21,7 @@
 #include "torch-mlir/Dialect/Torch/IR/TorchDialect.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchOps.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 
 namespace libtriton::torchext {
 
@@ -44,10 +46,8 @@ public:
   matchAndRewrite(mlir::Operation *op, llvm::ArrayRef<mlir::Value> operands,
                   mlir::ConversionPatternRewriter &rewriter) const override {
     // Wrap adapted operands for the C API.
-    llvm::SmallVector<MlirValue> wrappedOperands;
-    for (auto v : operands) {
-      wrappedOperands.push_back(wrap(v));
-    }
+    llvm::SmallVector<MlirValue> wrappedOperands =
+        llvm::map_to_vector(operands, [](mlir::Value v) { return wrap(v); });
 
     // Allocate output array (handles zero results gracefully).
     uint32_t numResults = op->getNumResults();
@@ -56,15 +56,13 @@ public:
     // Delegate the full lowering to SchemaLookup.
     if (mLibTritonSchemaDispatchTorchAtenOp(wrap(op), wrappedOperands.data(),
                                             mlirResults.data(),
-                                            wrap(&rewriter)) != 0) {
+                                            wrap(&rewriter))) {
       return mlir::failure();
     }
 
     // Unwrap results and hand them back to the dialect conversion framework.
-    llvm::SmallVector<mlir::Value> results;
-    for (auto mv : mlirResults) {
-      results.push_back(unwrap(mv));
-    }
+    llvm::SmallVector<mlir::Value> results = llvm::map_to_vector(
+        mlirResults, [](MlirValue mv) { return unwrap(mv); });
     rewriter.replaceOp(op, results);
     return mlir::success();
   }
@@ -74,8 +72,12 @@ public:
 // StableList operations
 //===----------------------------------------------------------------------===//
 
-/// Converts torch.prim.ListConstruct to torch_new_list_reserve_size() +
-/// torch_list_push_back() LLVM calls.
+/// Converts torch.prim.ListConstruct.
+///
+/// Constructs an ffi.Array via callTVMFFIGlobalFunction with all elements
+/// passed as packed args.  The result is a TVMFFIObjectHandle (!llvm.ptr)
+/// which is later converted to a StableListHandle in SchemaLookup when the
+/// list reaches an Aten dispatcher call.
 class ConvertPrimListConstructOp
     : public mlir::OpConversionPattern<
           mlir::torch::Torch::PrimListConstructOp> {
@@ -87,7 +89,6 @@ public:
                   mlir::ConversionPatternRewriter &rewriter) const override {
     mlir::Location loc = op.getLoc();
     mlir::MLIRContext *ctx = op.getContext();
-    mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
     mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
 
     mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
@@ -95,91 +96,72 @@ public:
       return op.emitError("op is not inside a module");
     }
 
-    int64_t numElements = op.getElements().size();
+    // Only List[int] is supported (elements are i64 after adaptation).
+    mlir::ValueRange elements = adaptor.getElements();
+    if (llvm::any_of(elements, [](mlir::Value adaptedElem) {
+          return !adaptedElem.getType().isInteger(64);
+        })) {
+      return op.emitError("unsupported non-int element type in ListConstruct");
+    }
 
-    // Allocate a stack slot for the StableListHandle* output.
-    mlir::Value listPtr = mlir::LLVM::AllocaOp::create(
-        rewriter, loc, ptrTy, ptrTy,
-        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1));
+    // Build contiguous TVMFFIAny[N] args array (all kTVMFFIInt=1).
+    mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
+    mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
+    mlir::LLVM::LLVMStructType anyTy =
+        libtriton::conversion::utils::getTVMFFIAnyType(ctx);
+    const size_t N = elements.size();
+    mlir::Value ffiArgs = mlir::LLVM::AllocaOp::create(
+        rewriter, loc, ptrTy, anyTy,
+        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, N));
+    mlir::Value kTVMFFIIntVal =
+        mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, kTVMFFIInt);
+    mlir::Value zero32 =
+        mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 0);
+    for (size_t i = 0; i < N; ++i) {
+      mlir::Value slot =
+          mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, anyTy, ffiArgs,
+                                    llvm::ArrayRef<mlir::LLVM::GEPArg>{i});
+      mlir::LLVM::StoreOp::create(
+          rewriter, loc, kTVMFFIIntVal,
+          mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, anyTy, slot,
+                                    llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0}));
+      mlir::LLVM::StoreOp::create(
+          rewriter, loc, zero32,
+          mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, anyTy, slot,
+                                    llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 1}));
+      mlir::LLVM::StoreOp::create(
+          rewriter, loc, elements[i],
+          mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, anyTy, slot,
+                                    llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
+    }
 
-    // Call torch_new_list_reserve_size(numElements, &listHandle).
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> newListCallee =
-        libtriton::conversion::utils::getOrCreateTorchNewListReserveSize(
-            moduleOp);
-    if (mlir::failed(newListCallee)) {
+    // Call ffi.Array(elem0, ..., elemN) — pass each slot individually.
+    llvm::SmallVector<mlir::Value> slotPtrs =
+        llvm::map_to_vector(llvm::seq(N), [&](size_t i) -> mlir::Value {
+          return mlir::LLVM::GEPOp::create(
+              rewriter, loc, ptrTy, anyTy, ffiArgs,
+              llvm::ArrayRef<mlir::LLVM::GEPArg>{i});
+        });
+    mlir::FailureOr<mlir::Value> result =
+        libtriton::conversion::utils::callTVMFFIGlobalFunction(
+            rewriter, loc, moduleOp, "ffi.Array", slotPtrs);
+    if (mlir::failed(result)) {
       return mlir::failure();
     }
-    mlir::Value numElementsVal =
-        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, numElements);
-    mlir::LLVM::CallOp::create(rewriter, loc, *newListCallee,
-                               mlir::ValueRange{numElementsVal, listPtr});
 
-    // Load the newly created list handle.
-    mlir::Value listHandle =
-        mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, listPtr);
-
-    // Get or create torch_list_push_back.
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> pushBackCallee =
-        libtriton::conversion::utils::getOrCreateTorchListPushBack(moduleOp);
-    if (mlir::failed(pushBackCallee)) {
-      return mlir::failure();
-    }
-
-    // Push each element into the list as a type-erased StableIValue.
-    // Since this is not a dispatcher call, convert by checking the adapted
-    // LLVM type directly rather than via a schema.
-    for (auto pair : llvm::zip(op.getElements(), adaptor.getElements())) {
-      mlir::Value origElem = std::get<0>(pair);
-      mlir::Value adaptedElem = std::get<1>(pair);
-
-      mlir::Type adaptedType = adaptedElem.getType();
-      mlir::Value ival;
-      if (adaptedType.isInteger(64)) {
-        ival = adaptedElem;
-      } else if (adaptedType.isInteger(1)) {
-        ival = mlir::LLVM::ZExtOp::create(rewriter, loc, i64Ty, adaptedElem)
-                   .getResult();
-      } else if (adaptedType.isF64()) {
-        ival = mlir::LLVM::BitcastOp::create(rewriter, loc, i64Ty, adaptedElem)
-                   .getResult();
-      } else if (mlir::isa<mlir::LLVM::LLVMPointerType>(adaptedType)) {
-        ival = mlir::LLVM::PtrToIntOp::create(rewriter, loc, i64Ty, adaptedElem)
-                   .getResult();
-      } else if (mlir::isa<mlir::LLVM::LLVMStructType>(adaptedType)) {
-        // Device type: pack {i32, i32} struct into a single i64.
-        mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
-        mlir::Value devType =
-            mlir::LLVM::ExtractValueOp::create(
-                rewriter, loc, i32Ty, adaptedElem, llvm::ArrayRef<int64_t>{0})
-                .getResult();
-        mlir::Value devIdx =
-            mlir::LLVM::ExtractValueOp::create(
-                rewriter, loc, i32Ty, adaptedElem, llvm::ArrayRef<int64_t>{1})
-                .getResult();
-        mlir::Value devType64 =
-            mlir::LLVM::ZExtOp::create(rewriter, loc, i64Ty, devType);
-        mlir::Value devIdx64 =
-            mlir::LLVM::ZExtOp::create(rewriter, loc, i64Ty, devIdx);
-        mlir::Value shift = mlir::LLVM::ConstantOp::create(
-            rewriter, loc, i64Ty, mlir::IntegerAttr::get(i64Ty, 32));
-        mlir::Value shifted =
-            mlir::LLVM::ShlOp::create(rewriter, loc, devIdx64, shift);
-        ival = mlir::LLVM::OrOp::create(rewriter, loc, devType64, shifted)
-                   .getResult();
-      } else {
-        return op.emitError("unsupported element type");
-      }
-
-      mlir::LLVM::CallOp::create(rewriter, loc, *pushBackCallee,
-                                 mlir::ValueRange{listHandle, ival});
-    }
-
-    rewriter.replaceOp(op, listHandle);
+    // Extract v_obj (field[2]) from result TVMFFIAny → inttoptr.
+    mlir::Value resultSlot = *result;
+    mlir::Value vObjGEP =
+        mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, anyTy, resultSlot,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2});
+    mlir::Value vObj =
+        mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, vObjGEP);
+    rewriter.replaceOpWithNewOp<mlir::LLVM::IntToPtrOp>(op, ptrTy, vObj);
     return mlir::success();
   }
 };
 
-/// Converts torchext.aoti.ListDeleteList to torch_delete_list() LLVM call.
+/// Converts torchext.aoti.ListDeleteList to TVMFFIObjectDecRef() LLVM call.
 class ConvertListDeleteListOp
     : public mlir::OpConversionPattern<ListDeleteListOp> {
 public:
@@ -197,13 +179,12 @@ public:
     }
 
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
-        libtriton::conversion::utils::getOrCreateTorchDeleteList(moduleOp);
+        libtriton::conversion::utils::getOrCreateTVMFFIObjectDecRef(moduleOp);
     if (mlir::failed(calleeOrErr)) {
       return mlir::failure();
     }
 
-    mlir::LLVM::CallOp::create(rewriter, loc, *calleeOrErr,
-                               mlir::ValueRange{adaptor.getList()});
+    mlir::LLVM::CallOp::create(rewriter, loc, *calleeOrErr, adaptor.getList());
     rewriter.eraseOp(op);
     return mlir::success();
   }

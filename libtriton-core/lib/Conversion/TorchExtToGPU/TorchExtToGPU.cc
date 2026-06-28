@@ -81,10 +81,10 @@ public:
       if (mlir::isa<mlir::torch::Torch::BaseTensorType>(orig.getType())) {
         mlir::Value dlTensorPtr = mlir::LLVM::GEPOp::create(
             rewriter, loc, ptrTy, i8Ty, adapted,
-            mlir::ArrayRef<mlir::LLVM::GEPArg>{sizeof(TVMFFIObject)});
+            llvm::ArrayRef<mlir::LLVM::GEPArg>{sizeof(TVMFFIObject)});
         mlir::Value dataGep = mlir::LLVM::GEPOp::create(
             rewriter, loc, ptrTy, dlTensorTy, dlTensorPtr,
-            mlir::ArrayRef<mlir::LLVM::GEPArg>{0, 0});
+            llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0});
         operands.push_back(
             mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, dataGep));
       } else {

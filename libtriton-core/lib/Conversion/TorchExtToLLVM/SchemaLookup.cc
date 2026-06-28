@@ -7,15 +7,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "SchemaLookup.h"
-#include "libtriton-core/Conversion/Utils/AOTICAPIDescriptors.h"
-#include "libtriton-core/Conversion/Utils/GlobalString.h"
-#include "libtriton-core/Conversion/Utils/LibTritonCAPIDescriptors.h"
-#include "libtriton-core/Conversion/Utils/StdLibCAPIDescriptors.h"
-
 #include "ATen/core/dispatch/Dispatcher.h"
 #include "ATen/core/function_schema.h"
 #include "ATen/core/jit_type_base.h"
 #include "c10/core/ScalarType.h"
+#include "libtriton-core/Conversion/Utils/AOTICAPIDescriptors.h"
+#include "libtriton-core/Conversion/Utils/GlobalString.h"
+#include "libtriton-core/Conversion/Utils/LibTritonCAPIDescriptors.h"
+#include "libtriton-core/Conversion/Utils/StableCAPIDescriptors.h"
+#include "libtriton-core/Conversion/Utils/StdLibCAPIDescriptors.h"
+#include "libtriton-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
+#include "libtriton-core/Conversion/Utils/TVMFFIUtils.h"
+#include "libtriton-core/Conversion/Utils/Type.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Rewrite.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -28,6 +31,36 @@
 #include <regex>
 
 namespace {
+
+//===----------------------------------------------------------------------===//
+// Helpers
+//===----------------------------------------------------------------------===//
+
+/// Fill a pre-allocated TVMFFIAny slot with typeIndex and i64 payload.
+static void fillFFIAny(mlir::OpBuilder &builder, mlir::Location loc,
+                       mlir::Value elemPtr, int32_t typeIndex,
+                       mlir::Value valI64) {
+  auto ptrTy = mlir::LLVM::LLVMPointerType::get(builder.getContext());
+  auto anyTy =
+      libtriton::conversion::utils::getTVMFFIAnyType(builder.getContext());
+  mlir::LLVM::StoreOp::create(
+      builder, loc,
+      mlir::LLVM::ConstantOp::create(
+          builder, loc, mlir::IntegerType::get(builder.getContext(), 32),
+          typeIndex),
+      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, elemPtr,
+                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0}));
+  mlir::LLVM::StoreOp::create(
+      builder, loc,
+      mlir::LLVM::ConstantOp::create(
+          builder, loc, mlir::IntegerType::get(builder.getContext(), 32), 0),
+      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, elemPtr,
+                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 1}));
+  mlir::LLVM::StoreOp::create(
+      builder, loc, valI64,
+      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, elemPtr,
+                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
+}
 
 //===----------------------------------------------------------------------===//
 // StableIValue building from c10 type info
@@ -49,7 +82,9 @@ buildStableIValue(mlir::OpBuilder &builder, const c10::TypePtr &c10Type,
                   mlir::Type torchType, mlir::Value input,
                   mlir::ModuleOp moduleOp, mlir::Location loc) {
   mlir::MLIRContext *ctx = builder.getContext();
+  mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
   mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
+  mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
 
   switch (c10Type->kind()) {
   case c10::TypeKind::TensorType: {
@@ -57,7 +92,6 @@ buildStableIValue(mlir::OpBuilder &builder, const c10::TypePtr &c10Type,
     // aoti_torch_call_dispatcher expects an AtenTensorHandle in the
     // StableIValue slot, so we must unpack the AtenTensorHandle from
     // the TVMFFIObjectHandle first.
-    mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
 
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> unpackFn =
         libtriton::conversion::utils::getOrCreateTVMFFIObjectToTensor(moduleOp);
@@ -143,7 +177,6 @@ buildStableIValue(mlir::OpBuilder &builder, const c10::TypePtr &c10Type,
     }
 
     // Allocate a stack slot for the result (must dominate both branches).
-    mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
     mlir::Value resultSlot = mlir::LLVM::AllocaOp::create(
         builder, loc, ptrTy, i64Ty,
         mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
@@ -205,7 +238,6 @@ buildStableIValue(mlir::OpBuilder &builder, const c10::TypePtr &c10Type,
     // Pack device_type and device_index into a single i64.
     // PyTorch StableIValue format: (device_type << 32) | device_index
     // Upper 32 bits = device_type, lower 32 bits = device_index.
-    mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
     mlir::Value devType = mlir::LLVM::ExtractValueOp::create(
         builder, loc, i32Ty, input, llvm::ArrayRef<int64_t>{0});
     mlir::Value devIdx = mlir::LLVM::ExtractValueOp::create(
@@ -220,11 +252,134 @@ buildStableIValue(mlir::OpBuilder &builder, const c10::TypePtr &c10Type,
     return mlir::LLVM::OrOp::create(builder, loc, shifted, devIdx64)
         .getResult();
   }
-  case c10::TypeKind::ListType:
-  case c10::TypeKind::AnyListType: {
-    // List: adapted type is !llvm.ptr (StableListHandle*).
-    // Convert pointer to i64.
-    return mlir::LLVM::PtrToIntOp::create(builder, loc, i64Ty, input)
+  case c10::TypeKind::ListType: {
+    // List: adapted type is !llvm.ptr (TVMFFIObjectHandle pointing to an
+    // ffi.Array).  Convert to StableListHandle via TVM FFI C API calls
+    // (ffi.ArraySize / ffi.ArrayGetItem) + Stable C API
+    // (torch_new_list_reserve_size / torch_list_push_back).
+
+    mlir::LLVM::LLVMStructType anyTy =
+        libtriton::conversion::utils::getTVMFFIAnyType(ctx);
+
+    // --- Step 1: Get list size via ffi.ArraySize ---
+
+    mlir::Value inputInt =
+        mlir::LLVM::PtrToIntOp::create(builder, loc, i64Ty, input);
+    // Build TVMFFIAny(kTVMFFIArray=71, v_obj=input).
+    mlir::Value sizeArgSlot = mlir::LLVM::AllocaOp::create(
+        builder, loc, ptrTy, anyTy,
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+    fillFFIAny(builder, loc, sizeArgSlot, kTVMFFIArray, inputInt);
+    mlir::FailureOr<mlir::Value> sizeResultSlot =
+        libtriton::conversion::utils::callTVMFFIGlobalFunction(
+            builder, loc, moduleOp, "ffi.ArraySize", {sizeArgSlot});
+    if (mlir::failed(sizeResultSlot)) {
+      return mlir::failure();
+    }
+    // Extract v_int64 (field[2]) from result TVMFFIAny.
+    mlir::Value listSize = mlir::LLVM::LoadOp::create(
+        builder, loc, i64Ty,
+        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, *sizeResultSlot,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
+
+    // --- Step 2: Create StableList with reserved capacity ---
+
+    mlir::Value stableListSlot = mlir::LLVM::AllocaOp::create(
+        builder, loc, ptrTy, ptrTy,
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> reserveFn =
+        libtriton::conversion::utils::getOrCreateTorchNewListReserveSize(
+            moduleOp);
+    if (mlir::failed(reserveFn)) {
+      return mlir::failure();
+    }
+    mlir::LLVM::CallOp::create(builder, loc, *reserveFn,
+                               {listSize, stableListSlot});
+    mlir::Value listHandle =
+        mlir::LLVM::LoadOp::create(builder, loc, ptrTy, stableListSlot);
+
+    // --- Step 3: Get push_back function handle ---
+
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> pushBackFn =
+        libtriton::conversion::utils::getOrCreateTorchListPushBack(moduleOp);
+    if (mlir::failed(pushBackFn)) {
+      return mlir::failure();
+    }
+
+    // --- Step 4: Loop i = 0 .. listSize-1, ffi.ArrayGetItem + push_back ---
+
+    // Pre-build itemArgs[0] (kTVMFFIArray=71, v_obj=input) — reused across
+    // iterations.
+    mlir::Value itemArg0 = mlir::LLVM::AllocaOp::create(
+        builder, loc, ptrTy, anyTy,
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+    fillFFIAny(builder, loc, itemArg0, kTVMFFIArray, inputInt);
+
+    // Split block — continuationBlock gets the rest of the function.
+    mlir::Block *origBlock = builder.getBlock();
+    mlir::Block *continuationBlock =
+        origBlock->splitBlock(builder.getInsertionPoint());
+
+    // Create loop blocks before continuationBlock.
+    // Each takes the loop counter as a block argument (i64).
+    mlir::Block *checkBlock = builder.createBlock(continuationBlock);
+    checkBlock->addArgument(i64Ty, loc);
+    mlir::Block *bodyBlock = builder.createBlock(continuationBlock);
+    bodyBlock->addArgument(i64Ty, loc);
+    mlir::Block *exitBlock = builder.createBlock(continuationBlock);
+
+    // Branch from origBlock to checkBlock with initial counter = 0.
+    builder.setInsertionPointToEnd(origBlock);
+    mlir::Value c0 = mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 0);
+    mlir::LLVM::BrOp::create(builder, loc, mlir::ValueRange{c0}, checkBlock);
+
+    // checkBlock(%iVal : i64)
+    builder.setInsertionPointToStart(checkBlock);
+    mlir::Value iVal = checkBlock->getArgument(0);
+    mlir::Value cond = mlir::LLVM::ICmpOp::create(
+        builder, loc, mlir::LLVM::ICmpPredicate::slt, iVal, listSize);
+    mlir::LLVM::CondBrOp::create(builder, loc, cond, bodyBlock,
+                                 mlir::ValueRange{iVal}, exitBlock,
+                                 mlir::ValueRange{});
+
+    // bodyBlock(%iVal : i64): call ffi.ArrayGetItem via
+    // callTVMFFIGlobalFunction.
+    builder.setInsertionPointToStart(bodyBlock);
+    iVal = bodyBlock->getArgument(0);
+
+    // Build itemArgs[1] = TVMFFIAny(kTVMFFIInt=1, v_int64=iVal).
+    mlir::Value itemArg1 = mlir::LLVM::AllocaOp::create(
+        builder, loc, ptrTy, anyTy,
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+    fillFFIAny(builder, loc, itemArg1, kTVMFFIInt, iVal);
+
+    // Call ffi.ArrayGetItem(array, i).
+    mlir::FailureOr<mlir::Value> itemResult =
+        libtriton::conversion::utils::callTVMFFIGlobalFunction(
+            builder, loc, moduleOp, "ffi.ArrayGetItem", {itemArg0, itemArg1});
+    if (mlir::failed(itemResult))
+      return mlir::failure();
+    mlir::Value elemVal = mlir::LLVM::LoadOp::create(
+        builder, loc, i64Ty,
+        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, *itemResult,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
+
+    mlir::LLVM::CallOp::create(builder, loc, *pushBackFn,
+                               {listHandle, elemVal});
+
+    mlir::Value iPlus1 = mlir::LLVM::AddOp::create(
+        builder, loc, iVal,
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+    mlir::LLVM::BrOp::create(builder, loc, mlir::ValueRange{iPlus1},
+                             checkBlock);
+
+    // exitBlock: br to continuation.
+    builder.setInsertionPointToStart(exitBlock);
+    mlir::LLVM::BrOp::create(builder, loc, continuationBlock);
+
+    builder.setInsertionPointToStart(continuationBlock);
+    return mlir::LLVM::PtrToIntOp::create(builder, loc, i64Ty, listHandle)
         .getResult();
   }
   default:
@@ -249,6 +404,7 @@ resolveStableIValue(mlir::OpBuilder &builder, const c10::TypePtr &c10Type,
                     mlir::Type torchType, mlir::Value loaded,
                     mlir::ModuleOp moduleOp, mlir::Location loc) {
   mlir::MLIRContext *ctx = builder.getContext();
+  mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
   mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
   mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
 
@@ -311,7 +467,6 @@ resolveStableIValue(mlir::OpBuilder &builder, const c10::TypePtr &c10Type,
     // Device: unpack i64 → llvm.struct<(i32, i32)>.
     // PyTorch StableIValue format: (device_type << 32) | device_index
     // Lower 32 bits = device_index, upper 32 bits = device_type.
-    mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
     mlir::Value devIdx =
         mlir::LLVM::TruncOp::create(builder, loc, i32Ty, loaded);
     mlir::Value shift = mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 32);
@@ -331,11 +486,9 @@ resolveStableIValue(mlir::OpBuilder &builder, const c10::TypePtr &c10Type,
                                              llvm::ArrayRef<int64_t>{1})
         .getResult();
   }
-  case c10::TypeKind::ListType:
-  case c10::TypeKind::AnyListType: {
-    // List: i64 → !llvm.ptr (StableListHandle*).
-    return mlir::LLVM::IntToPtrOp::create(builder, loc, ptrTy, loaded)
-        .getResult();
+  case c10::TypeKind::ListType: {
+    // TODO: support List return type resolution.
+    return mlir::failure();
   }
   default:
     return mlir::failure();

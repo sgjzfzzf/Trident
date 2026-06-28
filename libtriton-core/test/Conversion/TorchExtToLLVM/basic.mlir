@@ -57,15 +57,44 @@ func.func @aten_empty_like(%arg0: !torch.vtensor<[200,200,26],f64>) -> !torch.vt
 
 // CHECK-LABEL: llvm.func @list_construct(
 // CHECK-SAME:    %[[A:.*]]: i64, %[[B:.*]]: i64) -> !llvm.ptr {
-// CHECK:      %[[HL_PTR:.*]] = llvm.alloca %{{.*}} x !llvm.ptr : (i64) -> !llvm.ptr
-// CHECK-NEXT: %[[N:.*]] = llvm.mlir.constant(2 : i64) : i64
-// CHECK-NEXT: llvm.call @torch_new_list_reserve_size(%[[N]], %[[HL_PTR]]) : (i64, !llvm.ptr) -> i32
-// CHECK-NEXT: %[[HL:.*]] = llvm.load %[[HL_PTR]] : !llvm.ptr -> !llvm.ptr
-
-// CHECK:      llvm.call @torch_list_push_back(%[[HL]], %[[A]]) : (!llvm.ptr, i64) -> i32
-// CHECK-NEXT: llvm.call @torch_list_push_back(%[[HL]], %[[B]]) : (!llvm.ptr, i64) -> i32
-
-// CHECK-NEXT: llvm.return %[[HL]] : !llvm.ptr
+// CHECK:      %[[N:.*]] = llvm.mlir.constant(2 : i64) : i64
+// CHECK-NEXT: %[[ARR:.*]] = llvm.alloca %[[N]] x !llvm.struct<(i32, i32, i64)>
+// CHECK:      llvm.getelementptr %[[ARR]][0]
+// Fill TVMFFIAny[0] with kTVMFFIInt=1, v_int64=%A
+// CHECK:      llvm.getelementptr {{%.*}}[0, 0]
+// CHECK:      llvm.store {{%.*}}, {{%.*}} : i32, !llvm.ptr
+// CHECK:      llvm.getelementptr {{%.*}}[0, 1]
+// CHECK:      llvm.store {{%.*}}, {{%.*}} : i32, !llvm.ptr
+// CHECK:      llvm.getelementptr {{%.*}}[0, 2]
+// CHECK:      llvm.store %[[A]], {{%.*}} : i64, !llvm.ptr
+// CHECK:      llvm.getelementptr %[[ARR]][1]
+// Fill TVMFFIAny[1] with kTVMFFIInt=1, v_int64=%B
+// CHECK:      llvm.getelementptr {{%.*}}[0, 0]
+// CHECK:      llvm.store {{%.*}}, {{%.*}} : i32, !llvm.ptr
+// CHECK:      llvm.getelementptr {{%.*}}[0, 1]
+// CHECK:      llvm.store {{%.*}}, {{%.*}} : i32, !llvm.ptr
+// CHECK:      llvm.getelementptr {{%.*}}[0, 2]
+// CHECK:      llvm.store %[[B]], {{%.*}} : i64, !llvm.ptr
+// Build slot pointers.
+// CHECK:      llvm.getelementptr %[[ARR]][0]
+// CHECK:      llvm.getelementptr %[[ARR]][1]
+// TVMFFIFunctionGetGlobal("ffi.Array", &func)
+// CHECK:      llvm.mlir.addressof @__libtriton_constant_ffi.Array_ffi.Array
+// CHECK:      llvm.call @TVMFFIFunctionGetGlobal
+// CHECK:      llvm.load {{%.*}} : !llvm.ptr -> !llvm.ptr
+// Copy slots to contiguous array.
+// CHECK:      llvm.load {{%.*}} : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK:      llvm.store {{%.*}}, {{%.*}} : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK:      llvm.load {{%.*}} : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK:      llvm.store {{%.*}}, {{%.*}} : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// TVMFFIFunctionCall + TVMFFIObjectDecRef
+// CHECK:      llvm.call @TVMFFIFunctionCall
+// CHECK:      llvm.call @TVMFFIObjectDecRef
+// Extract v_obj, inttoptr, return.
+// CHECK:      llvm.getelementptr {{%.*}}[0, 2]
+// CHECK:      %[[VOBJ:.*]] = llvm.load {{%.*}} : !llvm.ptr -> i64
+// CHECK:      %[[RET:.*]] = llvm.inttoptr %[[VOBJ]] : i64 to !llvm.ptr
+// CHECK:      llvm.return %[[RET]] : !llvm.ptr
 
 module {
 func.func @list_construct(%arg0: !torch.int, %arg1: !torch.int) -> !torch.list<int> {
@@ -76,8 +105,8 @@ func.func @list_construct(%arg0: !torch.int, %arg1: !torch.int) -> !torch.list<i
 
 // CHECK-LABEL: llvm.func @list_delete_list(
 // CHECK-SAME:    %[[LIST:.*]]: !llvm.ptr) {
-// CHECK:      llvm.call @torch_delete_list(%[[LIST]]) : (!llvm.ptr) -> i32
-// CHECK-NEXT: llvm.return
+// CHECK-NEXT:    llvm.call @TVMFFIObjectDecRef(%[[LIST]]) : (!llvm.ptr) -> i32
+// CHECK-NEXT:    llvm.return
 
 module {
 func.func @list_delete_list(%list: !torch.list<int>) {

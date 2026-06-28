@@ -4,6 +4,7 @@
 #include <cuda_runtime.h>
 
 #include "torch/csrc/inductor/aoti_torch/c/macros.h"
+#include "torch/csrc/stable/c/shim.h"
 #include "tvm/ffi/c_api.h"
 
 #define LIBTRITON_CORE_RUNTIME_EXPORT                                          \
@@ -42,4 +43,5 @@ LIBTRITON_CORE_RUNTIME_EXPORT int32_t mLibTritonTensorToTVMFFIObject(
 /// \return 0 on success, non-zero on failure.
 LIBTRITON_CORE_RUNTIME_EXPORT int32_t mLibTritonTVMFFIObjectToTensor(
     TVMFFIObjectHandle handle, AtenTensorHandle *output);
+
 #endif // LIBTRITON_CORE_RUNTIME_RUNTIME_H_

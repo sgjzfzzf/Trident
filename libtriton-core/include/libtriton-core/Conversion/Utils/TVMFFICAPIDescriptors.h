@@ -22,6 +22,11 @@ LIBTRITON_DECLARE_CAPI_GET_OR_CREATE(TVMFFITensorFromDLPack)
 // TVM FFI error reporting.
 LIBTRITON_DECLARE_CAPI_GET_OR_CREATE(TVMFFIErrorSetRaisedFromCStr)
 
+// TVM FFI function dispatch (used to call ffi.Array, ffi.ArraySize, etc.).
+LIBTRITON_DECLARE_CAPI_GET_OR_CREATE(TVMFFIFunctionGetGlobal)
+LIBTRITON_DECLARE_CAPI_GET_OR_CREATE(TVMFFIFunctionCall)
+LIBTRITON_DECLARE_CAPI_GET_OR_CREATE(TVMFFIObjectDecRef)
+
 } // namespace libtriton::conversion::utils
 
 #endif // LIBTRITON_CORE_CONVERSION_UTILS_TVMFFICAPIDESCRIPTORS_H_

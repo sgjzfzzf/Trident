@@ -61,8 +61,8 @@ def TVMFFI_FuncOp : TVMFFI_Op<"func", [
 
   let extraClassDeclaration = [{
     ::mlir::Region *getCallableRegion();
-    ::mlir::ArrayRef<::mlir::Type> getArgumentTypes();
-    ::mlir::ArrayRef<::mlir::Type> getResultTypes();
+    ::llvm::ArrayRef<::mlir::Type> getArgumentTypes();
+    ::llvm::ArrayRef<::mlir::Type> getResultTypes();
   }];
 
   let hasCustomAssemblyFormat = 1;

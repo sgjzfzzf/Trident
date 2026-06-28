@@ -3,6 +3,7 @@
 #include "dlpack/dlpack.h"
 #include "torch/csrc/inductor/aoti_torch/c/shim.h"
 #include "torch/csrc/inductor/aoti_torch/utils.h"
+#include "torch/csrc/stable/c/shim.h"
 
 #include <cstdlib>
 

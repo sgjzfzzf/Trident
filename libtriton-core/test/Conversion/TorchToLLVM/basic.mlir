@@ -57,3 +57,51 @@ func.func @torch.constant.none() -> !torch.none {
   %none = torch.constant.none
   return %none : !torch.none
 }
+
+// CHECK-LABEL:   func.func @torch.prim.list_construct(
+// CHECK-SAME:      %[[A:.*]]: !torch.int, %[[B:.*]]: !torch.int) -> !torch.list<int> {
+// The adapted values come through unrealized_conversion_cast from Torch types.
+// CHECK-DAG:      %[[A_ADAPT:.*]] = builtin.unrealized_conversion_cast %[[A]] : !torch.int to !llvm.struct<(i32, i32, i64)>
+// CHECK-DAG:      %[[B_ADAPT:.*]] = builtin.unrealized_conversion_cast %[[B]] : !torch.int to !llvm.struct<(i32, i32, i64)>
+// Allocate array of 2 TVMFFIAny structs.
+// CHECK:           %[[N:.*]] = llvm.mlir.constant(2 : i64) : i64
+// CHECK-NEXT:      %[[ARR:.*]] = llvm.alloca %[[N]] x !llvm.struct<(i32, i32, i64)>
+// Extract payloads and fill slots.
+// CHECK:           llvm.extractvalue %[[A_ADAPT]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK:           llvm.getelementptr %[[ARR]][0]
+// CHECK:           llvm.getelementptr {{%.*}}[0, 0]
+// CHECK:           llvm.store {{%.*}}, {{%.*}} : i32, !llvm.ptr
+// CHECK:           llvm.getelementptr {{%.*}}[0, 1]
+// CHECK:           llvm.store {{%.*}}, {{%.*}} : i32, !llvm.ptr
+// CHECK:           llvm.getelementptr {{%.*}}[0, 2]
+// CHECK:           llvm.store {{%.*}}, {{%.*}} : i64, !llvm.ptr
+// CHECK:           llvm.extractvalue %[[B_ADAPT]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK:           llvm.getelementptr %[[ARR]][1]
+// CHECK:           llvm.getelementptr {{%.*}}[0, 0]
+// CHECK:           llvm.store {{%.*}}, {{%.*}} : i32, !llvm.ptr
+// CHECK:           llvm.getelementptr {{%.*}}[0, 1]
+// CHECK:           llvm.store {{%.*}}, {{%.*}} : i32, !llvm.ptr
+// CHECK:           llvm.getelementptr {{%.*}}[0, 2]
+// CHECK:           llvm.store {{%.*}}, {{%.*}} : i64, !llvm.ptr
+// Build slot pointers and call ffi.Array via TVMFFIFunctionGetGlobal.
+// CHECK:           llvm.getelementptr %[[ARR]][0]
+// CHECK:           llvm.getelementptr %[[ARR]][1]
+// CHECK:           llvm.mlir.addressof @__libtriton_constant_ffi.Array_ffi.Array
+// CHECK:           llvm.call @TVMFFIFunctionGetGlobal
+// TVMFFIFunctionCall + TVMFFIObjectDecRef
+// CHECK:           llvm.call @TVMFFIFunctionCall
+// CHECK:           llvm.call @TVMFFIObjectDecRef
+// Build TVMFFIAny(kTVMFFIArray=71) from the ffi.Array result.
+// CHECK:           llvm.getelementptr {{%.*}}[0, 2]
+// CHECK:           %[[VOBJ:.*]] = llvm.load {{%.*}} : !llvm.ptr -> i64
+// CHECK:           llvm.mlir.undef : !llvm.struct<(i32, i32, i64)>
+// CHECK:           llvm.mlir.constant(71 : i32) : i32
+// CHECK:           llvm.insertvalue {{%.*}}, {{%.*}}[0] : !llvm.struct<(i32, i32, i64)>
+// CHECK:           llvm.insertvalue %[[VOBJ]], {{%.*}}[2] : !llvm.struct<(i32, i32, i64)>
+// Wrap in unrealized_conversion_cast for the Torch return type.
+// CHECK:           builtin.unrealized_conversion_cast {{%.*}} : !llvm.struct<(i32, i32, i64)> to !torch.list<int>
+// CHECK-NEXT:      return {{%.*}} : !torch.list<int>
+func.func @torch.prim.list_construct(%arg0: !torch.int, %arg1: !torch.int) -> !torch.list<int> {
+  %0 = torch.prim.ListConstruct %arg0, %arg1 : (!torch.int, !torch.int) -> !torch.list<int>
+  return %0 : !torch.list<int>
+}

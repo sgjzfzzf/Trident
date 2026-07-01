@@ -227,8 +227,10 @@ mlir::FailureOr<mlir::Value> buildStableIValue(mlir::OpBuilder &builder,
   }
   case c10::TypeKind::ListType: {
     // List: adapted type is TVMFFIAny with payload = TVMFFIObjectHandle
-    // (pointer to ffi.Array). Extract pointer and continue with existing
-    // logic.
+    // (pointer to ffi.Array). Extract pointer, iterate over elements,
+    // and recursively convert each element via buildStableIValue.
+
+    c10::TypePtr elemType = c10Type->cast<c10::ListType>()->getElementType();
 
     mlir::Value inputInt = extractPayload(builder, loc, input);
     mlir::LLVM::LLVMStructType anyTy =
@@ -307,19 +309,18 @@ mlir::FailureOr<mlir::Value> buildStableIValue(mlir::OpBuilder &builder,
     // Branch from origBlock to checkBlock with initial counter = 0.
     builder.setInsertionPointToEnd(origBlock);
     mlir::Value c0 = mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 0);
-    mlir::LLVM::BrOp::create(builder, loc, mlir::ValueRange{c0}, checkBlock);
+    mlir::LLVM::BrOp::create(builder, loc, {c0}, checkBlock);
 
     // checkBlock(%iVal : i64)
     builder.setInsertionPointToStart(checkBlock);
     mlir::Value iVal = checkBlock->getArgument(0);
     mlir::Value cond = mlir::LLVM::ICmpOp::create(
         builder, loc, mlir::LLVM::ICmpPredicate::slt, iVal, listSize);
-    mlir::LLVM::CondBrOp::create(builder, loc, cond, bodyBlock,
-                                 mlir::ValueRange{iVal}, exitBlock,
-                                 mlir::ValueRange{});
+    mlir::LLVM::CondBrOp::create(builder, loc, cond, bodyBlock, {iVal},
+                                 exitBlock, {});
 
-    // bodyBlock(%iVal : i64): call ffi.ArrayGetItem via
-    // callTVMFFIGlobalFunction.
+    // bodyBlock(%iVal : i64): call ffi.ArrayGetItem, recursively convert
+    // element via buildStableIValue, then push_back.
     builder.setInsertionPointToStart(bodyBlock);
     iVal = bodyBlock->getArgument(0);
 
@@ -335,21 +336,28 @@ mlir::FailureOr<mlir::Value> buildStableIValue(mlir::OpBuilder &builder,
     mlir::FailureOr<mlir::Value> itemResult =
         libtriton::conversion::utils::callTVMFFIGlobalFunction(
             builder, loc, moduleOp, "ffi.ArrayGetItem", {itemArg0, itemArg1});
-    if (mlir::failed(itemResult))
+    if (mlir::failed(itemResult)) {
       return mlir::failure();
-    mlir::Value elemVal = mlir::LLVM::LoadOp::create(
-        builder, loc, i64Ty,
-        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, *itemResult,
-                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
+    }
+
+    // Load the returned TVMFFIAny value (the element).
+    mlir::Value elemAny =
+        mlir::LLVM::LoadOp::create(builder, loc, anyTy, *itemResult);
+
+    // Recursively convert the element using buildStableIValue.
+    mlir::FailureOr<mlir::Value> elemIVal =
+        buildStableIValue(builder, elemType, elemAny, moduleOp, loc);
+    if (mlir::failed(elemIVal)) {
+      return mlir::failure();
+    }
 
     mlir::LLVM::CallOp::create(builder, loc, *pushBackFn,
-                               {listHandle, elemVal});
+                               {listHandle, *elemIVal});
 
     mlir::Value iPlus1 = mlir::LLVM::AddOp::create(
         builder, loc, iVal,
         mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
-    mlir::LLVM::BrOp::create(builder, loc, mlir::ValueRange{iPlus1},
-                             checkBlock);
+    mlir::LLVM::BrOp::create(builder, loc, {iPlus1}, checkBlock);
 
     // exitBlock: br to continuation.
     builder.setInsertionPointToStart(exitBlock);

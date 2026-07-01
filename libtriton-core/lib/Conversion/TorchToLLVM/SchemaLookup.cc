@@ -447,9 +447,63 @@ mlir::FailureOr<mlir::Value> resolveStableIValue(mlir::OpBuilder &builder,
     return buildFFIAnyValue(builder, loc, kTVMFFINone, zero);
   }
   case c10::TypeKind::OptionalType: {
-    // TODO: support Optional result type unpacking with CondBr blocks,
-    // matching the boxed encoding produced by buildStableIValue.
-    return mlir::failure();
+    // Reverse of buildStableIValue OptionalType encoding:
+    // loaded == 0 → None; loaded != 0 → heap pointer to inner StableIValue.
+    c10::TypePtr innerC10Type =
+        c10Type->cast<c10::OptionalType>()->getElementType();
+
+    // Split blocks: noneBlock (loaded == 0), someBlock (loaded != 0),
+    // continuationBlock (merge with TVMFFIAny result).
+    mlir::Block *origBlock = builder.getBlock();
+    mlir::Block *continuationBlock =
+        origBlock->splitBlock(builder.getInsertionPoint());
+    continuationBlock->addArgument(anyTy, loc);
+
+    mlir::Block *noneBlock = builder.createBlock(continuationBlock);
+    mlir::Block *someBlock = builder.createBlock(continuationBlock);
+
+    mlir::Value zero =
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 0);
+    mlir::Value isNone = mlir::LLVM::ICmpOp::create(
+        builder, loc, mlir::LLVM::ICmpPredicate::eq, loaded, zero);
+
+    builder.setInsertionPointToEnd(origBlock);
+    mlir::LLVM::CondBrOp::create(builder, loc, isNone, noneBlock, someBlock);
+
+    // --- None block: TVMFFIAny {kTVMFFINone, 0, 0} ---
+    builder.setInsertionPointToStart(noneBlock);
+    mlir::Value noneResult =
+        buildFFIAnyValue(builder, loc, kTVMFFINone, zero);
+    mlir::LLVM::BrOp::create(builder, loc, mlir::ValueRange{noneResult},
+                             continuationBlock);
+
+    // --- Some block: unbox inner StableIValue from heap ---
+    builder.setInsertionPointToStart(someBlock);
+    mlir::Value heapPtr =
+        mlir::LLVM::IntToPtrOp::create(builder, loc, ptrTy, loaded);
+    mlir::Value innerIVal =
+        mlir::LLVM::LoadOp::create(builder, loc, i64Ty, heapPtr);
+
+    // Free the heap-allocated box.
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> freeFn =
+        libtriton::conversion::utils::getOrCreateFree(moduleOp);
+    if (mlir::failed(freeFn)) {
+      return mlir::failure();
+    }
+    mlir::LLVM::CallOp::create(builder, loc, *freeFn, {heapPtr});
+
+    // Recursively resolve the inner StableIValue.
+    mlir::FailureOr<mlir::Value> resolved =
+        resolveStableIValue(builder, innerC10Type, innerIVal, moduleOp, loc);
+    if (mlir::failed(resolved)) {
+      return mlir::failure();
+    }
+    mlir::LLVM::BrOp::create(builder, loc, mlir::ValueRange{*resolved},
+                             continuationBlock);
+
+    // --- Continuation block (merge point) ---
+    builder.setInsertionPointToStart(continuationBlock);
+    return continuationBlock->getArgument(0);
   }
   case c10::TypeKind::DeviceObjType: {
     // Device: dispatcher returns StableIValue format
@@ -476,8 +530,126 @@ mlir::FailureOr<mlir::Value> resolveStableIValue(mlir::OpBuilder &builder,
     return buildFFIAnyValue(builder, loc, kTVMFFIDevice, combined);
   }
   case c10::TypeKind::ListType: {
-    // TODO: support List return type resolution.
-    return mlir::failure();
+    // Reverse of buildStableIValue ListType encoding:
+    // loaded is StableListHandle (i64).  Extract elements via Stable C API
+    // and reconstruct a TVM FFI Array.
+    c10::TypePtr elemType = c10Type->cast<c10::ListType>()->getElementType();
+
+    // Convert i64 → StableListHandle.
+    mlir::Value listHandle =
+        mlir::LLVM::IntToPtrOp::create(builder, loc, ptrTy, loaded);
+
+    // --- Step 1: Get list size via torch_list_size ---
+    mlir::Value sizeSlot = mlir::LLVM::AllocaOp::create(
+        builder, loc, ptrTy, i64Ty,
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> sizeFn =
+        libtriton::conversion::utils::getOrCreateTorchListSize(moduleOp);
+    if (mlir::failed(sizeFn)) {
+      return mlir::failure();
+    }
+    mlir::LLVM::CallOp::create(builder, loc, *sizeFn,
+                               {listHandle, sizeSlot});
+    mlir::Value listSize =
+        mlir::LLVM::LoadOp::create(builder, loc, i64Ty, sizeSlot);
+
+    // --- Step 2: Allocate ffi.Array args region (runtime size) ---
+    mlir::Value ffiArgs = mlir::LLVM::AllocaOp::create(
+        builder, loc, ptrTy, anyTy, listSize);
+
+    // --- Step 3: Loop i = 0 .. listSize-1, torch_list_get_item + resolve ---
+    mlir::Block *origBlock = builder.getBlock();
+    mlir::Block *continuationBlock =
+        origBlock->splitBlock(builder.getInsertionPoint());
+
+    mlir::Block *checkBlock = builder.createBlock(continuationBlock);
+    checkBlock->addArgument(i64Ty, loc);
+    mlir::Block *bodyBlock = builder.createBlock(continuationBlock);
+    bodyBlock->addArgument(i64Ty, loc);
+    mlir::Block *exitBlock = builder.createBlock(continuationBlock);
+
+    builder.setInsertionPointToEnd(origBlock);
+    mlir::Value c0 = mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 0);
+    mlir::LLVM::BrOp::create(builder, loc, {c0}, checkBlock);
+
+    // checkBlock(%iVal : i64)
+    builder.setInsertionPointToStart(checkBlock);
+    mlir::Value iVal = checkBlock->getArgument(0);
+    mlir::Value cond = mlir::LLVM::ICmpOp::create(
+        builder, loc, mlir::LLVM::ICmpPredicate::slt, iVal, listSize);
+    mlir::LLVM::CondBrOp::create(builder, loc, cond, bodyBlock, {iVal},
+                                 exitBlock, {});
+
+    // bodyBlock(%iVal : i64): extract element, resolve, store to ffiArgs.
+    builder.setInsertionPointToStart(bodyBlock);
+    iVal = bodyBlock->getArgument(0);
+
+    // Allocate slot for torch_list_get_item output.
+    mlir::Value itemSlot = mlir::LLVM::AllocaOp::create(
+        builder, loc, ptrTy, i64Ty,
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getItemFn =
+        libtriton::conversion::utils::getOrCreateTorchListGetItem(moduleOp);
+    if (mlir::failed(getItemFn)) {
+      return mlir::failure();
+    }
+    mlir::LLVM::CallOp::create(builder, loc, *getItemFn,
+                               {listHandle, iVal, itemSlot});
+    mlir::Value itemIVal =
+        mlir::LLVM::LoadOp::create(builder, loc, i64Ty, itemSlot);
+
+    // Recursively resolve element StableIValue → TVMFFIAny.
+    mlir::FailureOr<mlir::Value> elemAny =
+        resolveStableIValue(builder, elemType, itemIVal, moduleOp, loc);
+    if (mlir::failed(elemAny)) {
+      return mlir::failure();
+    }
+
+    // Store resolved element into ffiArgs[i].
+    mlir::Value dstSlot =
+        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, ffiArgs,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{iVal});
+    mlir::LLVM::StoreOp::create(builder, loc, *elemAny, dstSlot);
+
+    mlir::Value iPlus1 = mlir::LLVM::AddOp::create(
+        builder, loc, iVal,
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+    mlir::LLVM::BrOp::create(builder, loc, {iPlus1}, checkBlock);
+
+    // exitBlock: call ffi.Array with runtime N, then delete StableList.
+    builder.setInsertionPointToStart(exitBlock);
+
+    // Truncate listSize to i32 for TVMFFIFunctionCall's numArgs parameter.
+    mlir::Value numArgs =
+        mlir::LLVM::TruncOp::create(builder, loc, i32Ty, listSize);
+    mlir::FailureOr<mlir::Value> ffiResult =
+        libtriton::conversion::utils::callTVMFFIGlobalFunction(
+            builder, loc, moduleOp, "ffi.Array", ffiArgs, numArgs);
+    if (mlir::failed(ffiResult)) {
+      return mlir::failure();
+    }
+
+    // --- Delete the StableList via torch_delete_list ---
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> deleteFn =
+        libtriton::conversion::utils::getOrCreateTorchDeleteList(moduleOp);
+    if (mlir::failed(deleteFn)) {
+      return mlir::failure();
+    }
+    mlir::LLVM::CallOp::create(builder, loc, *deleteFn, {listHandle});
+
+    // Extract v_obj from result TVMFFIAny and build kTVMFFIArray wrapper.
+    mlir::Value vObjGEP =
+        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, *ffiResult,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2});
+    mlir::Value vObj =
+        mlir::LLVM::LoadOp::create(builder, loc, i64Ty, vObjGEP);
+
+    mlir::LLVM::BrOp::create(builder, loc, continuationBlock);
+
+    // --- Continuation block: emit result TVMFFIAny ---
+    builder.setInsertionPointToStart(continuationBlock);
+    return buildFFIAnyValue(builder, loc, kTVMFFIArray, vObj);
   }
   default:
     return mlir::failure();

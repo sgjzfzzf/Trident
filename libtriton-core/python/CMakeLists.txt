@@ -101,6 +101,8 @@ declare_mlir_python_sources(
   SOURCES
   compiler_utils.py
   dialects/torch/__init__.py
+  extras/fx_decomp_util.py
+  extras/fx_importer.py
   fx.py)
 
 declare_mlir_dialect_python_bindings(

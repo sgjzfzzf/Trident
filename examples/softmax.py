@@ -31,7 +31,7 @@ def softmax_kernel(
         tl.store(output_ptrs, softmax_output, mask=mask)
 
 
-def softmax(x: torch.Tensor) -> torch.Tensor:
+def softmax_triton(x: torch.Tensor) -> torch.Tensor:
     return softmax_triton_impl(x)
 
 
@@ -63,8 +63,7 @@ def softmax_triton_impl(x):
 if __name__ == "__main__":
     x = torch.randn(1823, 781, device="cuda")
     y_torch = torch.softmax(x, axis=1)
-    y_triton = softmax(x)
-    softmax_jit(x)
+    y_triton = softmax_triton(x)
     y_jit = softmax_jit(x)
     assert torch.allclose(y_torch, y_triton), (y_torch, y_triton)
     assert torch.allclose(y_torch, y_jit), (y_torch, y_jit)

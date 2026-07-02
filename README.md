@@ -19,7 +19,7 @@ The repository contains:
 
 - `python/trident`: Python APIs (`jit`, `compile`) and runtime backend.
 - `trident-core`: MLIR/C++ implementation, dialects, passes, runtime glue.
-- `examples`: Functional demos (`add.py`, `mm.py`, `softmax.py`).
+- `examples`: Functional demos (`add.py`, `mm.py`, `softmax.py`, `attention.py`).
 - `test`: Python end-to-end tests for lowered ATen ops.
 
 ## Prerequisites

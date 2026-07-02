@@ -291,6 +291,5 @@ if __name__ == "__main__":
     triton_output = matmul_triton(a, b, "")
     torch.testing.assert_close(triton_output, torch_output, atol=1e-2, rtol=1e-2)
 
-    matmul_jit(a, b)  # warm up / compile
     output_jit = matmul_jit(a, b)
     torch.testing.assert_close(output_jit, torch_output, atol=1e-2, rtol=1e-2)

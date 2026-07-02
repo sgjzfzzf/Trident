@@ -34,9 +34,19 @@ class TridentGraphModule(object):
     order - the first one that returns 0 (guard match) wins.
     """
 
-    def __init__(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        fn: Callable[..., Any],
+        max_compiles: int = 2,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(*args, **kwargs)
+        if max_compiles < 1:
+            raise ValueError("max_compiles must be >= 1")
         self.fn: Final[Callable[..., Any]] = fn
+        self._max_compiles: Final[int] = max_compiles
+        self._signature: Final[inspect.Signature] = inspect.signature(fn)
         self.ctx: Final[ir.Context] = ir.Context()
         register_all_dialects(self.ctx)
         register_all_passes()
@@ -47,18 +57,42 @@ class TridentGraphModule(object):
     # Public API
     # ------------------------------------------------------------------ #
 
-    def __call__(self, *args: Any) -> Any:
-        max_compiles: int = len(self._sub_modules) + 10
-        while True:
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        bound_args: inspect.BoundArguments = self._signature.bind(*args, **kwargs)
+        bound_args.apply_defaults()
+
+        normalized: List[Any] = []
+        for parameter in self._signature.parameters.values():
+            if parameter.kind in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            ):
+                normalized.append(bound_args.arguments[parameter.name])
+            elif parameter.kind == inspect.Parameter.VAR_POSITIONAL:
+                normalized.extend(bound_args.arguments.get(parameter.name, ()))
+            elif parameter.kind == inspect.Parameter.KEYWORD_ONLY:
+                if parameter.name in bound_args.arguments:
+                    raise TypeError(
+                        "trident.jit does not support keyword-only arguments"
+                    )
+            elif parameter.kind == inspect.Parameter.VAR_KEYWORD:
+                extra_kwargs = bound_args.arguments.get(parameter.name, {})
+                if len(extra_kwargs) != 0:
+                    raise TypeError(
+                        "trident.jit does not support variadic keyword arguments"
+                    )
+
+        args = tuple(normalized)
+        for _ in range(self._max_compiles):
             try:
                 return self.executor(*args)
             except GuardMatchException:
-                if len(self._sub_modules) >= max_compiles:
-                    raise RuntimeError(
-                        f"recompilation limit ({max_compiles}) exceeded "
-                        f"without finding a matching specialization"
-                    ) from None
                 self.compile(*args)
+
+        raise RuntimeError(
+            f"recompilation limit ({self._max_compiles}) exceeded "
+            f"without finding a matching specialization"
+        )
 
     def compile(self, *args: Any) -> Any:
         """Build a new sub-module for *args* and rebuild the combined

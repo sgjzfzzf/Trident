@@ -29,7 +29,7 @@ def add_jit(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return add_impl(x, y)
 
 
-def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+def add_triton(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return add_impl(x, y)
 
 
@@ -52,8 +52,7 @@ if __name__ == "__main__":
         x = torch.rand(size, device=DEVICE)
         y = torch.rand(size, device=DEVICE)
         output_torch = x + y
-        output_triton = add(x, y)
-        add_jit(x, y)  # warmup
+        output_triton = add_triton(x, y)
         output_jit = add_jit(x, y)
         torch.testing.assert_close(output_triton, output_torch)
         torch.testing.assert_close(output_jit, output_torch)

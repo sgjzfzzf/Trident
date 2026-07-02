@@ -2,7 +2,6 @@
 #define LIBTRITON_CORE_CONVERSION_TORCHCONVERSIONTOLLVM_TORCHCONVERSIONTOLLVM_H_
 
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"

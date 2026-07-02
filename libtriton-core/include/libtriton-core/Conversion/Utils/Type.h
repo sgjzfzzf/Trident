@@ -9,7 +9,7 @@
 #ifndef LIBTRITON_CORE_CONVERSION_UTILS_TYPE_H_
 #define LIBTRITON_CORE_CONVERSION_UTILS_TYPE_H_
 
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/MLIRContext.h"
 
 namespace libtriton::conversion::utils {

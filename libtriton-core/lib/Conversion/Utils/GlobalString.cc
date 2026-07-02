@@ -8,8 +8,8 @@
 
 #include "libtriton-core/Conversion/Utils/GlobalString.h"
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/FormatVariadic.h"
 
 namespace libtriton::conversion::utils {

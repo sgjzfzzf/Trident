@@ -4,7 +4,6 @@
 #include <cuda_runtime.h>
 
 #include "torch/csrc/inductor/aoti_torch/c/macros.h"
-#include "torch/csrc/stable/c/shim.h"
 #include "tvm/ffi/c_api.h"
 
 #define LIBTRITON_CORE_RUNTIME_EXPORT                                          \

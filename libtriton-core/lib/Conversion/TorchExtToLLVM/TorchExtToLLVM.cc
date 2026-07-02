@@ -1,5 +1,5 @@
 #include "libtriton-core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
-#include "libtriton-core/Conversion/Utils/TVMFFIUtils.h"
+#include "libtriton-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "libtriton-core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "libtriton-core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
@@ -8,7 +8,6 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace libtriton::torchext {

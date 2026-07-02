@@ -12,8 +12,8 @@ def ConvertTorchConversionToLLVM
 }
 
 def ConvertTorchExtToGPU : Pass<"convert-torchext-to-gpu", "mlir::ModuleOp"> {
-  let summary = "Lower TorchExt dialect operations to GPU dialect";
-  let description = [{Lower TorchExt dialect operations to GPU dialect.}];
+  let summary = "Lower Torch Ext dialect operations to GPU dialect ";
+      let description = [{Lower TorchExt dialect operations to GPU dialect.}];
   let dependentDialects = ["mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect"];
 }
 
@@ -25,7 +25,7 @@ def ConvertTorchExtToLLVM : Pass<"convert-torchext-to-llvm", "mlir::ModuleOp"> {
 def ConvertTorchToCf : Pass<"convert-torch-to-cf", "mlir::ModuleOp"> {
   let summary = "Lower Torch dialect runtime ops to ControlFlow dialect";
   let description = [{Lower Torch dialect runtime ops to ControlFlow dialect.}];
-  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
+  let dependentDialects = ["mlir::cf::ControlFlowDi alect "];
 }
 
 def ConvertTorchToLLVM : Pass<"convert-torch-to-llvm", "mlir::ModuleOp"> {

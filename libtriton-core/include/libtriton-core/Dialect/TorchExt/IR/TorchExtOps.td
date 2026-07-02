@@ -61,7 +61,7 @@ def TorchExt_TritonKernelLaunchOp : TorchExt_Op<"triton_kernel_launch", [
     (`args` `(` $kernelOperands^ `:` type($kernelOperands) `)`)?
     attr-dict
     `:` type($gridSizeX)
-  }];
+}];
 }
 
 //===----------------------------------------------------------------------===//

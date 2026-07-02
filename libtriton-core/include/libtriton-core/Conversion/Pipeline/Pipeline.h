@@ -9,7 +9,6 @@
 #ifndef LIBTRITON_CORE_CONVERSION_PIPELINE_PIPELINE_H_
 #define LIBTRITON_CORE_CONVERSION_PIPELINE_PIPELINE_H_
 
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 

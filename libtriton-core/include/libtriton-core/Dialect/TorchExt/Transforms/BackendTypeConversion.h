@@ -9,7 +9,6 @@
 #ifndef LIBTRITON_CORE_DIALECT_TORCHEXT_TRANSFORMS_BACKENDTYPECONVERSION_H_
 #define LIBTRITON_CORE_DIALECT_TORCHEXT_TRANSFORMS_BACKENDTYPECONVERSION_H_
 
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace libtriton::torch {

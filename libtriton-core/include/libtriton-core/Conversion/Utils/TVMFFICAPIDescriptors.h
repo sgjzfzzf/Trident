@@ -9,7 +9,6 @@
 #ifndef LIBTRITON_CORE_CONVERSION_UTILS_TVMFFICAPIDESCRIPTORS_H_
 #define LIBTRITON_CORE_CONVERSION_UTILS_TVMFFICAPIDESCRIPTORS_H_
 
-#include "dlpack/dlpack.h"
 #include "libtriton-core/Conversion/Utils/CFunctionDeclUtils.h"
 #include "tvm/ffi/c_api.h"
 

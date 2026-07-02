@@ -9,10 +9,6 @@
 #ifndef LIBTRITON_CORE_CONVERSION_UTILS_TVMFFIUTILS_H_
 #define LIBTRITON_CORE_CONVERSION_UTILS_TVMFFIUTILS_H_
 
-#include "libtriton-core/Conversion/Utils/GlobalString.h"
-#include "libtriton-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LogicalResult.h"

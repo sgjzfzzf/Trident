@@ -1,7 +1,6 @@
 #ifndef LIBTRITON_CORE_CONVERSION_TORCHTOCF_TORCHTOCF_H_
 #define LIBTRITON_CORE_CONVERSION_TORCHTOCF_TORCHTOCF_H_
 
-#include "mlir/IR/DialectRegistry.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/DialectConversion.h"

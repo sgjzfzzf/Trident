@@ -4,7 +4,8 @@
 include "mlir/Pass/PassBase.td"
 
 def RAAI : Pass<"raai", "mlir::ModuleOp"> {
-  let summary = "Release allocated intermediate variables in single-block regions";
+  let summary =
+      "Release allocated intermediate variables in single-block regions";
   // clang-format off
   let description = [{
     Walks every op in the module.  For each single-block region (func::FuncOp,

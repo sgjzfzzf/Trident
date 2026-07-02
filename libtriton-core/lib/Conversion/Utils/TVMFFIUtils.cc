@@ -7,7 +7,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "libtriton-core/Conversion/Utils/TVMFFIUtils.h"
+#include "libtriton-core/Conversion/Utils/GlobalString.h"
+#include "libtriton-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "libtriton-core/Conversion/Utils/Type.h"
+
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 
 namespace libtriton::conversion::utils {
 

@@ -80,12 +80,14 @@ def TVMFFI_SizeGuardAttr : TVMFFI_GuardAttr<"SizeGuard"> {
       "`<` `index` `=` $index `,` `expected` `=` $expected `>`";
 }
 
-//===----------------------------------------------------------------------===//
-// StorageOffsetGuardAttr
-//===----------------------------------------------------------------------===//
+//=== -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- ==
+      = //
+      // StorageOffsetGuardAttr
+      //===----------------------------------------------------------------------===//
 
-def TVMFFI_StorageOffsetGuardAttr : TVMFFI_GuardAttr<"StorageOffsetGuard"> {
-  let description = [{Guards the storage offset of a tensor variable.}];
+      def TVMFFI_StorageOffsetGuardAttr
+      : TVMFFI_GuardAttr<"StorageOffsetGuard"> {
+    let description = [{Guards the storage offset of a tensor variable.}];
 
   let parameters = (ins "int64_t" : $expected);
   let assemblyFormat = "`<` `expected` `=` $expected `>`";

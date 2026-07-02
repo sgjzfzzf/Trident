@@ -9,7 +9,6 @@
 #ifndef LIBTRITON_CORE_CONVERSION_UTILS_GLOBALSTRING_H_
 #define LIBTRITON_CORE_CONVERSION_UTILS_GLOBALSTRING_H_
 
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
 

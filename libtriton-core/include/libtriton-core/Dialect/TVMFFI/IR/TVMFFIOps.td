@@ -88,11 +88,11 @@ def TVMFFI_ReturnOp
     tvm_ffi.return %result : i64
     ```
   }];
-  // clang-format on
+// clang-format on
 
-  let arguments = (ins Variadic<AnyTorchType> : $operands);
+let arguments = (ins Variadic<AnyTorchType> : $operands);
 
-  let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
+let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
 }
 
 #endif // LIBTRITON_CORE_DIALECT_TVMFFI_IR_TVMFFIOPS_TD_

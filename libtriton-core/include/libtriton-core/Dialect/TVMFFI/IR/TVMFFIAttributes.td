@@ -21,6 +21,7 @@ class TVMFFI_Attr<string name, list<Trait> traits = [],
   let mnemonic = name;
 }
 
+// clang-format off
 //===----------------------------------------------------------------------===//
 // GuardAttribute — base class for guard-kind attributes
 //===----------------------------------------------------------------------===//
@@ -80,14 +81,12 @@ def TVMFFI_SizeGuardAttr : TVMFFI_GuardAttr<"SizeGuard"> {
       "`<` `index` `=` $index `,` `expected` `=` $expected `>`";
 }
 
-//=== -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- ==
-      = //
-      // StorageOffsetGuardAttr
-      //===----------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
+// StorageOffsetGuardAttr
+//===----------------------------------------------------------------------===//
 
-      def TVMFFI_StorageOffsetGuardAttr
-      : TVMFFI_GuardAttr<"StorageOffsetGuard"> {
-    let description = [{Guards the storage offset of a tensor variable.}];
+def TVMFFI_StorageOffsetGuardAttr : TVMFFI_GuardAttr<"StorageOffsetGuard"> {
+  let description = [{Guards the storage offset of a tensor variable.}];
 
   let parameters = (ins "int64_t" : $expected);
   let assemblyFormat = "`<` `expected` `=` $expected `>`";
@@ -117,4 +116,5 @@ def TVMFFI_TensorTypeGuardAttr : TVMFFI_GuardAttr<"TensorTypeGuard"> {
   let assemblyFormat = "`<` `>`";
 }
 
+// clang-format on
 #endif // LIBTRITON_CORE_DIALECT_TVMFFI_IR_TVMFFIATTRIBUTES_TD_

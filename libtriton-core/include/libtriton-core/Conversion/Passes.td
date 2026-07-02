@@ -25,7 +25,7 @@ def ConvertTorchExtToLLVM : Pass<"convert-torchext-to-llvm", "mlir::ModuleOp"> {
 def ConvertTorchToCf : Pass<"convert-torch-to-cf", "mlir::ModuleOp"> {
   let summary = "Lower Torch dialect runtime ops to ControlFlow dialect";
   let description = [{Lower Torch dialect runtime ops to ControlFlow dialect.}];
-  let dependentDialects = ["mlir::cf::ControlFlowDi alect "];
+  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
 }
 
 def ConvertTorchToLLVM : Pass<"convert-torch-to-llvm", "mlir::ModuleOp"> {

@@ -6,7 +6,6 @@ set_target_properties(libtriton-core-opt PROPERTIES RUNTIME_OUTPUT_DIRECTORY
 target_link_libraries(
   libtriton-core-opt
   PRIVATE TorchExtDialect LibTritonUtilsRegistration MLIRMlirOptMain
-          TVMFFIDialect "${Python3_SITELIB}/nvidia/cu13/lib/libcudart.so.13"
-          "${Python3_SITELIB}/nvidia/cu13/lib/libcupti.so.13")
+          TVMFFIDialect CUDA::cudart CUDA::cupti)
 
 mlir_check_all_link_libraries(libtriton-core-opt)

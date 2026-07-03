@@ -19,6 +19,12 @@
 
 namespace trident::conversion::utils {
 
+namespace detail {
+mlir::FailureOr<mlir::LLVM::LLVMFuncOp>
+getOrCreateCAPIImpl(mlir::ModuleOp moduleOp, llvm::StringRef symbol,
+                    mlir::LLVM::LLVMFunctionType expectedType);
+} // namespace detail
+
 template <typename T> inline constexpr bool kUnsupportedCType = false;
 
 template <typename CType> struct CTypeToLLVM {
@@ -95,22 +101,12 @@ getOrCreateCAPI(mlir::ModuleOp moduleOp, llvm::StringRef symbol) {
   mlir::LLVM::LLVMFunctionType expectedType =
       CFunctionTraits<FunctionType>::getLLVMType(context);
 
-  mlir::LLVM::LLVMFuncOp existingFunc =
-      moduleOp.lookupSymbol<mlir::LLVM::LLVMFuncOp>(symbol);
-  if (existingFunc) {
-    if (existingFunc.getFunctionType() != expectedType) {
-      moduleOp.emitError() << "existing llvm.func @" << symbol
-                           << " has incompatible signature";
-      return mlir::failure();
-    }
-    return existingFunc;
-  }
-
-  mlir::OpBuilder builder(context);
-  builder.setInsertionPointToStart(moduleOp.getBody());
-  return mlir::LLVM::LLVMFuncOp::create(builder, moduleOp.getLoc(), symbol,
-                                        expectedType);
+  return detail::getOrCreateCAPIImpl(moduleOp, symbol, expectedType);
 }
+
+mlir::FailureOr<mlir::LLVM::LLVMFuncOp>
+getOrCreateCAPI(mlir::ModuleOp moduleOp, llvm::StringRef symbol,
+                mlir::LLVM::LLVMFunctionType expectedType);
 
 template <typename Ret, typename... Args>
 struct CFunctionTraits<Ret (*)(Args...) noexcept> {

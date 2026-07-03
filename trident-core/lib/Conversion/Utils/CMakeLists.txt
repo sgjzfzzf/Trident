@@ -1,5 +1,6 @@
 add_mlir_conversion_library(
   ConversionUtils
+  CFunctionDeclUtils.cc
   GlobalString.cc
   TVMFFIUtils.cc
   Type.cc

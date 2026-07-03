@@ -25,14 +25,12 @@
 #include "trident-core/Conversion/Utils/TridentCAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/Type.h"
 #include "tvm/ffi/c_api.h"
-
+#include "llvm/Support/FormatVariadic.h"
 #include <regex>
+#include <string>
+#include <vector>
 
 namespace {
-
-//===----------------------------------------------------------------------===//
-// Helpers
-//===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
 // TVMFFIAny helpers
@@ -55,6 +53,147 @@ static mlir::Value buildFFIAnyValue(mlir::OpBuilder &builder,
   return mlir::LLVM::InsertValueOp::create(builder, loc, anyTy, result, payload,
                                            llvm::ArrayRef<int64_t>{2})
       .getResult();
+}
+
+//===----------------------------------------------------------------------===//
+// ShimValue building from c10 type info
+//===----------------------------------------------------------------------===//
+
+static mlir::Type getShimElemType(mlir::MLIRContext *ctx,
+                                  const c10::TypePtr &c10Type) {
+  switch (c10Type->kind()) {
+  case c10::TypeKind::TensorType:
+    return mlir::LLVM::LLVMPointerType::get(ctx);
+  case c10::TypeKind::BoolType:
+    return mlir::IntegerType::get(ctx, 32);
+  case c10::TypeKind::IntType:
+  case c10::TypeKind::SymIntType:
+    return mlir::IntegerType::get(ctx, 64);
+  case c10::TypeKind::FloatType:
+  case c10::TypeKind::SymFloatType:
+  case c10::TypeKind::NumberType:
+    return mlir::Float64Type::get(ctx);
+  default:
+    return {};
+  }
+}
+
+static mlir::FailureOr<mlir::Value> buildShimValue(mlir::OpBuilder &builder,
+                                                   mlir::Location loc,
+                                                   const c10::TypePtr &c10Type,
+                                                   mlir::Value adaptedValue,
+                                                   mlir::ModuleOp moduleOp) {
+  mlir::MLIRContext *ctx = builder.getContext();
+  mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
+  mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
+  mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
+  mlir::Float64Type f64Ty = mlir::Float64Type::get(ctx);
+
+  switch (c10Type->kind()) {
+  case c10::TypeKind::TensorType: {
+    mlir::Value handleInt = mlir::LLVM::ExtractValueOp::create(
+        builder, loc, adaptedValue, llvm::ArrayRef<int64_t>{2});
+    mlir::Value handle =
+        mlir::LLVM::IntToPtrOp::create(builder, loc, ptrTy, handleInt);
+
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> unpackFn =
+        trident::conversion::utils::getOrCreateTVMFFIObjectToTensor(moduleOp);
+    if (mlir::failed(unpackFn)) {
+      return mlir::failure();
+    }
+
+    mlir::Value slot = mlir::LLVM::AllocaOp::create(
+        builder, loc, ptrTy, ptrTy,
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+    mlir::LLVM::CallOp::create(builder, loc, *unpackFn,
+                               mlir::ValueRange{handle, slot});
+    return mlir::LLVM::LoadOp::create(builder, loc, ptrTy, slot).getResult();
+  }
+  case c10::TypeKind::BoolType:
+    return mlir::LLVM::TruncOp::create(
+               builder, loc, i32Ty,
+               mlir::LLVM::ExtractValueOp::create(builder, loc, adaptedValue,
+                                                  llvm::ArrayRef<int64_t>{2}))
+        .getResult();
+  case c10::TypeKind::IntType:
+  case c10::TypeKind::SymIntType:
+    return mlir::LLVM::ExtractValueOp::create(builder, loc, adaptedValue,
+                                              llvm::ArrayRef<int64_t>{2})
+        .getResult();
+  case c10::TypeKind::FloatType:
+  case c10::TypeKind::SymFloatType:
+    return mlir::LLVM::BitcastOp::create(
+               builder, loc, f64Ty,
+               mlir::LLVM::ExtractValueOp::create(builder, loc, adaptedValue,
+                                                  llvm::ArrayRef<int64_t>{2}))
+        .getResult();
+  case c10::TypeKind::NumberType: {
+    mlir::Value typeIndex = mlir::LLVM::ExtractValueOp::create(
+        builder, loc, adaptedValue, llvm::ArrayRef<int64_t>{0});
+    mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
+        builder, loc, adaptedValue, llvm::ArrayRef<int64_t>{2});
+    mlir::Value intTypeIndex =
+        mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, kTVMFFIInt);
+    mlir::Value isInt = mlir::LLVM::ICmpOp::create(
+        builder, loc, mlir::LLVM::ICmpPredicate::eq, typeIndex, intTypeIndex);
+    mlir::Value intAsDouble =
+        mlir::LLVM::SIToFPOp::create(builder, loc, f64Ty, payload);
+    mlir::Value floatAsDouble =
+        mlir::LLVM::BitcastOp::create(builder, loc, f64Ty, payload);
+    return mlir::LLVM::SelectOp::create(builder, loc, isInt, intAsDouble,
+                                        floatAsDouble)
+        .getResult();
+  }
+  default:
+    return mlir::failure();
+  }
+}
+
+static mlir::FailureOr<mlir::Value>
+resolveShimValue(mlir::OpBuilder &builder, mlir::Location loc,
+                 const c10::TypePtr &c10Type, mlir::Value shimValue,
+                 mlir::ModuleOp moduleOp) {
+  mlir::MLIRContext *ctx = builder.getContext();
+  mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
+  mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
+
+  switch (c10Type->kind()) {
+  case c10::TypeKind::TensorType: {
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> packFn =
+        trident::conversion::utils::getOrCreateTensorToTVMFFIObject(moduleOp);
+    if (mlir::failed(packFn)) {
+      return mlir::failure();
+    }
+
+    mlir::Value slot = mlir::LLVM::AllocaOp::create(
+        builder, loc, ptrTy, ptrTy,
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+    mlir::LLVM::CallOp::create(builder, loc, *packFn,
+                               mlir::ValueRange{shimValue, slot});
+
+    mlir::Value handle = mlir::LLVM::LoadOp::create(builder, loc, ptrTy, slot);
+    mlir::Value payload =
+        mlir::LLVM::PtrToIntOp::create(builder, loc, i64Ty, handle);
+    return buildFFIAnyValue(builder, loc, kTVMFFITensor, payload);
+  }
+  case c10::TypeKind::BoolType: {
+    mlir::Value payload =
+        mlir::LLVM::ZExtOp::create(builder, loc, i64Ty, shimValue);
+    return buildFFIAnyValue(builder, loc, kTVMFFIBool, payload);
+  }
+  case c10::TypeKind::IntType:
+  case c10::TypeKind::SymIntType:
+    return buildFFIAnyValue(builder, loc, kTVMFFIInt, shimValue);
+  case c10::TypeKind::FloatType:
+  case c10::TypeKind::SymFloatType:
+  case c10::TypeKind::NumberType: {
+    mlir::Value payload =
+        mlir::LLVM::BitcastOp::create(builder, loc, i64Ty, shimValue);
+    return buildFFIAnyValue(builder, loc, kTVMFFIFloat, payload);
+  }
+  default:
+    return mlir::failure();
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -699,7 +838,8 @@ int TridentSchemaDispatchTorchAtenOp(MlirOperation op, MlirValue *operands,
     return 1;
   }
 
-  const std::string dispatcherOpName = "aten::" + m[1].str();
+  const std::string atenOpName = m[1].str();
+  const std::string dispatcherOpName = "aten::" + atenOpName;
   const std::string dispatcherOverloadName = m[2].str();
 
   // Look up the operator schema via c10::Dispatcher.
@@ -726,23 +866,102 @@ int TridentSchemaDispatchTorchAtenOp(MlirOperation op, MlirValue *operands,
 
   const size_t numInputs = mlirOp->getNumOperands();
   const size_t numResults = mlirOp->getNumResults();
-  const size_t maxCount = std::max(numInputs, numResults);
 
-  // Allocate an i64 slot array with maxCount elements on the stack.
+  if (numInputs != schemaArgs.size() || numResults != schemaReturns.size()) {
+    mlirOp->emitError("operand or result count does not match schema arity");
+    return 1;
+  }
+
   mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
   mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
-  mlir::Value array = mlir::LLVM::AllocaOp::create(
-      mlirRewriter, loc, ptrTy, i64Ty,
-      mlir::LLVM::ConstantOp::create(mlirRewriter, loc, i64Ty, maxCount)
-          .getResult());
 
-  // Convert and store each operand into the slot array.
-  for (size_t i = 0; i < numInputs; ++i) {
-    mlir::Value adaptedVal = unwrap(operands[i]);
+  // NumberType/Scalar path: Stable C API dispatcher does not support Scalar
+  // arguments. Route to torchgen-generated CUDA shim symbols instead.
+  if (llvm::any_of(schemaArgs, [](const at::Argument &arg) {
+        return arg.type()->kind() == c10::TypeKind::NumberType;
+      })) {
+    llvm::SmallVector<mlir::Type> shimArgTypes;
+    llvm::SmallVector<mlir::Value> shimArgs;
 
-    mlir::Value ival;
-    if (i < schemaArgs.size()) {
-      c10::TypePtr argType = schemaArgs[i].type();
+    for (auto [idx, schemaArg] : llvm::enumerate(schemaArgs)) {
+      c10::TypePtr argType = schemaArg.type();
+      mlir::Value adaptedVal = unwrap(operands[idx]);
+      mlir::FailureOr<mlir::Value> decoded =
+          buildShimValue(mlirRewriter, loc, argType, adaptedVal, moduleOp);
+      if (mlir::failed(decoded)) {
+        mlirOp->emitError("failed to decode shim argument for type: ")
+            << c10::typeKindToString(argType->kind());
+        return 1;
+      }
+
+      shimArgTypes.push_back(decoded->getType());
+      shimArgs.push_back(*decoded);
+    }
+
+    llvm::SmallVector<mlir::Type> retElemTypes;
+    llvm::SmallVector<mlir::Value> retSlots;
+    for (const at::Argument &schemaReturn : schemaReturns) {
+      c10::TypePtr retType = schemaReturn.type();
+      mlir::Type retElemTy = getShimElemType(ctx, retType);
+      if (!retElemTy) {
+        mlirOp->emitError("unsupported NumberType shim result type: ")
+            << c10::typeKindToString(retType->kind());
+        return 1;
+      }
+
+      mlir::Value retSlot = mlir::LLVM::AllocaOp::create(
+          mlirRewriter, loc, ptrTy, retElemTy,
+          mlir::LLVM::ConstantOp::create(mlirRewriter, loc, i64Ty, 1));
+      shimArgTypes.push_back(ptrTy);
+      shimArgs.push_back(retSlot);
+      retElemTypes.push_back(retElemTy);
+      retSlots.push_back(retSlot);
+    }
+
+    std::string shimSymbol = "aoti_torch_cuda_" + atenOpName;
+    if (!dispatcherOverloadName.empty()) {
+      shimSymbol += "_" + dispatcherOverloadName;
+    }
+    mlir::Type errTy = mlir::IntegerType::get(ctx, 32);
+    mlir::LLVM::LLVMFunctionType shimFnTy =
+        mlir::LLVM::LLVMFunctionType::get(errTy, shimArgTypes);
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> shimFn =
+        trident::conversion::utils::getOrCreateCAPI(moduleOp, shimSymbol,
+                                                    shimFnTy);
+    if (mlir::failed(shimFn)) {
+      mlirOp->emitError() << "failed to declare shim function " << shimSymbol;
+      return 1;
+    }
+
+    mlir::LLVM::CallOp::create(mlirRewriter, loc, *shimFn, shimArgs);
+
+    for (auto [idx, tuple] :
+         llvm::enumerate(llvm::zip(schemaReturns, retElemTypes, retSlots))) {
+      auto [schemaReturn, retElemTy, retSlot] = tuple;
+      mlir::Value rawRet =
+          mlir::LLVM::LoadOp::create(mlirRewriter, loc, retElemTy, retSlot);
+      mlir::FailureOr<mlir::Value> resolved = resolveShimValue(
+          mlirRewriter, loc, schemaReturn.type(), rawRet, moduleOp);
+      if (mlir::failed(resolved)) {
+        mlirOp->emitError("failed to encode shim return value");
+        return 1;
+      }
+      results[idx] = wrap(*resolved);
+    }
+  } else {
+    const size_t maxCount = std::max(numInputs, numResults);
+
+    // Allocate an i64 slot array with maxCount elements on the stack.
+    mlir::Value array = mlir::LLVM::AllocaOp::create(
+        mlirRewriter, loc, ptrTy, i64Ty,
+        mlir::LLVM::ConstantOp::create(mlirRewriter, loc, i64Ty, maxCount)
+            .getResult());
+
+    // Convert and store each operand into the slot array.
+    for (auto [idx, schemaArg] : llvm::enumerate(schemaArgs)) {
+      mlir::Value adaptedVal = unwrap(operands[idx]);
+
+      c10::TypePtr argType = schemaArg.type();
       mlir::FailureOr<mlir::Value> built =
           buildStableIValue(mlirRewriter, argType, adaptedVal, moduleOp, loc);
       if (mlir::failed(built)) {
@@ -750,45 +969,40 @@ int TridentSchemaDispatchTorchAtenOp(MlirOperation op, MlirValue *operands,
             << c10::typeKindToString(argType->kind());
         return 1;
       }
-      ival = *built;
-    } else {
-      // No schema type info: pass the adapted value as-is (assume i64).
-      ival = adaptedVal;
+      mlir::Value ival = *built;
+
+      mlir::Value ptr = mlir::LLVM::GEPOp::create(mlirRewriter, loc, ptrTy,
+                                                  i64Ty, array, {idx});
+      mlir::LLVM::StoreOp::create(mlirRewriter, loc, ival, ptr);
     }
 
-    mlir::Value ptr =
-        mlir::LLVM::GEPOp::create(mlirRewriter, loc, ptrTy, i64Ty, array, {i});
-    mlir::LLVM::StoreOp::create(mlirRewriter, loc, ival, ptr);
-  }
+    // Get or create the aoti_torch_call_dispatcher function declaration.
+    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
+        trident::conversion::utils::getOrCreateAOTITorchCallDispatcher(
+            moduleOp);
+    if (mlir::failed(calleeOrErr)) {
+      return 1;
+    }
 
-  // Get or create the aoti_torch_call_dispatcher function declaration.
-  mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
-      trident::conversion::utils::getOrCreateAOTITorchCallDispatcher(moduleOp);
-  if (mlir::failed(calleeOrErr)) {
-    return 1;
-  }
+    // Create global string constants for op_name and overload_name.
+    mlir::Value opNamePtr = trident::conversion::utils::getOrCreateGlobalString(
+        mlirRewriter, loc, moduleOp, "op", dispatcherOpName);
+    mlir::Value overloadNamePtr =
+        trident::conversion::utils::getOrCreateGlobalString(
+            mlirRewriter, loc, moduleOp, "overload", dispatcherOverloadName);
 
-  // Create global string constants for op_name and overload_name.
-  mlir::Value opNamePtr = trident::conversion::utils::getOrCreateGlobalString(
-      mlirRewriter, loc, moduleOp, "op", dispatcherOpName);
-  mlir::Value overloadNamePtr =
-      trident::conversion::utils::getOrCreateGlobalString(
-          mlirRewriter, loc, moduleOp, "overload", dispatcherOverloadName);
+    // Call aoti_torch_call_dispatcher(opName, overloadName, slotArray).
+    mlir::LLVM::CallOp::create(
+        mlirRewriter, loc, *calleeOrErr,
+        mlir::ValueRange{opNamePtr, overloadNamePtr, array});
 
-  // Call aoti_torch_call_dispatcher(opName, overloadName, slotArray).
-  mlir::LLVM::CallOp::create(
-      mlirRewriter, loc, *calleeOrErr,
-      mlir::ValueRange{opNamePtr, overloadNamePtr, array});
+    // Load and convert each result from the slot array.
+    for (size_t i = 0; i < numResults; ++i) {
+      mlir::Value ptr = mlir::LLVM::GEPOp::create(mlirRewriter, loc, ptrTy,
+                                                  i64Ty, array, {i});
+      mlir::Value loaded =
+          mlir::LLVM::LoadOp::create(mlirRewriter, loc, i64Ty, ptr);
 
-  // Load and convert each result from the slot array.
-  for (size_t i = 0; i < numResults; ++i) {
-    mlir::Value ptr =
-        mlir::LLVM::GEPOp::create(mlirRewriter, loc, ptrTy, i64Ty, array, {i});
-    mlir::Value loaded =
-        mlir::LLVM::LoadOp::create(mlirRewriter, loc, i64Ty, ptr);
-
-    mlir::Value result;
-    if (i < schemaReturns.size()) {
       c10::TypePtr retType = schemaReturns[i].type();
       mlir::FailureOr<mlir::Value> resolved =
           resolveStableIValue(mlirRewriter, retType, loaded, moduleOp, loc);
@@ -797,12 +1011,8 @@ int TridentSchemaDispatchTorchAtenOp(MlirOperation op, MlirValue *operands,
             << c10::typeKindToString(retType->kind());
         return 1;
       }
-      result = *resolved;
-    } else {
-      result = loaded;
+      results[i] = wrap(*resolved);
     }
-
-    results[i] = wrap(result);
   }
 
   return 0;

@@ -1,3 +1,6 @@
+# Part of the Trident project, under the MIT License.
+# SPDX-License-Identifier: MIT
+
 """Base test class for ATen op end-to-end tests.
 
 Subclasses only need to implement ``op_name`` (e.g. ``"empty_like"``) and the

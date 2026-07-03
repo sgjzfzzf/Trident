@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 // TorchExtDialect.cc - TorchExt Dialect registration and initialization.
 //
 // This file implements the dialect `initialize()` method, which registers all

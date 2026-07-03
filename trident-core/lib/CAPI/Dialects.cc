@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 #include "trident-core-c/Dialects.h"
 #include "mlir/CAPI/Registration.h"
 #include "trident-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"

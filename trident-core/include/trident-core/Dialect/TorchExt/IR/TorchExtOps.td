@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTOPS_TD_
 #define TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTOPS_TD_
 
@@ -65,13 +72,12 @@ def TorchExt_TridentKernelLaunchOp : TorchExt_Op<"trident_kernel_launch", [
 }
 
 //===----------------------------------------------------------------------===//
-// Object reference counting — inc/dec for Torch types backed by
+// Object reference counting — inc-dec for Torch types backed by
 // manually-managed resources.
 //===----------------------------------------------------------------------===//
 
 def TorchExt_ObjectIncRefOp : TorchExt_Op<"ObjectIncRef"> {
   let summary = "Increase the reference count of a Torch object";
-  // clang-format off
   let description = [{
     Increases the reference count of the Torch object referenced by the value.
     This is used to transfer ownership of an object (e.g. when returning a
@@ -80,7 +86,6 @@ def TorchExt_ObjectIncRefOp : TorchExt_Op<"ObjectIncRef"> {
     Corresponds to:
       TVMFFIObjectIncRef(handle)
   }];
-  // clang-format on
 
   let arguments = (ins AnyTorchType : $object);
   let results = (outs);
@@ -90,7 +95,6 @@ def TorchExt_ObjectIncRefOp : TorchExt_Op<"ObjectIncRef"> {
 
 def TorchExt_ObjectDecRefOp : TorchExt_Op<"ObjectDecRef"> {
   let summary = "Decrease the reference count of a Torch object";
-  // clang-format off
   let description = [{
     Decreases the reference count of the Torch object referenced by the value.
     When the count reaches zero the underlying resource is released.
@@ -101,7 +105,6 @@ def TorchExt_ObjectDecRefOp : TorchExt_Op<"ObjectDecRef"> {
     This is the general-purpose op for any Torch type backed by a
     manually-managed resource (list, tensor, string, etc.).
   }];
-  // clang-format on
 
   let arguments = (ins AnyTorchType : $object);
   let results = (outs);

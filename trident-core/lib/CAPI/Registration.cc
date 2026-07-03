@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 #include "trident-core-c/Registration.h"
 #include "mlir/CAPI/IR.h"
 #include "torch-mlir-c/Registration.h"

@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef TRIDENT_CORE_UTILS_REGISTRATION_H_
 #define TRIDENT_CORE_UTILS_REGISTRATION_H_
 

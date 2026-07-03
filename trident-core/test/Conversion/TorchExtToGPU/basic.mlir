@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: trident-core-opt %s --convert-torchext-to-gpu | FileCheck %s
 
 // CHECK-LABEL: module attributes {gpu.container_module}

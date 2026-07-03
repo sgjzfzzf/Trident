@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 #include "trident-core/Runtime/Runtime.h"
 #include "ATen/ATen.h"
 #include "dlpack/dlpack.h"

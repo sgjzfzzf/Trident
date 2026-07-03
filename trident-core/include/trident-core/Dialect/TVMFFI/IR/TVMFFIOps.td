@@ -1,8 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Trident project, under the Apache License v2.0 with LLVM
-// Exceptions. See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Part of the Trident project, under the MIT License.
+
+// SPDX-License-Identifier: MIT
 //
 //===----------------------------------------------------------------------===//
 
@@ -31,7 +31,6 @@ def TVMFFI_FuncOp : TVMFFI_Op<"func", [
   OpAsmOpInterface
 ]> {
   let summary = "A TVM FFI function";
-  // clang-format off
   let description = [{
     Defines a function that can be called through the TVM FFI interface.
 
@@ -43,7 +42,6 @@ def TVMFFI_FuncOp : TVMFFI_Op<"func", [
     }
     ```
   }];
-  // clang-format on
 
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FunctionType>:$function_type,
@@ -77,7 +75,6 @@ def TVMFFI_FuncOp : TVMFFI_Op<"func", [
 def TVMFFI_ReturnOp
     : TVMFFI_Op<"return", [Pure, HasParent<"FuncOp">, ReturnLike, Terminator]> {
   let summary = "Return operation inside a TVM FFI function";
-  // clang-format off
   let description = [{
     Returns values from a TVM FFI function. The operand count and types must
     match the function signature result types.
@@ -88,7 +85,6 @@ def TVMFFI_ReturnOp
     tvm_ffi.return %result : i64
     ```
   }];
-// clang-format on
 
 let arguments = (ins Variadic<AnyTorchType> : $operands);
 

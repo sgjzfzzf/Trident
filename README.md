@@ -78,6 +78,7 @@ ops (for example `empty` and `empty_like`).
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+Source files in this repository use MIT SPDX headers (`SPDX-License-Identifier: MIT`).
 
 ## Notes
 

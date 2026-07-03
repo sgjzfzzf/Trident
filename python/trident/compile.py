@@ -1,3 +1,6 @@
+# Part of the Trident project, under the MIT License.
+# SPDX-License-Identifier: MIT
+
 from typing import Any, Callable
 
 from .backend import TridentGraphModule

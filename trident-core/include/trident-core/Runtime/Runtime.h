@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef TRIDENT_CORE_RUNTIME_RUNTIME_H_
 #define TRIDENT_CORE_RUNTIME_RUNTIME_H_
 

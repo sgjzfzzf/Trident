@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 include "mlir/Pass/PassBase.td"
 
 def ConvertTorchConversionToLLVM
@@ -13,7 +20,7 @@ def ConvertTorchConversionToLLVM
 
 def ConvertTorchExtToGPU : Pass<"convert-torchext-to-gpu", "mlir::ModuleOp"> {
   let summary = "Lower Torch Ext dialect operations to GPU dialect ";
-      let description = [{Lower TorchExt dialect operations to GPU dialect.}];
+  let description = [{Lower TorchExt dialect operations to GPU dialect.}];
   let dependentDialects = ["mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect"];
 }
 
@@ -30,13 +37,11 @@ def ConvertTorchToCf : Pass<"convert-torch-to-cf", "mlir::ModuleOp"> {
 
 def ConvertTorchToLLVM : Pass<"convert-torch-to-llvm", "mlir::ModuleOp"> {
   let summary = "Lower Torch dialect constant ops to LLVM dialect";
-  // clang-format off
   let description = [{
     Lowers Torch dialect constant operations (torch.constant.bool,
     torch.constant.int, torch.constant.float) directly to LLVM::ConstantOp,
     bypassing arith.constant and TorchConversion bridge ops.
   }];
-  // clang-format on
   let dependentDialects = ["mlir::LLVM::LLVMDialect"];
 }
 
@@ -48,16 +53,14 @@ def ConvertTVMFFIToLLVM : Pass<"convert-tvm-ffi-to-llvm", "mlir::ModuleOp"> {
 }
 
 def FuncBackendTypeConversion
-    : Pass<"func-backend-type-conversion", "mlir::ModuleOp"> {
+  : Pass<"func-backend-type-conversion", "mlir::ModuleOp"> {
   let summary =
       "Convert Torch dialect types to LLVM types along function boundaries";
-  // clang-format off
   let description = [{
     Converts func::FuncOp signatures and func::ReturnOp / func::CallOp operands
     from Torch dialect types to LLVM / builtin types (e.g. !torch.bool -> i1,
     !torch.int -> i64, !torch.float -> f64, !torch.vtensor -> llvm.ptr).
   }];
-  // clang-format on
 }
 
 def TorchToLLVMPipeline : Pass<"torch-to-llvm-pipeline", "mlir::ModuleOp"> {

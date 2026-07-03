@@ -1,8 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Trident project, under the Apache License v2.0 with LLVM
-// Exceptions. See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Part of the Trident project, under the MIT License.
+
+// SPDX-License-Identifier: MIT
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,7 +21,6 @@ class TVMFFI_Attr<string name, list<Trait> traits = [],
   let mnemonic = name;
 }
 
-// clang-format off
 //===----------------------------------------------------------------------===//
 // GuardAttribute — base class for guard-kind attributes
 //===----------------------------------------------------------------------===//
@@ -116,5 +115,4 @@ def TVMFFI_TensorTypeGuardAttr : TVMFFI_GuardAttr<"TensorTypeGuard"> {
   let assemblyFormat = "`<` `>`";
 }
 
-// clang-format on
 #endif // TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIATTRIBUTES_TD_

@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: trident-core-opt %s --raai -split-input-file | FileCheck %s
 //
 // raai — Release Allocated Intermediate variables.

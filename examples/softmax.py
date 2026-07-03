@@ -1,3 +1,6 @@
+# Part of the Trident project, under the MIT License.
+# SPDX-License-Identifier: MIT
+
 import torch
 import triton
 import triton.language as tl

@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 // trident-core-opt.cc - Standalone optimizer driver for TVMFFI and DLPack
 // dialects.
 //

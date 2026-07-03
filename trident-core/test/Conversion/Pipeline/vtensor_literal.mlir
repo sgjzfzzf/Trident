@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: trident-core-opt %s --torch-to-llvm-pipeline | FileCheck %s
 //
 // This test verifies that lowering dispatches solely by dense.isSplat():

@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef TRIDENT_CORE_CONVERSION_TORCHEXTTOLLVM_TORCHEXTTOLLVM_H_
 #define TRIDENT_CORE_CONVERSION_TORCHEXTTOLLVM_TORCHEXTTOLLVM_H_
 

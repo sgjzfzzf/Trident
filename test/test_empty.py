@@ -1,3 +1,6 @@
+# Part of the Trident project, under the MIT License.
+# SPDX-License-Identifier: MIT
+
 """Tests for the ``aten::empty`` op end-to-end."""
 
 from __future__ import annotations

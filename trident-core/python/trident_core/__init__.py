@@ -1,3 +1,6 @@
+# Part of the Trident project, under the MIT License.
+# SPDX-License-Identifier: MIT
+
 import pkgutil
 
 __path__ = pkgutil.extend_path(__path__, __name__)

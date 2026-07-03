@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTBASE_TD_
 #define TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTBASE_TD_
 
@@ -7,7 +14,6 @@ def TorchExt_Dialect : Dialect {
   let name = "torchext";
   let cppNamespace = "::trident::torchext";
   let summary = "TorchExt dialect";
-  // clang-format off
   let description = [{
     The TorchExt dialect models the stable C API defined in
     torch/csrc/inductor/aoti_torch/c/shim.h. This C shim layer provides ABI
@@ -27,7 +33,6 @@ def TorchExt_Dialect : Dialect {
     All ops in this dialect map to their aoti_torch_* counterpart and share
     the same error handling via AOTITorchError return codes.
   }];
-  // clang-format on
 }
 
 #endif // TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTBASE_TD_

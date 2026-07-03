@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: trident-core-opt %s -split-input-file | FileCheck %s
 
 // CHECK-LABEL: func.func @object_inc_ref

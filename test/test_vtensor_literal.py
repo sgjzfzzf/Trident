@@ -1,3 +1,6 @@
+# Part of the Trident project, under the MIT License.
+# SPDX-License-Identifier: MIT
+
 """Tests for the ``torch.vtensor.literal`` pipeline wrapper end-to-end."""
 
 from __future__ import annotations

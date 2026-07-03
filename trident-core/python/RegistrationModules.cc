@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "torch-mlir-c/Dialects.h"
 #include "trident-core-c/Dialects.h"

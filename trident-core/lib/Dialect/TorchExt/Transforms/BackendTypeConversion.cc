@@ -1,8 +1,8 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Trident project, under the Apache License v2.0 with LLVM
-// Exceptions. See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Part of the Trident project, under the MIT License.
+
+// SPDX-License-Identifier: MIT
 //
 //===----------------------------------------------------------------------===//
 
@@ -31,9 +31,11 @@
 static void
 setupTorchToTVMFFIAnyConversion(mlir::TypeConverter &typeConverter) {
   typeConverter.addConversion([](mlir::Type type) -> std::optional<mlir::Type> {
-    if (llvm::isa<mlir::torch::Torch::TorchDialect>(type.getDialect()))
+    if (llvm::isa<mlir::torch::Torch::TorchDialect>(type.getDialect())) {
       return trident::conversion::utils::getTVMFFIAnyType(type.getContext());
-    return std::nullopt;
+    } else {
+      return std::nullopt;
+    }
   });
   typeConverter.addTargetMaterialization(
       [](mlir::OpBuilder &builder, mlir::LLVM::LLVMStructType type,

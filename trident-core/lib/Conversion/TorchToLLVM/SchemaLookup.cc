@@ -10,7 +10,6 @@
 #include "ATen/core/dispatch/Dispatcher.h"
 #include "ATen/core/function_schema.h"
 #include "ATen/core/jit_type_base.h"
-#include "c10/core/ScalarType.h"
 #include "mlir/CAPI/IR.h"
 #include "mlir/CAPI/Rewrite.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -22,7 +21,6 @@
 #include "trident-core/Conversion/Utils/GlobalString.h"
 #include "trident-core/Conversion/Utils/StableCAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/StdLibCAPIDescriptors.h"
-#include "trident-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/TVMFFIUtils.h"
 #include "trident-core/Conversion/Utils/TridentCAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/Type.h"
@@ -743,8 +741,7 @@ int TridentSchemaDispatchTorchAtenOp(MlirOperation op, MlirValue *operands,
 
   // Get or create the aoti_torch_call_dispatcher function declaration.
   mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
-      trident::conversion::utils::getOrCreateaoti_torch_call_dispatcher(
-          moduleOp);
+      trident::conversion::utils::getOrCreateAOTITorchCallDispatcher(moduleOp);
   if (mlir::failed(calleeOrErr)) {
     return 1;
   }

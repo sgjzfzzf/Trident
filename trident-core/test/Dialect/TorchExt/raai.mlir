@@ -28,6 +28,17 @@ func.func @aten_tensor_returned(%shape: !torch.list<int>, %dtype: !torch.int, %d
 
 // -----
 
+// LITERAL + YIELD: vtensor literal is also a newly created tensor.
+// CHECK-LABEL: @vtensor_literal_returned
+func.func @vtensor_literal_returned() -> !torch.vtensor<[2,3],f32> {
+  %0 = torch.vtensor.literal(dense<1.250000e+00> : tensor<2x3xf32>) : !torch.vtensor<[2,3],f32>
+  // CHECK:      torchext.ObjectIncRef %[[LIT:.*]] : !torch.vtensor<[2,3],f32>
+  // CHECK-NEXT: torchext.ObjectDecRef %[[LIT]] : !torch.vtensor<[2,3],f32>
+  return %0 : !torch.vtensor<[2,3],f32>
+}
+
+// -----
+
 // MIXED: list (not yielded) + tensor (yielded).
 //   IncRef only for the yielded tensor; DecRef for both.
 // CHECK-LABEL: @list_and_tensor_mixed

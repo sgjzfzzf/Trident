@@ -9,7 +9,7 @@ from __future__ import annotations
 from abc import abstractmethod
 import pathlib
 import unittest
-from typing import Final, List
+from typing import Dict, Final, List
 
 import tvm_ffi
 
@@ -69,21 +69,24 @@ class AtenOpTest(unittest.TestCase):
         self._engine: execution_engine.ExecutionEngine = (
             execution_engine.ExecutionEngine(module, shared_libs=shared_libs)
         )
+        self._ffi_funcs: Dict[str, tvm_ffi.Function] = {}
 
-        self._func_ptr: int = self._engine.raw_lookup(f"__tvm_ffi_{op}")
+    def get_ffi_func(self, func_name: str) -> tvm_ffi.Function:
+        """Return a wrapped ``tvm_ffi.Function`` by exported function name."""
 
-        self._ffi_func: tvm_ffi.Function = (
-            tvm_ffi.Function.__from_mlir_packed_safe_call__(
-                self._func_ptr,
-                keep_alive_object=self._engine,
+        if func_name not in self._ffi_funcs:
+            func_ptr: int = self._engine.raw_lookup(f"__tvm_ffi_{func_name}")
+            self.assertNotEqual(
+                func_ptr,
+                0,
+                msg=f"raw_lookup returned 0 for __tvm_ffi_{func_name}",
             )
-        )
 
-    @property
-    def ffi_func(self) -> tvm_ffi.Function:
-        """The wrapped ``tvm_ffi.Function`` ready to call."""
-        return self._ffi_func
-
-    def test_raw_lookup(self) -> None:
-        """raw_lookup should return a non-zero function pointer."""
-        self.assertNotEqual(self._func_ptr, 0)
+            ffi_func: tvm_ffi.Function = (
+                tvm_ffi.Function.__from_mlir_packed_safe_call__(
+                    func_ptr,
+                    keep_alive_object=self._engine,
+                )
+            )
+            self._ffi_funcs[func_name] = ffi_func
+        return self._ffi_funcs[func_name]

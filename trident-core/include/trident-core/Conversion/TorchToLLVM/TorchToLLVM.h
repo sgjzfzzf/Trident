@@ -1,14 +1,11 @@
 #ifndef TRIDENT_CORE_CONVERSION_TORCHTOLLVM_TORCHTOLLVM_H_
 #define TRIDENT_CORE_CONVERSION_TORCHTOLLVM_TORCHTOLLVM_H_
 
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/DialectConversion.h"
-
-namespace mlir {
-class LLVMTypeConverter;
-} // namespace mlir
 
 namespace trident::torch {
 
@@ -19,6 +16,18 @@ namespace trident::torch {
 #include "trident-core/Conversion/Passes.h.inc"
 
 void populateTorchToLLVMConversionPatterns(
+    mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
+    mlir::RewritePatternSet &patterns);
+
+void populateTorchToLLVMConstantConversionPatterns(
+    mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
+    mlir::RewritePatternSet &patterns);
+
+void populateTorchToLLVMLiteralConversionPatterns(
+    mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
+    mlir::RewritePatternSet &patterns);
+
+void populateTorchToLLVMAtenConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns);
 

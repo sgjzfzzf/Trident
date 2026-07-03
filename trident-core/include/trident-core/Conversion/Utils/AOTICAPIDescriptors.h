@@ -10,16 +10,25 @@
 #define TRIDENT_CORE_CONVERSION_UTILS_AOTICAPIDESCRIPTORS_H_
 
 #include "torch/csrc/inductor/aoti_torch/c/shim.h"
+#include "torch/csrc/inductor/aoti_torch/generated/c_shim_aten.h"
 #include "trident-core/Conversion/Utils/CFunctionDeclUtils.h"
 
 // AOTI (PyTorch Inductor) C API function descriptors.
 namespace trident::conversion::utils {
 
-TRIDENT_DECLARE_CAPI_GET_OR_CREATE(aoti_torch_call_dispatcher)
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(aoti_torch_call_dispatcher,
+                                         AOTITorchCallDispatcher)
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(aoti_torch_aten_full,
+                                         AOTITorchAtenFull)
 
 // AOTI tensor property accessors.
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(aoti_torch_create_tensor_from_blob,
                                          AOTITorchCreateTensorFromBlob)
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(aoti_torch_empty_strided,
+                                         AOTITorchEmptyStrided)
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(aoti_torch_copy_, AOTITorchCopy_)
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(aoti_torch_delete_tensor_object,
+                                         AOTITorchDeleteTensorObject)
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(aoti_torch_get_data_ptr,
                                          AOTITorchGetDataPtr)
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(aoti_torch_get_dim, AOTITorchGetDim)

@@ -42,6 +42,10 @@ public:
           if (mlir::torch::Torch::PrimListConstructOp listCtor =
                   llvm::dyn_cast<mlir::torch::Torch::PrimListConstructOp>(op)) {
             allocatedVals.push_back(listCtor.getResult());
+          } else if (mlir::torch::Torch::ValueTensorLiteralOp literalOp =
+                         llvm::dyn_cast<
+                             mlir::torch::Torch::ValueTensorLiteralOp>(op)) {
+            allocatedVals.push_back(literalOp.getResult());
           } else if (mlir::OperationName opName = op->getName();
                      opName.getDialectNamespace() == "torch" &&
                      opName.getStringRef().starts_with("torch.aten.")) {
@@ -64,11 +68,11 @@ public:
         mlir::ValueRange yieldedVals = terminator->getOperands();
 
         for (mlir::Value val : yieldedVals) {
-          trident::torchext::ObjectIncRefOp::create(builder, loc, val);
+          torchext::ObjectIncRefOp::create(builder, loc, val);
         }
 
         for (mlir::Value val : allocatedVals) {
-          trident::torchext::ObjectDecRefOp::create(builder, loc, val);
+          torchext::ObjectDecRefOp::create(builder, loc, val);
         }
       }
     });

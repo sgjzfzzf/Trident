@@ -18,6 +18,6 @@ class EmptyLikeTest(AtenOpTest):
     def test_call_empty_like(self) -> None:
         """Call empty_like and verify output shape/dtype match input."""
         x: torch.Tensor = torch.randn([200, 200, 26], device="cuda")
-        result: torch.Tensor = self.ffi_func(x)
+        result: torch.Tensor = self.get_ffi_func("empty_like")(x)
         self.assertEqual(result.shape, x.shape)
         self.assertEqual(result.dtype, x.dtype)

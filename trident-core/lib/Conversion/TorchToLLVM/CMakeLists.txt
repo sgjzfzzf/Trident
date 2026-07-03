@@ -9,6 +9,9 @@ target_link_libraries(
 add_mlir_conversion_library(
   TorchToLLVM
   TorchToLLVM.cc
+  Constant.cc
+  Literal.cc
+  Aten.cc
   FuncBackendTypeConversion.cc
   DEPENDS
   MLIRConversionPassIncGen

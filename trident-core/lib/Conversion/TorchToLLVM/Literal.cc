@@ -229,23 +229,17 @@ public:
       }
 
       mlir::IntegerType storageTy = mlir::IntegerType::get(ctx, storageBits);
-      llvm::SmallVector<int64_t> strides(shape.size(), 1);
-      int64_t runningStride = 1;
-      for (int64_t idx = shape.size() - 1; idx >= 0; --idx) {
-        strides[idx] = runningStride;
-        runningStride *= shape[idx];
-      }
       mlir::Value stridePtr = mlir::LLVM::AllocaOp::create(
           rewriter, loc, ptrTy, i64Ty,
-          mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, strides.size()));
-      for (int64_t idx = strides.size() - 1; idx >= 0; --idx) {
+          mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, shape.size()));
+      for (int64_t stride = 1, idx = shape.size() - 1; idx >= 0;
+           stride *= shape[idx--]) {
         mlir::Value slot =
             mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, i64Ty, stridePtr,
                                       llvm::ArrayRef<mlir::LLVM::GEPArg>{idx});
         mlir::LLVM::StoreOp::create(
             rewriter, loc,
-            mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, strides[idx]),
-            slot);
+            mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, stride), slot);
       }
 
       mlir::Value blobDataPtr = mlir::LLVM::AllocaOp::create(

@@ -38,15 +38,6 @@ namespace {
 // TVMFFIAny helpers
 //===----------------------------------------------------------------------===//
 
-/// Extract the i64 payload (field 2) from a TVMFFIAny struct value.
-static mlir::Value extractPayload(mlir::OpBuilder &builder, mlir::Location loc,
-                                  mlir::Value anyVal) {
-  mlir::MLIRContext *ctx = builder.getContext();
-  return mlir::LLVM::ExtractValueOp::create(builder, loc, anyVal,
-                                            llvm::ArrayRef<int64_t>{2})
-      .getResult();
-}
-
 /// Build a TVMFFIAny struct value from a type_index and i64 payload.
 static mlir::Value buildFFIAnyValue(mlir::OpBuilder &builder,
                                     mlir::Location loc, int32_t typeIndex,
@@ -95,7 +86,8 @@ mlir::FailureOr<mlir::Value> buildStableIValue(mlir::OpBuilder &builder,
   case c10::TypeKind::TensorType: {
     // Tensor: adapted value is a TVMFFIAny with payload = TVMFFIObjectHandle.
     // Extract the handle and unpack to AtenTensorHandle for the dispatcher.
-    mlir::Value handleInt = extractPayload(builder, loc, input);
+    mlir::Value handleInt = mlir::LLVM::ExtractValueOp::create(
+        builder, loc, input, llvm::ArrayRef<int64_t>{2});
     mlir::Value handle =
         mlir::LLVM::IntToPtrOp::create(builder, loc, ptrTy, handleInt);
 
@@ -122,21 +114,49 @@ mlir::FailureOr<mlir::Value> buildStableIValue(mlir::OpBuilder &builder,
   }
   case c10::TypeKind::BoolType: {
     // Bool: TVMFFIAny payload is already i64 (0 or 1).
-    return extractPayload(builder, loc, input);
+    return mlir::LLVM::ExtractValueOp::create(builder, loc, input,
+                                              llvm::ArrayRef<int64_t>{2})
+        .getResult();
   }
   case c10::TypeKind::IntType:
   case c10::TypeKind::SymIntType: {
     // Int/SymInt: TVMFFIAny payload is already i64.
-    return extractPayload(builder, loc, input);
+    return mlir::LLVM::ExtractValueOp::create(builder, loc, input,
+                                              llvm::ArrayRef<int64_t>{2})
+        .getResult();
   }
   case c10::TypeKind::FloatType:
   case c10::TypeKind::SymFloatType: {
     // Float: TVMFFIAny payload is bitcast f64→i64.
-    return extractPayload(builder, loc, input);
+    return mlir::LLVM::ExtractValueOp::create(builder, loc, input,
+                                              llvm::ArrayRef<int64_t>{2})
+        .getResult();
+  }
+  case c10::TypeKind::NumberType: {
+    // Number: inspect the TVMFFIAny type index, then normalize int/float
+    // payloads to the dispatcher's double bit-pattern representation.
+    mlir::Float64Type f64Ty = mlir::Float64Type::get(ctx);
+    mlir::Value typeIndex = mlir::LLVM::ExtractValueOp::create(
+        builder, loc, input, llvm::ArrayRef<int64_t>{0});
+    mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
+        builder, loc, input, llvm::ArrayRef<int64_t>{2});
+    mlir::Value intTypeIndex =
+        mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, kTVMFFIInt);
+    mlir::Value isInt = mlir::LLVM::ICmpOp::create(
+        builder, loc, mlir::LLVM::ICmpPredicate::eq, typeIndex, intTypeIndex);
+    mlir::Value intAsDouble =
+        mlir::LLVM::SIToFPOp::create(builder, loc, f64Ty, payload);
+    mlir::Value intPayload =
+        mlir::LLVM::BitcastOp::create(builder, loc, i64Ty, intAsDouble);
+    return mlir::LLVM::SelectOp::create(builder, loc, isInt, intPayload,
+                                        payload)
+        .getResult();
   }
   case c10::TypeKind::NoneType: {
     // None: TVMFFIAny payload is 0.
-    return extractPayload(builder, loc, input);
+    return mlir::LLVM::ExtractValueOp::create(builder, loc, input,
+                                              llvm::ArrayRef<int64_t>{2})
+        .getResult();
   }
   case c10::TypeKind::OptionalType: {
     // Optional: determine None vs Some from TVMFFIAny TypeIndex (field 0),
@@ -202,7 +222,8 @@ mlir::FailureOr<mlir::Value> buildStableIValue(mlir::OpBuilder &builder,
     // (device_index << 32) | device_type.
     // The dispatcher expects StableIValue format: (device_type << 32) |
     // device_index.  Convert from TVMFFI to StableIValue encoding.
-    mlir::Value combined = extractPayload(builder, loc, input);
+    mlir::Value combined = mlir::LLVM::ExtractValueOp::create(
+        builder, loc, input, llvm::ArrayRef<int64_t>{2});
 
     // TVM FFI encoding decomposition: low 32 = device_type, high 32 = idx.
     mlir::Value devType =
@@ -230,7 +251,8 @@ mlir::FailureOr<mlir::Value> buildStableIValue(mlir::OpBuilder &builder,
 
     c10::TypePtr elemType = c10Type->cast<c10::ListType>()->getElementType();
 
-    mlir::Value inputInt = extractPayload(builder, loc, input);
+    mlir::Value inputInt = mlir::LLVM::ExtractValueOp::create(
+        builder, loc, input, llvm::ArrayRef<int64_t>{2});
     mlir::LLVM::LLVMStructType anyTy =
         trident::conversion::utils::getTVMFFIAnyType(ctx);
 

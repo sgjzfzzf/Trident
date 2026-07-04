@@ -31,6 +31,19 @@ class TVMFFI_GuardAttr<string mnemonicStr, list<Trait> traits = []>
 }
 
 //===----------------------------------------------------------------------===//
+// ConstantGuardAttr
+//===----------------------------------------------------------------------===//
+
+def TVMFFI_ConstantGuardAttr : TVMFFI_GuardAttr<"ConstantGuard"> {
+  let description =
+      [{Guards that a scalar variable equals an expected constant value.}];
+
+  let parameters = (ins "int64_t" : $type_index, "int64_t" : $payload);
+  let assemblyFormat =
+      "`<` `type_index` `=` $type_index `,` `payload` `=` $payload `>`";
+}
+
+//===----------------------------------------------------------------------===//
 // CUDADeviceGuardAttr
 //===----------------------------------------------------------------------===//
 
@@ -63,8 +76,10 @@ def TVMFFI_DTypeGuardAttr : TVMFFI_GuardAttr<"DtypeGuard"> {
   let description =
       [{Guards the dtype of a tensor variable(e.g.torch.float32).}];
 
-  let parameters = (ins);
-  let assemblyFormat = "`<` `>`";
+  let parameters =
+      (ins "int64_t" : $code, "int64_t" : $bits, "int64_t" : $lanes);
+  let assemblyFormat =
+      "`<` `code` `=` $code `,` `bits` `=` $bits `,` `lanes` `=` $lanes `>`";
 }
 
 //===----------------------------------------------------------------------===//

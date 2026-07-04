@@ -45,8 +45,6 @@ class TridentGraphModule(object):
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
-        if max_compiles < 1:
-            raise ValueError("max_compiles must be >= 1")
         self.fn: Final[Callable[..., Any]] = fn
         self._max_compiles: Final[int] = max_compiles
         self._signature: Final[inspect.Signature] = inspect.signature(fn)
@@ -72,20 +70,13 @@ class TridentGraphModule(object):
             ):
                 normalized.append(bound_args.arguments[parameter.name])
             elif parameter.kind == inspect.Parameter.VAR_POSITIONAL:
-                normalized.extend(bound_args.arguments.get(parameter.name, ()))
-            elif parameter.kind == inspect.Parameter.KEYWORD_ONLY:
-                if parameter.name in bound_args.arguments:
-                    raise TypeError(
-                        "trident.jit does not support keyword-only arguments"
-                    )
-            elif parameter.kind == inspect.Parameter.VAR_KEYWORD:
-                extra_kwargs = bound_args.arguments.get(parameter.name, {})
-                if len(extra_kwargs) != 0:
-                    raise TypeError(
-                        "trident.jit does not support variadic keyword arguments"
-                    )
+                normalized.extend(bound_args.arguments.get(parameter.name, []))
+            else:
+                raise TypeError(
+                    f"unsupported parameter kind: {parameter.kind} (parameter: {parameter.name})"
+                )
 
-        args = tuple(normalized)
+        args: Tuple[Any, ...] = tuple(normalized)
         for _ in range(self._max_compiles):
             try:
                 return self.executor(*args)
@@ -93,8 +84,7 @@ class TridentGraphModule(object):
                 self.compile(*args)
 
         raise RuntimeError(
-            f"recompilation limit ({self._max_compiles}) exceeded "
-            f"without finding a matching specialization"
+            f"recompilation limit ({self._max_compiles}) exceeded without finding a matching specialization"
         )
 
     def compile(self, *args: Any) -> Any:

@@ -26,12 +26,8 @@
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchDialect.h"
-#include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
-#include "trident-core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/GlobalString.h"
-#include "trident-core/Conversion/Utils/StdLibCAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
-#include "trident-core/Conversion/Utils/TridentCAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/Type.h"
 #include "trident-core/Dialect/TVMFFI/IR/TVMFFIAttributes.h"
 #include "trident-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
@@ -89,10 +85,39 @@ static mlir::Value buildGuards(mlir::OpBuilder &builder, mlir::Value slot,
   mlir::LLVM::LLVMStructType anyTy =
       trident::conversion::utils::getTVMFFIAnyType(ctx);
 
-  if (CudaDeviceGuardAttr cudaGuard =
-          mlir::dyn_cast<tvm_ffi::CudaDeviceGuardAttr>(attr)) {
-    int64_t deviceType = cudaGuard.getDeviceType();
-    int64_t deviceIndex = cudaGuard.getDeviceIndex();
+  if (ConstantGuardAttr constantGuard =
+          mlir::dyn_cast<ConstantGuardAttr>(attr)) {
+    const int64_t expectedTypeIndex = constantGuard.getTypeIndex();
+    const int64_t expectedPayload = constantGuard.getPayload();
+
+    mlir::Value typeIndexPtr =
+        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, slot,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0});
+    mlir::Value loadedTypeIndex =
+        mlir::LLVM::LoadOp::create(builder, loc, i32Ty, typeIndexPtr);
+
+    mlir::Value payloadPtr =
+        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, slot,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2});
+    mlir::Value loadedPayload =
+        mlir::LLVM::LoadOp::create(builder, loc, i64Ty, payloadPtr);
+
+    mlir::Value expectedTypeIndexVal =
+        mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, expectedTypeIndex);
+    mlir::Value expectedPayloadVal =
+        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, expectedPayload);
+
+    mlir::Value typeCmp =
+        mlir::LLVM::ICmpOp::create(builder, loc, mlir::LLVM::ICmpPredicate::eq,
+                                   loadedTypeIndex, expectedTypeIndexVal);
+    mlir::Value payloadCmp =
+        mlir::LLVM::ICmpOp::create(builder, loc, mlir::LLVM::ICmpPredicate::eq,
+                                   loadedPayload, expectedPayloadVal);
+    return mlir::LLVM::AndOp::create(builder, loc, typeCmp, payloadCmp);
+  } else if (CudaDeviceGuardAttr cudaGuard =
+                 mlir::dyn_cast<tvm_ffi::CudaDeviceGuardAttr>(attr)) {
+    const int64_t deviceType = cudaGuard.getDeviceType();
+    const int64_t deviceIndex = cudaGuard.getDeviceIndex();
 
     mlir::Value dlTensorPtr = getDLTensorPtr(builder, slot);
 
@@ -121,7 +146,7 @@ static mlir::Value buildGuards(mlir::OpBuilder &builder, mlir::Value slot,
     return mlir::LLVM::AndOp::create(builder, loc, typeCmp, idCmp);
   } else if (DimensionGuardAttr dimGuard =
                  mlir::dyn_cast<DimensionGuardAttr>(attr)) {
-    int64_t expectedVal = dimGuard.getExpected();
+    const int64_t expectedVal = dimGuard.getExpected();
 
     mlir::Value dlTensorPtr = getDLTensorPtr(builder, slot);
 
@@ -135,10 +160,11 @@ static mlir::Value buildGuards(mlir::OpBuilder &builder, mlir::Value slot,
         mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, expectedVal);
     return mlir::LLVM::ICmpOp::create(
         builder, loc, mlir::LLVM::ICmpPredicate::eq, ndimVal, expected);
-  } else if (mlir::isa<DtypeGuardAttr>(attr)) {
-    // TODO: The DtypeGuardAttr has no parameters yet. Once dtype fields
-    // (code/bits/lanes) are added, compare DLDataType from DLTensor field 3.
-    // For now, read the DLDataType struct as a placeholder.
+  } else if (DtypeGuardAttr dtypeGuard = mlir::dyn_cast<DtypeGuardAttr>(attr)) {
+    const int64_t expectedCode = dtypeGuard.getCode();
+    const int64_t expectedBits = dtypeGuard.getBits();
+    const int64_t expectedLanes = dtypeGuard.getLanes();
+
     mlir::Value dlTensorPtr = getDLTensorPtr(builder, slot);
 
     mlir::Value dtypeGep =
@@ -146,13 +172,50 @@ static mlir::Value buildGuards(mlir::OpBuilder &builder, mlir::Value slot,
                                   llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 3});
     mlir::LLVM::LLVMStructType dlDtypeTy =
         conversion::utils::getDLDataType(ctx);
-    mlir::LLVM::LoadOp::create(builder, loc, dlDtypeTy, dtypeGep);
 
-    return mlir::LLVM::ConstantOp::create(builder, loc,
-                                          mlir::IntegerType::get(ctx, 1), 1);
+    mlir::IntegerType i8Ty = mlir::IntegerType::get(ctx, 8);
+    mlir::IntegerType i16Ty = mlir::IntegerType::get(ctx, 16);
+
+    mlir::Value codePtr =
+        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, dlDtypeTy, dtypeGep,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0});
+    mlir::Value bitsPtr =
+        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, dlDtypeTy, dtypeGep,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 1});
+    mlir::Value lanesPtr =
+        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, dlDtypeTy, dtypeGep,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2});
+
+    mlir::Value loadedCode =
+        mlir::LLVM::LoadOp::create(builder, loc, i8Ty, codePtr);
+    mlir::Value loadedBits =
+        mlir::LLVM::LoadOp::create(builder, loc, i8Ty, bitsPtr);
+    mlir::Value loadedLanes =
+        mlir::LLVM::LoadOp::create(builder, loc, i16Ty, lanesPtr);
+
+    mlir::Value expectedCodeValue =
+        mlir::LLVM::ConstantOp::create(builder, loc, i8Ty, expectedCode);
+    mlir::Value expectedBitsValue =
+        mlir::LLVM::ConstantOp::create(builder, loc, i8Ty, expectedBits);
+    mlir::Value expectedLanesValue =
+        mlir::LLVM::ConstantOp::create(builder, loc, i16Ty, expectedLanes);
+
+    mlir::Value codeCmp =
+        mlir::LLVM::ICmpOp::create(builder, loc, mlir::LLVM::ICmpPredicate::eq,
+                                   loadedCode, expectedCodeValue);
+    mlir::Value bitsCmp =
+        mlir::LLVM::ICmpOp::create(builder, loc, mlir::LLVM::ICmpPredicate::eq,
+                                   loadedBits, expectedBitsValue);
+    mlir::Value lanesCmp =
+        mlir::LLVM::ICmpOp::create(builder, loc, mlir::LLVM::ICmpPredicate::eq,
+                                   loadedLanes, expectedLanesValue);
+
+    mlir::Value codeAndBits =
+        mlir::LLVM::AndOp::create(builder, loc, codeCmp, bitsCmp);
+    return mlir::LLVM::AndOp::create(builder, loc, codeAndBits, lanesCmp);
   } else if (SizeGuardAttr sizeGuard = mlir::dyn_cast<SizeGuardAttr>(attr)) {
-    int64_t index = sizeGuard.getIndex();
-    int64_t expectedVal = sizeGuard.getExpected();
+    const int64_t index = sizeGuard.getIndex();
+    const int64_t expectedVal = sizeGuard.getExpected();
 
     mlir::Value dlTensorPtr = getDLTensorPtr(builder, slot);
 
@@ -174,7 +237,7 @@ static mlir::Value buildGuards(mlir::OpBuilder &builder, mlir::Value slot,
         builder, loc, mlir::LLVM::ICmpPredicate::eq, elemVal, expected);
   } else if (StorageOffsetGuardAttr offsetGuard =
                  mlir::dyn_cast<StorageOffsetGuardAttr>(attr)) {
-    int64_t expectedVal = offsetGuard.getExpected();
+    const int64_t expectedVal = offsetGuard.getExpected();
 
     mlir::Value dlTensorPtr = getDLTensorPtr(builder, slot);
 
@@ -190,8 +253,8 @@ static mlir::Value buildGuards(mlir::OpBuilder &builder, mlir::Value slot,
         builder, loc, mlir::LLVM::ICmpPredicate::eq, offsetVal, expected);
   } else if (StrideGuardAttr strideGuard =
                  mlir::dyn_cast<StrideGuardAttr>(attr)) {
-    int64_t index = strideGuard.getIndex();
-    int64_t expectedVal = strideGuard.getExpected();
+    const int64_t index = strideGuard.getIndex();
+    const int64_t expectedVal = strideGuard.getExpected();
 
     mlir::Value dlTensorPtr = getDLTensorPtr(builder, slot);
 

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s --torch-to-llvm-pipeline | FileCheck %s
+// RUN: trident-core-opt %s --trident-lowering-pipeline | FileCheck %s
 //
 // This test verifies that the TorchToLLVM pipeline correctly lowers
 // torch.aten.empty_like (with torch.constant.bool) all the way to LLVM

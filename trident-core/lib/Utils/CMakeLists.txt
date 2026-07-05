@@ -15,6 +15,8 @@ add_mlir_library(
   TorchConversionToLLVM
   TorchMLIRCAPI
   TorchMLIRTorchConversionDialect
+  TorchMLIRTorchOnnxToTorch
+  TorchMLIRConversionUtils
   TorchPipeline
   TorchToCf
   TorchToLLVM

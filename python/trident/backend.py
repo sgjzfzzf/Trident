@@ -129,7 +129,7 @@ class TridentGraphModule(object):
         # 2. Lower Torch / TVM-FFI → LLVM.
         with self.ctx:
             passmanager.PassManager.parse(
-                "builtin.module(torch-to-llvm-pipeline)",
+                "builtin.module(trident-lowering-pipeline)",
             ).run(combined.operation)
 
         # 3. Build the LLVM dispatcher that tries each sub-function.
@@ -196,6 +196,11 @@ class TridentGraphModule(object):
         main_func_name: str = f"main_{index}"
         main_func = importer.import_stateless_graph(gm.graph, func_name=main_func_name)
         module: ir.Module = importer.module
+        with ctx:
+            pm = passmanager.PassManager.parse(
+                "builtin.module(torchdynamo-export-to-torch-backend-pipeline)",
+            )
+            pm.run(module.operation)
 
         # Step 3: Wrap with tvm_ffi.func  ----------------------------------
         tvm_ffi_name: str = f"{fn.__name__}_{index}"
@@ -237,25 +242,20 @@ class TridentGraphModule(object):
         combined: ir.Module = ir.Module.create(
             loc=ir.Location.unknown(self.ctx),
         )
-        with self.ctx, ir.Location.unknown(self.ctx):
-            for sub_mod in self._sub_modules:
-                # Clone to get a fresh source for copy_symbols_and_merge_into.
-                clone: ir.Module = ir.Module.parse(
-                    str(sub_mod),
-                    self.ctx,
-                )
-                for attr_name in clone.operation.attributes:
+        for sub_mod in self._sub_modules:
+            with self.ctx, sub_mod.operation.location:
+                for attr_name in sub_mod.operation.attributes:
                     if (
                         attr_name not in combined.operation.attributes
                         and not attr_name.startswith("sym_name")
                     ):
                         combined.operation.attributes[attr_name] = (
-                            clone.operation.attributes[attr_name]
+                            sub_mod.operation.attributes[attr_name]
                         )
 
                 transform.interpreter.copy_symbols_and_merge_into(
                     combined.operation,
-                    clone.operation,
+                    sub_mod.operation,
                 )
         return combined
 

@@ -13,6 +13,16 @@
 #include "torch/csrc/inductor/aoti_torch/generated/c_shim_aten.h"
 #include "trident-core/Conversion/Utils/CFunctionDeclUtils.h"
 
+extern "C" {
+// These shim symbols are generated/linked by AOTI but are not declared in the
+// current shipped c_shim_aten headers.
+AOTI_TORCH_EXPORT AOTITorchError aoti_torch_cuda_add_Scalar(
+    AtenTensorHandle self, double other, double alpha, AtenTensorHandle *out);
+AOTI_TORCH_EXPORT AOTITorchError
+aoti_torch_aten_subtract_Tensor(AtenTensorHandle self, AtenTensorHandle other,
+                                double alpha, AtenTensorHandle *out);
+}
+
 // AOTI (PyTorch Inductor) C API function descriptors.
 namespace trident::conversion::utils {
 
@@ -20,6 +30,10 @@ TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(aoti_torch_call_dispatcher,
                                          AOTITorchCallDispatcher)
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(aoti_torch_aten_full,
                                          AOTITorchAtenFull)
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(aoti_torch_cuda_add_Scalar,
+                                         AOTITorchCudaAddScalar)
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(aoti_torch_aten_subtract_Tensor,
+                                         AOTITorchAtenSubtractTensor)
 
 // AOTI tensor property accessors.
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(aoti_torch_create_tensor_from_blob,

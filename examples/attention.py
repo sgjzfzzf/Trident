@@ -14,7 +14,6 @@ import os
 import torch
 import triton
 import triton.language as tl
-from triton.tools.tensor_descriptor import TensorDescriptor
 
 import trident
 
@@ -88,25 +87,12 @@ def _attn_fwd_inner(
     return acc, l_i, m_i
 
 
-def _host_descriptor_pre_hook(nargs):
-    block_m = nargs["BLOCK_M"]
-    block_n = nargs["BLOCK_N"]
-    head_dim = nargs["HEAD_DIM"]
-    if not isinstance(nargs["desc_q"], TensorDescriptor):
-        return
-    nargs["desc_q"].block_shape = [block_m, head_dim]
-    nargs["desc_v"].block_shape = [block_n, head_dim]
-    nargs["desc_k"].block_shape = [block_n, head_dim]
-    nargs["desc_o"].block_shape = [block_m, head_dim]
-
-
 NUM_STAGES_OPTIONS = [2, 3, 4]
 configs = [
     triton.Config(
         {"BLOCK_M": bm, "BLOCK_N": bn},
         num_stages=s,
         num_warps=w,
-        pre_hook=_host_descriptor_pre_hook,
     )
     for bm in [64, 128]
     for bn in [32, 64, 128]
@@ -120,7 +106,6 @@ if "PYTEST_VERSION" in os.environ:
             dict(BLOCK_M=128, BLOCK_N=64),
             num_stages=2,
             num_warps=4,
-            pre_hook=_host_descriptor_pre_hook,
         ),
     ]
 
@@ -317,19 +302,9 @@ def attn_torch(
     mask = torch.tril(torch.ones((n_ctx, n_ctx), device=q.device, dtype=torch.bool))
     p = torch.matmul(q, k.transpose(2, 3)) * sm_scale
     if causal:
-        p[:, :, ~mask] = float("-inf")
+        p = torch.where(mask, p, torch.full_like(p, float("-inf")))
     p = torch.softmax(p.float(), dim=-1).to(q.dtype)
     return torch.matmul(p, v)
-
-
-def attention_impl(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    causal: bool = False,
-    sm_scale: float | None = None,
-) -> torch.Tensor:
-    return attention_forward_triton(q, k, v, causal=causal, sm_scale=sm_scale)
 
 
 def attention_triton(
@@ -339,18 +314,7 @@ def attention_triton(
     causal: bool = False,
     sm_scale: float | None = None,
 ) -> torch.Tensor:
-    return attention_impl(q, k, v, causal=causal, sm_scale=sm_scale)
-
-
-def attention_impl_jit(
-    q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    causal: bool = False,
-    sm_scale: float | None = None,
-) -> torch.Tensor:
-    # Torch-only fallback keeps trident.jit path compatible with torch._dynamo.
-    return attn_torch(q, k, v, causal=causal, sm_scale=sm_scale)
+    return attention_forward_triton(q, k, v, causal=causal, sm_scale=sm_scale)
 
 
 @trident.jit
@@ -361,7 +325,8 @@ def attention_jit(
     causal: bool = False,
     sm_scale: float | None = None,
 ) -> torch.Tensor:
-    return attention_impl_jit(q, k, v, causal=causal, sm_scale=sm_scale)
+    # Torch-only fallback keeps trident.jit path compatible with torch._dynamo.
+    return attn_torch(q, k, v, causal=causal, sm_scale=sm_scale)
 
 
 if __name__ == "__main__":
@@ -381,10 +346,7 @@ if __name__ == "__main__":
         mean=0.0, std=0.5
     )
 
-    for causal in [
-        False,
-        # True, TODO: Potential guard check issue exists here
-    ]:
+    for causal in [False, True]:
         ref_out = attn_torch(q, k, v, causal=causal, sm_scale=sm_scale)
         tri_out = attention_triton(q, k, v, causal=causal, sm_scale=sm_scale)
         jit_out = attention_jit(

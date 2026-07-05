@@ -54,7 +54,7 @@ flowchart TD
   G --> H["store sub-module"]
   H --> I["stub_compile rebuilds executor"]
   I --> J["merge all sub-modules"]
-  J --> K["run torch-to-llvm-pipeline"]
+  J --> K["run trident-lowering-pipeline"]
   K --> L["build LLVM dispatcher"]
   L --> M["ExecutionEngine JIT"]
   M --> N["raw_lookup resolves __tvm_ffi_&lt;fn&gt;"]

@@ -92,7 +92,8 @@ public:
     } else if (mlir::isa<mlir::Float64Type>(elementType)) {
       dlCode = kDLFloat;
       dlBits = 64;
-    } else if (auto intTy = mlir::dyn_cast<mlir::IntegerType>(elementType)) {
+    } else if (mlir::IntegerType intTy =
+                   mlir::dyn_cast<mlir::IntegerType>(elementType)) {
       if (intTy.isSignlessInteger(1)) {
         dlCode = kDLBool;
         dlBits = 8;
@@ -155,18 +156,43 @@ public:
       if (mlir::failed(fullFn)) {
         return mlir::failure();
       }
+      mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getDeviceIndexFn =
+          trident::conversion::utils::getOrCreateAOTITorchGetCurrentDeviceIndex(
+              moduleOp);
+      if (mlir::failed(getDeviceIndexFn)) {
+        return mlir::failure();
+      }
 
-      mlir::Value dtypeSlot = mlir::LLVM::AllocaOp::create(
-          rewriter, loc, ptrTy, i32Ty,
-          mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1));
-      mlir::LLVM::StoreOp::create(rewriter, loc, dtypeVal, dtypeSlot);
-
-      mlir::Value outTensorSlot = mlir::LLVM::AllocaOp::create(
-          rewriter, loc, ptrTy, ptrTy,
-          mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1));
-      mlir::Value nullPtr = mlir::LLVM::ZeroOp::create(rewriter, loc, ptrTy);
+      mlir::Value oneI64 =
+          mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1);
       mlir::Value zeroI32 =
           mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 0);
+      mlir::Value cudaDLDeviceType =
+          mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, kDLCUDA);
+      mlir::Value cudaDeviceType =
+          mlir::LLVM::CallOp::create(rewriter, loc, *toTorchDeviceTypeFn,
+                                     mlir::ValueRange{cudaDLDeviceType})
+              .getResult();
+
+      mlir::Value dtypeSlot =
+          mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, i32Ty, oneI64);
+      mlir::LLVM::StoreOp::create(rewriter, loc, dtypeVal, dtypeSlot);
+
+      mlir::Value deviceTypeSlot =
+          mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, i32Ty, oneI64);
+      mlir::LLVM::StoreOp::create(rewriter, loc, cudaDeviceType,
+                                  deviceTypeSlot);
+
+      mlir::Value currentDeviceIndexSlot =
+          mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, i32Ty, oneI64);
+      mlir::LLVM::CallOp::create(rewriter, loc, *getDeviceIndexFn,
+                                 mlir::ValueRange{currentDeviceIndexSlot});
+      mlir::Value currentDeviceIndex = mlir::LLVM::LoadOp::create(
+          rewriter, loc, i32Ty, currentDeviceIndexSlot);
+
+      mlir::Value outTensorSlot =
+          mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, ptrTy, oneI64);
+      mlir::Value nullPtr = mlir::LLVM::ZeroOp::create(rewriter, loc, ptrTy);
       mlir::Value fillVal = mlir::LLVM::ConstantOp::create(
           rewriter, loc, mlir::Float64Type::get(ctx),
           mlir::FloatAttr::get(mlir::Float64Type::get(ctx), fillValue));
@@ -174,7 +200,8 @@ public:
       mlir::LLVM::CallOp::create(
           rewriter, loc, *fullFn,
           mlir::ValueRange{sizePtr, rankVal, fillVal, dtypeSlot, nullPtr,
-                           nullPtr, zeroI32, nullPtr, outTensorSlot});
+                           deviceTypeSlot, currentDeviceIndex, nullPtr,
+                           outTensorSlot});
 
       tensorHandle =
           mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, outTensorSlot);

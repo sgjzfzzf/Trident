@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s --torch-to-llvm-pipeline | FileCheck %s
+// RUN: trident-core-opt %s --trident-lowering-pipeline | FileCheck %s
 //
 // This test verifies that torch.aten.mul.Scalar lowers to the dedicated AOTI
 // entry point and still exercises NumberType scalar adaptation.

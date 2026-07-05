@@ -12,7 +12,7 @@ In this repository, there are two common adaptation paths.
 
 1. Conversion pipeline path (recommended first for a new ATen op)
 - You add/update MLIR test inputs under `trident-core/test/Conversion/Pipeline`.
-- You verify that `torch-to-llvm-pipeline` lowers correctly.
+- You verify that `trident-lowering-pipeline` lowers correctly.
 - You add a Python end-to-end unittest in `test/` using `AtenOpTest`.
 
 2. Python frontend path (`@trident.jit` dynamic compile)
@@ -28,7 +28,7 @@ For a new operator bring-up, start with path 1, then validate path 2 if needed.
 - Create `trident-core/test/Conversion/Pipeline/<op>.mlir`.
 - Include one `func.func` using your target op.
 - Include one `tvm_ffi.func` wrapper exposing a callable symbol `<op>`.
-- Add `// RUN: trident-core-opt %s --torch-to-llvm-pipeline | FileCheck %s`.
+- Add `// RUN: trident-core-opt %s --trident-lowering-pipeline | FileCheck %s`.
 - Add focused `FileCheck` assertions for key lowering points.
 
 2. Match wrapper symbol with Python test expectations
@@ -133,6 +133,28 @@ Check:
 - Combined module build and merge path in `TridentGraphModule`
 - Dispatcher branch ordering and return/error handling
 
+### G. Numerical precision/value mismatch appears intermittently
+
+Suspect:
+- Guard handling is incorrect, so a stale specialization/cache entry is reused for inputs that should trigger recompilation.
+- Guard key dimensions (dtype/device/shape or scalar-kind distinctions) are missing or parsed inconsistently.
+
+Check:
+- Guard parsing and matching logic in `python/trident/guards/` and specialization reuse flow in `python/trident/backend.py`.
+- Whether the failing case should have produced a guard miss but was incorrectly treated as cache hit.
+
+### H. `torch._dynamo.export` fails on Triton autotune/hook features
+
+Symptom:
+- `torch._dynamo.exc.Unsupported` reports Triton kernel unsupported features, especially `pre_hook`/`post_hook` on `triton.Config` or `triton.autotune`.
+
+Cause:
+- Torch Dynamo does not fully support tracing/exporting Triton hook callbacks in the JIT/export path.
+
+Recommendation:
+- Avoid Triton hooks (`pre_hook`/`post_hook`) in code paths that may run under `@trident.jit` or `torch._dynamo.export`.
+- Prefer hook-free `triton.Config(...)` definitions and keep JIT-facing wrappers on Torch-friendly code paths.
+
 ## 5. Practical Debug Strategy
 
 1. Start from smallest reproducible input.
@@ -144,6 +166,7 @@ Check:
 - `trident-core/test/Conversion/Pipeline/empty_like.mlir`
 - `test/test_empty.py`
 - `test/test_empty_like.py`
+6. Prefer functional-style graph rewrites during debugging; avoid in-place tensor mutation when possible, because in-place ops can hide data-flow issues and complicate guard/cache correctness analysis.
 
 ## 6. Definition Of Done
 

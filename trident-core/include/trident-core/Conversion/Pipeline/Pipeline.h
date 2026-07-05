@@ -14,10 +14,10 @@
 
 namespace trident::torch {
 
-#define GEN_PASS_DECL_TORCHTOLLVMPIPELINE
+#define GEN_PASS_DECL_TRIDENTLOWERINGPIPELINE
 #include "trident-core/Conversion/Passes.h.inc"
 
-#define GEN_PASS_REGISTRATION_TORCHTOLLVMPIPELINE
+#define GEN_PASS_REGISTRATION_TRIDENTLOWERINGPIPELINE
 #include "trident-core/Conversion/Passes.h.inc"
 
 } // namespace trident::torch

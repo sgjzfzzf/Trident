@@ -64,7 +64,7 @@ class AtenOpTest(unittest.TestCase):
 
         with ctx:
             pm: passmanager.PassManager = passmanager.PassManager.parse(
-                "builtin.module(torch-to-llvm-pipeline)",
+                "builtin.module(trident-lowering-pipeline)",
             )
             pm.run(module.operation)
 

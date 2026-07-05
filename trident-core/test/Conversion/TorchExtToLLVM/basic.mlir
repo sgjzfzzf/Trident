@@ -5,10 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s --torch-to-llvm-pipeline | FileCheck %s
+// RUN: trident-core-opt %s --trident-lowering-pipeline | FileCheck %s
 //
 // Tests that the standalone TorchExtToLLVM pass (invoked as part of the
-// --torch-to-llvm-pipeline) lowers TorchExt dialect ops to LLVM.
+// --trident-lowering-pipeline) lowers TorchExt dialect ops to LLVM.
 
 // CHECK-DAG:   llvm.func @TVMFFIObjectDecRef(!llvm.ptr) -> i32
 

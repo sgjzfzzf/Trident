@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s --torch-to-llvm-pipeline | FileCheck %s
+// RUN: trident-core-opt %s --trident-lowering-pipeline | FileCheck %s
 //
 // This test verifies that lowering dispatches solely by dense.isSplat():
 // - splat literal: aoti_torch_aten_full path

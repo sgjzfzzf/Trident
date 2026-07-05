@@ -63,7 +63,8 @@ def FuncBackendTypeConversion
   }];
 }
 
-def TorchToLLVMPipeline : Pass<"torch-to-llvm-pipeline", "mlir::ModuleOp"> {
+def TridentLoweringPipeline
+    : Pass<"trident-lowering-pipeline", "mlir::ModuleOp"> {
   let summary = "Lower Torch dialect operations to LLVM dialect";
   let description = [{Lower Torch dialect operations to LLVM dialect.}];
   let dependentDialects = [

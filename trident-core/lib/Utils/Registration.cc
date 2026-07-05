@@ -6,14 +6,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident-core/Utils/Registration.h"
-#include "mlir/Conversion/ConvertToLLVM/ToLLVMPass.h"
 #include "mlir/Conversion/Passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Transforms/Passes.h"
-#include "torch-mlir-c/Registration.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchDialect.h"
+#include "torch-mlir/Dialect/Torch/Transforms/Passes.h"
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
 #include "trident-core/Conversion/Pipeline/Pipeline.h"
 #include "trident-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
@@ -31,6 +30,7 @@ void trident::conversion::registerAllPasses() {
   mlir::registerAllPasses();
   mlir::registerConvertToLLVMPass();
   mlir::registerReconcileUnrealizedCastsPass();
+  mlir::torch::registerTorchPasses();
   trident::torch::registerRAAIPass();
   trident::torchext::registerConvertTorchExtToGPUPass();
   trident::torchext::registerConvertTorchExtToLLVMPass();
@@ -39,7 +39,7 @@ void trident::conversion::registerAllPasses() {
   trident::torch::registerFuncBackendTypeConversionPass();
   trident::torch::registerConvertTorchToLLVMPass();
   trident::torch::registerConvertTorchConversionToLLVMPass();
-  trident::torch::registerTorchToLLVMPipelinePass();
+  trident::torch::registerTridentLoweringPipelinePass();
 }
 
 void trident::conversion::registerAllDialects(mlir::DialectRegistry &registry) {

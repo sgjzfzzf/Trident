@@ -28,21 +28,20 @@
 
 namespace trident::torch {
 
-#define GEN_PASS_DEF_TORCHTOLLVMPIPELINE
+#define GEN_PASS_DEF_TRIDENTLOWERINGPIPELINE
 #include "trident-core/Conversion/Passes.h.inc"
 
 namespace {
 
-class TorchToLLVMPipelinePass
-    : public impl::TorchToLLVMPipelineBase<TorchToLLVMPipelinePass> {
-public:
+class TridentLoweringPipelinePass
+    : public impl::TridentLoweringPipelineBase<TridentLoweringPipelinePass> {
   void runOnOperation() final {
     mlir::OpPassManager pm;
     pm.addPass(trident::torch::createRAAI());
     pm.addPass(trident::torch::createConvertTorchToCf());
-    pm.addPass(mlir::createConvertIndexToLLVMPass());
     pm.addPass(trident::torch::createConvertTorchToLLVM());
     pm.addPass(trident::torchext::createConvertTorchExtToGPU());
+    pm.addPass(mlir::createConvertIndexToLLVMPass());
     pm.addPass(trident::torchext::createConvertTorchExtToLLVM());
     pm.addPass(trident::tvm_ffi::createConvertTVMFFIToLLVM());
     pm.addPass(trident::torch::createFuncBackendTypeConversion());

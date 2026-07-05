@@ -16,6 +16,7 @@
 #include "trident-core/Conversion/TorchToLLVM/TorchToLLVM.h"
 #include "trident-core/Conversion/Utils/TVMFFIUtils.h"
 #include "trident-core/Conversion/Utils/Type.h"
+#include "trident-core/Conversion/Utils/Unwrap.h"
 #include "tvm/ffi/c_api.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 
@@ -125,19 +126,16 @@ public:
               rewriter, loc, ptrTy, anyTy, ffiArgs,
               llvm::ArrayRef<mlir::LLVM::GEPArg>{i});
         });
-    mlir::FailureOr<mlir::Value> result =
+    mlir::Value result = TRIDENT_UNWRAP_FAILURE(
         trident::conversion::utils::callTVMFFIGlobalFunction(
-            rewriter, loc, moduleOp, "ffi.Array", slotPtrs);
-    if (mlir::failed(result)) {
-      return mlir::failure();
-    }
+            rewriter, loc, moduleOp, "ffi.Array", slotPtrs));
 
     // Extract v_obj (field[2]) from result TVMFFIAny and wrap it back
     // in a TVMFFIAny with kTVMFFIArray tag so downstream consumers
     // (SchemaLookup for aten ops, ConvertObjectDecRefOp, etc.) always
     // see a proper TVMFFIAny value instead of a raw pointer that would
     // force an unreconcilable unrealized_conversion_cast.
-    mlir::Value resultSlot = *result;
+    mlir::Value resultSlot = result;
     mlir::Value vObjGEP =
         mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, anyTy, resultSlot,
                                   llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2});

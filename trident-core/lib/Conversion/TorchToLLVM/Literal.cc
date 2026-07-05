@@ -14,6 +14,7 @@
 #include "trident-core/Conversion/TorchToLLVM/TorchToLLVM.h"
 #include "trident-core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/TridentCAPIDescriptors.h"
+#include "trident-core/Conversion/Utils/Unwrap.h"
 #include "tvm/ffi/c_api.h"
 
 namespace trident::torch {
@@ -60,23 +61,14 @@ public:
     mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
     mlir::Type anyTy = getTypeConverter()->convertType(op.getType());
 
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> toTorchDtypeFn =
-        trident::conversion::utils::getOrCreateTVMFFIToTorchType(moduleOp);
-    if (mlir::failed(toTorchDtypeFn)) {
-      return mlir::failure();
-    }
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> toTorchDeviceTypeFn =
+    mlir::LLVM::LLVMFuncOp toTorchDtypeFn = TRIDENT_UNWRAP_FAILURE(
+        trident::conversion::utils::getOrCreateTVMFFIToTorchType(moduleOp));
+    mlir::LLVM::LLVMFuncOp toTorchDeviceTypeFn = TRIDENT_UNWRAP_FAILURE(
         trident::conversion::utils::getOrCreateTVMFFIDeviceToTorchDeviceType(
-            moduleOp);
-    if (mlir::failed(toTorchDeviceTypeFn)) {
-      return mlir::failure();
-    }
+            moduleOp));
 
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> packTensorFn =
-        trident::conversion::utils::getOrCreateTensorToTVMFFIObject(moduleOp);
-    if (mlir::failed(packTensorFn)) {
-      return mlir::failure();
-    }
+    mlir::LLVM::LLVMFuncOp packTensorFn = TRIDENT_UNWRAP_FAILURE(
+        trident::conversion::utils::getOrCreateTensorToTVMFFIObject(moduleOp));
 
     uint8_t dlCode = 0;
     uint8_t dlBits = 0;
@@ -111,7 +103,7 @@ public:
 
     mlir::Value dtypeVal =
         mlir::LLVM::CallOp::create(
-            rewriter, loc, *toTorchDtypeFn,
+            rewriter, loc, toTorchDtypeFn,
             {mlir::LLVM::ConstantOp::create(rewriter, loc, i8Ty, dlCode),
              mlir::LLVM::ConstantOp::create(rewriter, loc, i8Ty, dlBits)})
             .getResult();
@@ -151,17 +143,11 @@ public:
         return op.emitError("unsupported torch.vtensor.literal element type");
       }
 
-      mlir::FailureOr<mlir::LLVM::LLVMFuncOp> fullFn =
-          trident::conversion::utils::getOrCreateAOTITorchAtenFull(moduleOp);
-      if (mlir::failed(fullFn)) {
-        return mlir::failure();
-      }
-      mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getDeviceIndexFn =
+      mlir::LLVM::LLVMFuncOp fullFn = TRIDENT_UNWRAP_FAILURE(
+          trident::conversion::utils::getOrCreateAOTITorchAtenFull(moduleOp));
+      mlir::LLVM::LLVMFuncOp getDeviceIndexFn = TRIDENT_UNWRAP_FAILURE(
           trident::conversion::utils::getOrCreateAOTITorchGetCurrentDeviceIndex(
-              moduleOp);
-      if (mlir::failed(getDeviceIndexFn)) {
-        return mlir::failure();
-      }
+              moduleOp));
 
       mlir::Value oneI64 =
           mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1);
@@ -170,7 +156,7 @@ public:
       mlir::Value cudaDLDeviceType =
           mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, kDLCUDA);
       mlir::Value cudaDeviceType =
-          mlir::LLVM::CallOp::create(rewriter, loc, *toTorchDeviceTypeFn,
+          mlir::LLVM::CallOp::create(rewriter, loc, toTorchDeviceTypeFn,
                                      mlir::ValueRange{cudaDLDeviceType})
               .getResult();
 
@@ -185,7 +171,7 @@ public:
 
       mlir::Value currentDeviceIndexSlot =
           mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, i32Ty, oneI64);
-      mlir::LLVM::CallOp::create(rewriter, loc, *getDeviceIndexFn,
+      mlir::LLVM::CallOp::create(rewriter, loc, getDeviceIndexFn,
                                  mlir::ValueRange{currentDeviceIndexSlot});
       mlir::Value currentDeviceIndex = mlir::LLVM::LoadOp::create(
           rewriter, loc, i32Ty, currentDeviceIndexSlot);
@@ -198,7 +184,7 @@ public:
           mlir::FloatAttr::get(mlir::Float64Type::get(ctx), fillValue));
 
       mlir::LLVM::CallOp::create(
-          rewriter, loc, *fullFn,
+          rewriter, loc, fullFn,
           mlir::ValueRange{sizePtr, rankVal, fillVal, dtypeSlot, nullPtr,
                            deviceTypeSlot, currentDeviceIndex, nullPtr,
                            outTensorSlot});
@@ -225,35 +211,20 @@ public:
         return op.emitError("unsupported torch.vtensor.literal element type");
       }
 
-      mlir::FailureOr<mlir::LLVM::LLVMFuncOp> createFromBlobFn =
+      mlir::LLVM::LLVMFuncOp createFromBlobFn = TRIDENT_UNWRAP_FAILURE(
           trident::conversion::utils::getOrCreateAOTITorchCreateTensorFromBlob(
-              moduleOp);
-      if (mlir::failed(createFromBlobFn)) {
-        return mlir::failure();
-      }
-      mlir::FailureOr<mlir::LLVM::LLVMFuncOp> emptyStridedFn =
+              moduleOp));
+      mlir::LLVM::LLVMFuncOp emptyStridedFn = TRIDENT_UNWRAP_FAILURE(
           trident::conversion::utils::getOrCreateAOTITorchEmptyStrided(
-              moduleOp);
-      if (mlir::failed(emptyStridedFn)) {
-        return mlir::failure();
-      }
-      mlir::FailureOr<mlir::LLVM::LLVMFuncOp> copyFn =
-          trident::conversion::utils::getOrCreateAOTITorchCopy_(moduleOp);
-      if (mlir::failed(copyFn)) {
-        return mlir::failure();
-      }
-      mlir::FailureOr<mlir::LLVM::LLVMFuncOp> deleteTensorFn =
+              moduleOp));
+      mlir::LLVM::LLVMFuncOp copyFn = TRIDENT_UNWRAP_FAILURE(
+          trident::conversion::utils::getOrCreateAOTITorchCopy_(moduleOp));
+      mlir::LLVM::LLVMFuncOp deleteTensorFn = TRIDENT_UNWRAP_FAILURE(
           trident::conversion::utils::getOrCreateAOTITorchDeleteTensorObject(
-              moduleOp);
-      if (mlir::failed(deleteTensorFn)) {
-        return mlir::failure();
-      }
-      mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getDeviceIndexFn =
+              moduleOp));
+      mlir::LLVM::LLVMFuncOp getDeviceIndexFn = TRIDENT_UNWRAP_FAILURE(
           trident::conversion::utils::getOrCreateAOTITorchGetCurrentDeviceIndex(
-              moduleOp);
-      if (mlir::failed(getDeviceIndexFn)) {
-        return mlir::failure();
-      }
+              moduleOp));
 
       mlir::IntegerType storageTy = mlir::IntegerType::get(ctx, storageBits);
       mlir::Value stridePtr = mlir::LLVM::AllocaOp::create(
@@ -314,17 +285,17 @@ public:
       mlir::Value cudaDLDeviceType =
           mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, kDLCUDA);
       mlir::Value cpuDeviceType =
-          mlir::LLVM::CallOp::create(rewriter, loc, *toTorchDeviceTypeFn,
+          mlir::LLVM::CallOp::create(rewriter, loc, toTorchDeviceTypeFn,
                                      mlir::ValueRange{cpuDLDeviceType})
               .getResult();
       mlir::Value cudaDeviceType =
-          mlir::LLVM::CallOp::create(rewriter, loc, *toTorchDeviceTypeFn,
+          mlir::LLVM::CallOp::create(rewriter, loc, toTorchDeviceTypeFn,
                                      mlir::ValueRange{cudaDLDeviceType})
               .getResult();
 
       mlir::Value currentDeviceIndexSlot =
           mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, i32Ty, oneI64);
-      mlir::LLVM::CallOp::create(rewriter, loc, *getDeviceIndexFn,
+      mlir::LLVM::CallOp::create(rewriter, loc, getDeviceIndexFn,
                                  mlir::ValueRange{currentDeviceIndexSlot});
       mlir::Value currentDeviceIndex = mlir::LLVM::LoadOp::create(
           rewriter, loc, i32Ty, currentDeviceIndexSlot);
@@ -332,7 +303,7 @@ public:
       mlir::Value cpuTensorSlot =
           mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, ptrTy, oneI64);
       mlir::LLVM::CallOp::create(
-          rewriter, loc, *createFromBlobFn,
+          rewriter, loc, createFromBlobFn,
           mlir::ValueRange{blobDataPtr, rankVal, sizePtr, stridePtr, zeroI64,
                            dtypeVal, cpuDeviceType, zeroI32, cpuTensorSlot});
 
@@ -341,16 +312,16 @@ public:
       mlir::Value cudaTensorSlot =
           mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, ptrTy, oneI64);
       mlir::LLVM::CallOp::create(
-          rewriter, loc, *emptyStridedFn,
+          rewriter, loc, emptyStridedFn,
           mlir::ValueRange{rankVal, sizePtr, stridePtr, dtypeVal,
                            cudaDeviceType, currentDeviceIndex, cudaTensorSlot});
 
       mlir::Value cudaTensorHandle =
           mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, cudaTensorSlot);
       mlir::LLVM::CallOp::create(
-          rewriter, loc, *copyFn,
+          rewriter, loc, copyFn,
           mlir::ValueRange{cudaTensorHandle, cpuTensorHandle, zeroI32});
-      mlir::LLVM::CallOp::create(rewriter, loc, *deleteTensorFn,
+      mlir::LLVM::CallOp::create(rewriter, loc, deleteTensorFn,
                                  mlir::ValueRange{cpuTensorHandle});
 
       tensorHandle = cudaTensorHandle;
@@ -359,7 +330,7 @@ public:
     mlir::Value outObjectSlot = mlir::LLVM::AllocaOp::create(
         rewriter, loc, ptrTy, ptrTy,
         mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1));
-    mlir::LLVM::CallOp::create(rewriter, loc, *packTensorFn,
+    mlir::LLVM::CallOp::create(rewriter, loc, packTensorFn,
                                mlir::ValueRange{tensorHandle, outObjectSlot});
 
     mlir::Value objectHandle =

@@ -12,6 +12,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "trident-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
+#include "trident-core/Conversion/Utils/Unwrap.h"
 #include "trident-core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "trident-core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "trident-core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
@@ -39,11 +40,8 @@ public:
       return op.emitError("op is not inside a module");
     }
 
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
-        trident::conversion::utils::getOrCreateTVMFFIObjectIncRef(moduleOp);
-    if (mlir::failed(calleeOrErr)) {
-      return mlir::failure();
-    }
+    mlir::LLVM::LLVMFuncOp callee = TRIDENT_UNWRAP_FAILURE(
+        trident::conversion::utils::getOrCreateTVMFFIObjectIncRef(moduleOp));
 
     // The adapted object is a TVMFFIAny — extract the pointer from field[2].
     mlir::Value anyVal = adaptor.getObject();
@@ -51,8 +49,7 @@ public:
         rewriter, loc, anyVal, llvm::ArrayRef<int64_t>{2});
     mlir::Value handle = mlir::LLVM::IntToPtrOp::create(
         rewriter, loc, mlir::LLVM::LLVMPointerType::get(ctx), payloadI64);
-    mlir::LLVM::CallOp::create(rewriter, loc, *calleeOrErr,
-                               mlir::ValueRange{handle});
+    mlir::LLVM::CallOp::create(rewriter, loc, callee, mlir::ValueRange{handle});
     rewriter.eraseOp(op);
     return mlir::success();
   }
@@ -74,11 +71,8 @@ public:
       return op.emitError("op is not inside a module");
     }
 
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
-        trident::conversion::utils::getOrCreateTVMFFIObjectDecRef(moduleOp);
-    if (mlir::failed(calleeOrErr)) {
-      return mlir::failure();
-    }
+    mlir::LLVM::LLVMFuncOp callee = TRIDENT_UNWRAP_FAILURE(
+        trident::conversion::utils::getOrCreateTVMFFIObjectDecRef(moduleOp));
 
     // The adapted object is a TVMFFIAny — extract the pointer from field[2].
     mlir::Value anyVal = adaptor.getObject();
@@ -86,8 +80,7 @@ public:
         rewriter, loc, anyVal, llvm::ArrayRef<int64_t>{2});
     mlir::Value handle = mlir::LLVM::IntToPtrOp::create(
         rewriter, loc, mlir::LLVM::LLVMPointerType::get(ctx), payloadI64);
-    mlir::LLVM::CallOp::create(rewriter, loc, *calleeOrErr,
-                               mlir::ValueRange{handle});
+    mlir::LLVM::CallOp::create(rewriter, loc, callee, mlir::ValueRange{handle});
     rewriter.eraseOp(op);
     return mlir::success();
   }

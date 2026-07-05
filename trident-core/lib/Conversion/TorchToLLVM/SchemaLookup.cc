@@ -19,12 +19,14 @@
 #include "mlir/IR/Value.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchOps.h"
 #include "trident-core/Conversion/Utils/AOTICAPIDescriptors.h"
+#include "trident-core/Conversion/Utils/CFunctionDeclUtils.h"
 #include "trident-core/Conversion/Utils/GlobalString.h"
 #include "trident-core/Conversion/Utils/StableCAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/StdLibCAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/TVMFFIUtils.h"
 #include "trident-core/Conversion/Utils/TridentCAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/Type.h"
+#include "trident-core/Conversion/Utils/Unwrap.h"
 #include "tvm/ffi/c_api.h"
 #include <regex>
 #include <string>
@@ -78,6 +80,73 @@ static mlir::Type getShimElemType(mlir::MLIRContext *ctx,
   }
 }
 
+static mlir::FailureOr<mlir::Value>
+buildShimTensorValue(mlir::OpBuilder &builder, mlir::Location loc,
+                     mlir::Value adaptedValue, mlir::ModuleOp moduleOp) {
+  mlir::MLIRContext *ctx = builder.getContext();
+  mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
+  mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
+
+  mlir::Value handleInt = mlir::LLVM::ExtractValueOp::create(
+      builder, loc, adaptedValue, llvm::ArrayRef<int64_t>{2});
+  mlir::Value handle =
+      mlir::LLVM::IntToPtrOp::create(builder, loc, ptrTy, handleInt);
+
+  mlir::LLVM::LLVMFuncOp unpackFn = TRIDENT_UNWRAP_FAILURE(
+      trident::conversion::utils::getOrCreateTVMFFIObjectToTensor(moduleOp));
+
+  mlir::Value slot = mlir::LLVM::AllocaOp::create(
+      builder, loc, ptrTy, ptrTy,
+      mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+  mlir::LLVM::CallOp::create(builder, loc, unpackFn, {handle, slot});
+  return mlir::LLVM::LoadOp::create(builder, loc, ptrTy, slot).getResult();
+}
+
+static mlir::Value buildShimNumberValue(mlir::OpBuilder &builder,
+                                        mlir::Location loc,
+                                        mlir::Value adaptedValue) {
+  mlir::MLIRContext *ctx = builder.getContext();
+  mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
+  mlir::Float64Type f64Ty = mlir::Float64Type::get(ctx);
+
+  mlir::Value typeIndex = mlir::LLVM::ExtractValueOp::create(
+      builder, loc, adaptedValue, llvm::ArrayRef<int64_t>{0});
+  mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
+      builder, loc, adaptedValue, llvm::ArrayRef<int64_t>{2});
+  mlir::Value intTypeIndex =
+      mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, kTVMFFIInt);
+  mlir::Value isInt = mlir::LLVM::ICmpOp::create(
+      builder, loc, mlir::LLVM::ICmpPredicate::eq, typeIndex, intTypeIndex);
+  mlir::Value intAsDouble =
+      mlir::LLVM::SIToFPOp::create(builder, loc, f64Ty, payload);
+  mlir::Value floatAsDouble =
+      mlir::LLVM::BitcastOp::create(builder, loc, f64Ty, payload);
+  return mlir::LLVM::SelectOp::create(builder, loc, isInt, intAsDouble,
+                                      floatAsDouble)
+      .getResult();
+}
+
+static mlir::FailureOr<mlir::Value>
+resolveShimTensorValue(mlir::OpBuilder &builder, mlir::Location loc,
+                       mlir::Value shimValue, mlir::ModuleOp moduleOp) {
+  mlir::MLIRContext *ctx = builder.getContext();
+  mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
+  mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
+
+  mlir::LLVM::LLVMFuncOp packFn = TRIDENT_UNWRAP_FAILURE(
+      trident::conversion::utils::getOrCreateTensorToTVMFFIObject(moduleOp));
+
+  mlir::Value slot = mlir::LLVM::AllocaOp::create(
+      builder, loc, ptrTy, ptrTy,
+      mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+  mlir::LLVM::CallOp::create(builder, loc, packFn, {shimValue, slot});
+
+  mlir::Value handle = mlir::LLVM::LoadOp::create(builder, loc, ptrTy, slot);
+  mlir::Value payload =
+      mlir::LLVM::PtrToIntOp::create(builder, loc, i64Ty, handle);
+  return buildFFIAnyValue(builder, loc, kTVMFFITensor, payload);
+}
+
 static mlir::FailureOr<mlir::Value> buildShimValue(mlir::OpBuilder &builder,
                                                    mlir::Location loc,
                                                    const c10::TypePtr &c10Type,
@@ -85,30 +154,11 @@ static mlir::FailureOr<mlir::Value> buildShimValue(mlir::OpBuilder &builder,
                                                    mlir::ModuleOp moduleOp) {
   mlir::MLIRContext *ctx = builder.getContext();
   mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
-  mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
-  mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
   mlir::Float64Type f64Ty = mlir::Float64Type::get(ctx);
 
   switch (c10Type->kind()) {
-  case c10::TypeKind::TensorType: {
-    mlir::Value handleInt = mlir::LLVM::ExtractValueOp::create(
-        builder, loc, adaptedValue, llvm::ArrayRef<int64_t>{2});
-    mlir::Value handle =
-        mlir::LLVM::IntToPtrOp::create(builder, loc, ptrTy, handleInt);
-
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> unpackFn =
-        trident::conversion::utils::getOrCreateTVMFFIObjectToTensor(moduleOp);
-    if (mlir::failed(unpackFn)) {
-      return mlir::failure();
-    }
-
-    mlir::Value slot = mlir::LLVM::AllocaOp::create(
-        builder, loc, ptrTy, ptrTy,
-        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
-    mlir::LLVM::CallOp::create(builder, loc, *unpackFn,
-                               mlir::ValueRange{handle, slot});
-    return mlir::LLVM::LoadOp::create(builder, loc, ptrTy, slot).getResult();
-  }
+  case c10::TypeKind::TensorType:
+    return buildShimTensorValue(builder, loc, adaptedValue, moduleOp);
   case c10::TypeKind::BoolType:
     return mlir::LLVM::TruncOp::create(
                builder, loc, i32Ty,
@@ -127,23 +177,8 @@ static mlir::FailureOr<mlir::Value> buildShimValue(mlir::OpBuilder &builder,
                mlir::LLVM::ExtractValueOp::create(builder, loc, adaptedValue,
                                                   llvm::ArrayRef<int64_t>{2}))
         .getResult();
-  case c10::TypeKind::NumberType: {
-    mlir::Value typeIndex = mlir::LLVM::ExtractValueOp::create(
-        builder, loc, adaptedValue, llvm::ArrayRef<int64_t>{0});
-    mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
-        builder, loc, adaptedValue, llvm::ArrayRef<int64_t>{2});
-    mlir::Value intTypeIndex =
-        mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, kTVMFFIInt);
-    mlir::Value isInt = mlir::LLVM::ICmpOp::create(
-        builder, loc, mlir::LLVM::ICmpPredicate::eq, typeIndex, intTypeIndex);
-    mlir::Value intAsDouble =
-        mlir::LLVM::SIToFPOp::create(builder, loc, f64Ty, payload);
-    mlir::Value floatAsDouble =
-        mlir::LLVM::BitcastOp::create(builder, loc, f64Ty, payload);
-    return mlir::LLVM::SelectOp::create(builder, loc, isInt, intAsDouble,
-                                        floatAsDouble)
-        .getResult();
-  }
+  case c10::TypeKind::NumberType:
+    return buildShimNumberValue(builder, loc, adaptedValue);
   default:
     return mlir::failure();
   }
@@ -155,27 +190,10 @@ resolveShimValue(mlir::OpBuilder &builder, mlir::Location loc,
                  mlir::ModuleOp moduleOp) {
   mlir::MLIRContext *ctx = builder.getContext();
   mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
-  mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
 
   switch (c10Type->kind()) {
-  case c10::TypeKind::TensorType: {
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> packFn =
-        trident::conversion::utils::getOrCreateTensorToTVMFFIObject(moduleOp);
-    if (mlir::failed(packFn)) {
-      return mlir::failure();
-    }
-
-    mlir::Value slot = mlir::LLVM::AllocaOp::create(
-        builder, loc, ptrTy, ptrTy,
-        mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
-    mlir::LLVM::CallOp::create(builder, loc, *packFn,
-                               mlir::ValueRange{shimValue, slot});
-
-    mlir::Value handle = mlir::LLVM::LoadOp::create(builder, loc, ptrTy, slot);
-    mlir::Value payload =
-        mlir::LLVM::PtrToIntOp::create(builder, loc, i64Ty, handle);
-    return buildFFIAnyValue(builder, loc, kTVMFFITensor, payload);
-  }
+  case c10::TypeKind::TensorType:
+    return resolveShimTensorValue(builder, loc, shimValue, moduleOp);
   case c10::TypeKind::BoolType: {
     mlir::Value payload =
         mlir::LLVM::ZExtOp::create(builder, loc, i64Ty, shimValue);
@@ -230,11 +248,8 @@ mlir::FailureOr<mlir::Value> buildStableIValue(mlir::OpBuilder &builder,
     mlir::Value handle =
         mlir::LLVM::IntToPtrOp::create(builder, loc, ptrTy, handleInt);
 
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> unpackFn =
-        trident::conversion::utils::getOrCreateTVMFFIObjectToTensor(moduleOp);
-    if (mlir::failed(unpackFn)) {
-      return mlir::failure();
-    }
+    mlir::LLVM::LLVMFuncOp unpackFn = TRIDENT_UNWRAP_FAILURE(
+        trident::conversion::utils::getOrCreateTVMFFIObjectToTensor(moduleOp));
 
     // Allocate stack slot for AtenTensorHandle output.
     mlir::Value slot = mlir::LLVM::AllocaOp::create(
@@ -242,8 +257,7 @@ mlir::FailureOr<mlir::Value> buildStableIValue(mlir::OpBuilder &builder,
         mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
 
     // Call mTridentTVMFFIObjectToTensor(handle, &slot).
-    mlir::LLVM::CallOp::create(builder, loc, *unpackFn,
-                               mlir::ValueRange{handle, slot});
+    mlir::LLVM::CallOp::create(builder, loc, unpackFn, {handle, slot});
 
     // Load the AtenTensorHandle and convert to i64 for the dispatcher.
     mlir::Value atenHandle =
@@ -328,29 +342,21 @@ mlir::FailureOr<mlir::Value> buildStableIValue(mlir::OpBuilder &builder,
     // --- None block: zero (None sentinel) ---
     builder.setInsertionPointToStart(noneBlock);
     mlir::Value zero = mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 0);
-    mlir::LLVM::BrOp::create(builder, loc, mlir::ValueRange{zero},
-                             continuationBlock);
+    mlir::LLVM::BrOp::create(builder, loc, {zero}, continuationBlock);
 
     // --- Some block: box inner StableIValue on the heap ---
     builder.setInsertionPointToStart(someBlock);
-    mlir::FailureOr<mlir::Value> converted =
-        buildStableIValue(builder, innerC10Type, input, moduleOp, loc);
-    if (mlir::failed(converted)) {
-      return mlir::failure();
-    }
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> mallocFn =
-        trident::conversion::utils::getOrCreateMalloc(moduleOp);
-    if (mlir::failed(mallocFn)) {
-      return mlir::failure();
-    }
+    mlir::Value converted = TRIDENT_UNWRAP_FAILURE(
+        buildStableIValue(builder, innerC10Type, input, moduleOp, loc));
+    mlir::LLVM::LLVMFuncOp mallocFn = TRIDENT_UNWRAP_FAILURE(
+        trident::conversion::utils::getOrCreateMalloc(moduleOp));
     mlir::Value size = mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 8);
     mlir::Value ptr =
-        mlir::LLVM::CallOp::create(builder, loc, *mallocFn, size).getResult();
-    mlir::LLVM::StoreOp::create(builder, loc, *converted, ptr);
+        mlir::LLVM::CallOp::create(builder, loc, mallocFn, size).getResult();
+    mlir::LLVM::StoreOp::create(builder, loc, converted, ptr);
     mlir::Value boxed =
         mlir::LLVM::PtrToIntOp::create(builder, loc, i64Ty, ptr);
-    mlir::LLVM::BrOp::create(builder, loc, mlir::ValueRange{boxed},
-                             continuationBlock);
+    mlir::LLVM::BrOp::create(builder, loc, {boxed}, continuationBlock);
 
     // --- Continuation block (merge point) ---
     builder.setInsertionPointToStart(continuationBlock);
@@ -404,16 +410,13 @@ mlir::FailureOr<mlir::Value> buildStableIValue(mlir::OpBuilder &builder,
     mlir::LLVM::StoreOp::create(
         builder, loc, buildFFIAnyValue(builder, loc, kTVMFFIArray, inputInt),
         sizeArgSlot);
-    mlir::FailureOr<mlir::Value> sizeResultSlot =
+    mlir::Value sizeResultSlot = TRIDENT_UNWRAP_FAILURE(
         trident::conversion::utils::callTVMFFIGlobalFunction(
-            builder, loc, moduleOp, "ffi.ArraySize", {sizeArgSlot});
-    if (mlir::failed(sizeResultSlot)) {
-      return mlir::failure();
-    }
+            builder, loc, moduleOp, "ffi.ArraySize", {sizeArgSlot}));
     // Extract v_int64 (field[2]) from result TVMFFIAny.
     mlir::Value listSize = mlir::LLVM::LoadOp::create(
         builder, loc, i64Ty,
-        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, *sizeResultSlot,
+        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, sizeResultSlot,
                                   llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
 
     // --- Step 2: Create StableList with reserved capacity ---
@@ -422,24 +425,18 @@ mlir::FailureOr<mlir::Value> buildStableIValue(mlir::OpBuilder &builder,
         builder, loc, ptrTy, ptrTy,
         mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
 
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> reserveFn =
+    mlir::LLVM::LLVMFuncOp reserveFn = TRIDENT_UNWRAP_FAILURE(
         trident::conversion::utils::getOrCreateTorchNewListReserveSize(
-            moduleOp);
-    if (mlir::failed(reserveFn)) {
-      return mlir::failure();
-    }
-    mlir::LLVM::CallOp::create(builder, loc, *reserveFn,
+            moduleOp));
+    mlir::LLVM::CallOp::create(builder, loc, reserveFn,
                                {listSize, stableListSlot});
     mlir::Value listHandle =
         mlir::LLVM::LoadOp::create(builder, loc, ptrTy, stableListSlot);
 
     // --- Step 3: Get push_back function handle ---
 
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> pushBackFn =
-        trident::conversion::utils::getOrCreateTorchListPushBack(moduleOp);
-    if (mlir::failed(pushBackFn)) {
-      return mlir::failure();
-    }
+    mlir::LLVM::LLVMFuncOp pushBackFn = TRIDENT_UNWRAP_FAILURE(
+        trident::conversion::utils::getOrCreateTorchListPushBack(moduleOp));
 
     // --- Step 4: Loop i = 0 .. listSize-1, ffi.ArrayGetItem + push_back ---
 
@@ -492,26 +489,20 @@ mlir::FailureOr<mlir::Value> buildStableIValue(mlir::OpBuilder &builder,
         itemArg1);
 
     // Call ffi.ArrayGetItem(array, i).
-    mlir::FailureOr<mlir::Value> itemResult =
+    mlir::Value itemResult = TRIDENT_UNWRAP_FAILURE(
         trident::conversion::utils::callTVMFFIGlobalFunction(
-            builder, loc, moduleOp, "ffi.ArrayGetItem", {itemArg0, itemArg1});
-    if (mlir::failed(itemResult)) {
-      return mlir::failure();
-    }
+            builder, loc, moduleOp, "ffi.ArrayGetItem", {itemArg0, itemArg1}));
 
     // Load the returned TVMFFIAny value (the element).
     mlir::Value elemAny =
-        mlir::LLVM::LoadOp::create(builder, loc, anyTy, *itemResult);
+        mlir::LLVM::LoadOp::create(builder, loc, anyTy, itemResult);
 
     // Recursively convert the element using buildStableIValue.
-    mlir::FailureOr<mlir::Value> elemIVal =
-        buildStableIValue(builder, elemType, elemAny, moduleOp, loc);
-    if (mlir::failed(elemIVal)) {
-      return mlir::failure();
-    }
+    mlir::Value elemIVal = TRIDENT_UNWRAP_FAILURE(
+        buildStableIValue(builder, elemType, elemAny, moduleOp, loc));
 
-    mlir::LLVM::CallOp::create(builder, loc, *pushBackFn,
-                               {listHandle, *elemIVal});
+    mlir::LLVM::CallOp::create(builder, loc, pushBackFn,
+                               {listHandle, elemIVal});
 
     mlir::Value iPlus1 = mlir::LLVM::AddOp::create(
         builder, loc, iVal,
@@ -563,11 +554,8 @@ mlir::FailureOr<mlir::Value> resolveStableIValue(mlir::OpBuilder &builder,
     mlir::Value atenHandle =
         mlir::LLVM::IntToPtrOp::create(builder, loc, ptrTy, loaded);
 
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> packFn =
-        trident::conversion::utils::getOrCreateTensorToTVMFFIObject(moduleOp);
-    if (mlir::failed(packFn)) {
-      return mlir::failure();
-    }
+    mlir::LLVM::LLVMFuncOp packFn = TRIDENT_UNWRAP_FAILURE(
+        trident::conversion::utils::getOrCreateTensorToTVMFFIObject(moduleOp));
 
     // Allocate stack slot for TVMFFIObjectHandle output.
     mlir::Value outSlot = mlir::LLVM::AllocaOp::create(
@@ -575,8 +563,7 @@ mlir::FailureOr<mlir::Value> resolveStableIValue(mlir::OpBuilder &builder,
         mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
 
     // Call mTridentTensorToTVMFFIObject(atenHandle, &outSlot).
-    mlir::LLVM::CallOp::create(builder, loc, *packFn,
-                               mlir::ValueRange{atenHandle, outSlot});
+    mlir::LLVM::CallOp::create(builder, loc, packFn, {atenHandle, outSlot});
 
     // Load the TVMFFIObjectHandle and build TVMFFIAny {kTVMFFITensor, 0, ptr}.
     mlir::Value handle =
@@ -631,8 +618,7 @@ mlir::FailureOr<mlir::Value> resolveStableIValue(mlir::OpBuilder &builder,
     // --- None block: TVMFFIAny {kTVMFFINone, 0, 0} ---
     builder.setInsertionPointToStart(noneBlock);
     mlir::Value noneResult = buildFFIAnyValue(builder, loc, kTVMFFINone, zero);
-    mlir::LLVM::BrOp::create(builder, loc, mlir::ValueRange{noneResult},
-                             continuationBlock);
+    mlir::LLVM::BrOp::create(builder, loc, {noneResult}, continuationBlock);
 
     // --- Some block: unbox inner StableIValue from heap ---
     builder.setInsertionPointToStart(someBlock);
@@ -642,21 +628,14 @@ mlir::FailureOr<mlir::Value> resolveStableIValue(mlir::OpBuilder &builder,
         mlir::LLVM::LoadOp::create(builder, loc, i64Ty, heapPtr);
 
     // Free the heap-allocated box.
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> freeFn =
-        trident::conversion::utils::getOrCreateFree(moduleOp);
-    if (mlir::failed(freeFn)) {
-      return mlir::failure();
-    }
-    mlir::LLVM::CallOp::create(builder, loc, *freeFn, {heapPtr});
+    mlir::LLVM::LLVMFuncOp freeFn = TRIDENT_UNWRAP_FAILURE(
+        trident::conversion::utils::getOrCreateFree(moduleOp));
+    mlir::LLVM::CallOp::create(builder, loc, freeFn, {heapPtr});
 
     // Recursively resolve the inner StableIValue.
-    mlir::FailureOr<mlir::Value> resolved =
-        resolveStableIValue(builder, innerC10Type, innerIVal, moduleOp, loc);
-    if (mlir::failed(resolved)) {
-      return mlir::failure();
-    }
-    mlir::LLVM::BrOp::create(builder, loc, mlir::ValueRange{*resolved},
-                             continuationBlock);
+    mlir::Value resolved = TRIDENT_UNWRAP_FAILURE(
+        resolveStableIValue(builder, innerC10Type, innerIVal, moduleOp, loc));
+    mlir::LLVM::BrOp::create(builder, loc, {resolved}, continuationBlock);
 
     // --- Continuation block (merge point) ---
     builder.setInsertionPointToStart(continuationBlock);
@@ -700,12 +679,9 @@ mlir::FailureOr<mlir::Value> resolveStableIValue(mlir::OpBuilder &builder,
     mlir::Value sizeSlot = mlir::LLVM::AllocaOp::create(
         builder, loc, ptrTy, i64Ty,
         mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> sizeFn =
-        trident::conversion::utils::getOrCreateTorchListSize(moduleOp);
-    if (mlir::failed(sizeFn)) {
-      return mlir::failure();
-    }
-    mlir::LLVM::CallOp::create(builder, loc, *sizeFn, {listHandle, sizeSlot});
+    mlir::LLVM::LLVMFuncOp sizeFn = TRIDENT_UNWRAP_FAILURE(
+        trident::conversion::utils::getOrCreateTorchListSize(moduleOp));
+    mlir::LLVM::CallOp::create(builder, loc, sizeFn, {listHandle, sizeSlot});
     mlir::Value listSize =
         mlir::LLVM::LoadOp::create(builder, loc, i64Ty, sizeSlot);
 
@@ -745,28 +721,22 @@ mlir::FailureOr<mlir::Value> resolveStableIValue(mlir::OpBuilder &builder,
         builder, loc, ptrTy, i64Ty,
         mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
 
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getItemFn =
-        trident::conversion::utils::getOrCreateTorchListGetItem(moduleOp);
-    if (mlir::failed(getItemFn)) {
-      return mlir::failure();
-    }
-    mlir::LLVM::CallOp::create(builder, loc, *getItemFn,
+    mlir::LLVM::LLVMFuncOp getItemFn = TRIDENT_UNWRAP_FAILURE(
+        trident::conversion::utils::getOrCreateTorchListGetItem(moduleOp));
+    mlir::LLVM::CallOp::create(builder, loc, getItemFn,
                                {listHandle, iVal, itemSlot});
     mlir::Value itemIVal =
         mlir::LLVM::LoadOp::create(builder, loc, i64Ty, itemSlot);
 
     // Recursively resolve element StableIValue → TVMFFIAny.
-    mlir::FailureOr<mlir::Value> elemAny =
-        resolveStableIValue(builder, elemType, itemIVal, moduleOp, loc);
-    if (mlir::failed(elemAny)) {
-      return mlir::failure();
-    }
+    mlir::Value elemAny = TRIDENT_UNWRAP_FAILURE(
+        resolveStableIValue(builder, elemType, itemIVal, moduleOp, loc));
 
     // Store resolved element into ffiArgs[i].
     mlir::Value dstSlot =
         mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, ffiArgs,
                                   llvm::ArrayRef<mlir::LLVM::GEPArg>{iVal});
-    mlir::LLVM::StoreOp::create(builder, loc, *elemAny, dstSlot);
+    mlir::LLVM::StoreOp::create(builder, loc, elemAny, dstSlot);
 
     mlir::Value iPlus1 = mlir::LLVM::AddOp::create(
         builder, loc, iVal,
@@ -779,24 +749,18 @@ mlir::FailureOr<mlir::Value> resolveStableIValue(mlir::OpBuilder &builder,
     // Truncate listSize to i32 for TVMFFIFunctionCall's numArgs parameter.
     mlir::Value numArgs =
         mlir::LLVM::TruncOp::create(builder, loc, i32Ty, listSize);
-    mlir::FailureOr<mlir::Value> ffiResult =
+    mlir::Value ffiResult = TRIDENT_UNWRAP_FAILURE(
         trident::conversion::utils::callTVMFFIGlobalFunction(
-            builder, loc, moduleOp, "ffi.Array", ffiArgs, numArgs);
-    if (mlir::failed(ffiResult)) {
-      return mlir::failure();
-    }
+            builder, loc, moduleOp, "ffi.Array", ffiArgs, numArgs));
 
     // --- Delete the StableList via torch_delete_list ---
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> deleteFn =
-        trident::conversion::utils::getOrCreateTorchDeleteList(moduleOp);
-    if (mlir::failed(deleteFn)) {
-      return mlir::failure();
-    }
-    mlir::LLVM::CallOp::create(builder, loc, *deleteFn, {listHandle});
+    mlir::LLVM::LLVMFuncOp deleteFn = TRIDENT_UNWRAP_FAILURE(
+        trident::conversion::utils::getOrCreateTorchDeleteList(moduleOp));
+    mlir::LLVM::CallOp::create(builder, loc, deleteFn, {listHandle});
 
     // Extract v_obj from result TVMFFIAny and build kTVMFFIArray wrapper.
     mlir::Value vObjGEP =
-        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, *ffiResult,
+        mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, ffiResult,
                                   llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2});
     mlir::Value vObj = mlir::LLVM::LoadOp::create(builder, loc, i64Ty, vObjGEP);
 
@@ -878,190 +842,86 @@ int TridentSchemaDispatchTorchAtenOp(MlirOperation op, MlirValue *operands,
           "AtenSubScalarOp specialization expects 3 inputs and 1 result");
       return 1;
     }
-
-    mlir::Value selfAny = unwrap(operands[0]);
-    mlir::Value selfHandleInt = mlir::LLVM::ExtractValueOp::create(
-        mlirRewriter, loc, selfAny, llvm::ArrayRef<int64_t>{2});
-    mlir::Value selfHandle =
-        mlir::LLVM::IntToPtrOp::create(mlirRewriter, loc, ptrTy, selfHandleInt);
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> unpackFn =
-        trident::conversion::utils::getOrCreateTVMFFIObjectToTensor(moduleOp);
-    if (mlir::failed(unpackFn)) {
-      return 1;
-    }
-    mlir::Value selfSlot = mlir::LLVM::AllocaOp::create(
-        mlirRewriter, loc, ptrTy, ptrTy,
-        mlir::LLVM::ConstantOp::create(mlirRewriter, loc, i64Ty, 1));
-    mlir::LLVM::CallOp::create(mlirRewriter, loc, *unpackFn,
-                               mlir::ValueRange{selfHandle, selfSlot});
-    mlir::Value selfDecoded =
-        mlir::LLVM::LoadOp::create(mlirRewriter, loc, ptrTy, selfSlot);
-
-    mlir::Value otherAny = unwrap(operands[1]);
-    mlir::Value otherTypeIndex = mlir::LLVM::ExtractValueOp::create(
-        mlirRewriter, loc, otherAny, llvm::ArrayRef<int64_t>{0});
-    mlir::Value otherPayload = mlir::LLVM::ExtractValueOp::create(
-        mlirRewriter, loc, otherAny, llvm::ArrayRef<int64_t>{2});
-    mlir::Value intTypeIndex =
-        mlir::LLVM::ConstantOp::create(mlirRewriter, loc, i32Ty, kTVMFFIInt);
-    mlir::Value otherIsInt = mlir::LLVM::ICmpOp::create(
-        mlirRewriter, loc, mlir::LLVM::ICmpPredicate::eq, otherTypeIndex,
-        intTypeIndex);
-    mlir::Value otherIntAsDouble =
-        mlir::LLVM::SIToFPOp::create(mlirRewriter, loc, f64Ty, otherPayload);
-    mlir::Value otherFloatAsDouble =
-        mlir::LLVM::BitcastOp::create(mlirRewriter, loc, f64Ty, otherPayload);
-    mlir::Value otherDecoded = mlir::LLVM::SelectOp::create(
-        mlirRewriter, loc, otherIsInt, otherIntAsDouble, otherFloatAsDouble);
-
+    mlir::Value selfDecoded = TRIDENT_UNWRAP(
+        buildShimTensorValue(mlirRewriter, loc, unwrap(operands[0]), moduleOp),
+        {
+          mlirOp->emitError("failed to decode tensor argument");
+          return 1;
+        });
+    mlir::Value otherDecoded =
+        buildShimNumberValue(mlirRewriter, loc, unwrap(operands[1]));
+    mlir::Value alphaDecoded =
+        buildShimNumberValue(mlirRewriter, loc, unwrap(operands[2]));
     // `aten::sub.Scalar(self, other, alpha)` is lowered via
     // `aoti_torch_cuda_add_Scalar(self, other, alpha, out)`, so `other`
     // must be negated first to preserve subtraction semantics.
     mlir::Value negatedOther =
         mlir::LLVM::FNegOp::create(mlirRewriter, loc, otherDecoded).getResult();
-
-    mlir::Value alphaAny = unwrap(operands[2]);
-    mlir::Value alphaTypeIndex = mlir::LLVM::ExtractValueOp::create(
-        mlirRewriter, loc, alphaAny, llvm::ArrayRef<int64_t>{0});
-    mlir::Value alphaPayload = mlir::LLVM::ExtractValueOp::create(
-        mlirRewriter, loc, alphaAny, llvm::ArrayRef<int64_t>{2});
-    mlir::Value alphaIsInt = mlir::LLVM::ICmpOp::create(
-        mlirRewriter, loc, mlir::LLVM::ICmpPredicate::eq, alphaTypeIndex,
-        intTypeIndex);
-    mlir::Value alphaIntAsDouble =
-        mlir::LLVM::SIToFPOp::create(mlirRewriter, loc, f64Ty, alphaPayload);
-    mlir::Value alphaFloatAsDouble =
-        mlir::LLVM::BitcastOp::create(mlirRewriter, loc, f64Ty, alphaPayload);
-    mlir::Value alphaDecoded = mlir::LLVM::SelectOp::create(
-        mlirRewriter, loc, alphaIsInt, alphaIntAsDouble, alphaFloatAsDouble);
-
     mlir::Value retSlot = mlir::LLVM::AllocaOp::create(
         mlirRewriter, loc, ptrTy, ptrTy,
         mlir::LLVM::ConstantOp::create(mlirRewriter, loc, i64Ty, 1));
 
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> shimFn =
-        trident::conversion::utils::getOrCreateAOTITorchCudaAddScalar(moduleOp);
-    if (mlir::failed(shimFn)) {
-      mlirOp->emitError("failed to declare shim function "
-                        "aoti_torch_cuda_add_Scalar");
-      return 1;
-    }
-
+    mlir::LLVM::LLVMFuncOp shimFn = TRIDENT_UNWRAP(
+        trident::conversion::utils::getOrCreateAOTITorchCudaAddScalar(moduleOp),
+        {
+          mlirOp->emitError("failed to declare shim function "
+                            "aoti_torch_cuda_add_Scalar");
+          return 1;
+        });
     mlir::LLVM::CallOp::create(
-        mlirRewriter, loc, *shimFn,
-        mlir::ValueRange{selfDecoded, negatedOther, alphaDecoded, retSlot});
-
+        mlirRewriter, loc, shimFn,
+        {selfDecoded, negatedOther, alphaDecoded, retSlot});
     mlir::Value rawRet =
         mlir::LLVM::LoadOp::create(mlirRewriter, loc, ptrTy, retSlot);
-
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> packFn =
-        trident::conversion::utils::getOrCreateTensorToTVMFFIObject(moduleOp);
-    if (mlir::failed(packFn)) {
-      return 1;
-    }
-    mlir::Value outSlot = mlir::LLVM::AllocaOp::create(
-        mlirRewriter, loc, ptrTy, ptrTy,
-        mlir::LLVM::ConstantOp::create(mlirRewriter, loc, i64Ty, 1));
-    mlir::LLVM::CallOp::create(mlirRewriter, loc, *packFn,
-                               mlir::ValueRange{rawRet, outSlot});
-    mlir::Value objHandle =
-        mlir::LLVM::LoadOp::create(mlirRewriter, loc, ptrTy, outSlot);
-    mlir::Value objPayload =
-        mlir::LLVM::PtrToIntOp::create(mlirRewriter, loc, i64Ty, objHandle);
-    results[0] =
-        wrap(buildFFIAnyValue(mlirRewriter, loc, kTVMFFITensor, objPayload));
+    mlir::Value resolved = TRIDENT_UNWRAP(
+        resolveShimTensorValue(mlirRewriter, loc, rawRet, moduleOp), {
+          mlirOp->emitError("failed to encode specialization return value");
+          return 1;
+        });
+    results[0] = wrap(resolved);
   } else if (mlir::isa<mlir::torch::Torch::AtenSubTensorOp>(mlirOp)) {
     if (numInputs != 3 || numResults != 1) {
       mlirOp->emitError(
           "AtenSubTensorOp specialization expects 3 inputs and 1 result");
       return 1;
     }
-
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> unpackFn =
-        trident::conversion::utils::getOrCreateTVMFFIObjectToTensor(moduleOp);
-    if (mlir::failed(unpackFn)) {
-      return 1;
-    }
-
-    mlir::Value selfAny = unwrap(operands[0]);
-    mlir::Value selfHandleInt = mlir::LLVM::ExtractValueOp::create(
-        mlirRewriter, loc, selfAny, llvm::ArrayRef<int64_t>{2});
-    mlir::Value selfHandle =
-        mlir::LLVM::IntToPtrOp::create(mlirRewriter, loc, ptrTy, selfHandleInt);
-    mlir::Value selfSlot = mlir::LLVM::AllocaOp::create(
-        mlirRewriter, loc, ptrTy, ptrTy,
-        mlir::LLVM::ConstantOp::create(mlirRewriter, loc, i64Ty, 1));
-    mlir::LLVM::CallOp::create(mlirRewriter, loc, *unpackFn,
-                               mlir::ValueRange{selfHandle, selfSlot});
-    mlir::Value selfDecoded =
-        mlir::LLVM::LoadOp::create(mlirRewriter, loc, ptrTy, selfSlot);
-
-    mlir::Value otherAny = unwrap(operands[1]);
-    mlir::Value otherHandleInt = mlir::LLVM::ExtractValueOp::create(
-        mlirRewriter, loc, otherAny, llvm::ArrayRef<int64_t>{2});
-    mlir::Value otherHandle = mlir::LLVM::IntToPtrOp::create(
-        mlirRewriter, loc, ptrTy, otherHandleInt);
-    mlir::Value otherSlot = mlir::LLVM::AllocaOp::create(
-        mlirRewriter, loc, ptrTy, ptrTy,
-        mlir::LLVM::ConstantOp::create(mlirRewriter, loc, i64Ty, 1));
-    mlir::LLVM::CallOp::create(mlirRewriter, loc, *unpackFn,
-                               mlir::ValueRange{otherHandle, otherSlot});
-    mlir::Value otherDecoded =
-        mlir::LLVM::LoadOp::create(mlirRewriter, loc, ptrTy, otherSlot);
-
-    mlir::Value alphaAny = unwrap(operands[2]);
-    mlir::Value alphaTypeIndex = mlir::LLVM::ExtractValueOp::create(
-        mlirRewriter, loc, alphaAny, llvm::ArrayRef<int64_t>{0});
-    mlir::Value alphaPayload = mlir::LLVM::ExtractValueOp::create(
-        mlirRewriter, loc, alphaAny, llvm::ArrayRef<int64_t>{2});
-    mlir::Value intTypeIndex =
-        mlir::LLVM::ConstantOp::create(mlirRewriter, loc, i32Ty, kTVMFFIInt);
-    mlir::Value alphaIsInt = mlir::LLVM::ICmpOp::create(
-        mlirRewriter, loc, mlir::LLVM::ICmpPredicate::eq, alphaTypeIndex,
-        intTypeIndex);
-    mlir::Value alphaIntAsDouble =
-        mlir::LLVM::SIToFPOp::create(mlirRewriter, loc, f64Ty, alphaPayload);
-    mlir::Value alphaFloatAsDouble =
-        mlir::LLVM::BitcastOp::create(mlirRewriter, loc, f64Ty, alphaPayload);
-    mlir::Value alphaDecoded = mlir::LLVM::SelectOp::create(
-        mlirRewriter, loc, alphaIsInt, alphaIntAsDouble, alphaFloatAsDouble);
-
+    mlir::Value selfDecoded = TRIDENT_UNWRAP(
+        buildShimTensorValue(mlirRewriter, loc, unwrap(operands[0]), moduleOp),
+        {
+          mlirOp->emitError("failed to decode lhs tensor argument");
+          return 1;
+        });
+    mlir::Value otherDecoded = TRIDENT_UNWRAP(
+        buildShimTensorValue(mlirRewriter, loc, unwrap(operands[1]), moduleOp),
+        {
+          mlirOp->emitError("failed to decode rhs tensor argument");
+          return 1;
+        });
+    mlir::Value alphaDecoded =
+        buildShimNumberValue(mlirRewriter, loc, unwrap(operands[2]));
     mlir::Value retSlot = mlir::LLVM::AllocaOp::create(
         mlirRewriter, loc, ptrTy, ptrTy,
         mlir::LLVM::ConstantOp::create(mlirRewriter, loc, i64Ty, 1));
-
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> shimFn =
+    mlir::LLVM::LLVMFuncOp shimFn = TRIDENT_UNWRAP(
         trident::conversion::utils::getOrCreateAOTITorchAtenSubtractTensor(
-            moduleOp);
-    if (mlir::failed(shimFn)) {
-      mlirOp->emitError("failed to declare shim function "
-                        "aoti_torch_aten_subtract_Tensor");
-      return 1;
-    }
-
+            moduleOp),
+        {
+          mlirOp->emitError("failed to declare shim function "
+                            "aoti_torch_aten_subtract_Tensor");
+          return 1;
+        });
     mlir::LLVM::CallOp::create(
-        mlirRewriter, loc, *shimFn,
-        mlir::ValueRange{selfDecoded, otherDecoded, alphaDecoded, retSlot});
-
+        mlirRewriter, loc, shimFn,
+        {selfDecoded, otherDecoded, alphaDecoded, retSlot});
     mlir::Value rawRet =
         mlir::LLVM::LoadOp::create(mlirRewriter, loc, ptrTy, retSlot);
 
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> packFn =
-        trident::conversion::utils::getOrCreateTensorToTVMFFIObject(moduleOp);
-    if (mlir::failed(packFn)) {
-      return 1;
-    }
-    mlir::Value outSlot = mlir::LLVM::AllocaOp::create(
-        mlirRewriter, loc, ptrTy, ptrTy,
-        mlir::LLVM::ConstantOp::create(mlirRewriter, loc, i64Ty, 1));
-    mlir::LLVM::CallOp::create(mlirRewriter, loc, *packFn,
-                               mlir::ValueRange{rawRet, outSlot});
-    mlir::Value objHandle =
-        mlir::LLVM::LoadOp::create(mlirRewriter, loc, ptrTy, outSlot);
-    mlir::Value objPayload =
-        mlir::LLVM::PtrToIntOp::create(mlirRewriter, loc, i64Ty, objHandle);
-    results[0] =
-        wrap(buildFFIAnyValue(mlirRewriter, loc, kTVMFFITensor, objPayload));
+    mlir::Value resolved = TRIDENT_UNWRAP(
+        resolveShimTensorValue(mlirRewriter, loc, rawRet, moduleOp), {
+          mlirOp->emitError("failed to encode specialization return value");
+          return 1;
+        });
+    results[0] = wrap(resolved);
   } else if (llvm::any_of(schemaArgs, [](const at::Argument &arg) {
                return arg.type()->kind() == c10::TypeKind::NumberType;
              })) {
@@ -1080,16 +940,15 @@ int TridentSchemaDispatchTorchAtenOp(MlirOperation op, MlirValue *operands,
     for (auto [idx, schemaArg] : llvm::enumerate(schemaArgs)) {
       c10::TypePtr argType = schemaArg.type();
       mlir::Value operand = unwrap(operands[idx]);
-      mlir::FailureOr<mlir::Value> decoded =
-          buildShimValue(mlirRewriter, loc, argType, operand, moduleOp);
-      if (mlir::failed(decoded)) {
-        mlirOp->emitError("failed to decode shim argument for type: ")
-            << c10::typeKindToString(argType->kind());
-        return 1;
-      }
+      mlir::Value value = TRIDENT_UNWRAP(
+          buildShimValue(mlirRewriter, loc, argType, operand, moduleOp), {
+            mlirOp->emitError("failed to decode shim argument for type: ")
+                << c10::typeKindToString(argType->kind());
+            return 1;
+          });
 
-      shimArgTypes.push_back(decoded->getType());
-      shimArgs.push_back(*decoded);
+      shimArgTypes.push_back(value.getType());
+      shimArgs.push_back(value);
     }
 
     llvm::SmallVector<mlir::Type> retElemTypes;
@@ -1120,28 +979,30 @@ int TridentSchemaDispatchTorchAtenOp(MlirOperation op, MlirValue *operands,
     mlir::Type errTy = mlir::IntegerType::get(ctx, 32);
     mlir::LLVM::LLVMFunctionType shimFnTy =
         mlir::LLVM::LLVMFunctionType::get(errTy, shimArgTypes);
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> shimFn =
+    mlir::LLVM::LLVMFuncOp shimFn = TRIDENT_UNWRAP(
         trident::conversion::utils::getOrCreateCAPI(moduleOp, shimSymbol,
-                                                    shimFnTy);
-    if (mlir::failed(shimFn)) {
-      mlirOp->emitError() << "failed to declare shim function " << shimSymbol;
-      return 1;
-    }
+                                                    shimFnTy),
+        {
+          mlirOp->emitError()
+              << "failed to declare shim function " << shimSymbol;
+          return 1;
+        });
 
-    mlir::LLVM::CallOp::create(mlirRewriter, loc, *shimFn, shimArgs);
+    mlir::LLVM::CallOp::create(mlirRewriter, loc, shimFn, shimArgs);
 
     for (auto [idx, tuple] :
          llvm::enumerate(llvm::zip(schemaReturns, retElemTypes, retSlots))) {
       auto [schemaReturn, retElemTy, retSlot] = tuple;
       mlir::Value rawRet =
           mlir::LLVM::LoadOp::create(mlirRewriter, loc, retElemTy, retSlot);
-      mlir::FailureOr<mlir::Value> resolved = resolveShimValue(
-          mlirRewriter, loc, schemaReturn.type(), rawRet, moduleOp);
-      if (mlir::failed(resolved)) {
-        mlirOp->emitError("failed to encode shim return value");
-        return 1;
-      }
-      results[idx] = wrap(*resolved);
+      mlir::Value resolved = TRIDENT_UNWRAP(
+          resolveShimValue(mlirRewriter, loc, schemaReturn.type(), rawRet,
+                           moduleOp),
+          {
+            mlirOp->emitError("failed to encode shim return value");
+            return 1;
+          });
+      results[idx] = wrap(resolved);
     }
   } else {
     if (numInputs != schemaArgs.size() || numResults != schemaReturns.size()) {
@@ -1162,14 +1023,13 @@ int TridentSchemaDispatchTorchAtenOp(MlirOperation op, MlirValue *operands,
       mlir::Value operand = unwrap(operands[idx]);
 
       c10::TypePtr argType = schemaArg.type();
-      mlir::FailureOr<mlir::Value> built =
-          buildStableIValue(mlirRewriter, argType, operand, moduleOp, loc);
-      if (mlir::failed(built)) {
-        mlirOp->emitError("unsupported input type: ")
-            << c10::typeKindToString(argType->kind());
-        return 1;
-      }
-      mlir::Value ival = *built;
+      mlir::Value built = TRIDENT_UNWRAP(
+          buildStableIValue(mlirRewriter, argType, operand, moduleOp, loc), {
+            mlirOp->emitError("unsupported input type: ")
+                << c10::typeKindToString(argType->kind());
+            return 1;
+          });
+      mlir::Value ival = built;
 
       mlir::Value ptr = mlir::LLVM::GEPOp::create(mlirRewriter, loc, ptrTy,
                                                   i64Ty, array, {idx});
@@ -1177,12 +1037,10 @@ int TridentSchemaDispatchTorchAtenOp(MlirOperation op, MlirValue *operands,
     }
 
     // Get or create the aoti_torch_call_dispatcher function declaration.
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> calleeOrErr =
+    mlir::LLVM::LLVMFuncOp calleeOrErr = TRIDENT_UNWRAP(
         trident::conversion::utils::getOrCreateAOTITorchCallDispatcher(
-            moduleOp);
-    if (mlir::failed(calleeOrErr)) {
-      return 1;
-    }
+            moduleOp),
+        return 1);
 
     // Create global string constants for op_name and overload_name.
     mlir::Value opNamePtr = trident::conversion::utils::getOrCreateGlobalString(
@@ -1192,9 +1050,8 @@ int TridentSchemaDispatchTorchAtenOp(MlirOperation op, MlirValue *operands,
             mlirRewriter, loc, moduleOp, "overload", dispatcherOverloadName);
 
     // Call aoti_torch_call_dispatcher(opName, overloadName, slotArray).
-    mlir::LLVM::CallOp::create(
-        mlirRewriter, loc, *calleeOrErr,
-        mlir::ValueRange{opNamePtr, overloadNamePtr, array});
+    mlir::LLVM::CallOp::create(mlirRewriter, loc, calleeOrErr,
+                               {opNamePtr, overloadNamePtr, array});
 
     // Load and convert each result from the slot array.
     for (size_t i = 0; i < numResults; ++i) {
@@ -1204,14 +1061,13 @@ int TridentSchemaDispatchTorchAtenOp(MlirOperation op, MlirValue *operands,
           mlir::LLVM::LoadOp::create(mlirRewriter, loc, i64Ty, ptr);
 
       c10::TypePtr retType = schemaReturns[i].type();
-      mlir::FailureOr<mlir::Value> resolved =
-          resolveStableIValue(mlirRewriter, retType, loaded, moduleOp, loc);
-      if (mlir::failed(resolved)) {
-        mlirOp->emitError("unsupported result type: ")
-            << c10::typeKindToString(retType->kind());
-        return 1;
-      }
-      results[i] = wrap(*resolved);
+      mlir::Value resolved = TRIDENT_UNWRAP(
+          resolveStableIValue(mlirRewriter, retType, loaded, moduleOp, loc), {
+            mlirOp->emitError("unsupported result type: ")
+                << c10::typeKindToString(retType->kind());
+            return 1;
+          });
+      results[i] = wrap(resolved);
     }
   }
 

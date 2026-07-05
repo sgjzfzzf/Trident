@@ -48,7 +48,11 @@ def softmax_triton_impl(x):
     BLOCK_SIZE = triton.next_power_of_2(n_cols)
     num_warps = 8
     num_stages = 4
-    y = torch.empty_like(x)
+    # TODO(trident): Temporary workaround for jit-lowered empty_like device
+    # semantics in this example path. Keep device explicit to avoid CPU output
+    # allocation causing CUDA illegal-address in kernel launch; revert this once
+    # backend empty_like/device handling is fixed.
+    y = torch.empty_like(x, device=x.device)
     softmax_kernel[(n_rows, 1, 1)](
         y,
         x,

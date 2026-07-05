@@ -21,7 +21,6 @@
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -29,6 +28,7 @@
 #include "trident-core/Conversion/Utils/GlobalString.h"
 #include "trident-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/Type.h"
+#include "trident-core/Conversion/Utils/Unwrap.h"
 #include "trident-core/Dialect/TVMFFI/IR/TVMFFIAttributes.h"
 #include "trident-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident-core/Dialect/TVMFFI/IR/TVMFFIOps.h"
@@ -366,13 +366,11 @@ public:
             return op.emitError("failed to get parent ModuleOp for guard "
                                 "failure error reporting");
           }
-          mlir::FailureOr<mlir::LLVM::LLVMFuncOp> errorFn =
+          mlir::LLVM::LLVMFuncOp errorFn = TRIDENT_UNWRAP(
               conversion::utils::getOrCreateTVMFFIErrorSetRaisedFromCStr(
-                  moduleOp);
-          if (mlir::failed(errorFn)) {
-            return op.emitError(
-                "failed to get or create TVMFFIErrorSetRaisedFromCStr");
-          }
+                  moduleOp),
+              return op.emitError(
+                  "failed to get or create TVMFFIErrorSetRaisedFromCStr"));
           mlir::Value kindPtr = conversion::utils::getOrCreateGlobalString(
               rewriter, loc, moduleOp, "GuardMatchExceptionKind",
               "GuardMatchException");
@@ -380,7 +378,7 @@ public:
               llvm::formatv("argument {0} fails guard check", i);
           mlir::Value msgPtr = conversion::utils::getOrCreateGlobalString(
               rewriter, loc, moduleOp, "GuardMatchExceptionMsg", errMsg);
-          mlir::LLVM::CallOp::create(rewriter, loc, *errorFn,
+          mlir::LLVM::CallOp::create(rewriter, loc, errorFn,
                                      mlir::ValueRange{kindPtr, msgPtr});
           mlir::LLVM::ConstantOp errCode =
               mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, -1);

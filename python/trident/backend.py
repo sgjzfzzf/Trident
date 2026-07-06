@@ -22,8 +22,9 @@ from trident._C.trident_core.dialects import (
     tvm_ffi as tvm_ffi_d,
 )
 from trident._C.trident_core.execution_engine import ExecutionEngine
+from trident._C.trident_core.extras.fx_importer import FxImporter
 from .guards import parse_guards
-from .importer import TridentFxImporter
+from .patch import apply_patch
 from .error import GuardMatchException
 
 
@@ -192,18 +193,21 @@ class TridentGraphModule(object):
         gm(*args)  # Warm-up
 
         # Step 2: Import FX → MLIR  ----------------------------------------
-        importer: TridentFxImporter = TridentFxImporter(context=ctx)
-        main_func_name: str = f"main_{index}"
-        main_func = importer.import_stateless_graph(gm.graph, func_name=main_func_name)
-        module: ir.Module = importer.module
-        with ctx:
-            pm = passmanager.PassManager.parse(
-                "builtin.module(torchdynamo-export-to-torch-backend-pipeline)",
+        with apply_patch():
+            importer: FxImporter = FxImporter(context=ctx)
+            main_func_name: Final[str] = f"main_{index}"
+            main_func = importer.import_stateless_graph(
+                gm.graph, func_name=main_func_name
             )
-            pm.run(module.operation)
+            module: ir.Module = importer.module
+            with ctx:
+                pm = passmanager.PassManager.parse(
+                    "builtin.module(torchdynamo-export-to-torch-backend-pipeline)",
+                )
+                pm.run(module.operation)
 
         # Step 3: Wrap with tvm_ffi.func  ----------------------------------
-        tvm_ffi_name: str = f"{fn.__name__}_{index}"
+        tvm_ffi_name: Final[str] = f"{fn.__name__}_{index}"
         arg_attrs: ir.ArrayAttr = parse_guards(_guards).build(
             [*inspect.signature(fn).parameters.keys()], ctx
         )

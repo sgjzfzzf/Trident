@@ -10,6 +10,7 @@ the triton-tvm-ffi attention example, but wired to Trident's usage style.
 
 import math
 import os
+from typing import Optional
 
 import torch
 import triton
@@ -252,7 +253,7 @@ def attention_forward_triton(
     k: torch.Tensor,
     v: torch.Tensor,
     causal: bool = False,
-    sm_scale: float | None = None,
+    sm_scale: Optional[float] = None,
 ) -> torch.Tensor:
     assert q.ndim == 4 and k.ndim == 4 and v.ndim == 4, "expected [B, H, N, D] tensors"
     assert q.shape == k.shape == v.shape, "q, k, v must share shape"
@@ -294,7 +295,7 @@ def attn_torch(
     k: torch.Tensor,
     v: torch.Tensor,
     causal: bool = False,
-    sm_scale: float | None = None,
+    sm_scale: Optional[float] = None,
 ) -> torch.Tensor:
     n_ctx = q.shape[2]
     if sm_scale is None:
@@ -312,7 +313,7 @@ def attention_triton(
     k: torch.Tensor,
     v: torch.Tensor,
     causal: bool = False,
-    sm_scale: float | None = None,
+    sm_scale: Optional[float] = None,
 ) -> torch.Tensor:
     return attention_forward_triton(q, k, v, causal=causal, sm_scale=sm_scale)
 
@@ -323,7 +324,7 @@ def attention_jit(
     k: torch.Tensor,
     v: torch.Tensor,
     causal: bool = False,
-    sm_scale: float | None = None,
+    sm_scale: Optional[float] = None,
 ) -> torch.Tensor:
     # Torch-only fallback keeps trident.jit path compatible with torch._dynamo.
     return attn_torch(q, k, v, causal=causal, sm_scale=sm_scale)

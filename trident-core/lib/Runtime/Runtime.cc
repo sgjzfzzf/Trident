@@ -6,18 +6,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident-core/Runtime/Runtime.h"
-#include "ATen/ATen.h"
+#include "ATen/ops/from_blob.h"
 #include "dlpack/dlpack.h"
 #include "torch/csrc/inductor/aoti_torch/c/shim.h"
 #include "torch/csrc/inductor/aoti_torch/utils.h"
-#include "torch/csrc/stable/c/shim.h"
-
 #include <cstdlib>
-
-/// AtenTensorOpaque wraps an at::Tensor for the C ABI opaque handle.
-struct AtenTensorOpaque {
-  at::Tensor tensor;
-};
 
 /// DLPack-compatible deleter callback — frees the AtenTensorHandle stored in
 /// self->manager_ctx, then frees the DLManagedTensor allocation.

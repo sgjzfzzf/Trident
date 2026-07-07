@@ -1,9 +1,9 @@
-#===----------------------------------------------------------------------===#
+# ===----------------------------------------------------------------------===#
 #
 # Part of the Trident project, under the MIT License.
 # SPDX-License-Identifier: MIT
 #
-#===----------------------------------------------------------------------===#
+# ===----------------------------------------------------------------------===#
 
 """
 atengen — Schema-driven C++ code generator for ATen operator wrappers.
@@ -40,28 +40,58 @@ _TEMPLATE_DIR: Final[Path] = Path(__file__).parent / "templates"
 # ===========================================================================
 
 
+_TYPE_KIND_TO_CLASS: Final[dict[str, str]] = {
+    "TensorType": "TensorType",
+    "IntType": "IntType",
+    "FloatType": "FloatType",
+    "BoolType": "BoolType",
+    "StringType": "StringType",
+    "NumberType": "NumberType",
+    "NoneType": "NoneType",
+    "AnyType": "AnyType",
+    "ComplexType": "ComplexType",
+    "DeviceObjType": "DeviceObjType",
+    "ScalarTypeType": "ScalarTypeType",
+    "LayoutType": "LayoutType",
+    "MemoryFormatType": "MemoryFormatType",
+    "StorageType": "StorageType",
+    "GeneratorType": "GeneratorType",
+    "QSchemeType": "QSchemeType",
+    "StreamObjType": "StreamObjType",
+    "CapsuleType": "CapsuleType",
+    "SymBoolType": "SymBoolType",
+    "AnyEnumType": "AnyEnumType",
+    "VarType": "VarType",
+    "ClassType": "AnyClassType",
+    "FutureType": "FutureType",
+    "RRefType": "RRefType",
+    "DictType": "DictType",
+    "ListType": "ListType",
+    "OptionalType": "OptionalType",
+    "TupleType": "TupleType",
+}
+
+
 def _type_kind_expr(jit_type: torch.JitType) -> str:
     """Convert a JitType to C++ template argument string.
 
-    Uses jit_type.kind() for the enum name and jit_type.containedTypes()
-    for compound type arguments. If there are contained types, they are
-    joined with commas inside SubTypes<...>.
+    Uses jit_type.kind() to look up the c10 type class name and
+    jit_type.containedTypes() for compound type arguments. If there
+    are contained types, they are joined with commas inside SubTypes<...>.
 
     Examples:
-        TensorType                     → "atengen::Kind<c10::TypeKind::TensorType>"
-        OptionalType(IntType)          → "atengen::Contain<atengen::Kind<c10::TypeKind::OptionalType>, atengen::SubTypes<atengen::Kind<c10::TypeKind::IntType>>>"
-        ListType(IntType)              → "atengen::Contain<atengen::Kind<c10::TypeKind::ListType>, atengen::SubTypes<atengen::Kind<c10::TypeKind::IntType>>>"
-        DictType(IntType, TensorType)  → "atengen::Contain<atengen::Kind<c10::TypeKind::DictType>, atengen::SubTypes<atengen::Kind<c10::TypeKind::IntType>, atengen::Kind<c10::TypeKind::TensorType>>>"
+        TensorType                     → "c10::TensorType"
+        OptionalType(IntType)          → "atengen::Contain<c10::OptionalType, atengen::SubTypes<c10::IntType>>"
+        ListType(IntType)              → "atengen::Contain<c10::ListType, atengen::SubTypes<c10::IntType>>"
+        DictType(IntType, TensorType)  → "atengen::Contain<c10::DictType, atengen::SubTypes<c10::IntType, c10::TensorType>>"
     """
 
+    class_name: Final[str] = _TYPE_KIND_TO_CLASS[jit_type.kind()]
     if contained := jit_type.containedTypes():
         inner: Final[str] = ", ".join(_type_kind_expr(t) for t in contained)
-        return (
-            f"atengen::Contain<atengen::Kind<c10::TypeKind::{jit_type.kind()}>, "
-            f"atengen::SubTypes<{inner}>>"
-        )
+        return f"atengen::Contain<c10::{class_name}, atengen::SubTypes<{inner}>>"
     else:
-        return f"atengen::Kind<c10::TypeKind::{jit_type.kind()}>"
+        return f"c10::{class_name}"
 
 
 # ===========================================================================
@@ -74,15 +104,14 @@ def schema_to_descriptor(schema: torch.FunctionSchema) -> Tuple[str, str, str]:
 
     # --- Build ret_expr ---
     if len(schema.returns) == 0:
-        ret_expr: Final[str] = "atengen::Kind<c10::TypeKind::NoneType>"
+        ret_expr: Final[str] = "c10::NoneType"
     elif len(schema.returns) == 1:
         [ret] = schema.returns
         ret_expr: Final[str] = _type_kind_expr(ret.type)
     else:
         inner: Final[str] = ", ".join(_type_kind_expr(r.type) for r in schema.returns)
         ret_expr: Final[str] = (
-            f"atengen::Contain<atengen::Kind<c10::TypeKind::TupleType>, "
-            f"atengen::SubTypes<{inner}>>"
+            f"atengen::Contain<c10::TupleType, atengen::SubTypes<{inner}>>"
         )
 
     # --- Build args_expr ---

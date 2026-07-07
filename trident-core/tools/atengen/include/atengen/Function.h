@@ -11,11 +11,11 @@
 // TVMFFIAny ↔ IValue, then dispatches via c10::OperatorHandle::callBoxed.
 //
 // Usage:
-//   Function<Kind<TensorType>, Args<Kind<TensorType>, Kind<NumberType>>>
+//   Function<c10::TensorType, Args<c10::TensorType, c10::NumberType>>
 //       ::call(op, args, n, &result);
 //
-//   Function<Contain<Kind<OptionalType>, SubTypes<Kind<TensorType>>>,
-//            Args<Kind<TensorType>, Kind<NumberType>>>
+//   Function<Contain<c10::OptionalType, SubTypes<c10::TensorType>>,
+//            Args<c10::TensorType, c10::NumberType>>
 //       ::call(op, args, n, &result);
 //
 //===----------------------------------------------------------------------===//

@@ -52,7 +52,7 @@ def softmax_triton_impl(x):
     # semantics in this example path. Keep device explicit to avoid CPU output
     # allocation causing CUDA illegal-address in kernel launch; revert this once
     # backend empty_like/device handling is fixed.
-    y = torch.empty_like(x, device=x.device)
+    y = torch.empty_like(x)
     softmax_kernel[(n_rows, 1, 1)](
         y,
         x,

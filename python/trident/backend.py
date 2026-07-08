@@ -116,7 +116,7 @@ class TridentGraphModule(object):
         # recompile via GuardMatchException.
         if len(self._sub_modules) == 0:
 
-            def _stub(*_args: Any) -> Any:
+            def _stub(*_: Any) -> Any:
                 raise GuardMatchException(
                     "no suitable specialization compiled yet",
                 )
@@ -200,11 +200,6 @@ class TridentGraphModule(object):
                 gm.graph, func_name=main_func_name
             )
             module: ir.Module = importer.module
-            with ctx:
-                pm = passmanager.PassManager.parse(
-                    "builtin.module(torchdynamo-export-to-torch-backend-pipeline)",
-                )
-                pm.run(module.operation)
 
         # Step 3: Wrap with tvm_ffi.func  ----------------------------------
         tvm_ffi_name: Final[str] = f"{fn.__name__}_{index}"

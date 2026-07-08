@@ -30,6 +30,56 @@ namespace trident::torchext {
 
 namespace {
 
+/// Converts torchext.cast to the appropriate LLVM truncation/extension.
+class ConvertCastOp : public mlir::OpConversionPattern<CastOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(CastOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::Location loc = op.getLoc();
+    mlir::MLIRContext *ctx = rewriter.getContext();
+    mlir::Type resultType = op.getResult().getType();
+
+    // The type converter maps !torch.float / !torch.int to
+    // !llvm.struct<(i32, i32, i64)> (TVMFFIAny).  Extract the i64 payload
+    // from field[2], which holds the bitcast of the underlying value.
+    mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
+        rewriter, loc, adaptor.getOperand(), llvm::ArrayRef<int64_t>{2});
+
+    if (mlir::isa<mlir::FloatType>(resultType)) {
+      // payload is f64 bitcast to i64 — bitcast back to f64 first.
+      mlir::Value f64Val = mlir::LLVM::BitcastOp::create(
+          rewriter, loc, mlir::Float64Type::get(ctx), payload);
+      if (resultType.isF64()) {
+        // f64: no conversion needed.
+        rewriter.replaceOp(op, f64Val);
+      } else {
+        // Everything else (f32, f16, bf16, …): truncate from f64.
+        rewriter.replaceOpWithNewOp<mlir::LLVM::FPTruncOp>(op, resultType,
+                                                           f64Val);
+      }
+    } else {
+      // payload is i64 — truncate to signless, then cast to
+      // target signedness if needed (llvm.trunc accepts only signless types).
+      uint32_t targetWidth = resultType.getIntOrFloatBitWidth();
+      mlir::Type signlessType = mlir::IntegerType::get(ctx, targetWidth);
+      mlir::Value converted =
+          targetWidth < 64 ? mlir::LLVM::TruncOp::create(rewriter, loc,
+                                                         signlessType, payload)
+                           : payload;
+      if (resultType != signlessType) {
+        rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+            op, resultType, converted);
+      } else {
+        rewriter.replaceOp(op, converted);
+      }
+    }
+    return mlir::success();
+  }
+};
+
 /// Converts torch_ext.trident_kernel_launch to gpu.launch_func.
 class ConvertTridentKernelLaunchOp
     : public mlir::OpConversionPattern<TridentKernelLaunchOp> {
@@ -101,13 +151,18 @@ public:
                 .getResult();
         operands.push_back(
             mlir::LLVM::TruncOp::create(rewriter, loc, i1Ty, payload));
-      } else {
-        // Scalar: extract i64 payload from TVMFFIAny field[2].
+      } else if (mlir::isa<mlir::torch::Torch::FloatType,
+                           mlir::torch::Torch::IntType>(orig.getType())) {
+        // Torch scalar: extract i64 payload from TVMFFIAny field[2].
         mlir::Value payload =
             mlir::LLVM::ExtractValueOp::create(rewriter, loc, adapted,
                                                llvm::ArrayRef<int64_t>{2})
                 .getResult();
         operands.push_back(payload);
+      } else {
+        // Native scalar type (f32, i32, etc. from torchext.cast):
+        // pass through directly.
+        operands.push_back(adapted);
       }
     }
 
@@ -184,7 +239,7 @@ public:
     // (registered after identity so specific conversions take priority).
     torch::setupBackendTypeConversion(target, typeConverter);
 
-    target.addIllegalOp<TridentKernelLaunchOp>();
+    target.addIllegalOp<CastOp, TridentKernelLaunchOp>();
     target.addLegalDialect<mlir::gpu::GPUDialect, mlir::BuiltinDialect,
                            mlir::LLVM::LLVMDialect>();
 
@@ -202,8 +257,8 @@ public:
 void populateTorchExtToGPUConversionPatterns(
     mlir::ConversionTarget &target, mlir::RewritePatternSet &patterns,
     mlir::TypeConverter &typeConverter) {
-  patterns.add<ConvertTridentKernelLaunchOp>(typeConverter,
-                                             patterns.getContext());
+  patterns.add<ConvertCastOp, ConvertTridentKernelLaunchOp>(
+      typeConverter, patterns.getContext());
 }
 
 } // namespace trident::torchext

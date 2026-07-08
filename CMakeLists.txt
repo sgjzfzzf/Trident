@@ -23,6 +23,7 @@ ExternalProject_Add(
              -DCMAKE_EXPORT_COMPILE_COMMANDS=${CMAKE_EXPORT_COMPILE_COMMANDS}
              -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/install/llvm-project
              -DCMAKE_LINKER_TYPE=${CMAKE_LINKER_TYPE}
+             -DLLVM_ENABLE_LLD=${LLVM_ENABLE_LLD}
              -DLLVM_ENABLE_PROJECTS=mlir
              -DLLVM_INCLUDE_UTILS=ON
              -DLLVM_INSTALL_UTILS=ON
@@ -48,9 +49,10 @@ ExternalProject_Add(
              -DCMAKE_EXPORT_COMPILE_COMMANDS=${CMAKE_EXPORT_COMPILE_COMMANDS}
              -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/install/trident-core
              -DCMAKE_LINKER_TYPE=${CMAKE_LINKER_TYPE}
-             -DLLVM_DIR=${CMAKE_BINARY_DIR}/install/llvm-project/lib/cmake/llvm
-             -DMLIR_DIR=${CMAKE_BINARY_DIR}/install/llvm-project/lib/cmake/mlir
              -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}"
+             -DLLVM_DIR=${CMAKE_BINARY_DIR}/install/llvm-project/lib/cmake/llvm
+             -DLLVM_ENABLE_LLD=${LLVM_ENABLE_LLD}
+             -DMLIR_DIR=${CMAKE_BINARY_DIR}/install/llvm-project/lib/cmake/mlir
              -DPython3_EXECUTABLE=${Python3_EXECUTABLE}
              -DPython_EXECUTABLE=${Python_EXECUTABLE}
              -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}

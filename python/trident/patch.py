@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import random
 import threading
 from typing import Any, Dict, List, Optional, Tuple
@@ -125,10 +126,31 @@ def _import_hop_triton_kernel_wrapper_mutation(
             with loc:
                 if triton_type.startswith("*") and value is None:
                     call_arguments[name] = self._make_null_ptr()
-                elif triton_type.startswith(("i", "u")):
-                    call_arguments[name] = torch_d.ConstantIntOp(int(value))
-                elif triton_type in ("fp16", "bf16", "fp32", "fp64"):
-                    call_arguments[name] = torch_d.ConstantFloatOp(float(value))
+                elif triton_type in (
+                    "i1",
+                    "u1",
+                    "i8",
+                    "u8",
+                    "i16",
+                    "u16",
+                    "i32",
+                    "u32",
+                    "i64",
+                    "u64",
+                ):
+                    const_val = torch_d.ConstantIntOp(value)
+                    target = ir.IntegerType.get_signless(
+                        ast.literal_eval(triton_type[1:])
+                    )
+                    call_arguments[name] = torchext.CastOp(target, const_val)
+                elif triton_type == "fp32":
+                    const_val = torch_d.ConstantFloatOp(value)
+                    target = ir.F32Type.get()
+                    call_arguments[name] = torchext.CastOp(target, const_val)
+                elif triton_type == "fp64":
+                    const_val = torch_d.ConstantFloatOp(value)
+                    target = ir.F64Type.get()
+                    call_arguments[name] = torchext.CastOp(target, const_val)
                 else:
                     raise RuntimeError(
                         f"unsupported constant argument type: {triton_type}"

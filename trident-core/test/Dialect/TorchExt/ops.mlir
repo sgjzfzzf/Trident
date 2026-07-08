@@ -22,3 +22,21 @@ func.func @object_dec_ref(%object: !torch.list<int>) {
   torchext.ObjectDecRef %object : !torch.list<int>
   return
 }
+
+// -----
+
+// CHECK-LABEL: func.func @cast_float
+func.func @cast_float(%arg0: !torch.float) -> f32 {
+  // CHECK: torchext.cast %[[VAL:.*]] : !torch.float -> f32
+  %0 = torchext.cast %arg0 : !torch.float -> f32
+  return %0 : f32
+}
+
+// -----
+
+// CHECK-LABEL: func.func @cast_int
+func.func @cast_int(%arg0: !torch.int) -> i32 {
+  // CHECK: torchext.cast %[[VAL:.*]] : !torch.int -> i32
+  %0 = torchext.cast %arg0 : !torch.int -> i32
+  return %0 : i32
+}

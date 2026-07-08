@@ -248,7 +248,7 @@ def _attn_fwd(
     desc_o.store([qo_offset_y, 0], acc.to(dtype))
 
 
-def attention_forward_triton(
+def attn_fwd(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -308,30 +308,29 @@ def attn_torch(
     return torch.matmul(p, v)
 
 
-def attention_triton(
+def attn_triton(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
     causal: bool = False,
     sm_scale: Optional[float] = None,
 ) -> torch.Tensor:
-    return attention_forward_triton(q, k, v, causal=causal, sm_scale=sm_scale)
+    return attn_fwd(q, k, v, causal=causal, sm_scale=sm_scale)
 
 
 @trident.jit
-def attention_jit(
+def attn_jit(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
     causal: bool = False,
     sm_scale: Optional[float] = None,
 ) -> torch.Tensor:
-    # Torch-only fallback keeps trident.jit path compatible with torch._dynamo.
-    return attn_torch(q, k, v, causal=causal, sm_scale=sm_scale)
+    return attn_fwd(q, k, v, causal=causal, sm_scale=sm_scale)
 
 
 if __name__ == "__main__":
-    torch.manual_seed(20)
+    torch.manual_seed(0)
 
     b, h, n_ctx, head_dim = 1, 2, 128, 64
     dtype = torch.float16
@@ -349,8 +348,8 @@ if __name__ == "__main__":
 
     for causal in [False, True]:
         ref_out = attn_torch(q, k, v, causal=causal, sm_scale=sm_scale)
-        tri_out = attention_triton(q, k, v, causal=causal, sm_scale=sm_scale)
-        jit_out = attention_jit(
+        tri_out = attn_triton(q, k, v, causal=causal, sm_scale=sm_scale)
+        jit_out = attn_jit(
             q=q,
             k=k,
             v=v,

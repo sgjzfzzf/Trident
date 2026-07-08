@@ -20,6 +20,34 @@ class TorchExt_Op<string mnemonic, list<Trait> traits = []>
     : Op<TorchExt_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
+// Cast
+//===----------------------------------------------------------------------===//
+
+def TorchExt_CastOp : TorchExt_Op<"cast", [Pure]> {
+  let summary = "Cast a Torch scalar (!torch.float or !torch.int) to a native MLIR scalar type";
+  let description = [{
+    Converts a `!torch.float` or `!torch.int` scalar value to a native MLIR
+    type (f32, f64, i32, or i64).  This is necessary when passing scalar
+    constants to external kernels (e.g. Triton) that expect a specific
+    bit-width rather than the generic torch scalar representation.
+
+    Example:
+    ```
+      %f32 = torchext.cast %f to f32 : !torch.float -> f32
+      %i32 = torchext.cast %i to i32 : !torch.int -> i32
+    ```
+  }];
+
+  let arguments = (ins AnyType:$operand);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+
+  let assemblyFormat = [{
+    $operand attr-dict `:` type($operand) `->` type($result)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // Triton kernel launch
 //===----------------------------------------------------------------------===//
 
@@ -32,7 +60,8 @@ def TorchExt_TridentKernelLaunchOp : TorchExt_Op<"trident_kernel_launch", [
   let summary = "Launch a Torch kernel entry point";
   let description = [{
     Models launching a Torch kernel symbol with explicit grid/block sizes.
-    Operands use Torch-MLIR types for staging initial TorchExt integration.
+    Kernel operands may be Torch-MLIR tensor types or native scalar types
+    (f32, f64, i32, i64) produced by `torchext.cast`.
 
     Optionally supports cluster-level parallelism via `clusterSizeX`,
     `clusterSizeY`, and `clusterSizeZ` arguments. When present, the kernel
@@ -51,7 +80,7 @@ def TorchExt_TridentKernelLaunchOp : TorchExt_Op<"trident_kernel_launch", [
                    Optional<Index>:$clusterSizeY,
                    Optional<Index>:$clusterSizeZ,
                    Optional<I32>:$dynamicSharedMemorySize,
-                   Variadic<AnyTorchType>:$kernelOperands);
+                   Variadic<AnyType>:$kernelOperands);
   let results = (outs);
 
   let extraClassDeclaration = [{

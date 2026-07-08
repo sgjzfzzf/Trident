@@ -6,4 +6,5 @@ add_mlir_dialect_library(
   LINK_LIBS
   PUBLIC
   MLIRIR
-  MLIRSideEffectInterfaces)
+  MLIRSideEffectInterfaces
+  TorchMLIRTorchDialect)

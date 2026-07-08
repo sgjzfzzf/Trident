@@ -11,8 +11,8 @@
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "trident-core/Conversion/Utils/Check.h"
 #include "trident-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
-#include "trident-core/Conversion/Utils/Unwrap.h"
 #include "trident-core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "trident-core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "trident-core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
@@ -40,7 +40,7 @@ public:
       return op.emitError("op is not inside a module");
     }
 
-    mlir::LLVM::LLVMFuncOp callee = TRIDENT_UNWRAP_FAILURE(
+    mlir::LLVM::LLVMFuncOp callee = TRIDENT_CHECK_FAILURE(
         trident::conversion::utils::getOrCreateTVMFFIObjectIncRef(moduleOp));
 
     // The adapted object is a TVMFFIAny — extract the pointer from field[2].
@@ -71,7 +71,7 @@ public:
       return op.emitError("op is not inside a module");
     }
 
-    mlir::LLVM::LLVMFuncOp callee = TRIDENT_UNWRAP_FAILURE(
+    mlir::LLVM::LLVMFuncOp callee = TRIDENT_CHECK_FAILURE(
         trident::conversion::utils::getOrCreateTVMFFIObjectDecRef(moduleOp));
 
     // The adapted object is a TVMFFIAny — extract the pointer from field[2].

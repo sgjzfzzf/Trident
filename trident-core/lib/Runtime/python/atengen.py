@@ -6,14 +6,14 @@
 # ===----------------------------------------------------------------------===#
 
 """
-atengen — Schema-driven C++ code generator for ATen operator wrappers.
+Schema-driven C++ code generator for ATen operator wrappers.
 
 This module reads PyTorch operator schemas and emits C++ wrapper functions
-that use atengen::Function<Ret, Args<...>>::call() to:
-  1. Decode each TVMFFIAny argument via atengen::buildValue<T>().
+that use trident::runtime::Function<Ret, Args<...>>::call() to:
+  1. Decode each TVMFFIAny argument via trident::runtime::buildValue<T>().
   2. Push IValues onto a torch::jit::Stack.
   3. Call c10::OperatorHandle::callBoxed() with the stack.
-  4. Pop results and encode back via atengen::resolveValue<T>().
+  4. Pop results and encode back via trident::runtime::resolveValue<T>().
 
 Usage:
     python atengen.py                     # all aten operators → stdout
@@ -32,7 +32,7 @@ from typing import Final, Iterator, List, Tuple
 import jinja2
 import torch
 
-_TEMPLATE_DIR: Final[Path] = Path(__file__).parent / "templates"
+_TEMPLATE_DIR: Final[Path] = Path(__file__).parent.parent / "templates"
 
 
 # ===========================================================================
@@ -71,6 +71,8 @@ _TYPE_KIND_TO_CLASS: Final[dict[str, str]] = {
     "TupleType": "TupleType",
 }
 
+_NAMESPACE: Final[str] = "trident::runtime"
+
 
 def _type_kind_expr(jit_type: torch.JitType) -> str:
     """Convert a JitType to C++ template argument string.
@@ -81,15 +83,17 @@ def _type_kind_expr(jit_type: torch.JitType) -> str:
 
     Examples:
         TensorType                     → "c10::TensorType"
-        OptionalType(IntType)          → "atengen::Contain<c10::OptionalType, atengen::SubTypes<c10::IntType>>"
-        ListType(IntType)              → "atengen::Contain<c10::ListType, atengen::SubTypes<c10::IntType>>"
-        DictType(IntType, TensorType)  → "atengen::Contain<c10::DictType, atengen::SubTypes<c10::IntType, c10::TensorType>>"
+        OptionalType(IntType)          → "trident::runtime::Contain<c10::OptionalType, trident::runtime::SubTypes<c10::IntType>>"
+        ListType(IntType)              → "trident::runtime::Contain<c10::ListType, trident::runtime::SubTypes<c10::IntType>>"
+        DictType(IntType, TensorType)  → "trident::runtime::Contain<c10::DictType, trident::runtime::SubTypes<c10::IntType, c10::TensorType>>"
     """
 
     class_name: Final[str] = _TYPE_KIND_TO_CLASS[jit_type.kind()]
     if contained := jit_type.containedTypes():
         inner: Final[str] = ", ".join(_type_kind_expr(t) for t in contained)
-        return f"atengen::Contain<c10::{class_name}, atengen::SubTypes<{inner}>>"
+        return (
+            f"{_NAMESPACE}::Contain<c10::{class_name}, {_NAMESPACE}::SubTypes<{inner}>>"
+        )
     else:
         return f"c10::{class_name}"
 
@@ -111,18 +115,18 @@ def schema_to_descriptor(schema: torch.FunctionSchema) -> Tuple[str, str, str]:
     else:
         inner: Final[str] = ", ".join(_type_kind_expr(r.type) for r in schema.returns)
         ret_expr: Final[str] = (
-            f"atengen::Contain<c10::TupleType, atengen::SubTypes<{inner}>>"
+            f"{_NAMESPACE}::Contain<c10::TupleType, {_NAMESPACE}::SubTypes<{inner}>>"
         )
 
     # --- Build args_expr ---
     args_expr: Final[str] = (
-        f"atengen::Args<{', '.join(_type_kind_expr(arg.type) for arg in schema.arguments)}>"
+        f"{_NAMESPACE}::Args<{', '.join(_type_kind_expr(arg.type) for arg in schema.arguments)}>"
     )
 
     return (
         name,
         schema.overload_name,
-        f"atengen::Function<{ret_expr}, {args_expr}>::call",
+        f"{_NAMESPACE}::Function<{ret_expr}, {args_expr}>::call",
     )
 
 

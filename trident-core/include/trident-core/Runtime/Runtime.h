@@ -39,13 +39,4 @@ mTridentTorchToTVMFFIDevice(int32_t torch_device_type);
 TRIDENT_CORE_RUNTIME_EXPORT int32_t mTridentTensorToTVMFFIObject(
     AtenTensorHandle input, TVMFFIObjectHandle *out_handle);
 
-/// Unpack a TVMFFIObjectHandle into an AtenTensorHandle.
-///
-/// The handle must be a kTVMFFITensor object (type_index=70).
-/// The caller owns the returned AtenTensorHandle and must delete it via
-/// aoti_torch_delete_tensor_object when done.
-/// \return 0 on success, non-zero on failure.
-TRIDENT_CORE_RUNTIME_EXPORT int32_t mTridentTVMFFIObjectToTensor(
-    TVMFFIObjectHandle handle, AtenTensorHandle *output);
-
 #endif // TRIDENT_CORE_RUNTIME_RUNTIME_H_

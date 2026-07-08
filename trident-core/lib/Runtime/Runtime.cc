@@ -6,10 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident-core/Runtime/Runtime.h"
-#include "ATen/ops/from_blob.h"
 #include "dlpack/dlpack.h"
 #include "torch/csrc/inductor/aoti_torch/c/shim.h"
-#include "torch/csrc/inductor/aoti_torch/utils.h"
 #include <cstdlib>
 
 /// DLPack-compatible deleter callback — frees the AtenTensorHandle stored in
@@ -181,61 +179,6 @@ TRIDENT_CORE_RUNTIME_EXPORT int32_t mTridentTensorToTVMFFIObject(
 
   // Step 5: Store the handle directly.
   *out_handle = obj_handle;
-
-  return 0;
-}
-
-/// Unpack a TVMFFIObjectHandle into an AtenTensorHandle.
-///
-/// Flow:
-/// 1. Convert TVMFFIObjectHandle → DLManagedTensor via TVMFFITensorToDLPack.
-/// 2. Extract DLTensor fields from the DLManagedTensor.
-/// 3. Map DLPack dtype/device → at::TensorOptions.
-/// 4. Create at::Tensor via at::from_blob with a deleter that cleans up the
-///    DLManagedTensor when the tensor's data is released.
-/// 5. Wrap the at::Tensor in an AtenTensorOpaque and return as
-///    AtenTensorHandle.
-///
-/// \return 0 on success, non-zero on failure.
-TRIDENT_CORE_RUNTIME_EXPORT int32_t mTridentTVMFFIObjectToTensor(
-    TVMFFIObjectHandle handle, AtenTensorHandle *output) {
-  if (!handle) {
-    return -1;
-  }
-
-  // Step 1: Convert TVMFFIObjectHandle to DLManagedTensor via TVM FFI API.
-  DLManagedTensor *dl_managed = nullptr;
-  int ret = TVMFFITensorToDLPack(handle, &dl_managed);
-  if (ret != 0 || !dl_managed) {
-    return -1;
-  }
-
-  DLTensor &t = dl_managed->dl_tensor;
-
-  // Step 2: Map DLPack dtype → at::ScalarType.
-  at::ScalarType scalarType = static_cast<at::ScalarType>(
-      mTridentTVMFFIToTorchType(t.dtype.code, t.dtype.bits));
-
-  // Step 3: Map DLPack device → at::Device.
-  at::DeviceType deviceType = static_cast<at::DeviceType>(
-      mTridentTVMFFIDeviceToTorchDeviceType(t.device.device_type));
-
-  // Step 4: Create at::Tensor with a deleter that frees the DLManagedTensor
-  // when the tensor's data is released.
-  at::Tensor tensor = at::from_blob(
-      t.data, at::IntArrayRef(t.shape, t.ndim),
-      at::IntArrayRef(t.strides, t.ndim),
-      [dl_managed](void *) {
-        if (dl_managed->deleter) {
-          dl_managed->deleter(dl_managed);
-        }
-      },
-      at::TensorOptions()
-          .dtype(scalarType)
-          .device(deviceType, t.device.device_id));
-
-  // Step 6: Wrap in AtenTensorOpaque and return as AtenTensorHandle.
-  *output = torch::aot_inductor::new_tensor_handle(std::move(tensor));
 
   return 0;
 }

@@ -187,7 +187,7 @@ class TridentGraphModule(object):
         """
 
         # Step 1: Export  ---------------------------------------------------
-        gm, _guards = torch._dynamo.export(
+        gm, gs = torch._dynamo.export(
             fn, aten_graph=True, assume_static_by_default=True
         )(*args)
         gm(*args)  # Warm-up
@@ -208,7 +208,7 @@ class TridentGraphModule(object):
 
         # Step 3: Wrap with tvm_ffi.func  ----------------------------------
         tvm_ffi_name: Final[str] = f"{fn.__name__}_{index}"
-        arg_attrs: ir.ArrayAttr = parse_guards(_guards).build(
+        arg_attrs: ir.ArrayAttr = parse_guards(gs).build(
             [*inspect.signature(fn).parameters.keys()], ctx
         )
 

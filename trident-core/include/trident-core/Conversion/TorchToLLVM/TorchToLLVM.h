@@ -38,6 +38,10 @@ void populateTorchToLLVMAtenConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns);
 
+void populateTorchToLLVMPrimConversionPatterns(
+    mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
+    mlir::RewritePatternSet &patterns);
+
 void registerConvertTorchToLLVMPass();
 void registerConvertTorchToLLVMInterface(mlir::DialectRegistry &registry);
 

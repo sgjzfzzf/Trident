@@ -27,11 +27,9 @@ TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(mTridentTorchToTVMFFIDtype,
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(mTridentTorchToTVMFFIDevice,
                                          TorchToTVMFFIDevice)
 
-// Runtime tensor pack/unpack helpers.
+// Runtime tensor pack helper.
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(mTridentTensorToTVMFFIObject,
                                          TensorToTVMFFIObject)
-TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(mTridentTVMFFIObjectToTensor,
-                                         TVMFFIObjectToTensor)
 
 } // namespace trident::conversion::utils
 

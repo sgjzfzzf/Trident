@@ -13,8 +13,8 @@
 #include "torch-mlir/Dialect/Torch/IR/TorchOps.h"
 #include "trident-core/Conversion/TorchToLLVM/TorchToLLVM.h"
 #include "trident-core/Conversion/Utils/AOTICAPIDescriptors.h"
+#include "trident-core/Conversion/Utils/Check.h"
 #include "trident-core/Conversion/Utils/TridentCAPIDescriptors.h"
-#include "trident-core/Conversion/Utils/Unwrap.h"
 #include "tvm/ffi/c_api.h"
 
 namespace trident::torch {
@@ -61,13 +61,13 @@ public:
     mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
     mlir::Type anyTy = getTypeConverter()->convertType(op.getType());
 
-    mlir::LLVM::LLVMFuncOp toTorchDtypeFn = TRIDENT_UNWRAP_FAILURE(
+    mlir::LLVM::LLVMFuncOp toTorchDtypeFn = TRIDENT_CHECK_FAILURE(
         trident::conversion::utils::getOrCreateTVMFFIToTorchType(moduleOp));
-    mlir::LLVM::LLVMFuncOp toTorchDeviceTypeFn = TRIDENT_UNWRAP_FAILURE(
+    mlir::LLVM::LLVMFuncOp toTorchDeviceTypeFn = TRIDENT_CHECK_FAILURE(
         trident::conversion::utils::getOrCreateTVMFFIDeviceToTorchDeviceType(
             moduleOp));
 
-    mlir::LLVM::LLVMFuncOp packTensorFn = TRIDENT_UNWRAP_FAILURE(
+    mlir::LLVM::LLVMFuncOp packTensorFn = TRIDENT_CHECK_FAILURE(
         trident::conversion::utils::getOrCreateTensorToTVMFFIObject(moduleOp));
 
     uint8_t dlCode = 0;
@@ -143,9 +143,9 @@ public:
         return op.emitError("unsupported torch.vtensor.literal element type");
       }
 
-      mlir::LLVM::LLVMFuncOp fullFn = TRIDENT_UNWRAP_FAILURE(
+      mlir::LLVM::LLVMFuncOp fullFn = TRIDENT_CHECK_FAILURE(
           trident::conversion::utils::getOrCreateAOTITorchAtenFull(moduleOp));
-      mlir::LLVM::LLVMFuncOp getDeviceIndexFn = TRIDENT_UNWRAP_FAILURE(
+      mlir::LLVM::LLVMFuncOp getDeviceIndexFn = TRIDENT_CHECK_FAILURE(
           trident::conversion::utils::getOrCreateAOTITorchGetCurrentDeviceIndex(
               moduleOp));
 
@@ -211,18 +211,18 @@ public:
         return op.emitError("unsupported torch.vtensor.literal element type");
       }
 
-      mlir::LLVM::LLVMFuncOp createFromBlobFn = TRIDENT_UNWRAP_FAILURE(
+      mlir::LLVM::LLVMFuncOp createFromBlobFn = TRIDENT_CHECK_FAILURE(
           trident::conversion::utils::getOrCreateAOTITorchCreateTensorFromBlob(
               moduleOp));
-      mlir::LLVM::LLVMFuncOp emptyStridedFn = TRIDENT_UNWRAP_FAILURE(
+      mlir::LLVM::LLVMFuncOp emptyStridedFn = TRIDENT_CHECK_FAILURE(
           trident::conversion::utils::getOrCreateAOTITorchEmptyStrided(
               moduleOp));
-      mlir::LLVM::LLVMFuncOp copyFn = TRIDENT_UNWRAP_FAILURE(
+      mlir::LLVM::LLVMFuncOp copyFn = TRIDENT_CHECK_FAILURE(
           trident::conversion::utils::getOrCreateAOTITorchCopy_(moduleOp));
-      mlir::LLVM::LLVMFuncOp deleteTensorFn = TRIDENT_UNWRAP_FAILURE(
+      mlir::LLVM::LLVMFuncOp deleteTensorFn = TRIDENT_CHECK_FAILURE(
           trident::conversion::utils::getOrCreateAOTITorchDeleteTensorObject(
               moduleOp));
-      mlir::LLVM::LLVMFuncOp getDeviceIndexFn = TRIDENT_UNWRAP_FAILURE(
+      mlir::LLVM::LLVMFuncOp getDeviceIndexFn = TRIDENT_CHECK_FAILURE(
           trident::conversion::utils::getOrCreateAOTITorchGetCurrentDeviceIndex(
               moduleOp));
 

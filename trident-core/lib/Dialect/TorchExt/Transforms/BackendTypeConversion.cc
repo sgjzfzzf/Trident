@@ -11,14 +11,11 @@
 #include "mlir/Dialect/ControlFlow/Transforms/StructuralTypeConversions.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchDialect.h"
-#include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
 #include "trident-core/Conversion/Utils/Type.h"
-#include "trident-core/Dialect/TorchExt/IR/TorchExtDialect.h"
 
 //===----------------------------------------------------------------------===//
 // mlir::Type conversion setup.
@@ -27,7 +24,7 @@
 /// Convert all Torch dialect types uniformly to TVMFFIAny
 /// (!llvm.struct<(i32, i32, i64)>). Materializations use
 /// UnrealizedConversionCastOp as placeholders; real pack/unpack is performed
-/// by downstream passes (SchemaLookup, TVMFFIToLLVM).
+/// by downstream passes (CAPI, TVMFFIToLLVM).
 static void
 setupTorchToTVMFFIAnyConversion(mlir::TypeConverter &typeConverter) {
   typeConverter.addConversion([](mlir::Type type) -> std::optional<mlir::Type> {

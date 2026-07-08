@@ -21,6 +21,8 @@ class EmptyTest(AtenOpTest):
 
     def test_call_empty(self) -> None:
         """Call aten::empty with shape [3, 4], device=cuda, dtype=float32."""
-        result: tvm_ffi.Tensor = self.get_ffi_func("empty")([3, 4], 1, 6)
+        result: tvm_ffi.Tensor = self.get_ffi_func("empty")(
+            [3, 4], tvm_ffi.device("cuda"), 6
+        )
         self.assertEqual(result.shape, torch.Size([3, 4]))
         self.assertEqual(result.dtype, tvm_ffi._dtype.float32)

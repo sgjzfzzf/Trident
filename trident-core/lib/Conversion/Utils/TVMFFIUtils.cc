@@ -7,12 +7,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident-core/Conversion/Utils/TVMFFIUtils.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "trident-core/Conversion/Utils/Check.h"
 #include "trident-core/Conversion/Utils/GlobalString.h"
 #include "trident-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/Type.h"
-#include "trident-core/Conversion/Utils/Unwrap.h"
-
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 
 namespace trident::conversion::utils {
 
@@ -82,7 +81,7 @@ callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
       builder, loc, ptrTy, ptrTy,
       mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
   mlir::LLVM::LLVMFuncOp getGlobal =
-      TRIDENT_UNWRAP_FAILURE(getOrCreateTVMFFIFunctionGetGlobal(moduleOp));
+      TRIDENT_CHECK_FAILURE(getOrCreateTVMFFIFunctionGetGlobal(moduleOp));
   mlir::LLVM::CallOp::create(builder, loc, getGlobal, {nameSlot, funcSlot});
   mlir::Value funcHandle =
       mlir::LLVM::LoadOp::create(builder, loc, ptrTy, funcSlot);
@@ -105,14 +104,14 @@ callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
   // --- Step 4: TVMFFIFunctionCall with runtime numArgs ---
 
   mlir::LLVM::LLVMFuncOp ffiCall =
-      TRIDENT_UNWRAP_FAILURE(getOrCreateTVMFFIFunctionCall(moduleOp));
+      TRIDENT_CHECK_FAILURE(getOrCreateTVMFFIFunctionCall(moduleOp));
   mlir::LLVM::CallOp::create(builder, loc, ffiCall,
                              {funcHandle, argsArray, numArgs, resultSlot});
 
   // --- Step 5: TVMFFIObjectDecRef(funcHandle) ---
 
   mlir::LLVM::LLVMFuncOp decRef =
-      TRIDENT_UNWRAP_FAILURE(getOrCreateTVMFFIObjectDecRef(moduleOp));
+      TRIDENT_CHECK_FAILURE(getOrCreateTVMFFIObjectDecRef(moduleOp));
   mlir::LLVM::CallOp::create(builder, loc, decRef, {funcHandle});
 
   return resultSlot;

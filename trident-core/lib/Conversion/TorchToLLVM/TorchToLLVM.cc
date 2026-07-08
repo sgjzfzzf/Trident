@@ -61,6 +61,7 @@ void populateTorchToLLVMConversionPatterns(
                                                 patterns);
   populateTorchToLLVMLiteralConversionPatterns(target, typeConverter, patterns);
   populateTorchToLLVMAtenConversionPatterns(target, typeConverter, patterns);
+  populateTorchToLLVMPrimConversionPatterns(target, typeConverter, patterns);
   target.addLegalDialect<mlir::LLVM::LLVMDialect, mlir::BuiltinDialect,
                          mlir::func::FuncDialect>();
 }

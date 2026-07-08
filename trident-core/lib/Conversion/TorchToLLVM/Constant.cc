@@ -5,10 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CAPI.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchOps.h"
-#include "torch/csrc/stable/c/shim.h"
 #include "trident-core/Conversion/TorchToLLVM/TorchToLLVM.h"
 #include "tvm/ffi/c_api.h"
 
@@ -151,14 +151,8 @@ public:
     mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
     mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
 
-    // Parse the device string (e.g. "cuda:0", "cpu") using PyTorch's
-    // stable C API.
-    llvm::StringRef dev = op.getValue();
-    uint32_t deviceType = 0;
-    int32_t deviceIndex = 0;
-    if (torch_parse_device_string(dev.data(), &deviceType, &deviceIndex)) {
-      return op.emitError("failed to parse device string: ") << dev;
-    }
+    // Parse the device string (e.g. "cuda:0", "cpu")
+    const DLDevice dlDevice = torchDeviceToDLDevice(op.getValue().data());
 
     // Build TVMFFIAny: {kTVMFFIDevice=6, 0, (device_index<<32)|device_type}.
     mlir::Value result = mlir::LLVM::UndefOp::create(rewriter, loc, anyTy);
@@ -168,10 +162,10 @@ public:
         rewriter, loc, anyTy, result, typeIdx, llvm::ArrayRef<int64_t>{0});
 
     // Encode: (device_index << 32) | device_type.
-    mlir::Value devType64 =
-        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, deviceType);
-    mlir::Value devIdx64 =
-        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, deviceIndex);
+    mlir::Value devType64 = mlir::LLVM::ConstantOp::create(
+        rewriter, loc, i64Ty, dlDevice.device_type);
+    mlir::Value devIdx64 = mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty,
+                                                          dlDevice.device_id);
     mlir::Value shifted = mlir::LLVM::ShlOp::create(
         rewriter, loc, devIdx64,
         mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 32));

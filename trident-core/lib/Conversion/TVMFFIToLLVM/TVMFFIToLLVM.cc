@@ -25,10 +25,10 @@
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchDialect.h"
+#include "trident-core/Conversion/Utils/Check.h"
 #include "trident-core/Conversion/Utils/GlobalString.h"
 #include "trident-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/Type.h"
-#include "trident-core/Conversion/Utils/Unwrap.h"
 #include "trident-core/Dialect/TVMFFI/IR/TVMFFIAttributes.h"
 #include "trident-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident-core/Dialect/TVMFFI/IR/TVMFFIOps.h"
@@ -366,7 +366,7 @@ public:
             return op.emitError("failed to get parent ModuleOp for guard "
                                 "failure error reporting");
           }
-          mlir::LLVM::LLVMFuncOp errorFn = TRIDENT_UNWRAP(
+          mlir::LLVM::LLVMFuncOp errorFn = TRIDENT_CHECK(
               conversion::utils::getOrCreateTVMFFIErrorSetRaisedFromCStr(
                   moduleOp),
               return op.emitError(

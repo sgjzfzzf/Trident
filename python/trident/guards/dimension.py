@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from typing import Any, Final, Optional
 from typing_extensions import override
@@ -30,7 +31,7 @@ class DimensionGuard(Guard):
     def _parse(cls, code: str) -> Optional[DimensionGuard]:
         if match := cls._regex_pattern.match(code):
             variable, expected = match.groups()
-            return DimensionGuard(variable, int(expected))
+            return DimensionGuard(variable, ast.literal_eval(expected))
         else:
             return None
 

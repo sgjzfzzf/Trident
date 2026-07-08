@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from typing import Any, Final, Optional
 from typing_extensions import override
@@ -33,7 +34,9 @@ class SizeGuard(Guard):
     def _parse(cls, code: str) -> Optional[SizeGuard]:
         if match := cls._regex_pattern.match(code):
             variable, index, expected = match.groups()
-            return SizeGuard(variable, int(index), int(expected))
+            return SizeGuard(
+                variable, ast.literal_eval(index), ast.literal_eval(expected)
+            )
         else:
             return None
 

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from typing import Any, Final, Optional
 from typing_extensions import override
@@ -30,7 +31,7 @@ class StorageOffsetGuard(Guard):
     def _parse(cls, code: str) -> Optional[StorageOffsetGuard]:
         if match := cls._regex_pattern.match(code):
             variable, expected = match.groups()
-            return StorageOffsetGuard(variable, int(expected))
+            return StorageOffsetGuard(variable, ast.literal_eval(expected))
         else:
             return None
 

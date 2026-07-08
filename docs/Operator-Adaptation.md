@@ -22,7 +22,28 @@ In this repository, there are two common adaptation paths.
 
 For a new operator bring-up, start with path 1, then validate path 2 if needed.
 
-## 2. Minimal Bring-Up Checklist (Path 1)
+## 2. atengen Auto-Wrapping
+
+Most ATen operators are automatically wrapped by the atengen codegen tool at build
+time (`trident-core/lib/Runtime/python/atengen.py`). atengen queries PyTorch's JIT
+type system via `torch._C._jit_get_all_schemas()` and generates C++ wrappers that
+register `trident.aten.*` TVM FFI global functions with proper IValue ↔ TVMFFIAny
+conversion.
+
+For a standard ATen operator, **no manual C++ changes are needed**:
+- The MLIR lowering (`Aten.cc` → `ConvertAtenDispatcherOp`) already handles all
+  `torch.aten.*` ops generically by rewiring them to `trident.aten.*` FFI calls.
+- The atengen-generated wrapper handles IValue ↔ TVMFFIAny conversion automatically
+  for all c10 types (TensorType, IntType, FloatType, BoolType, ListType,
+  OptionalType, DeviceObjType, NumberType, etc.).
+
+Manual intervention is only needed when:
+- The operator requires special lowering beyond the generic `trident.aten.*`
+  dispatch (e.g., constant folding, shape-dependent logic).
+- The operator uses types not yet supported by atengen's type mapping in
+  `Function.h` / `Value.h`.
+
+## 3. Minimal Bring-Up Checklist (Path 1)
 
 1. Add a pipeline test MLIR file
 - Create `trident-core/test/Conversion/Pipeline/<op>.mlir`.
@@ -46,7 +67,7 @@ For a new operator bring-up, start with path 1, then validate path 2 if needed.
   - `python -m unittest test.test_<op>`
   - `python -m unittest discover -s test -p "test_*.py"`
 
-## 3. Optional Bring-Up Checklist (Path 2)
+## 4. Optional Bring-Up Checklist (Path 2)
 
 Use this when the op is exercised through Python functions decorated by `@trident.jit`.
 
@@ -55,15 +76,17 @@ Use this when the op is exercised through Python functions decorated by `@triden
 - Confirm guards are produced as expected for dynamic shapes/dtypes/devices.
 
 2. FX import sanity
-- Ensure `TridentFxImporter` and node import logic can represent the op.
-- If Triton higher-order ops are involved, confirm kernel metadata/runtime args are materialized correctly.
+- Ensure the scoped Triton HOP patch (`patch.py`) and node import logic can
+  represent the op.
+- If Triton higher-order ops are involved, confirm kernel metadata/runtime args
+  are materialized correctly.
 
 3. Runtime specialization sanity
 - First call should compile a sub-module.
 - Subsequent compatible inputs should reuse specialization.
 - Guard mismatch should trigger incremental compile, not silent wrong results.
 
-## 4. Common Bug Symptoms And What To Suspect
+## 5. Common Bug Symptoms And What To Suspect
 
 ### A. `raw_lookup("__tvm_ffi_<op>")` returns null / symbol not found
 
@@ -155,7 +178,7 @@ Recommendation:
 - Avoid Triton hooks (`pre_hook`/`post_hook`) in code paths that may run under `@trident.jit` or `torch._dynamo.export`.
 - Prefer hook-free `triton.Config(...)` definitions and keep JIT-facing wrappers on Torch-friendly code paths.
 
-## 5. Practical Debug Strategy
+## 6. Practical Debug Strategy
 
 1. Start from smallest reproducible input.
 2. Verify pipeline-only behavior with `<op>.mlir` + `FileCheck` first.
@@ -168,7 +191,7 @@ Recommendation:
 - `test/test_empty_like.py`
 6. Prefer functional-style graph rewrites during debugging; avoid in-place tensor mutation when possible, because in-place ops can hide data-flow issues and complicate guard/cache correctness analysis.
 
-## 6. Definition Of Done
+## 7. Definition Of Done
 
 An operator adaptation is considered done when:
 

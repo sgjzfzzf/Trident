@@ -46,12 +46,11 @@ class ConstantGuard(Guard):
 
         # bool is a subclass of int, so check it first.
         if isinstance(expected_value, bool):
-            payload = 1 if expected_value else 0
-            return ConstantGuard(variable, 2, payload)
+            return ConstantGuard(variable, 2, 1 if expected_value else 0)
         elif isinstance(expected_value, int):
             return ConstantGuard(variable, 1, expected_value)
         elif isinstance(expected_value, float):
-            payload = struct.unpack("<q", struct.pack("<d", expected_value))[0]
+            (payload,) = struct.unpack("<q", struct.pack("<d", expected_value))
             return ConstantGuard(variable, 3, payload)
         else:
             return None

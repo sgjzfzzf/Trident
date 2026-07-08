@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Final, Optional, Tuple
+from typing import Any, Final, Optional
 from typing_extensions import override
+
+import tvm_ffi
 
 from trident._C.trident_core import ir
 
@@ -14,13 +16,8 @@ from .guard import Guard
 
 class DTypeGuard(Guard):
     _regex_pattern: re.Pattern = re.compile(
-        rf"str\({Guard._regex_variable}\.dtype\) == '(torch\.float16|torch\.float32)'"
+        rf"str\({Guard._regex_variable}\.dtype\) == '(torch\.\w+)'"
     )
-
-    _dtype_to_dl: Final[Dict[str, Tuple[int, int, int]]] = {
-        "torch.float16": (2, 16, 1),
-        "torch.float32": (2, 32, 1),
-    }
 
     def __init__(self, variable: str, expected: str, *args: Any, **kwargs: Any) -> None:
         super().__init__(variable, *args, **kwargs)
@@ -41,11 +38,10 @@ class DTypeGuard(Guard):
 
     @override
     def to_attribute(self, context: ir.Context) -> Optional[ir.Attribute]:
-        if self.expected not in self._dtype_to_dl:
-            code, bits, lanes = self._dtype_to_dl[self.expected]
-            return ir.Attribute.parse(
-                f"#tvm_ffi.DtypeGuard<code = {code}, bits = {bits}, lanes = {lanes}>",
-                context=context,
-            )
-        else:
-            return None
+        # Strip the "torch." prefix to get a bare dtype name (e.g. "float16")
+        # and delegate to tvm_ffi.dtype for code/bits/lanes resolution.
+        dt: tvm_ffi.dtype = tvm_ffi.dtype(self.expected.removeprefix("torch."))
+        return ir.Attribute.parse(
+            f"#tvm_ffi.DtypeGuard<code = {dt.type_code}, bits = {dt.bits}, lanes = {dt.lanes}>",
+            context=context,
+        )

@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 import re
-import torch
 from typing import Any, Final, Optional
 from typing_extensions import override
+
+import tvm_ffi
 
 from trident._C.trident_core import ir
 
@@ -15,7 +16,7 @@ from .guard import Guard
 
 class CUDADeviceGuard(Guard):
     _regex_pattern: re.Pattern = re.compile(
-        rf"str\({Guard._regex_variable}\.device\) == '(cuda:\d+)'"
+        rf"str\({Guard._regex_variable}\.device\) == '(\w+(?::\d+)?)'"
     )
 
     def __init__(self, variable: str, expected: str, *args: Any, **kwargs: Any) -> None:
@@ -37,7 +38,8 @@ class CUDADeviceGuard(Guard):
 
     @override
     def to_attribute(self, context: ir.Context) -> Optional[ir.Attribute]:
+        dev: tvm_ffi.Device = tvm_ffi.device(self.expected)
         return ir.Attribute.parse(
-            f"#tvm_ffi.CudaDeviceGuard<device_type = 2, device_index = {torch.device(self.expected).index}>",
+            f"#tvm_ffi.CudaDeviceGuard<device_type = {dev.dlpack_device_type()}, device_index = {dev.index}>",
             context=context,
         )

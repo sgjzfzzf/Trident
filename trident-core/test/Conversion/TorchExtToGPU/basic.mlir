@@ -11,7 +11,7 @@
 // CHECK:      llvm.func @aoti_torch_get_current_stream(i32, !llvm.ptr) -> i32
 // CHECK:      llvm.func @aoti_torch_get_current_device_index(!llvm.ptr) -> i32
 // CHECK:      gpu.module @kernel {
-// CHECK:        gpu.func @entry(%{{.*}}: !llvm.ptr, %{{.*}}: i64, %{{.*}}: i64, %{{.*}}: i64)
+// CHECK:        gpu.func @entry(%arg0: !llvm.ptr, %arg1: i64, %arg2: i64, %arg3: i64)
 // CHECK-SAME:   kernel attributes {gpu.binary = ""}
 // CHECK-NEXT:     gpu.return
 // CHECK-NEXT:   }
@@ -35,14 +35,16 @@
 // CHECK:      %[[DEV_IDX_SLOT:.*]] = llvm.alloca %[[ONE]] x i32 : (i64) -> !llvm.ptr
 // CHECK:      llvm.call @aoti_torch_get_current_device_index(%[[DEV_IDX_SLOT]]) : (!llvm.ptr) -> i32
 // CHECK:      %[[DEVICE_IDX:.*]] = llvm.load %[[DEV_IDX_SLOT]] : !llvm.ptr -> i32
-// CHECK:      %[[STRM_SLOT:.*]] = llvm.alloca %{{.*}} x !llvm.ptr : (i64) -> !llvm.ptr
+// CHECK:      %[[ONE_STRM:.*]] = llvm.mlir.constant(1 : i64) : i64
+// CHECK:      %[[STRM_SLOT:.*]] = llvm.alloca %[[ONE_STRM]] x !llvm.ptr : (i64) -> !llvm.ptr
 // CHECK:      llvm.call @aoti_torch_get_current_stream(%[[DEVICE_IDX]], %[[STRM_SLOT]]) : (i32, !llvm.ptr) -> i32
 // CHECK:      %[[ASYNC_OBJ:.*]] = llvm.load %[[STRM_SLOT]] : !llvm.ptr -> !llvm.ptr
+// CHECK:      %[[ZERO:.*]] = llvm.mlir.constant(0 : i64) : i64
 // CHECK:      gpu.launch_func <%[[ASYNC_OBJ]] : !llvm.ptr> @kernel::@entry
 // CHECK:      blocks in (%[[C32]], %[[C16]], %[[C1]])
 // CHECK:      threads in (%[[C128]], %[[C1]], %[[C1]])
 // CHECK:      dynamic_shared_memory_size %[[SHMEM]]
-// CHECK:      args(%[[DATA_PTR]] : !llvm.ptr, %[[SCALAR_PLD]] : i64, %{{.*}} : i64, %{{.*}} : i64)
+// CHECK:      args(%[[DATA_PTR]] : !llvm.ptr, %[[SCALAR_PLD]] : i64, %[[ZERO]] : i64, %[[ZERO]] : i64)
 
 // CHECK-NOT: torchext.trident_kernel_launch
 module attributes { gpu.container_module } {
@@ -91,10 +93,10 @@ func.func @cast_float_to_f32(%arg0: !torch.float) -> f32 {
 // CHECK-SAME:  %[[ARG:.*]]: !torch.float
 // CHECK:       %[[ANY:.*]] = builtin.unrealized_conversion_cast %[[ARG]] : !torch.float to !llvm.struct<(i32, i32, i64)>
 // CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ANY]][2] : !llvm.struct<(i32, i32, i64)>
-// CHECK:       llvm.bitcast %[[PLD]] : i64 to f64
+// CHECK:       %[[BC:.*]] = llvm.bitcast %[[PLD]] : i64 to f64
 // CHECK-NOT:   llvm.fptrunc
 // CHECK-NOT:   torchext.cast
-// CHECK:       return %{{.*}} : f64
+// CHECK:       return %[[BC]] : f64
 func.func @cast_float_to_f64(%arg0: !torch.float) -> f64 {
   %0 = torchext.cast %arg0 : !torch.float -> f64
   return %0 : f64

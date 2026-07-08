@@ -21,7 +21,7 @@ TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(mTridentTVMFFIDeviceToTorchDeviceType,
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(mTridentTVMFFIToTorchType,
                                          TVMFFIToTorchType)
 
-// Reverse Torch→DLPack dtype/device mapping.
+// Reverse Torch->DLPack dtype/device mapping.
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(mTridentTorchToTVMFFIDtype,
                                          TorchToTVMFFIDtype)
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(mTridentTorchToTVMFFIDevice,

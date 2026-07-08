@@ -16,9 +16,9 @@ that use trident::runtime::Function<Ret, Args<...>>::call() to:
   4. Pop results and encode back via trident::runtime::resolveValue<T>().
 
 Usage:
-    python atengen.py                     # all aten operators → stdout
-    python atengen.py --op add.Tensor mm  # specific operators → stdout
-    python atengen.py --out wrappers.cc   # all aten operators → file
+    python atengen.py                     # all aten operators -> stdout
+    python atengen.py --op add.Tensor mm  # specific operators -> stdout
+    python atengen.py --out wrappers.cc   # all aten operators -> file
 """
 
 from __future__ import annotations
@@ -82,10 +82,10 @@ def _type_kind_expr(jit_type: torch.JitType) -> str:
     are contained types, they are joined with commas inside SubTypes<...>.
 
     Examples:
-        TensorType                     → "c10::TensorType"
-        OptionalType(IntType)          → "trident::runtime::Contain<c10::OptionalType, trident::runtime::SubTypes<c10::IntType>>"
-        ListType(IntType)              → "trident::runtime::Contain<c10::ListType, trident::runtime::SubTypes<c10::IntType>>"
-        DictType(IntType, TensorType)  → "trident::runtime::Contain<c10::DictType, trident::runtime::SubTypes<c10::IntType, c10::TensorType>>"
+        TensorType                     -> "c10::TensorType"
+        OptionalType(IntType)          -> "trident::runtime::Contain<c10::OptionalType, trident::runtime::SubTypes<c10::IntType>>"
+        ListType(IntType)              -> "trident::runtime::Contain<c10::ListType, trident::runtime::SubTypes<c10::IntType>>"
+        DictType(IntType, TensorType)  -> "trident::runtime::Contain<c10::DictType, trident::runtime::SubTypes<c10::IntType, c10::TensorType>>"
     """
 
     class_name: Final[str] = _TYPE_KIND_TO_CLASS[jit_type.kind()]

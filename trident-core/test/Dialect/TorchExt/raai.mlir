@@ -11,7 +11,7 @@
 // Inserts torchext.ObjectIncRef / ObjectDecRef before the terminator of
 // single-block func::FuncOp regions.
 
-// UNALLOC: single allocation, not yielded → DecRef only.
+// UNALLOC: single allocation, not yielded -> DecRef only.
 // CHECK-LABEL: @list_construct_no_return
 func.func @list_construct_no_return(%x: !torch.int, %y: !torch.int) {
   %list = torch.prim.ListConstruct %x, %y : (!torch.int, !torch.int) -> !torch.list<int>
@@ -22,7 +22,7 @@ func.func @list_construct_no_return(%x: !torch.int, %y: !torch.int) {
 
 // -----
 
-// ALLOC + YIELD: aten op tensor yielded → IncRef + DecRef.
+// ALLOC + YIELD: aten op tensor yielded -> IncRef + DecRef.
 // CHECK-LABEL: @aten_tensor_returned
 func.func @aten_tensor_returned(%shape: !torch.list<int>, %dtype: !torch.int, %device: !torch.Device) -> !torch.vtensor<[?,?],f64> {
   %none = torch.constant.none
@@ -64,7 +64,7 @@ func.func @list_and_tensor_mixed(%shape: !torch.list<int>, %dtype: !torch.int, %
 
 // -----
 
-// EXTERNAL: arg passthrough → only IncRef, no internal allocation to release.
+// EXTERNAL: arg passthrough -> only IncRef, no internal allocation to release.
 // CHECK-LABEL: @arg_passthrough
 func.func @arg_passthrough(%t: !torch.vtensor<[200,200,26],f64>) -> !torch.vtensor<[200,200,26],f64> {
   // CHECK:      torchext.ObjectIncRef %[[T:.*]] : !torch.vtensor<[200,200,26],f64>
@@ -75,7 +75,7 @@ func.func @arg_passthrough(%t: !torch.vtensor<[200,200,26],f64>) -> !torch.vtens
 // -----
 
 // TWO ATEN, ONE YIELD: %0 not yielded, %1 yielded.
-//   Alloc order is %0, %1 → DecRef %0, IncRef %1, DecRef %1.
+//   Alloc order is %0, %1 -> DecRef %0, IncRef %1, DecRef %1.
 // CHECK-LABEL: @multi_aten_partial_yield
 func.func @multi_aten_partial_yield(%shape: !torch.list<int>, %dtype: !torch.int, %device: !torch.Device) -> !torch.vtensor<[?,?],f64> {
   %none = torch.constant.none

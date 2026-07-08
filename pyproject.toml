@@ -5,13 +5,11 @@ authors = [
     { name = "Jinjie Liu", email = "sgjzfzzf@gmail.com" },
 ]
 license = { text = "MIT" }
-# Lock triton to 3.6.0 because version 3.7 changed the cache calculation API,
-# causing errors when re-finding the cache.
 # Require torch >= 2.10.0 for the stable C API.
 dependencies = ["apache-tvm-ffi"]
 
 [build-system]
-requires = ["apache-tvm-ffi", "cmake", "jinja2", "nanobind", "ninja", "scikit-build-core", "torch>=2.10.0", "triton==3.6.0"]
+requires = ["apache-tvm-ffi", "cmake", "jinja2", "nanobind", "ninja", "scikit-build-core", "torch>=2.10.0", "triton"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]

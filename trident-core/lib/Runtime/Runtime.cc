@@ -85,7 +85,7 @@ int32_t mTridentTVMFFIDeviceToTorchDeviceType(int32_t dlDeviceType) {
   abort();
 }
 
-/// Reverse mapping: Torch dtype → DLPack DLDataType.
+/// Reverse mapping: Torch dtype -> DLPack DLDataType.
 /// Uses the same X-Macro pairs as the forward mapping.
 DLDataType mTridentTorchToTVMFFIDtype(int32_t torch_dtype) {
 #define X(dlpack_code, dlpack_bits, torch_fn)                                  \
@@ -98,7 +98,7 @@ DLDataType mTridentTorchToTVMFFIDtype(int32_t torch_dtype) {
   return DLDataType{kDLFloat, 32, 1};
 }
 
-/// Reverse mapping: Torch device type → DLPack device type.
+/// Reverse mapping: Torch device type -> DLPack device type.
 /// Uses the same X-Macro pairs as the forward mapping.
 DLDeviceType mTridentTorchToTVMFFIDevice(int32_t torch_device_type) {
 #define X(dlpack_device, torch_fn)                                             \
@@ -116,7 +116,7 @@ DLDeviceType mTridentTorchToTVMFFIDevice(int32_t torch_device_type) {
 ///
 /// Flow:
 /// 1. Extract tensor properties via aoti_torch_get_* functions.
-/// 2. Reverse-map Torch dtype/device → DLPack.
+/// 2. Reverse-map Torch dtype/device -> DLPack.
 /// 3. Heap-allocate a DLManagedTensor, fill with extracted properties.
 /// 4. Convert to TVMFFIObjectHandle via TVMFFITensorFromDLPack.
 /// 5. Store the handle in *out_handle.
@@ -143,7 +143,7 @@ TRIDENT_CORE_RUNTIME_EXPORT int32_t mTridentTensorToTVMFFIObject(
   TRIDENT_TVMFFI_CHECK(aoti_torch_get_device_index(input, &device_index));
   TRIDENT_TVMFFI_CHECK(aoti_torch_get_storage_offset(input, &storage_offset));
 
-  // Step 2: Reverse-map Torch dtype/device → DLPack.
+  // Step 2: Reverse-map Torch dtype/device -> DLPack.
   DLDataType dl_dtype = mTridentTorchToTVMFFIDtype(torch_dtype);
   DLDeviceType dl_device = mTridentTorchToTVMFFIDevice(torch_device_type);
 

@@ -24,7 +24,7 @@ mlir::LLVM::LLVMStructType getDLDataType(mlir::MLIRContext *context);
 
 /// Returns the packed LLVM struct type matching DLTensor (48 bytes).
 ///
-/// DLTensor layout (field indices → offsets):
+/// DLTensor layout (field indices -> offsets):
 ///   0: data        : ptr                               (offset  0)
 ///   1: device      : DLDevice    = {i32, i32}          (offset  8)
 ///   2: ndim        : i32                               (offset 16)

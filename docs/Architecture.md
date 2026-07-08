@@ -107,7 +107,7 @@ Trident uses an auto-generated wrapper layer for ATen operator dispatch via TVM 
    - Each wrapper registers a TVM FFI global function named `trident.aten.<op>.<overload>`
      and internally uses `c10::Dispatcher::findSchemaOrThrow()` + `callBoxed()`.
 
-2. **MLIR lowering** (`Aten.cc` → `ConvertAtenDispatcherOp`):
+2. **MLIR lowering** (`Aten.cc` -> `ConvertAtenDispatcherOp`):
    - Matches all `torch.aten.*` ops generically — no per-op C++ code needed.
    - Rewrites the op name from `torch.aten.X.Y` to `trident.aten.X.Y`.
    - Calls the corresponding TVM FFI global function via `callTVMFFIGlobalFunction()`.

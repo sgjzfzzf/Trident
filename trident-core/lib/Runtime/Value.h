@@ -374,13 +374,13 @@ TRIDENT_RUNTIME_UNIMPL(SymBoolType);
 // Public API — thin wrappers (single type parameter)
 //===----------------------------------------------------------------------===//
 
-/// Build: AnyView → IValue (type parameter).
+/// Build: AnyView -> IValue (type parameter).
 template <typename T>
 inline c10::IValue buildValue(const tvm::ffi::AnyView &any) {
   return Value<T>::build(any);
 }
 
-/// Resolve: IValue → Any (type parameter).
+/// Resolve: IValue -> Any (type parameter).
 /// Takes ownership of the IValue via rvalue reference.
 template <typename T> inline tvm::ffi::Any resolveValue(c10::IValue &&val) {
   return Value<T>::resolve(std::move(val));

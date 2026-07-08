@@ -31,7 +31,7 @@ register `trident.aten.*` TVM FFI global functions with proper IValue ↔ TVMFFI
 conversion.
 
 For a standard ATen operator, **no manual C++ changes are needed**:
-- The MLIR lowering (`Aten.cc` → `ConvertAtenDispatcherOp`) already handles all
+- The MLIR lowering (`Aten.cc` -> `ConvertAtenDispatcherOp`) already handles all
   `torch.aten.*` ops generically by rewiring them to `trident.aten.*` FFI calls.
 - The atengen-generated wrapper handles IValue ↔ TVMFFIAny conversion automatically
   for all c10 types (TensorType, IntType, FloatType, BoolType, ListType,

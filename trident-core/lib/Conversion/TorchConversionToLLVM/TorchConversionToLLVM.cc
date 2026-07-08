@@ -57,7 +57,7 @@ public:
 
     setupBackendTypeConversion(target, typeConverter);
 
-    // Let tensor types pass through unchanged; a full tensor→memref→LLVM
+    // Let tensor types pass through unchanged; a full tensor->memref->LLVM
     // pipeline is needed to lower them further.
     typeConverter.addConversion(
         [](mlir::TensorType type) -> mlir::Type { return type; });

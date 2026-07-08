@@ -112,7 +112,7 @@ class TridentGraphModule(object):
         Called initially from ``__init__`` (with zero sub-modules) and
         after every ``compile()`` to pick up newly added specializations.
         """
-        # ── n == 0: no sub-modules yet → stub that always triggers a
+        # ── n == 0: no sub-modules yet -> stub that always triggers a
         # recompile via GuardMatchException.
         if len(self._sub_modules) == 0:
 
@@ -127,7 +127,7 @@ class TridentGraphModule(object):
         #    repeated-merging hangs).
         combined: ir.Module = self._build_combined_module()
 
-        # 2. Lower Torch / TVM-FFI → LLVM.
+        # 2. Lower Torch / TVM-FFI -> LLVM.
         with self.ctx:
             passmanager.PassManager.parse(
                 "builtin.module(trident-lowering-pipeline)",
@@ -179,7 +179,7 @@ class TridentGraphModule(object):
         index: int,
         args: Tuple[Any, ...],
     ) -> ir.Module:
-        """Export → import → wrap a single sub-module for *args*.
+        """Export -> import -> wrap a single sub-module for *args*.
 
         Each sub-module's ``func.func`` is named ``main_{index}`` and its
         ``tvm_ffi.func`` is named ``{fn.__name__}_{index}`` to avoid symbol
@@ -192,7 +192,7 @@ class TridentGraphModule(object):
         )(*args)
         gm(*args)  # Warm-up
 
-        # Step 2: Import FX → MLIR  ----------------------------------------
+        # Step 2: Import FX -> MLIR  ----------------------------------------
         with apply_patch():
             importer: FxImporter = FxImporter(context=ctx)
             main_func_name: Final[str] = f"main_{index}"
@@ -351,10 +351,10 @@ class TridentGraphModule(object):
             )
 
             # ── Pre-create all blocks ─────────────────────────────────
-            # Layout: entry →
-            #   (try_0, try_0_no_err, try_0_has_err, try_0_merge) →
-            #   … →
-            #   (try_N, …, try_N_merge) → fail → done
+            # Layout: entry ->
+            #   (try_0, try_0_no_err, try_0_has_err, try_0_merge) ->
+            #   … ->
+            #   (try_N, …, try_N_merge) -> fail -> done
             prev_block: ir.Block = entry_block
             blocks: List[Tuple[ir.Block, ir.Block, ir.Block, ir.Block]] = []
 
@@ -373,7 +373,7 @@ class TridentGraphModule(object):
                 i32_type,
             )
 
-            # ── entry → try_0 ─────────────────────────────────────────
+            # ── entry -> try_0 ─────────────────────────────────────────
             with ir.InsertionPoint(entry_block):
                 [(try0, _, _, _), *_] = blocks
                 llvm.br(dest_operands=[], dest=try0)
@@ -384,7 +384,7 @@ class TridentGraphModule(object):
 
                 # ── try_i: call sub-function & fetch error ────────
                 with ir.InsertionPoint(try_blk):
-                    # Call sub-module function → i32 result.
+                    # Call sub-module function -> i32 result.
                     ret: ir.Value = llvm.call(
                         result=i32_type,
                         callee_operands=entry_block.arguments,
@@ -425,7 +425,7 @@ class TridentGraphModule(object):
                         rhs=null_ptr,
                     )
 
-                    # Branch: null → no_error, non-null → has_error.
+                    # Branch: null -> no_error, non-null -> has_error.
                     llvm.cond_br(
                         condition=is_null,
                         true_dest_operands=[],
@@ -434,7 +434,7 @@ class TridentGraphModule(object):
                         false_dest=has_err_blk,
                     )
 
-                # ── try_i_no_error: error is null → ok from ret ────
+                # ── try_i_no_error: error is null -> ok from ret ────
                 with ir.InsertionPoint(no_err_blk):
                     true_i1: ir.Value = llvm.mlir_constant(
                         value=ir.IntegerAttr.get(i1_type, 1),
@@ -563,7 +563,7 @@ class TridentGraphModule(object):
                     )
                     ok: ir.Value = llvm.or_(ret_ok_i1, error_ok)
 
-                    # Conditional branch: ok → done, else → next / fail
+                    # Conditional branch: ok -> done, else -> next / fail
                     (next_blk, _, _, _) = (
                         blocks[i + 1] if i < n - 1 else (fail_block, None, None, None)
                     )

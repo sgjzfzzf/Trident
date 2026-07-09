@@ -47,15 +47,20 @@ def add_impl(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return output
 
 
-if __name__ == "__main__":
+def main():
     torch.manual_seed(0)
 
-    for ex in range(12, 14):
-        size = 2**ex
-        x = torch.rand(size, device=DEVICE)
-        y = torch.rand(size, device=DEVICE)
-        output_torch = x + y
-        output_triton = add_triton(x, y)
-        output_jit = add_jit(x, y)
+    for ex in range(12, 15):
+        size: int = 2**ex
+        x: torch.Tensor = torch.rand(size, device=DEVICE)
+        y: torch.Tensor = torch.rand(size, device=DEVICE)
+        output_torch: torch.Tensor = x + y
+        output_triton: torch.Tensor = add_triton(x, y)
+        output_jit: torch.Tensor = add_jit(x, y)
         torch.testing.assert_close(output_triton, output_torch)
         torch.testing.assert_close(output_jit, output_torch)
+
+
+if __name__ == "__main__":
+    main()
+    assert torch.cuda.memory_allocated() == 0

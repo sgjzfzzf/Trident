@@ -10,7 +10,7 @@ the triton-tvm-ffi attention example, but wired to Trident's usage style.
 
 import math
 import os
-from typing import Optional
+from typing import List, Optional
 
 import torch
 import triton
@@ -89,7 +89,7 @@ def _attn_fwd_inner(
 
 
 NUM_STAGES_OPTIONS = [2, 3, 4]
-configs = [
+configs: List[triton.Config] = [
     triton.Config(
         {"BLOCK_M": bm, "BLOCK_N": bn},
         num_stages=s,
@@ -102,7 +102,7 @@ configs = [
 ]
 
 if "PYTEST_VERSION" in os.environ:
-    configs = [
+    configs: List[triton.Config] = [
         triton.Config(
             dict(BLOCK_M=128, BLOCK_N=64),
             num_stages=2,
@@ -112,8 +112,8 @@ if "PYTEST_VERSION" in os.environ:
 
 
 def keep(conf):
-    block_m = conf.kwargs["BLOCK_M"]
-    block_n = conf.kwargs["BLOCK_N"]
+    block_m: int = conf.kwargs["BLOCK_M"]
+    block_n: int = conf.kwargs["BLOCK_N"]
     return not (
         torch.cuda.get_device_capability()[0] == 9
         and block_m * block_n < 128 * 128
@@ -265,11 +265,11 @@ def attn_fwd(
     if sm_scale is None:
         sm_scale = 1.0 / math.sqrt(head_dim)
 
-    o = torch.empty_like(q)
-    m = torch.empty(
+    o: torch.Tensor = torch.empty_like(q)
+    m: torch.Tensor = torch.empty(
         (q.shape[0], q.shape[1], q.shape[2]), device=q.device, dtype=torch.float32
     )
-    stage = 3 if causal else 1
+    stage: int = 3 if causal else 1
 
     def grid(meta):
         return (triton.cdiv(q.shape[2], meta["BLOCK_M"]), q.shape[0] * q.shape[1], 1)
@@ -297,11 +297,13 @@ def attn_torch(
     causal: bool = False,
     sm_scale: Optional[float] = None,
 ) -> torch.Tensor:
-    n_ctx = q.shape[2]
+    n_ctx: int = q.shape[2]
     if sm_scale is None:
         sm_scale = 1.0 / math.sqrt(q.shape[-1])
-    mask = torch.tril(torch.ones((n_ctx, n_ctx), device=q.device, dtype=torch.bool))
-    p = torch.matmul(q, k.transpose(2, 3)) * sm_scale
+    mask: torch.Tensor = torch.tril(
+        torch.ones((n_ctx, n_ctx), device=q.device, dtype=torch.bool)
+    )
+    p: torch.Tensor = torch.matmul(q, k.transpose(2, 3)) * sm_scale
     if causal:
         p = torch.where(mask, p, torch.full_like(p, float("-inf")))
     p = torch.softmax(p.float(), dim=-1).to(q.dtype)
@@ -329,27 +331,27 @@ def attn_jit(
     return attn_fwd(q, k, v, causal=causal, sm_scale=sm_scale)
 
 
-if __name__ == "__main__":
+def main():
     torch.manual_seed(0)
 
     b, h, n_ctx, head_dim = 1, 2, 128, 64
-    dtype = torch.float16
-    sm_scale = 0.5
+    dtype: torch.dtype = torch.float16
+    sm_scale: float = 0.5
 
-    q = torch.empty((b, h, n_ctx, head_dim), dtype=dtype, device=DEVICE).normal_(
-        mean=0.0, std=0.5
-    )
-    k = torch.empty((b, h, n_ctx, head_dim), dtype=dtype, device=DEVICE).normal_(
-        mean=0.0, std=0.5
-    )
-    v = torch.empty((b, h, n_ctx, head_dim), dtype=dtype, device=DEVICE).normal_(
-        mean=0.0, std=0.5
-    )
+    q: torch.Tensor = torch.empty(
+        (b, h, n_ctx, head_dim), dtype=dtype, device=DEVICE
+    ).normal_(mean=0.0, std=0.5)
+    k: torch.Tensor = torch.empty(
+        (b, h, n_ctx, head_dim), dtype=dtype, device=DEVICE
+    ).normal_(mean=0.0, std=0.5)
+    v: torch.Tensor = torch.empty(
+        (b, h, n_ctx, head_dim), dtype=dtype, device=DEVICE
+    ).normal_(mean=0.0, std=0.5)
 
     for causal in [False, True]:
-        ref_out = attn_torch(q, k, v, causal=causal, sm_scale=sm_scale)
-        tri_out = attn_triton(q, k, v, causal=causal, sm_scale=sm_scale)
-        jit_out = attn_jit(
+        ref_out: torch.Tensor = attn_torch(q, k, v, causal=causal, sm_scale=sm_scale)
+        tri_out: torch.Tensor = attn_triton(q, k, v, causal=causal, sm_scale=sm_scale)
+        jit_out: torch.Tensor = attn_jit(
             q=q,
             k=k,
             v=v,
@@ -359,3 +361,10 @@ if __name__ == "__main__":
 
         torch.testing.assert_close(tri_out, ref_out, atol=1e-2, rtol=0)
         torch.testing.assert_close(jit_out, ref_out, atol=1e-2, rtol=0)
+
+
+if __name__ == "__main__":
+    main()
+    torch._C._cuda_clearCublasWorkspaces()
+    torch.cuda.empty_cache()
+    assert torch.cuda.memory_allocated() == 0

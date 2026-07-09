@@ -259,7 +259,7 @@ def matmul_impl(a: torch.Tensor, b: torch.Tensor, activation=""):
     assert a.is_contiguous(), "Matrix A must be contiguous"
     M, K = a.shape
     K, N = b.shape
-    c = torch.empty((M, N), device=a.device, dtype=torch.float16)
+    c: torch.Tensor = torch.empty((M, N), device=a.device, dtype=torch.float16)
     matmul_kernel[
         lambda META: (
             triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
@@ -284,15 +284,22 @@ def matmul_impl(a: torch.Tensor, b: torch.Tensor, activation=""):
     return c
 
 
-if __name__ == "__main__":
+def main():
     torch.manual_seed(0)
-    a = torch.randn((512, 512), device=DEVICE, dtype=torch.float16)
-    b = torch.randn((512, 512), device=DEVICE, dtype=torch.float16)
+    a: torch.Tensor = torch.randn((512, 512), device=DEVICE, dtype=torch.float16)
+    b: torch.Tensor = torch.randn((512, 512), device=DEVICE, dtype=torch.float16)
 
-    torch_output = torch.matmul(a, b)
+    torch_output: torch.Tensor = torch.matmul(a, b)
 
-    triton_output = matmul_triton(a, b, "")
+    triton_output: torch.Tensor = matmul_triton(a, b, "")
     torch.testing.assert_close(triton_output, torch_output, atol=1e-2, rtol=1e-2)
 
-    output_jit = matmul_jit(a, b)
+    output_jit: torch.Tensor = matmul_jit(a, b)
     torch.testing.assert_close(output_jit, torch_output, atol=1e-2, rtol=1e-2)
+
+
+if __name__ == "__main__":
+    main()
+    torch._C._cuda_clearCublasWorkspaces()
+    torch.cuda.empty_cache()
+    assert torch.cuda.memory_allocated() == 0

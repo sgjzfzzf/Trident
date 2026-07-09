@@ -178,6 +178,8 @@ class TridentGraphModule(object):
             )
             module: ir.Module = importer.module
 
+        torch._dynamo.reset()
+
         # Step 3: Wrap with tvm_ffi.func  ----------------------------------
         tvm_ffi_name: Final[str] = f"{fn.__name__}_{index}"
         arg_attrs: ir.ArrayAttr = parse_guards(gs).build(

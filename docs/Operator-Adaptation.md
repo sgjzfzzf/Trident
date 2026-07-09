@@ -108,7 +108,8 @@ Suspect:
 
 Check:
 - `trident-core/test/Conversion/Pipeline/<op>.mlir`
-- `trident-core` dialect/pass implementation touched by your op
+- `trident-core/lib/Conversion/AtenToTVMFFI/Aten.cc` (`ConvertAtenDispatcherOp`) — the generic lowering that rewires all `torch.aten.*` ops to `trident.aten.*` FFI calls
+- `trident-core/lib/Runtime/python/atengen.py` — the codegen tool that generates FFI wrappers for ATen ops
 
 ### C. Wrapper call succeeds but output shape/dtype is wrong
 
@@ -187,8 +188,14 @@ Recommendation:
 5. If failure is unclear, compare your new op with known-good patterns:
 - `trident-core/test/Conversion/Pipeline/empty.mlir`
 - `trident-core/test/Conversion/Pipeline/empty_like.mlir`
+- `trident-core/test/Conversion/Pipeline/mul_scalar.mlir`
+- `trident-core/test/Conversion/Pipeline/sub.mlir`
+- `trident-core/test/Conversion/Pipeline/vtensor_literal.mlir`
 - `test/test_empty.py`
 - `test/test_empty_like.py`
+- `test/test_mul_scalar.py`
+- `test/test_sub.py`
+- `test/test_vtensor_literal.py`
 6. Prefer functional-style graph rewrites during debugging; avoid in-place tensor mutation when possible, because in-place ops can hide data-flow issues and complicate guard/cache correctness analysis.
 
 ## 7. Definition Of Done
@@ -199,3 +206,50 @@ An operator adaptation is considered done when:
 - Python end-to-end unittest exists and passes.
 - Symbol naming and wrapper ABI are consistent.
 - No unexpected recompilation or guard-dispatch regression appears in runtime path.
+
+## 8. TorchExt Dialect And GPU Kernel Adaptation
+
+For operators that involve Triton kernels or custom GPU compute (rather than
+standard ATen ops), the adaptation path differs from the atengen flow
+described in Section 2. These ops go through the `torchext` dialect.
+
+### 8.1 TorchExt Op Lowering
+
+The `torchext` dialect bridges Torch semantics with MLIR-native types and GPU
+kernel launches. Its lowering is split across two passes:
+
+| Pass | Purpose |
+|---|---|
+| `ConvertTorchExtToGPU` | Lowers `torchext.cast` (Torch scalar → native MLIR types) and `torchext.trident_kernel_launch` (Triton kernel → `gpu.launch_func`) |
+| `ConvertTorchExtToLLVM` | Lowers `torchext.ObjectIncRef` / `torchext.ObjectDecRef` to LLVM calls |
+
+Reference counting ops are managed by the `RAAI` pass (Reference-count
+Auto-Insertion), which scans basic blocks and inserts `IncRef`/`DecRef` pairs
+around Torch object uses.
+
+### 8.2 Adding A New `torchext` Op
+
+1. Define the op in the TorchExt dialect tablegen (`.td`) files under
+   `trident-core/include/trident-core/Dialect/TorchExt/`.
+2. Add lowering logic in the appropriate conversion pass:
+   - GPU-related ops → `trident-core/lib/Conversion/TorchExtToGPU/`
+   - LLVM-related ops → `trident-core/lib/Conversion/TorchExtToLLVM/`
+3. Register the op's type conversion in `BackendTypeConversion` if it
+   involves Torch value types.
+4. Update the `trident-lowering-pipeline` pass pipeline if the op requires
+   a specific pass ordering.
+5. Add lit tests under `trident-core/test/Conversion/`.
+
+### 8.3 Triton Kernel Integration
+
+Triton kernel ops (`triton_kernel_wrapper_mutation`) are handled by the
+scoped monkey-patch in `python/trident/patch.py` during FX import (see
+Architecture.md Section 5). The patched import:
+
+1. Sets `"gpu.container_module"` on the top-level MLIR module.
+2. Materializes each kernel's cubin as a `gpu.binary` op.
+3. Emits `torchext.TridentKernelLaunchOp` with kernel parameters and
+   launch grid configuration.
+
+The kernel launch is then lowered through
+`ConvertTorchExtToGPU` → `gpu.launch_func`.

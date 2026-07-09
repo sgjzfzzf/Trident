@@ -45,14 +45,10 @@ def softmax_jit(x: torch.Tensor) -> torch.Tensor:
 
 def softmax_triton_impl(x):
     n_rows, n_cols = x.shape
-    BLOCK_SIZE = triton.next_power_of_2(n_cols)
-    num_warps = 8
-    num_stages = 4
-    # TODO(trident): Temporary workaround for jit-lowered empty_like device
-    # semantics in this example path. Keep device explicit to avoid CPU output
-    # allocation causing CUDA illegal-address in kernel launch; revert this once
-    # backend empty_like/device handling is fixed.
-    y = torch.empty_like(x)
+    BLOCK_SIZE: int = triton.next_power_of_2(n_cols)
+    num_warps: int = 8
+    num_stages: int = 4
+    y: torch.Tensor = torch.empty_like(x)
     softmax_kernel[(n_rows, 1, 1)](
         y,
         x,
@@ -67,10 +63,16 @@ def softmax_triton_impl(x):
     return y
 
 
-if __name__ == "__main__":
-    x = torch.randn(1823, 781, device="cuda")
-    y_torch = torch.softmax(x, axis=1)
-    y_triton = softmax_triton(x)
-    y_jit = softmax_jit(x)
+def main():
+    torch.manual_seed(0)
+    x: torch.Tensor = torch.randn(1823, 781, device="cuda")
+    y_torch: torch.Tensor = torch.softmax(x, axis=1)
+    y_triton: torch.Tensor = softmax_triton(x)
+    y_jit: torch.Tensor = softmax_jit(x)
     assert torch.allclose(y_torch, y_triton), (y_torch, y_triton)
     assert torch.allclose(y_torch, y_jit), (y_torch, y_jit)
+
+
+if __name__ == "__main__":
+    main()
+    assert torch.cuda.memory_allocated() == 0

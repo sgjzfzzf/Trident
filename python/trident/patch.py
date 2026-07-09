@@ -14,6 +14,7 @@ import triton
 
 from trident._C.trident_core import ir
 from trident._C.trident_core.dialects import (
+    arith,
     gpu,
     llvm,
     torch as torch_d,
@@ -193,20 +194,19 @@ def _import_hop_triton_kernel_wrapper_mutation(
     grid_x, grid_y, grid_z = grid
     torchext.TridentKernelLaunchOp(
         ir.Attribute.parse(f"@{binary_name}::@{kernel.metadata.name}"),
-        llvm.mlir_constant(value=ir.IntegerAttr.get(i64_type, grid_x), loc=loc),
-        llvm.mlir_constant(value=ir.IntegerAttr.get(i64_type, grid_y), loc=loc),
-        llvm.mlir_constant(value=ir.IntegerAttr.get(i64_type, grid_z), loc=loc),
-        llvm.mlir_constant(
-            value=ir.IntegerAttr.get(
-                i64_type, kernel.metadata.num_warps * kernel.metadata.warp_size
-            ),
+        arith.constant(i64_type, grid_x, loc=loc),
+        arith.constant(i64_type, grid_y, loc=loc),
+        arith.constant(i64_type, grid_z, loc=loc),
+        arith.constant(
+            i64_type,
+            kernel.metadata.num_warps * kernel.metadata.warp_size,
             loc=loc,
         ),
-        llvm.mlir_constant(value=ir.IntegerAttr.get(i64_type, 1), loc=loc),
-        llvm.mlir_constant(value=ir.IntegerAttr.get(i64_type, 1), loc=loc),
+        arith.constant(i64_type, 1, loc=loc),
+        arith.constant(i64_type, 1, loc=loc),
         operands,
-        dynamicSharedMemorySize=llvm.mlir_constant(
-            value=ir.IntegerAttr.get(i32_type, kernel.metadata.shared), loc=loc
+        dynamicSharedMemorySize=arith.constant(
+            i32_type, kernel.metadata.shared, loc=loc
         ),
         loc=loc,
     )

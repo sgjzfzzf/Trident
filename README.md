@@ -32,10 +32,15 @@ The repository contains:
 - CUDA Toolkit (for GPU execution)
 - `uv` (recommended Python package/build workflow)
 
-Python build dependencies are declared in `pyproject.toml`, including:
+Dependencies as declared in `pyproject.toml`:
 
+**Runtime** (also listed under `[project] dependencies`):
 - `torch>=2.10.0`
-- `triton==3.6.0`
+- `apache-tvm-ffi`
+
+**Build-time** (also required at runtime for `torch`):
+- `torch>=2.10.0`
+- `triton`
 - `apache-tvm-ffi`
 - `scikit-build-core`, `nanobind`, `cmake`, `ninja`
 
@@ -73,7 +78,7 @@ python -m unittest discover -s test -p "test_*.py"
 ```
 
 Tests in `test/` validate end-to-end lowering and execution for selected ATen
-ops (for example `empty` and `empty_like`).
+ops: `empty`, `empty_like`, `mul_scalar`, `sub`, `vtensor_literal`.
 
 ## License
 

@@ -49,7 +49,7 @@ flowchart TD
   B --> C{"existing matching specialization?"}
   C -- "no" --> D["compile(*args)"]
   D --> E["torch._dynamo.export builds FX graph and guards"]
-  E --> F["TridentFxImporter imports FX into MLIR"]
+  E --> F["FxImporter imports FX into MLIR"]
   F --> G["create tvm_ffi.func wrapper and attach arg_attrs guards"]
   G --> H["store sub-module"]
   H --> I["stub_compile rebuilds executor"]
@@ -63,6 +63,24 @@ flowchart TD
   C -- "yes" --> P["execute executor directly"]
   P --> Q["return Tensor/container results"]
 ```
+
+### 3.1 `compile` vs `jit`
+
+Trident exposes two entry points (`python/trident/compile.py`):
+
+- **`trident.compile(fn)`** — Returns a factory function. Each call creates a fresh
+  `TridentGraphModule`, compiles it once with the given arguments, and returns the
+  resulting callable. No recompilation on guard mismatch — the returned function
+  always uses the original specialization.
+
+- **`trident.jit(fn)`** — Returns a `TridentGraphModule` directly. Supports
+  incremental specialization: when `GuardMatchException` is raised, the module
+  automatically recompiles for new input shapes/dtypes/devices (up to
+  `max_compiles` times, default 2). Also supports keyword arguments via
+  `inspect.signature`-based wrapping.
+
+Use `compile` for one-shot compilation when inputs are known and stable.
+Use `jit` when inputs may vary across calls.
 
 ## 4. Specialization And Guard Strategy
 
@@ -78,6 +96,24 @@ When runtime inputs change and guards no longer match:
 - The outer dispatcher checks the error kind and tries the next specialization.
 - If none match, it returns a failure code and triggers upper-layer recompilation or failure.
 
+The `max_compiles` parameter (default 2) controls the recompilation limit per
+`TridentGraphModule`. Each new specialization appends a sub-module; the
+dispatcher tries them in creation order. The following guard types (implemented
+in `python/trident/guards/`) translate Dynamo's export guards into MLIR argument
+attributes on `tvm_ffi.func`:
+
+| Guard Class | Purpose |
+|---|---|
+| `ConstantGuard` | Checks tensor values against expected constants |
+| `CUDADeviceGuard` | Ensures tensor is on the expected CUDA device |
+| `DimensionGuard` | Validates tensor dimensionality |
+| `DTypeGuard` | Checks tensor element type |
+| `SizeGuard` | Validates specific dimension sizes |
+| `StorageOffsetGuard` | Checks tensor storage offset |
+| `StrideGuard` | Validates tensor strides |
+| `TensorTypeGuard` | Ensures value is a tensor |
+| `Guards` | Collection that aggregates individual guards |
+
 ## 5. FX Import And Triton Kernel Handling
 
 Triton higher-order ops (HOPs) like `triton_kernel_wrapper_mutation` are not natively
@@ -90,8 +126,9 @@ in `python/trident/patch.py` to inject this support at import time:
 - `unpatch_graph_node_importer_for_triton_hop()` restores the original class
   state in a `try/finally` block, avoiding persistent global side effects.
 - The patched import retrieves compiled kernels and runtime parameters from
-  Triton JIT/Autotune results, materializes cubin into `gpu.binary` (GPU object)
-  attached to the module, and emits `torchext.TridentKernelLaunchOp`.
+  Triton JIT/Autotune results, sets `"gpu.container_module"` on the top-level
+  module, materializes each kernel's cubin into a `gpu.binary` op, and emits
+  `torchext.TridentKernelLaunchOp` referencing the `gpu.binary` symbol.
 - For autotune paths, computes/selects launch grids based on `best_config`.
 
 This integrates Triton kernel launches into the MLIR workflow without modifying
@@ -121,6 +158,17 @@ This design decouples the MLIR lowering layer from `c10::Dispatcher` — the low
 only needs to know the `trident.aten.*` FFI symbol name, while the runtime wrapper
 handles all PyTorch type-system interaction.
 
+### 6.1 Special Lowering: `torch.vtensor.literal`
+
+The `torch.vtensor.literal` op (produced during FX import for constant tensors)
+bypasses the generic `trident.aten.*` dispatch with a dedicated lowering in
+`trident-core/lib/Conversion/TorchToLLVM/Literal.cc`:
+
+- **Splat path**: When all elements are identical, emits `aoti_torch_aten_full`
+  for efficient compile-time constant creation.
+- **Non-splat path**: Stages data on CPU and copies to device via
+  `aoti_torch_copy_`.
+
 ## 7. TorchExt Dialect
 
 The `torchext` dialect bridges Torch semantics with MLIR-native types and GPU kernel
@@ -149,7 +197,23 @@ After lowering to LLVM, `TridentGraphModule` generates one unified entry point:
 
 This provides runtime dispatch across multiple specializations under one stable symbol name.
 
-## 9. End-to-End Execution Summary
+## 9. C API Layer (`trident-core-c`)
+
+The `trident-core/include/trident-core-c/` directory provides a C API bridge
+between the C++ MLIR implementation and the Python nanobind layer:
+
+- **`Registration.h`** — Exports `tridentCoreRegisterAllDialects()` and
+  `tridentCoreRegisterAllPasses()`, called from the Python registration
+  module during `register_all_dialects()` / `register_all_passes()`.
+
+- **`Dialects.h`** — Declares C API registration helpers for the `TorchExt`
+  and `TVMFFI` dialects, allowing Python to discover and use these custom
+  dialects via `trident._C.trident_core.dialects`.
+
+This layer ensures the Python package can initialize all custom dialects and
+passes without directly linking against C++ MLIR internals.
+
+## 10. End-to-End Execution Summary
 
 1. The first call to a Python function triggers compilation.
 2. The FX graph is imported into MLIR and wrapped as a tvm_ffi callable.

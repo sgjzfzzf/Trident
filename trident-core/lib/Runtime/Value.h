@@ -220,7 +220,7 @@ template <> struct Value<c10::NumberType> {
   static inline tvm::ffi::Any resolve(c10::IValue &&val) {
     c10::Scalar s = val.toScalar();
     if (s.isBoolean()) {
-      return static_cast<bool>(s.toBool());
+      return s.toBool();
     } else if (s.isIntegral(false)) {
       return s.to<int64_t>();
     } else {

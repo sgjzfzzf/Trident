@@ -11,6 +11,7 @@
 
 #include "trident-core/Conversion/Utils/CFunctionDeclUtils.h"
 #include "tvm/ffi/c_api.h"
+#include "tvm/ffi/extra/c_env_api.h"
 
 // TVM FFI C API function descriptors.
 namespace trident::conversion::utils {
@@ -26,6 +27,9 @@ TRIDENT_DECLARE_CAPI_GET_OR_CREATE(TVMFFIFunctionGetGlobal)
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE(TVMFFIFunctionCall)
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE(TVMFFIObjectIncRef)
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE(TVMFFIObjectDecRef)
+
+// TVM FFI environment (device/stream).
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE(TVMFFIEnvGetStream)
 
 } // namespace trident::conversion::utils
 

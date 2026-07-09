@@ -17,6 +17,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
 #include "trident-core/Conversion/Utils/AOTICAPIDescriptors.h"
+#include "trident-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident-core/Conversion/Utils/Type.h"
 #include "trident-core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "trident-core/Dialect/TorchExt/IR/TorchExtOps.h"
@@ -103,18 +104,24 @@ public:
         trident::conversion::utils::getDLTensorType(ctx);
 
     // Build grid and block dimensions from individual values.
-    // Use the original op values (index type) rather than adapted (i64),
-    // because gpu.launch_func requires index for grid/block sizes.
-    mlir::gpu::KernelDim3 gridSize{op.getGridSizeX(), op.getGridSizeY(),
-                                   op.getGridSizeZ()};
-    mlir::gpu::KernelDim3 blockSize{op.getBlockSizeX(), op.getBlockSizeY(),
-                                    op.getBlockSizeZ()};
+    // Since TridentKernelLaunchOp uses I64 for grid/block/cluster (not Index),
+    // all operands are already legal LLVM types.  When all operand types are
+    // legal LLVM types the GpuToLLVMConversionPass marks the op dynamically
+    // legal and LegalizeLaunchFuncOpPattern never matches — this preserves
+    // the asyncObject (current CUDA stream) through the lowering pipeline.
+    mlir::gpu::KernelDim3 gridSize{
+        adaptor.getGridSizeX(), adaptor.getGridSizeY(), adaptor.getGridSizeZ()};
+    mlir::gpu::KernelDim3 blockSize{adaptor.getBlockSizeX(),
+                                    adaptor.getBlockSizeY(),
+                                    adaptor.getBlockSizeZ()};
 
     // Build optional cluster dimensions.
     std::optional<mlir::gpu::KernelDim3> clusterSize = std::nullopt;
-    if (op.getClusterSizeX() && op.getClusterSizeY() && op.getClusterSizeZ()) {
-      clusterSize = mlir::gpu::KernelDim3{
-          op.getClusterSizeX(), op.getClusterSizeY(), op.getClusterSizeZ()};
+    if (adaptor.getClusterSizeX() && adaptor.getClusterSizeY() &&
+        adaptor.getClusterSizeZ()) {
+      clusterSize = mlir::gpu::KernelDim3{adaptor.getClusterSizeX(),
+                                          adaptor.getClusterSizeY(),
+                                          adaptor.getClusterSizeZ()};
     }
 
     // Dynamic shared memory size (may be null) — use adapted value for i32.
@@ -128,10 +135,8 @@ public:
          llvm::zip(op.getKernelOperands(), adaptor.getKernelOperands())) {
       if (mlir::isa<mlir::torch::Torch::BaseTensorType>(orig.getType())) {
         // Extract pointer from TVMFFIAny field[2].
-        mlir::Value handleInt =
-            mlir::LLVM::ExtractValueOp::create(rewriter, loc, adapted,
-                                               llvm::ArrayRef<int64_t>{2})
-                .getResult();
+        mlir::Value handleInt = mlir::LLVM::ExtractValueOp::create(
+            rewriter, loc, adapted, llvm::ArrayRef<int64_t>{2});
         mlir::Value handle =
             mlir::LLVM::IntToPtrOp::create(rewriter, loc, ptrTy, handleInt);
         // Skip 24-byte TVMFFIObject header to reach DLTensor.
@@ -145,19 +150,15 @@ public:
             mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, dataGep));
       } else if (mlir::isa<mlir::torch::Torch::BoolType>(orig.getType())) {
         // Bool: extract i64 payload and truncate to i1.
-        mlir::Value payload =
-            mlir::LLVM::ExtractValueOp::create(rewriter, loc, adapted,
-                                               llvm::ArrayRef<int64_t>{2})
-                .getResult();
+        mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
+            rewriter, loc, adapted, llvm::ArrayRef<int64_t>{2});
         operands.push_back(
             mlir::LLVM::TruncOp::create(rewriter, loc, i1Ty, payload));
       } else if (mlir::isa<mlir::torch::Torch::FloatType,
                            mlir::torch::Torch::IntType>(orig.getType())) {
         // Torch scalar: extract i64 payload from TVMFFIAny field[2].
-        mlir::Value payload =
-            mlir::LLVM::ExtractValueOp::create(rewriter, loc, adapted,
-                                               llvm::ArrayRef<int64_t>{2})
-                .getResult();
+        mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
+            rewriter, loc, adapted, llvm::ArrayRef<int64_t>{2});
         operands.push_back(payload);
       } else {
         // Native scalar type (f32, i32, etc. from torchext.cast):
@@ -189,21 +190,20 @@ public:
     mlir::Value deviceIndex =
         mlir::LLVM::LoadOp::create(rewriter, loc, i32Ty, devIdxSlot);
 
-    // Step 2: call aoti_torch_get_current_stream(deviceIndex, &slot).
+    // Step 2: call TVMFFIEnvGetStream(kDLCUDA, deviceIndex) to get the
+    // current CUDA stream handle directly (returns void*).
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getStreamFn =
-        trident::conversion::utils::getOrCreateAOTITorchGetCurrentStream(
-            moduleOp);
+        trident::conversion::utils::getOrCreateTVMFFIEnvGetStream(moduleOp);
     if (mlir::failed(getStreamFn)) {
-      return op->emitOpError("failed to create aoti_torch_get_current_stream");
+      return op->emitOpError("failed to create TVMFFIEnvGetStream");
     }
 
-    mlir::Value streamSlot = mlir::LLVM::AllocaOp::create(
-        rewriter, loc, ptrTy, ptrTy,
-        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1));
-    mlir::LLVM::CallOp::create(rewriter, loc, *getStreamFn,
-                               mlir::ValueRange{deviceIndex, streamSlot});
-    mlir::Value asyncObject =
-        mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, streamSlot);
+    mlir::Value cudaDeviceType = mlir::LLVM::ConstantOp::create(
+        rewriter, loc, i32Ty, DLDeviceType::kDLCUDA);
+    mlir::Value asyncObject = mlir::LLVM::CallOp::create(
+                                  rewriter, loc, *getStreamFn,
+                                  mlir::ValueRange{cudaDeviceType, deviceIndex})
+                                  .getResult();
 
     // Triton kernels always include 2 extra u64 pointer parameters in the
     // PTX parameter list beyond the user-visible runtime parameters.

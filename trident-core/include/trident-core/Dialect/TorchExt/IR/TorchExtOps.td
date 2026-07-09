@@ -70,15 +70,15 @@ def TorchExt_TridentKernelLaunchOp : TorchExt_Op<"trident_kernel_launch", [
   }];
 
   let arguments = (ins SymbolRefAttr:$kernel,
-                   Index:$gridSizeX,
-                   Index:$gridSizeY,
-                   Index:$gridSizeZ,
-                   Index:$blockSizeX,
-                   Index:$blockSizeY,
-                   Index:$blockSizeZ,
-                   Optional<Index>:$clusterSizeX,
-                   Optional<Index>:$clusterSizeY,
-                   Optional<Index>:$clusterSizeZ,
+                   I64:$gridSizeX,
+                   I64:$gridSizeY,
+                   I64:$gridSizeZ,
+                   I64:$blockSizeX,
+                   I64:$blockSizeY,
+                   I64:$blockSizeZ,
+                   Optional<I64>:$clusterSizeX,
+                   Optional<I64>:$clusterSizeY,
+                   Optional<I64>:$clusterSizeZ,
                    Optional<I32>:$dynamicSharedMemorySize,
                    Variadic<AnyType>:$kernelOperands);
   let results = (outs);
@@ -96,7 +96,6 @@ def TorchExt_TridentKernelLaunchOp : TorchExt_Op<"trident_kernel_launch", [
     (`dynamic_shared_memory_size` $dynamicSharedMemorySize^)?
     (`args` `(` $kernelOperands^ `:` type($kernelOperands) `)`)?
     attr-dict
-    `:` type($gridSizeX)
 }];
 }
 

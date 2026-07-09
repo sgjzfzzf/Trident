@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: MIT
 
 from __future__ import annotations
-from typing import Any, Callable, Final, List, Tuple
+from typing import Any, Callable, Dict, Final, List, Tuple
 
 import inspect
 import torch
 import tvm_ffi
+import tvm_ffi.utils
 
 from trident._C.trident_core import (
     capi_utils,
@@ -48,7 +49,6 @@ class TridentGraphModule(object):
         super().__init__(*args, **kwargs)
         self.fn: Final[Callable[..., Any]] = fn
         self._max_compiles: Final[int] = max_compiles
-        self._signature: Final[inspect.Signature] = inspect.signature(fn)
         self.ctx: Final[ir.Context] = ir.Context()
         register_all_dialects(self.ctx)
         register_all_passes()
@@ -60,41 +60,23 @@ class TridentGraphModule(object):
     # ------------------------------------------------------------------ #
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        bound_args: inspect.BoundArguments = self._signature.bind(*args, **kwargs)
-        bound_args.apply_defaults()
-
-        normalized: List[Any] = []
-        for parameter in self._signature.parameters.values():
-            if parameter.kind in (
-                inspect.Parameter.POSITIONAL_ONLY,
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            ):
-                normalized.append(bound_args.arguments[parameter.name])
-            elif parameter.kind == inspect.Parameter.VAR_POSITIONAL:
-                normalized.extend(bound_args.arguments.get(parameter.name, []))
-            else:
-                raise TypeError(
-                    f"unsupported parameter kind: {parameter.kind} (parameter: {parameter.name})"
-                )
-
-        args: Tuple[Any, ...] = tuple(normalized)
         for _ in range(self._max_compiles):
             try:
-                return self.executor(*args)
+                return self.executor(*args, **kwargs)
             except GuardMatchException:
-                self.compile(*args)
+                self.compile(*args, **kwargs)
 
         raise RuntimeError(
             f"recompilation limit ({self._max_compiles}) exceeded without finding a matching specialization"
         )
 
-    def compile(self, *args: Any) -> Any:
+    def compile(self, *args: Any, **kwargs) -> Any:
         """Build a new sub-module for *args* and rebuild the combined
         module + dispatcher.  Called automatically from ``__call__`` when a
         ``GuardMatchException`` is raised."""
         # 1. Build a new sub-module for the current arguments.
         sub_mod: ir.Module = self._build_sub_module(
-            self.fn, self.ctx, len(self._sub_modules), args
+            self.fn, self.ctx, len(self._sub_modules), args, kwargs
         )
         self._sub_modules.append(sub_mod)
 
@@ -116,7 +98,7 @@ class TridentGraphModule(object):
         # recompile via GuardMatchException.
         if len(self._sub_modules) == 0:
 
-            def _stub(*_: Any) -> Any:
+            def _stub(*args: Any, **kwargs: Any) -> Any:
                 raise GuardMatchException(
                     "no suitable specialization compiled yet",
                 )
@@ -139,6 +121,7 @@ class TridentGraphModule(object):
         # 4. JIT-compile and wrap.
         engine: ExecutionEngine = ExecutionEngine(
             combined,
+            opt_level=3,
             shared_libs=capi_utils.find_runtime_libraries(),
         )
         engine.initialize()
@@ -155,18 +138,11 @@ class TridentGraphModule(object):
             keep_alive_object=engine,
         )
 
-        def executor(*inner_args: Any) -> Any:
-            def canonicalize(v: Any) -> Any:
-                if isinstance(v, (list, tuple, tvm_ffi.Array)):
-                    return type(v)(canonicalize(x) for x in v)
-                elif hasattr(v, "__dlpack__") and not isinstance(v, torch.Tensor):
-                    return torch.from_dlpack(v)
-                else:
-                    return v
+        f: Callable = tvm_ffi.utils.kwargs_wrapper.make_kwargs_wrapper_from_signature(
+            fn, inspect.signature(self.fn)
+        )
 
-            return canonicalize(fn(*inner_args))
-
-        return executor
+        return f
 
     # ------------------------------------------------------------------ #
     # Internal: sub-module construction
@@ -178,6 +154,7 @@ class TridentGraphModule(object):
         ctx: ir.Context,
         index: int,
         args: Tuple[Any, ...],
+        kwargs: Dict[str, Any],
     ) -> ir.Module:
         """Export -> import -> wrap a single sub-module for *args*.
 
@@ -189,8 +166,8 @@ class TridentGraphModule(object):
         # Step 1: Export  ---------------------------------------------------
         gm, gs = torch._dynamo.export(
             fn, aten_graph=True, assume_static_by_default=True
-        )(*args)
-        gm(*args)  # Warm-up
+        )(*args, **kwargs)
+        gm(*args, **kwargs)  # Warm-up
 
         # Step 2: Import FX -> MLIR  ----------------------------------------
         with apply_patch():

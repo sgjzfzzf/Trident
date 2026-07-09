@@ -37,10 +37,6 @@ def add_triton(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 
 def add_impl(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    # TODO(trident): Temporary workaround for jit-lowered empty_like device
-    # semantics in this example path. Keep device explicit to avoid CPU output
-    # allocation causing CUDA illegal-address in kernel launch; revert this once
-    # backend empty_like/device handling is fixed.
     output: torch.Tensor = torch.empty_like(x)
     assert x.device == DEVICE and y.device == DEVICE and output.device == DEVICE
     n_elements: int = output.numel()

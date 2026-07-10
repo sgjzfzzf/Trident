@@ -37,18 +37,24 @@ void TorchExtDialect::initialize() {
 //===----------------------------------------------------------------------===//
 
 mlir::LogicalResult CastOp::verify() {
-  mlir::Type operandType = getOperand().getType();
-  mlir::Type resultType = getResult().getType();
+  return areCastCompatible(getOperand().getType(), getResult().getType())
+             ? mlir::success()
+             : emitOpError("unsupported cast from ")
+                   << getOperand().getType() << " to " << getResult().getType();
+}
 
-  if ((llvm::isa<mlir::torch::Torch::IntType>(operandType) &&
-       llvm::isa<mlir::IntegerType>(resultType)) ||
-      (llvm::isa<mlir::torch::Torch::FloatType>(operandType) &&
-       llvm::isa<mlir::FloatType>(resultType))) {
-    return mlir::success();
-  } else {
-    return emitOpError("unsupported cast from ")
-           << operandType << " to " << resultType;
+bool CastOp::areCastCompatible(mlir::TypeRange inputs,
+                               mlir::TypeRange outputs) {
+  if (inputs.size() != 1 || outputs.size() != 1) {
+    return false;
   }
+  mlir::Type input = inputs[0];
+  mlir::Type output = outputs[0];
+
+  return (llvm::isa<mlir::torch::Torch::IntType>(input) &&
+          llvm::isa<mlir::IntegerType>(output)) ||
+         (llvm::isa<mlir::torch::Torch::FloatType>(input) &&
+          llvm::isa<mlir::FloatType>(output));
 }
 
 } // namespace trident::torchext

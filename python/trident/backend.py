@@ -186,7 +186,7 @@ class TridentGraphModule(object):
             [*inspect.signature(fn).parameters.keys()], ctx
         )
 
-        with ir.InsertionPoint(module.body), ir.Location.unknown(ctx):
+        with ir.InsertionPoint(module.body), main_func.operation.location:
             ffi_func: tvm_ffi_d.FuncOp = tvm_ffi_d.func(
                 tvm_ffi_name,
                 ir.TypeAttr.get(main_func.type),
@@ -217,8 +217,12 @@ class TridentGraphModule(object):
         always sees a fresh source module.  This avoids hangs caused by
         repeated merging of the same module objects.
         """
+        # Derive module location from the function being compiled so
+        # that the combined module has a meaningful source anchor.
+        fn_file: str = inspect.getfile(self.fn)
+        _, fn_line = inspect.getsourcelines(self.fn)
         combined: ir.Module = ir.Module.create(
-            loc=ir.Location.unknown(self.ctx),
+            loc=ir.Location.file(fn_file, fn_line, col=0, context=self.ctx)
         )
         for sub_mod in self._sub_modules:
             with self.ctx, sub_mod.operation.location:

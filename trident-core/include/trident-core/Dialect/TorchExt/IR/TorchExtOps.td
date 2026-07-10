@@ -12,6 +12,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/CommonTypeConstraints.td"
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/CastInterfaces.td"
 include "torch-mlir/Dialect/Torch/IR/TorchTypes.td"
 
 include "trident-core/Dialect/TorchExt/IR/TorchExtBase.td"
@@ -23,8 +24,10 @@ class TorchExt_Op<string mnemonic, list<Trait> traits = []>
 // Cast
 //===----------------------------------------------------------------------===//
 
-def TorchExt_CastOp : TorchExt_Op<"cast", [Pure]> {
-  let summary = "Cast a Torch scalar (!torch.float or !torch.int) to a native MLIR scalar type";
+def TorchExt_CastOp
+    : TorchExt_Op<"cast", [Pure, DeclareOpInterfaceMethods<CastOpInterface>]> {
+  let summary = "Cast a Torch scalar (!torch.float or !torch.int) to a native "
+                "MLIR scalar type";
   let description = [{
     Converts a `!torch.float` or `!torch.int` scalar value to a native MLIR
     type (f32, f64, i32, or i64).  This is necessary when passing scalar
@@ -67,9 +70,10 @@ def TorchExt_TridentKernelLaunchOp : TorchExt_Op<"trident_kernel_launch", [
     `clusterSizeY`, and `clusterSizeZ` arguments. When present, the kernel
     is launched with the specified thread-block cluster size. This feature
     is exclusive to certain architectures (e.g. NVIDIA Hopper and later).
-  }];
 
-  let arguments = (ins SymbolRefAttr:$kernel,
+}];
+
+let arguments = (ins SymbolRefAttr:$kernel,
                    I64:$gridSizeX,
                    I64:$gridSizeY,
                    I64:$gridSizeZ,
@@ -81,9 +85,9 @@ def TorchExt_TridentKernelLaunchOp : TorchExt_Op<"trident_kernel_launch", [
                    Optional<I64>:$clusterSizeZ,
                    Optional<I32>:$dynamicSharedMemorySize,
                    Variadic<AnyType>:$kernelOperands);
-  let results = (outs);
+let results = (outs);
 
-  let extraClassDeclaration = [{
+let extraClassDeclaration = [{
     /// Returns true if cluster size is specified.
     bool hasClusterSize();
   }];

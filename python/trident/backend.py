@@ -25,6 +25,7 @@ from trident.core.dialects import (
 )
 from trident.core.execution_engine import ExecutionEngine
 from trident.core.extras.fx_importer import FxImporter
+from trident.ffi import Exception
 from .guards import parse_guards
 from .patch import apply_patch
 
@@ -63,7 +64,7 @@ class TridentGraphModule(object):
 
         for _ in range(self._max_compiles):
             result = self.executor(*args, **kwargs)
-            if result.__class__.__name__ == "Exception":
+            if isinstance(result, Exception):
                 # The dispatcher returned an Exception ObjectRef
                 # (all specializations failed); compile a new one.
                 self.compile(*args, **kwargs)

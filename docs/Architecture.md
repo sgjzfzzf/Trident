@@ -5,66 +5,75 @@ This document describes the core workflows in the current repository:
 - Build workflow: how the Python packaging entry points trigger CMake and external dependency builds.
 - Runtime workflow: how a Python function is transformed into MLIR/LLVM and then executed via JIT.
 
-## 1. High-Level Components
+## High-Level Components
 
 - Top-level CMake project
   - Dependencies are orchestrated via `ExternalProject` in the root `CMakeLists.txt`:
     - `llvm-project` (with MLIR + Python bindings enabled)
-    - `core` (the core C++/MLIR implementation in this repo)
+    - `trident-core` (the core C++/MLIR implementation in this repo)
+    - `trident-ffi` (the FFI runtime layer — Exception ObjectRef and type stubs)
 - core
   - Implements and exports Dialects/Passes/Runtime/Python bindings.
   - Depends on torch-mlir, MLIR, LLVM, CUDAToolkit, Torch, and tvm_ffi.
+- ffi
+  - Lightweight C++ shared library (`libTridentFFI.so`) providing FFI-level types.
+  - Exports `trident.ffi.Exception` — an `ObjectRef`-based error type for composable error handling.
+  - Python stubs auto-generated via `tvm-ffi-stubgen` at build time.
 - Python package trident
   - User-facing entry points: `jit` and `compile`.
   - Core backend object: `TridentGraphModule`.
   - Handles graph export/import, guard specialization, compilation, and execution dispatch.
 
-## 2. Build Workflow
+## Build Workflow
 
 ```mermaid
 flowchart TD
   A[uv pip install -e . or uv build] --> B[scikit-build-core]
   B --> C[root CMakeLists]
   C --> D[ExternalProject: llvm-project]
-  C --> E[ExternalProject: core]
-  D --> F[install LLVM/MLIR to build/install/llvm-project]
-  F --> E
-  E --> G[build and install core to build/install/core]
-  G --> H[install Python extension into trident/_C]
+  C --> E[ExternalProject: trident-core]
+  C --> F[ExternalProject: trident-ffi]
+  D --> G[install LLVM/MLIR to build/install/llvm-project]
+  G --> E
+  E --> H[build and install core to build/install/trident]
+  F --> I[build and install ffi to build/install/trident]
+  H --> J[install Python extension into trident]
+  I --> J
 ```
 
 Build highlights:
 
 - `pyproject.toml` uses `scikit-build-core` as the build backend.
 - Build steps fetch and compile `llvm-project` and `torch-mlir`; first builds can take a long time.
-- `wheel.install-dir` is configured as `trident/_C`, so Python can import the C++/MLIR bindings directly.
+- `wheel.install-dir` is configured as `trident` so Python can import both `trident.core` and `trident.ffi` bindings directly.
+- The `ffi` subproject builds `libTridentFFI.so` and auto-generates `_ffi_api.py` stubs via `tvm-ffi-stubgen`.
 
-## 3. Runtime Compilation Workflow
+## Runtime Compilation Workflow
 
 Users typically decorate Python functions with `@trident.jit`. The call path is:
 
 ```mermaid
 flowchart TD
   A["user calls jitted function"] --> B["TridentGraphModule.__call__"]
-  B --> C{"existing matching specialization?"}
-  C -- "no" --> D["compile(*args)"]
-  D --> E["torch._dynamo.export builds FX graph and guards"]
-  E --> F["FxImporter imports FX into MLIR"]
-  F --> G["create tvm_ffi.func wrapper and attach arg_attrs guards"]
-  G --> H["store sub-module"]
-  H --> I["stub_compile rebuilds executor"]
-  I --> J["merge all sub-modules"]
-  J --> K["run trident-lowering-pipeline"]
-  K --> L["build LLVM dispatcher"]
-  L --> M["ExecutionEngine JIT"]
-  M --> N["raw_lookup resolves __tvm_ffi_&lt;fn&gt;"]
-  N --> O["wrap as tvm_ffi.Function"]
-  O --> B
-  C -- "yes" --> P["execute executor directly"]
-  P --> Q["return Tensor/container results"]
+  B --> C{"executor returns Exception ObjectRef?"}
+  C -- "no" --> D["return result directly"]
+  C -- "yes" --> E["compile(*args, **kwargs)"]
+  E --> F["torch._dynamo.export builds FX graph and guards"]
+  F --> G["FxImporter imports FX into MLIR"]
+  G --> H["create tvm_ffi.func wrapper and attach arg_attrs guards"]
+  H --> I["store sub-module"]
+  I --> J["rebuild combined module + dispatcher"]
+  J --> K["merge all sub-modules"]
+  K --> L["run trident-lowering-pipeline"]
+  L --> M["build LLVM dispatcher"]
+  M --> N["ExecutionEngine JIT (opt_level=3)"]
+  N --> O["raw_lookup resolves __tvm_ffi_&lt;fn&gt;"]
+  O --> P["wrap as kwargs-aware callable"]
+  P --> B
+  D --> Q["return Tensor/container results"]
 ```
 
-### 3.1 `compile` vs `jit`
+### `compile` vs `jit`
 
 Trident exposes two entry points (`python/trident/compile.py`):
 
@@ -74,27 +83,30 @@ Trident exposes two entry points (`python/trident/compile.py`):
   always uses the original specialization.
 
 - **`trident.jit(fn)`** — Returns a `TridentGraphModule` directly. Supports
-  incremental specialization: when `GuardMatchException` is raised, the module
-  automatically recompiles for new input shapes/dtypes/devices (up to
-  `max_compiles` times, default 2). Also supports keyword arguments via
-  `inspect.signature`-based wrapping.
+  incremental specialization: when the dispatcher returns an `Exception` ObjectRef
+  (indicating all specializations failed guard checks), the module automatically
+  recompiles for new input shapes/dtypes/devices (up to `max_compiles` times,
+  default 2). Supports both positional and keyword arguments via
+  `tvm_ffi.utils.kwargs_wrapper`.
 
 Use `compile` for one-shot compilation when inputs are known and stable.
 Use `jit` when inputs may vary across calls.
 
-## 4. Specialization And Guard Strategy
+## Specialization And Guard Strategy
 
-Each `compile(*args)` produces a new sub-module with these properties:
+Each `compile(*args, **kwargs)` produces a new sub-module with these properties:
 
 - The `main` function symbol is indexed to avoid collisions (for example `main_0`, `main_1`).
 - The exported `tvm_ffi.func` is also indexed (for example `<fn>_0`, `<fn>_1`).
 - Guards exported by Dynamo are converted to MLIR attributes and attached to `tvm_ffi.func` argument attributes.
+- `torch._dynamo.reset()` is called after each FX import to release tracing resources.
 
 When runtime inputs change and guards no longer match:
 
-- A sub-function throws `GuardMatchException` (registered as a tvm_ffi error on the Python side).
-- The outer dispatcher checks the error kind and tries the next specialization.
-- If none match, it returns a failure code and triggers upper-layer recompilation or failure.
+- A sub-function returns a `trident.ffi.Exception` ObjectRef (not a Python exception) via the FFI layer.
+- The outer dispatcher inspects the return type — if it is an `Exception`, it tries the next specialization.
+- If all specializations fail, the dispatcher returns an `Exception` to the Python caller.
+- `TridentGraphModule.__call__` detects the `Exception` ObjectRef and triggers recompilation.
 
 The `max_compiles` parameter (default 2) controls the recompilation limit per
 `TridentGraphModule`. Each new specialization appends a sub-module; the
@@ -114,7 +126,7 @@ attributes on `tvm_ffi.func`:
 | `TensorTypeGuard` | Ensures value is a tensor |
 | `Guards` | Collection that aggregates individual guards |
 
-## 5. FX Import And Triton Kernel Handling
+## FX Import And Triton Kernel Handling
 
 Triton higher-order ops (HOPs) like `triton_kernel_wrapper_mutation` are not natively
 supported by torch-mlir's `FxImporter`. Trident uses a scoped monkey-patch approach
@@ -134,7 +146,7 @@ in `python/trident/patch.py` to inject this support at import time:
 This integrates Triton kernel launches into the MLIR workflow without modifying
 torch-mlir source.
 
-## 6. ATen Operator Dispatch (atengen)
+## ATen Operator Dispatch (atengen)
 
 Trident uses an auto-generated wrapper layer for ATen operator dispatch via TVM FFI:
 
@@ -158,7 +170,7 @@ This design decouples the MLIR lowering layer from `c10::Dispatcher` — the low
 only needs to know the `trident.aten.*` FFI symbol name, while the runtime wrapper
 handles all PyTorch type-system interaction.
 
-### 6.1 Special Lowering: `torch.vtensor.literal`
+### Special Lowering: `torch.vtensor.literal`
 
 The `torch.vtensor.literal` op (produced during FX import for constant tensors)
 bypasses the generic `trident.aten.*` dispatch with a dedicated lowering in
@@ -169,35 +181,39 @@ bypasses the generic `trident.aten.*` dispatch with a dedicated lowering in
 - **Non-splat path**: Stages data on CPU and copies to device via
   `aoti_torch_copy_`.
 
-## 7. TorchExt Dialect
+## TorchExt Dialect
 
 The `torchext` dialect bridges Torch semantics with MLIR-native types and GPU kernel
 launches. Its lowering is split across two passes in `trident-lowering-pipeline`:
 
 | Op | Lowered By | Purpose |
 |---|---|---|
-| `torchext.cast` | `ConvertTorchExtToGPU` | Converts `!torch.float` / `!torch.int` scalars to native MLIR types (f32/f64/i32/i64) for typed scalar passing to Triton kernels |
-| `torchext.trident_kernel_launch` | `ConvertTorchExtToGPU` | Launches Triton kernels with explicit grid/block dimensions; unpacks tensor/scalar args from TVMFFIAny into kernel parameters and emits `gpu.launch_func` |
+| `torchext.cast` | `ConvertTorchExtToGPU` | Converts `!torch.float` / `!torch.int` scalars to native MLIR types (f32/f64/i32/i64) for typed scalar passing to Triton kernels. Implements `CastOpInterface` for standard MLIR cast semantics. |
+| `torchext.trident_kernel_launch` | `ConvertTorchExtToGPU` | Launches Triton kernels with explicit grid/block dimensions (I64); unpacks tensor/scalar args from TVMFFIAny into kernel parameters and emits `gpu.launch_func`. Uses TVMFFI stream API for CUDA stream management. |
 | `torchext.ObjectIncRef` | `ConvertTorchExtToLLVM` | Increments Torch object reference count via `TVMFFIObjectIncRef(handle)` |
 | `torchext.ObjectDecRef` | `ConvertTorchExtToLLVM` | Decrements Torch object reference count via `TVMFFIObjectDecRef(handle)` |
 
 Reference counting ops are automatically inserted by the `RAAI` pass (Reference-count
 Auto-Insertion) at the start of the pipeline, which scans each single-block region
-and adds `IncRef`/`DecRef` pairs around Torch object uses.
+and adds `IncRef`/`DecRef` pairs around Torch object uses. The RAAI pass supports
+`TupleType` and `OptionalType` values in addition to individual Torch objects. CUDA
+leak checks are integrated into examples to verify correctness.
 
-## 8. LLVM Dispatcher Semantics
+## LLVM Dispatcher Semantics
 
 After lowering to LLVM, `TridentGraphModule` generates one unified entry point:
 
 - ABI signature: `i32 (ptr, ptr, i32, ptr)`
 - Calls `__tvm_ffi_<fn>_<i>` in order
 - Uses `TVMFFIErrorMoveFromRaised` / `TVMFFIErrorSetRaised` to read and restore raised errors
-- If error kind is `GuardMatchException`, it continues to the next branch
-- If return value is success or error is not a guard miss, it returns immediately
+- Guard failure is signaled by returning a `trident.ffi.Exception` ObjectRef (not by setting an error code)
+- If the return value is a normal result (not an Exception), the dispatcher returns immediately
+- If the return value is an Exception, the dispatcher continues to the next specialization
+- If all specializations fail, the dispatcher returns the Exception to the Python caller
 
 This provides runtime dispatch across multiple specializations under one stable symbol name.
 
-## 9. C API Layer (`trident/core/c`)
+## C API Layer (`core/include/trident-c`)
 
 The `core/include/trident-c/core/` directory provides a C API bridge
 between the C++ MLIR implementation and the Python nanobind layer:
@@ -213,7 +229,28 @@ between the C++ MLIR implementation and the Python nanobind layer:
 This layer ensures the Python package can initialize all custom dialects and
 passes without directly linking against C++ MLIR internals.
 
-## 10. End-to-End Execution Summary
+## FFI Subproject (`ffi/`)
+
+The `ffi/` directory is a separate CMake subproject that builds a lightweight shared
+library (`libTridentFFI.so`) providing FFI-level types for composable error handling:
+
+- **`include/trident/ffi/Exception.h`** — Declares `ExceptionObj` (heap-allocated,
+  ref-counted) and `Exception` (ObjectRef handle). Each Exception carries a `kind_`
+  string (e.g., `"GuardMatchException"`) for error classification.
+
+- **`lib/Exception.cc`** — Implements the Exception type and registers it with
+  TVM FFI via `TVM_FFI_STATIC_INIT_BLOCK`. Also exports `trident.ffi.Exception`
+  global constructor and `trident.ffi.GetExceptionIndex` for runtime type
+  resolution.
+
+- **`python/`** — Contains `_ffi_api.py` with `tvm-ffi-stubgen` directive blocks.
+  At build time, `tvm-ffi-stubgen` inspects `libTridentFFI.so` and fills in the
+  FFI bindings, which are then installed as `trident/ffi/` in the Python package.
+
+This separation keeps the FFI runtime layer independent of MLIR/LLVM, enabling
+lighter build times for the FFI library and cleaner dependency boundaries.
+
+## End-to-End Execution Summary
 
 1. The first call to a Python function triggers compilation.
 2. The FX graph is imported into MLIR and wrapped as a tvm_ffi callable.

@@ -6,7 +6,7 @@ This guide explains how to adapt a new operator in Trident, including:
 - How to validate the implementation.
 - What to suspect when bugs appear.
 
-## 1. Pick The Adaptation Path
+## Pick The Adaptation Path
 
 In this repository, there are two common adaptation paths.
 
@@ -22,7 +22,7 @@ In this repository, there are two common adaptation paths.
 
 For a new operator bring-up, start with path 1, then validate path 2 if needed.
 
-## 2. atengen Auto-Wrapping
+## atengen Auto-Wrapping
 
 Most ATen operators are automatically wrapped by the atengen codegen tool at build
 time (`core/lib/Runtime/python/atengen.py`). atengen queries PyTorch's JIT
@@ -43,7 +43,7 @@ Manual intervention is only needed when:
 - The operator uses types not yet supported by atengen's type mapping in
   `Function.h` / `Value.h`.
 
-## 3. Minimal Bring-Up Checklist (Path 1)
+## Minimal Bring-Up Checklist (Path 1)
 
 1. Add a pipeline test MLIR file
 - Create `core/test/Conversion/Pipeline/<op>.mlir`.
@@ -67,7 +67,7 @@ Manual intervention is only needed when:
   - `python -m unittest test.test_<op>`
   - `python -m unittest discover -s test -p "test_*.py"`
 
-## 4. Optional Bring-Up Checklist (Path 2)
+## Optional Bring-Up Checklist (Path 2)
 
 Use this when the op is exercised through Python functions decorated by `@trident.jit`.
 
@@ -86,9 +86,9 @@ Use this when the op is exercised through Python functions decorated by `@triden
 - Subsequent compatible inputs should reuse specialization.
 - Guard mismatch should trigger incremental compile, not silent wrong results.
 
-## 5. Common Bug Symptoms And What To Suspect
+## Common Bug Symptoms And What To Suspect
 
-### A. `raw_lookup("__tvm_ffi_<op>")` returns null / symbol not found
+### `raw_lookup("__tvm_ffi_<op>")` returns null / symbol not found
 
 Suspect:
 - `tvm_ffi.func` wrapper name mismatch (`@<op>` not matching test `op_name`).
@@ -99,7 +99,7 @@ Check:
 - `core/test/Conversion/Pipeline/<op>.mlir`
 - `test/base.py` symbol construction logic
 
-### B. Pipeline fails before LLVM lowering
+### Pipeline fails before LLVM lowering
 
 Suspect:
 - Unsupported op form or operand type in the test IR.
@@ -111,7 +111,7 @@ Check:
 - `core/lib/Conversion/AtenToTVMFFI/Aten.cc` (`ConvertAtenDispatcherOp`) — the generic lowering that rewires all `torch.aten.*` ops to `trident.aten.*` FFI calls
 - `core/lib/Runtime/python/atengen.py` — the codegen tool that generates FFI wrappers for ATen ops
 
-### C. Wrapper call succeeds but output shape/dtype is wrong
+### Wrapper call succeeds but output shape/dtype is wrong
 
 Suspect:
 - Wrapper argument order mismatch.
@@ -123,7 +123,7 @@ Check:
 - Wrapper body in `<op>.mlir`
 - Existing examples: `empty.mlir`, `empty_like.mlir`
 
-### D. Runtime crash around FFI object conversion or ownership
+### Runtime crash around FFI object conversion or ownership
 
 Suspect:
 - Wrong tensor/object conversion helper path during lowering.
@@ -134,7 +134,7 @@ Check:
 - Lowered code patterns asserted by `FileCheck`
 - Runtime conversion calls in generated LLVM IR path
 
-### E. `@trident.jit` path recompiles too often or never stabilizes
+### `@trident.jit` path recompiles too often or never stabilizes
 
 Suspect:
 - Guard generation too strict or mismatched with actual call patterns.
@@ -144,9 +144,9 @@ Suspect:
 Check:
 - Guard parsing and attr generation in `python/trident/guards/`
 - Specialization/dispatcher flow in `python/trident/backend.py`
-- Error registration for `GuardMatchException` in `python/trident/error.py`
+- Exception kind string (e.g., `"GuardMatchException"`) in the FFI `Exception` ObjectRef returned by guard failures. The `python/trident/error.py` module has been removed — guard failure is now signaled by returning a `trident.ffi.Exception` ObjectRef through the FFI layer rather than raising a Python exception.
 
-### F. First call works, second call fails with different input
+### First call works, second call fails with different input
 
 Suspect:
 - Incremental sub-module merge issues.
@@ -157,7 +157,7 @@ Check:
 - Combined module build and merge path in `TridentGraphModule`
 - Dispatcher branch ordering and return/error handling
 
-### G. Numerical precision/value mismatch appears intermittently
+### Numerical precision/value mismatch appears intermittently
 
 Suspect:
 - Guard handling is incorrect, so a stale specialization/cache entry is reused for inputs that should trigger recompilation.
@@ -167,7 +167,7 @@ Check:
 - Guard parsing and matching logic in `python/trident/guards/` and specialization reuse flow in `python/trident/backend.py`.
 - Whether the failing case should have produced a guard miss but was incorrectly treated as cache hit.
 
-### H. `torch._dynamo.export` fails on Triton autotune/hook features
+### `torch._dynamo.export` fails on Triton autotune/hook features
 
 Symptom:
 - `torch._dynamo.exc.Unsupported` reports Triton kernel unsupported features, especially `pre_hook`/`post_hook` on `triton.Config` or `triton.autotune`.
@@ -179,7 +179,7 @@ Recommendation:
 - Avoid Triton hooks (`pre_hook`/`post_hook`) in code paths that may run under `@trident.jit` or `torch._dynamo.export`.
 - Prefer hook-free `triton.Config(...)` definitions and keep JIT-facing wrappers on Torch-friendly code paths.
 
-## 6. Practical Debug Strategy
+## Practical Debug Strategy
 
 1. Start from smallest reproducible input.
 2. Verify pipeline-only behavior with `<op>.mlir` + `FileCheck` first.
@@ -198,7 +198,7 @@ Recommendation:
 - `test/test_vtensor_literal.py`
 6. Prefer functional-style graph rewrites during debugging; avoid in-place tensor mutation when possible, because in-place ops can hide data-flow issues and complicate guard/cache correctness analysis.
 
-## 7. Definition Of Done
+## Definition Of Done
 
 An operator adaptation is considered done when:
 
@@ -207,27 +207,28 @@ An operator adaptation is considered done when:
 - Symbol naming and wrapper ABI are consistent.
 - No unexpected recompilation or guard-dispatch regression appears in runtime path.
 
-## 8. TorchExt Dialect And GPU Kernel Adaptation
+## TorchExt Dialect And GPU Kernel Adaptation
 
 For operators that involve Triton kernels or custom GPU compute (rather than
 standard ATen ops), the adaptation path differs from the atengen flow
-described in Section 2. These ops go through the `torchext` dialect.
+described in the atengen Auto-Wrapping section. These ops go through the `torchext` dialect.
 
-### 8.1 TorchExt Op Lowering
+### TorchExt Op Lowering
 
 The `torchext` dialect bridges Torch semantics with MLIR-native types and GPU
 kernel launches. Its lowering is split across two passes:
 
 | Pass | Purpose |
 |---|---|
-| `ConvertTorchExtToGPU` | Lowers `torchext.cast` (Torch scalar → native MLIR types) and `torchext.trident_kernel_launch` (Triton kernel → `gpu.launch_func`) |
+| `ConvertTorchExtToGPU` | Lowers `torchext.cast` (Torch scalar → native MLIR types, implements `CastOpInterface`) and `torchext.trident_kernel_launch` (Triton kernel → `gpu.launch_func` with I64 grid/block dimensions, uses TVMFFI stream API) |
 | `ConvertTorchExtToLLVM` | Lowers `torchext.ObjectIncRef` / `torchext.ObjectDecRef` to LLVM calls |
 
 Reference counting ops are managed by the `RAAI` pass (Reference-count
 Auto-Insertion), which scans basic blocks and inserts `IncRef`/`DecRef` pairs
-around Torch object uses.
+around Torch object uses. The RAAI pass supports `TupleType` and `OptionalType`
+values in addition to individual Torch objects.
 
-### 8.2 Adding A New `torchext` Op
+### Adding A New `torchext` Op
 
 1. Define the op in the TorchExt dialect tablegen (`.td`) files under
    `core/include/core/Dialect/TorchExt/`.
@@ -240,14 +241,19 @@ around Torch object uses.
    a specific pass ordering.
 5. Add lit tests under `core/test/Conversion/`.
 
-### 8.3 Triton Kernel Integration
+### Triton Kernel Integration
 
 Triton kernel ops (`triton_kernel_wrapper_mutation`) are handled by the
 scoped monkey-patch in `python/trident/patch.py` during FX import (see
-Architecture.md Section 5). The patched import:
+Architecture.md FX Import And Triton Kernel Handling section). The patched import:
 
 1. Sets `"gpu.container_module"` on the top-level MLIR module.
 2. Materializes each kernel's cubin as a `gpu.binary` op.
+3. Computes launch grid/block (as I64) from autotune `best_config` or kernel metadata.
+4. Emits `torchext.trident_kernel_launch` ops referencing the `gpu.binary` symbol.
+
+The CUDA stream for kernel launches is managed through the TVMFFI stream API —
+the backend no longer handles stream creation/destruction manually in Python.
 3. Emits `torchext.TridentKernelLaunchOp` with kernel parameters and
    launch grid configuration.
 

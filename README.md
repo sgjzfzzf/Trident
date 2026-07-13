@@ -7,19 +7,21 @@ The repository contains:
 
 - A Python package (`trident`) with `jit` and `compile` entry points.
 - A C++/MLIR core (`core`) built with CMake.
+- A lightweight FFI runtime layer (`ffi`) providing composable error types.
 - End-to-end examples and tests for ATen op lowering/execution.
 
 ## Current Status
 
 - Build system is wired through `scikit-build-core` + CMake.
 - LLVM/MLIR is fetched and built as an external project.
-- Python extension artifacts are installed under `trident/_C` in wheel/editable builds.
+- Python extension artifacts are installed directly under `trident/` in wheel/editable builds.
 
 ## Repository Layout
 
 - `python/trident`: Python APIs (`jit`, `compile`) and runtime backend.
 - `core`: MLIR/C++ implementation, dialects, passes, runtime glue.
-- `examples`: Functional demos (`add.py`, `mm.py`, `softmax.py`, `attention.py`).
+- `ffi`: Lightweight C++ shared library for FFI-level types (`trident.ffi.Exception`).
+- `examples`: Functional demos (`add.py`, `mm.py`, `softmax.py`, `attn.py`).
 - `test`: Python end-to-end tests for lowered ATen ops.
 
 ## Prerequisites

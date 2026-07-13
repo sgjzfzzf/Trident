@@ -31,6 +31,7 @@ void trident::conversion::registerAllPasses() {
   mlir::registerConvertToLLVMPass();
   mlir::registerReconcileUnrealizedCastsPass();
   mlir::torch::registerTorchPasses();
+  trident::torch::registerEliminateRefCountPairsPass();
   trident::torch::registerRAAIPass();
   trident::torchext::registerConvertTorchExtToGPUPass();
   trident::torchext::registerConvertTorchExtToLLVMPass();

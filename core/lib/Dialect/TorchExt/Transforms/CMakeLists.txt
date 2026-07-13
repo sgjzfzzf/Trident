@@ -1,6 +1,7 @@
 add_mlir_library(
   BackendTypeConversion
   BackendTypeConversion.cc
+  EliminateRefCountPairs.cc
   RAAI.cc
   DEPENDS
   MLIRTorchExtPassIncGen

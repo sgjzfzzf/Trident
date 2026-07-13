@@ -38,6 +38,7 @@ class TridentLoweringPipelinePass
   void runOnOperation() final {
     mlir::OpPassManager pm;
     pm.addPass(trident::torch::createRAAI());
+    pm.addPass(trident::torch::createEliminateRefCountPairs());
     pm.addPass(trident::torch::createConvertTorchToCf());
     pm.addPass(trident::torch::createConvertTorchToLLVM());
     pm.addPass(trident::torchext::createConvertTorchExtToGPU());

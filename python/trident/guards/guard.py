@@ -6,7 +6,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any, Final, Optional, Set, Type
 
-from trident._C.trident_core import ir
+from trident.core import ir
 
 
 class Guard(object):

@@ -16,13 +16,14 @@ from typing import Dict, Final, List
 
 import tvm_ffi
 
-from trident._C.trident_core import (
-    capi_utils,
+from trident import capi_utils
+
+from trident.core import (
     execution_engine,
     ir,
     passmanager,
 )
-from trident._C.trident_core._mlir_libs._tridentCore import (
+from trident.core._mlir_libs._trident import (
     register_all_dialects,
     register_all_passes,
 )
@@ -51,7 +52,7 @@ class AtenOpTest(unittest.TestCase):
         op: str = self.op_name()
         mlir_path: pathlib.Path = (
             pathlib.Path(__file__).resolve().parent.parent
-            / "trident-core"
+            / "core"
             / "test"
             / "Conversion"
             / "Pipeline"

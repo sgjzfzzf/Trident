@@ -9,21 +9,22 @@ import torch
 import tvm_ffi
 import tvm_ffi.utils
 
-from trident._C.trident_core import (
-    capi_utils,
+from trident import capi_utils
+
+from trident.core import (
     ir,
     passmanager,
     register_all_dialects,
     register_all_passes,
 )
-from trident._C.trident_core.dialects import (
+from trident.core.dialects import (
     func,
     llvm,
     transform,
     tvm_ffi as tvm_ffi_d,
 )
-from trident._C.trident_core.execution_engine import ExecutionEngine
-from trident._C.trident_core.extras.fx_importer import FxImporter
+from trident.core.execution_engine import ExecutionEngine
+from trident.core.extras.fx_importer import FxImporter
 from .guards import parse_guards
 from .patch import apply_patch
 

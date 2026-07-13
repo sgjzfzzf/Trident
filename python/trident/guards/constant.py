@@ -9,7 +9,7 @@ import struct
 from typing import Any, Final, Optional
 from typing_extensions import override
 
-from trident._C.trident_core import ir
+from trident.core import ir
 
 from .guard import Guard
 

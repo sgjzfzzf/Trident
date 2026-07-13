@@ -37,9 +37,9 @@ ExternalProject_Add(
 
 ExternalProject_Add(
   trident-core
-  SOURCE_DIR ${CMAKE_SOURCE_DIR}/trident-core
-  BINARY_DIR ${CMAKE_BINARY_DIR}/trident-core
-  INSTALL_DIR ${CMAKE_BINARY_DIR}/install/trident-core
+  SOURCE_DIR ${CMAKE_SOURCE_DIR}/core
+  BINARY_DIR ${CMAKE_BINARY_DIR}/core
+  INSTALL_DIR ${CMAKE_BINARY_DIR}/install/trident
   DEPENDS llvm-project
   CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
              -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
@@ -47,7 +47,7 @@ ExternalProject_Add(
              -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
              -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
              -DCMAKE_EXPORT_COMPILE_COMMANDS=${CMAKE_EXPORT_COMPILE_COMMANDS}
-             -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/install/trident-core
+             -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/install/trident
              -DCMAKE_LINKER_TYPE=${CMAKE_LINKER_TYPE}
              -DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}"
              -DLLVM_DIR=${CMAKE_BINARY_DIR}/install/llvm-project/lib/cmake/llvm
@@ -59,7 +59,24 @@ ExternalProject_Add(
              -DPython_FIND_VIRTUALENV=ONLY
              -DPython3_FIND_VIRTUALENV=ONLY)
 
-install(
-  DIRECTORY
-    ${CMAKE_BINARY_DIR}/install/trident-core/python_packages/trident-core/trident_core
-  DESTINATION .)
+ExternalProject_Add(
+  trident-ffi
+  SOURCE_DIR ${CMAKE_SOURCE_DIR}/ffi
+  BINARY_DIR ${CMAKE_BINARY_DIR}/ffi
+  INSTALL_DIR ${CMAKE_BINARY_DIR}/install/trident
+  CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+             -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+             -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
+             -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+             -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
+             -DCMAKE_EXPORT_COMPILE_COMMANDS=${CMAKE_EXPORT_COMPILE_COMMANDS}
+             -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/install/trident
+             -DCMAKE_LINKER_TYPE=${CMAKE_LINKER_TYPE}
+             -DPython3_EXECUTABLE=${Python3_EXECUTABLE}
+             -DPython_EXECUTABLE=${Python_EXECUTABLE}
+             -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+             -DPython_FIND_VIRTUALENV=ONLY
+             -DPython3_FIND_VIRTUALENV=ONLY)
+
+install(DIRECTORY ${CMAKE_BINARY_DIR}/install/trident/core DESTINATION .)
+install(DIRECTORY ${CMAKE_BINARY_DIR}/install/trident/ffi DESTINATION .)

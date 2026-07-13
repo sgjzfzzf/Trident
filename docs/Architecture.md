@@ -10,8 +10,8 @@ This document describes the core workflows in the current repository:
 - Top-level CMake project
   - Dependencies are orchestrated via `ExternalProject` in the root `CMakeLists.txt`:
     - `llvm-project` (with MLIR + Python bindings enabled)
-    - `trident-core` (the core C++/MLIR implementation in this repo)
-- trident-core
+    - `core` (the core C++/MLIR implementation in this repo)
+- core
   - Implements and exports Dialects/Passes/Runtime/Python bindings.
   - Depends on torch-mlir, MLIR, LLVM, CUDAToolkit, Torch, and tvm_ffi.
 - Python package trident
@@ -26,10 +26,10 @@ flowchart TD
   A[uv pip install -e . or uv build] --> B[scikit-build-core]
   B --> C[root CMakeLists]
   C --> D[ExternalProject: llvm-project]
-  C --> E[ExternalProject: trident-core]
+  C --> E[ExternalProject: core]
   D --> F[install LLVM/MLIR to build/install/llvm-project]
   F --> E
-  E --> G[build and install trident-core to build/install/trident-core]
+  E --> G[build and install core to build/install/core]
   G --> H[install Python extension into trident/_C]
 ```
 
@@ -138,7 +138,7 @@ torch-mlir source.
 
 Trident uses an auto-generated wrapper layer for ATen operator dispatch via TVM FFI:
 
-1. **Build-time codegen** (`trident-core/lib/Runtime/python/atengen.py`):
+1. **Build-time codegen** (`core/lib/Runtime/python/atengen.py`):
    - Queries all registered ATen operator schemas via `torch._C._jit_get_all_schemas()`.
    - Generates `aten.gen.cc` from the Jinja2 template `aten.cc.j2`.
    - Each wrapper registers a TVM FFI global function named `trident.aten.<op>.<overload>`
@@ -162,7 +162,7 @@ handles all PyTorch type-system interaction.
 
 The `torch.vtensor.literal` op (produced during FX import for constant tensors)
 bypasses the generic `trident.aten.*` dispatch with a dedicated lowering in
-`trident-core/lib/Conversion/TorchToLLVM/Literal.cc`:
+`core/lib/Conversion/TorchToLLVM/Literal.cc`:
 
 - **Splat path**: When all elements are identical, emits `aoti_torch_aten_full`
   for efficient compile-time constant creation.
@@ -197,9 +197,9 @@ After lowering to LLVM, `TridentGraphModule` generates one unified entry point:
 
 This provides runtime dispatch across multiple specializations under one stable symbol name.
 
-## 9. C API Layer (`trident-core-c`)
+## 9. C API Layer (`trident/core/c`)
 
-The `trident-core/include/trident-core-c/` directory provides a C API bridge
+The `core/include/trident-c/core/` directory provides a C API bridge
 between the C++ MLIR implementation and the Python nanobind layer:
 
 - **`Registration.h`** — Exports `tridentCoreRegisterAllDialects()` and
@@ -208,7 +208,7 @@ between the C++ MLIR implementation and the Python nanobind layer:
 
 - **`Dialects.h`** — Declares C API registration helpers for the `TorchExt`
   and `TVMFFI` dialects, allowing Python to discover and use these custom
-  dialects via `trident._C.trident_core.dialects`.
+  dialects via `trident.core.dialects`.
 
 This layer ensures the Python package can initialize all custom dialects and
 passes without directly linking against C++ MLIR internals.

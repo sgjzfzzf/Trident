@@ -9,7 +9,7 @@ from typing_extensions import override
 
 import tvm_ffi
 
-from trident._C.trident_core import ir
+from trident.core import ir
 
 from .guard import Guard
 

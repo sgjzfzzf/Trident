@@ -13,5 +13,5 @@ requires = ["apache-tvm-ffi", "cmake", "jinja2", "nanobind", "ninja", "scikit-bu
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
-wheel.install-dir = "trident/_C"
+wheel.install-dir = "trident"
 wheel.packages = ["python/trident"]

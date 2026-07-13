@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Dict, Final, List, Sequence
 
-from trident._C.trident_core import ir
+from trident.core import ir
 
 from .guard import Guard
 

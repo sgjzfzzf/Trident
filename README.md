@@ -6,7 +6,7 @@ Triton/Torch-style compute into MLIR/LLVM, then executes through tvm_ffi.
 The repository contains:
 
 - A Python package (`trident`) with `jit` and `compile` entry points.
-- A C++/MLIR core (`trident-core`) built with CMake.
+- A C++/MLIR core (`core`) built with CMake.
 - End-to-end examples and tests for ATen op lowering/execution.
 
 ## Current Status
@@ -18,7 +18,7 @@ The repository contains:
 ## Repository Layout
 
 - `python/trident`: Python APIs (`jit`, `compile`) and runtime backend.
-- `trident-core`: MLIR/C++ implementation, dialects, passes, runtime glue.
+- `core`: MLIR/C++ implementation, dialects, passes, runtime glue.
 - `examples`: Functional demos (`add.py`, `mm.py`, `softmax.py`, `attention.py`).
 - `test`: Python end-to-end tests for lowered ATen ops.
 

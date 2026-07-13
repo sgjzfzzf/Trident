@@ -11,7 +11,7 @@ This guide explains how to adapt a new operator in Trident, including:
 In this repository, there are two common adaptation paths.
 
 1. Conversion pipeline path (recommended first for a new ATen op)
-- You add/update MLIR test inputs under `trident-core/test/Conversion/Pipeline`.
+- You add/update MLIR test inputs under `core/test/Conversion/Pipeline`.
 - You verify that `trident-lowering-pipeline` lowers correctly.
 - You add a Python end-to-end unittest in `test/` using `AtenOpTest`.
 
@@ -25,7 +25,7 @@ For a new operator bring-up, start with path 1, then validate path 2 if needed.
 ## 2. atengen Auto-Wrapping
 
 Most ATen operators are automatically wrapped by the atengen codegen tool at build
-time (`trident-core/lib/Runtime/python/atengen.py`). atengen queries PyTorch's JIT
+time (`core/lib/Runtime/python/atengen.py`). atengen queries PyTorch's JIT
 type system via `torch._C._jit_get_all_schemas()` and generates C++ wrappers that
 register `trident.aten.*` TVM FFI global functions with proper IValue ↔ TVMFFIAny
 conversion.
@@ -46,10 +46,10 @@ Manual intervention is only needed when:
 ## 3. Minimal Bring-Up Checklist (Path 1)
 
 1. Add a pipeline test MLIR file
-- Create `trident-core/test/Conversion/Pipeline/<op>.mlir`.
+- Create `core/test/Conversion/Pipeline/<op>.mlir`.
 - Include one `func.func` using your target op.
 - Include one `tvm_ffi.func` wrapper exposing a callable symbol `<op>`.
-- Add `// RUN: trident-core-opt %s --trident-lowering-pipeline | FileCheck %s`.
+- Add `// RUN: core-opt %s --trident-lowering-pipeline | FileCheck %s`.
 - Add focused `FileCheck` assertions for key lowering points.
 
 2. Match wrapper symbol with Python test expectations
@@ -96,7 +96,7 @@ Suspect:
 - Lowering or symbol merge stage removed/renamed your symbol unexpectedly.
 
 Check:
-- `trident-core/test/Conversion/Pipeline/<op>.mlir`
+- `core/test/Conversion/Pipeline/<op>.mlir`
 - `test/base.py` symbol construction logic
 
 ### B. Pipeline fails before LLVM lowering
@@ -107,9 +107,9 @@ Suspect:
 - Invalid MLIR syntax or wrong op signature in your `.mlir` file.
 
 Check:
-- `trident-core/test/Conversion/Pipeline/<op>.mlir`
-- `trident-core/lib/Conversion/AtenToTVMFFI/Aten.cc` (`ConvertAtenDispatcherOp`) — the generic lowering that rewires all `torch.aten.*` ops to `trident.aten.*` FFI calls
-- `trident-core/lib/Runtime/python/atengen.py` — the codegen tool that generates FFI wrappers for ATen ops
+- `core/test/Conversion/Pipeline/<op>.mlir`
+- `core/lib/Conversion/AtenToTVMFFI/Aten.cc` (`ConvertAtenDispatcherOp`) — the generic lowering that rewires all `torch.aten.*` ops to `trident.aten.*` FFI calls
+- `core/lib/Runtime/python/atengen.py` — the codegen tool that generates FFI wrappers for ATen ops
 
 ### C. Wrapper call succeeds but output shape/dtype is wrong
 
@@ -186,11 +186,11 @@ Recommendation:
 3. Verify end-to-end unittest with `AtenOpTest`.
 4. Only then debug `@trident.jit` dynamic specialization behavior.
 5. If failure is unclear, compare your new op with known-good patterns:
-- `trident-core/test/Conversion/Pipeline/empty.mlir`
-- `trident-core/test/Conversion/Pipeline/empty_like.mlir`
-- `trident-core/test/Conversion/Pipeline/mul_scalar.mlir`
-- `trident-core/test/Conversion/Pipeline/sub.mlir`
-- `trident-core/test/Conversion/Pipeline/vtensor_literal.mlir`
+- `core/test/Conversion/Pipeline/empty.mlir`
+- `core/test/Conversion/Pipeline/empty_like.mlir`
+- `core/test/Conversion/Pipeline/mul_scalar.mlir`
+- `core/test/Conversion/Pipeline/sub.mlir`
+- `core/test/Conversion/Pipeline/vtensor_literal.mlir`
 - `test/test_empty.py`
 - `test/test_empty_like.py`
 - `test/test_mul_scalar.py`
@@ -230,15 +230,15 @@ around Torch object uses.
 ### 8.2 Adding A New `torchext` Op
 
 1. Define the op in the TorchExt dialect tablegen (`.td`) files under
-   `trident-core/include/trident-core/Dialect/TorchExt/`.
+   `core/include/core/Dialect/TorchExt/`.
 2. Add lowering logic in the appropriate conversion pass:
-   - GPU-related ops → `trident-core/lib/Conversion/TorchExtToGPU/`
-   - LLVM-related ops → `trident-core/lib/Conversion/TorchExtToLLVM/`
+   - GPU-related ops → `core/lib/Conversion/TorchExtToGPU/`
+   - LLVM-related ops → `core/lib/Conversion/TorchExtToLLVM/`
 3. Register the op's type conversion in `BackendTypeConversion` if it
    involves Torch value types.
 4. Update the `trident-lowering-pipeline` pass pipeline if the op requires
    a specific pass ordering.
-5. Add lit tests under `trident-core/test/Conversion/`.
+5. Add lit tests under `core/test/Conversion/`.
 
 ### 8.3 Triton Kernel Integration
 

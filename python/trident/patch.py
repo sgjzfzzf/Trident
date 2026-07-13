@@ -12,15 +12,14 @@ from typing_extensions import Final
 import torch
 import triton
 
-from trident._C.trident_core import ir
-from trident._C.trident_core.dialects import (
+from trident.core import ir
+from trident.core.dialects import (
     arith,
     gpu,
-    llvm,
     torch as torch_d,
     torchext,
 )
-from trident._C.trident_core.extras.fx_importer import GraphNodeImporter
+from trident.core.extras.fx_importer import GraphNodeImporter
 
 
 class GraphNodeImporterTritonHopPatchState:

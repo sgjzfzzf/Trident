@@ -28,6 +28,7 @@
 #include "trident-core/Conversion/Utils/Check.h"
 #include "trident-core/Conversion/Utils/GlobalString.h"
 #include "trident-core/Conversion/Utils/TVMFFICAPIDescriptors.h"
+#include "trident-core/Conversion/Utils/TVMFFIUtils.h"
 #include "trident-core/Conversion/Utils/Type.h"
 #include "trident-core/Dialect/TVMFFI/IR/TVMFFIAttributes.h"
 #include "trident-core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
@@ -358,31 +359,55 @@ public:
           mlir::Block *currentBlock = rewriter.getInsertionBlock();
           mlir::Block *failBlock = rewriter.createBlock(&region);
           rewriter.setInsertionPointToStart(failBlock);
-          // Set the TVM FFI error kind to GuardMatchException before
-          // returning -1, so the caller can identify the failure reason.
+          // Write an Exception object into retPtr so that the dispatcher
+          // can identify this as a guard mismatch and try the next
+          // specialization (or convert to Error if none left).
           mlir::ModuleOp moduleOp =
               op->template getParentOfType<mlir::ModuleOp>();
           if (!moduleOp) {
             return op.emitError("failed to get parent ModuleOp for guard "
                                 "failure error reporting");
           }
-          mlir::LLVM::LLVMFuncOp errorFn = TRIDENT_CHECK(
-              conversion::utils::getOrCreateTVMFFIErrorSetRaisedFromCStr(
-                  moduleOp),
-              return op.emitError(
-                  "failed to get or create TVMFFIErrorSetRaisedFromCStr"));
           mlir::Value kindPtr = conversion::utils::getOrCreateGlobalString(
-              rewriter, loc, moduleOp, "GuardMatchExceptionKind",
-              "GuardMatchException");
-          std::string errMsg =
-              llvm::formatv("argument {0} fails guard check", i);
-          mlir::Value msgPtr = conversion::utils::getOrCreateGlobalString(
-              rewriter, loc, moduleOp, "GuardMatchExceptionMsg", errMsg);
-          mlir::LLVM::CallOp::create(rewriter, loc, errorFn,
-                                     mlir::ValueRange{kindPtr, msgPtr});
-          mlir::LLVM::ConstantOp errCode =
-              mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, -1);
-          mlir::LLVM::ReturnOp::create(rewriter, loc, errCode);
+              rewriter, loc, moduleOp, "GuardMatchKind", "GuardMatch");
+
+          // Build kTVMFFIRawStr (type_index = 8) TVMFFIAny for kind.
+          mlir::IntegerType i64Ty = rewriter.getIntegerType(64);
+          mlir::Value rawStrTypeIndex =
+              mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 8);
+          auto buildRawStrAny = [&](mlir::Value strPtr) -> mlir::Value {
+            mlir::Value any = mlir::LLVM::UndefOp::create(rewriter, loc, anyTy);
+            any = mlir::LLVM::InsertValueOp::create(rewriter, loc, any,
+                                                    rawStrTypeIndex,
+                                                    llvm::ArrayRef<int64_t>{0});
+            mlir::Value ptrAsI64 =
+                mlir::LLVM::PtrToIntOp::create(rewriter, loc, i64Ty, strPtr);
+            any = mlir::LLVM::InsertValueOp::create(
+                rewriter, loc, any, ptrAsI64, llvm::ArrayRef<int64_t>{2});
+            return any;
+          };
+          mlir::Value one =
+              mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1);
+
+          mlir::Value kindSlot =
+              mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, anyTy, one);
+          mlir::LLVM::StoreOp::create(rewriter, loc, buildRawStrAny(kindPtr),
+                                      kindSlot);
+
+          // Call trident.ffi.Exception(kind) — only passes the kind argument.
+          mlir::Value resultSlot = TRIDENT_CHECK(
+              conversion::utils::callTVMFFIGlobalFunction(
+                  rewriter, loc, moduleOp, "trident.ffi.Exception",
+                  llvm::ArrayRef<mlir::Value>{kindSlot}),
+              return op.emitError("failed to call trident.ffi.Exception"));
+          mlir::Value exceptionAny =
+              mlir::LLVM::LoadOp::create(rewriter, loc, anyTy, resultSlot);
+
+          // Store the Exception into retPtr and return 0 (success).
+          mlir::LLVM::StoreOp::create(rewriter, loc, exceptionAny, retPtr);
+          mlir::LLVM::ConstantOp zeroReturn =
+              mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 0);
+          mlir::LLVM::ReturnOp::create(rewriter, loc, zeroReturn);
 
           mlir::Block *contBlock = rewriter.createBlock(&region);
           rewriter.setInsertionPointToEnd(currentBlock);

@@ -9,13 +9,12 @@ add_custom_command(
   DEPENDS ${ATENGEN_PY} ${CMAKE_CURRENT_SOURCE_DIR}/templates/aten.cc.j2
   COMMENT "Generating ${ATENGEN_CC}")
 
-add_library(TridentCoreRuntime SHARED Runtime.cc ${ATENGEN_CC})
+add_library(TridentCoreRuntime SHARED Exception.cc Runtime.cc ${ATENGEN_CC})
 target_include_directories(TridentCoreRuntime
                            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(
   TridentCoreRuntime
-  PUBLIC ${TORCH_LIBRARIES} CUDA::cudart CUDA::cuda_driver LLVMSupport
-         tvm_ffi::header
+  PUBLIC ${TORCH_LIBRARIES} CUDA::cudart CUDA::cuda_driver tvm_ffi::header
   PRIVATE tvm_ffi::shared)
 
 install(

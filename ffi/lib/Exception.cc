@@ -28,6 +28,9 @@ const std::string &Exception::GetKind() const & {
 
 TVM_FFI_STATIC_INIT_BLOCK() {
   namespace refl = tvm::ffi::reflection;
+
+  refl::ObjectDef<ExceptionObj>().def(refl::init<const std::string &>());
+
   refl::GlobalDef()
       .def("trident.ffi.Exception",
            [](const tvm::ffi::String &kind) -> Exception {

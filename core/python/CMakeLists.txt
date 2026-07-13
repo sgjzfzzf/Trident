@@ -152,14 +152,13 @@ build_nanobind_lib(
   MLIR_BINDINGS_PYTHON_NB_DOMAIN
   trident_core)
 
-install(TARGETS TridentCoreRuntime
-        LIBRARY DESTINATION ${TRIDENT_CORE_PYTHON_INSTALL_ROOT}/_runtime_libs
-                COMPONENT TridentCorePythonModules)
+install(TARGETS TridentCoreRuntime LIBRARY DESTINATION lib
+                                           COMPONENT TridentCorePythonModules)
 
 file(GLOB _mlir_runtime_libs "${MLIR_DIR}/../../*_runtime.so*")
 install(
   FILES ${_mlir_runtime_libs}
-  DESTINATION ${TRIDENT_CORE_PYTHON_INSTALL_ROOT}/_runtime_libs
+  DESTINATION lib
   COMPONENT TridentCorePythonModules)
 
 add_custom_target(

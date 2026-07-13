@@ -25,5 +25,4 @@ include_directories(${tvm_ffi_INCLUDE_DIR})
 include_directories(${tvm_ffi_DLPACK_INCLUDE_DIR})
 
 add_subdirectory(include)
-add_subdirectory(python)
 add_subdirectory(lib)

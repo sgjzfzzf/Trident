@@ -352,11 +352,7 @@ def main():
         ref_out: torch.Tensor = attn_torch(q, k, v, causal=causal, sm_scale=sm_scale)
         tri_out: torch.Tensor = attn_triton(q, k, v, causal=causal, sm_scale=sm_scale)
         jit_out: torch.Tensor = attn_jit(
-            q=q,
-            k=k,
-            v=v,
-            causal=causal,
-            sm_scale=sm_scale,
+            q=q, k=k, v=v, causal=causal, sm_scale=sm_scale
         )
 
         torch.testing.assert_close(tri_out, ref_out, atol=1e-2, rtol=0)

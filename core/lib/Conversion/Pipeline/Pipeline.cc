@@ -17,6 +17,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
+<<<<<<< HEAD:core/lib/Conversion/Pipeline/Pipeline.cc
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "trident/core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
 #include "trident/core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
@@ -26,6 +27,17 @@
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "trident/core/Dialect/TorchExt/Transforms/EliminateRefCounter.h"
 #include "trident/core/Dialect/TorchExt/Transforms/RAAI.h"
+=======
+#include "trident-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
+#include "trident-core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
+#include "trident-core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
+#include "trident-core/Conversion/TorchToCf/TorchToCf.h"
+#include "trident-core/Conversion/TorchToLLVM/FuncBackendTypeConversion.h"
+#include "trident-core/Conversion/TorchToLLVM/TorchToLLVM.h"
+#include "trident-core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "trident-core/Dialect/TorchExt/Transforms/EliminateRefCountPairs.h"
+#include "trident-core/Dialect/TorchExt/Transforms/RAAI.h"
+>>>>>>> 5329a85 (	modified:   trident-core/include/trident-core/Dialect/TorchExt/Transforms/Passes.td):trident-core/lib/Conversion/Pipeline/Pipeline.cc
 
 namespace trident::torch {
 
@@ -39,7 +51,7 @@ class TridentLoweringPipelinePass
   void runOnOperation() final {
     mlir::OpPassManager pm;
     pm.addPass(trident::torch::createRAAI());
-    pm.addPass(trident::torch::createEliminateRefCounter());
+    pm.addPass(trident::torch::createEliminateRefCountPairs());
     pm.addPass(trident::torch::createConvertTorchToCf());
     pm.addPass(trident::torch::createConvertTorchToLLVM());
     pm.addPass(trident::torchext::createConvertTorchExtToGPU());

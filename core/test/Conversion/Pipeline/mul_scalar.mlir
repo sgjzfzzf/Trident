@@ -11,7 +11,6 @@
 // FFI dispatch path: "trident.aten.mul.Scalar", called via
 // TVMFFIFunctionGetGlobal / TVMFFIFunctionCall / TVMFFIObjectDecRef.
 
-// CHECK-DAG: llvm.func @TVMFFIObjectIncRef(!llvm.ptr) -> i32
 // CHECK-DAG: llvm.func @TVMFFIObjectDecRef(!llvm.ptr) -> i32
 // CHECK-DAG: llvm.func @TVMFFIFunctionCall(!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK-DAG: llvm.func @TVMFFIFunctionGetGlobal(!llvm.ptr, !llvm.ptr) -> i32
@@ -35,9 +34,6 @@
 // CHECK:         %[[DECREF_HANDLE:.*]] = llvm.call @TVMFFIObjectDecRef(%[[HANDLE]]) : (!llvm.ptr) -> i32
 // Load the result TVMFFIAny from the return slot.
 // CHECK:         %[[RETLOAD:.*]] = llvm.load %[[RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// IncRef + DecRef the returned object for correct ref-counting.
-// CHECK:         %[[INC:.*]] = llvm.call @TVMFFIObjectIncRef(%[[OBJ_PTR:.*]]) : (!llvm.ptr) -> i32
-// CHECK:         %[[DECREF_OBJ:.*]] = llvm.call @TVMFFIObjectDecRef(%[[OBJ_PTR2:.*]]) : (!llvm.ptr) -> i32
 // CHECK:         llvm.return %[[RETLOAD]] : !llvm.struct<(i32, i32, i64)>
 func.func @torch.aten.mul.Scalar(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.float) -> !torch.vtensor<[2,3],f32> {
   %0 = torch.aten.mul.Scalar %arg0, %arg1 : !torch.vtensor<[2,3],f32>, !torch.float -> !torch.vtensor<[2,3],f32>

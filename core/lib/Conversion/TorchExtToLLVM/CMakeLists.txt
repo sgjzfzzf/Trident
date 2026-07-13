@@ -6,7 +6,7 @@ add_mlir_conversion_library(
   LINK_LIBS
   PUBLIC
   TorchExtDialect
-  BackendTypeConversion
+  TorchExtTransforms
   ConversionUtils
   MLIRLLVMCommonConversion
   MLIRLLVMDialect

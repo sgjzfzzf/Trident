@@ -1,5 +1,5 @@
 add_mlir_library(
-  BackendTypeConversion
+  TorchExtTransforms
   BackendTypeConversion.cc
   EliminateRefCountPairs.cc
   RAAI.cc

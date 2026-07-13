@@ -24,6 +24,7 @@
 #include "trident/core/Conversion/TorchToLLVM/FuncBackendTypeConversion.h"
 #include "trident/core/Conversion/TorchToLLVM/TorchToLLVM.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "trident/core/Dialect/TorchExt/Transforms/EliminateRefCountPairs.h"
 #include "trident/core/Dialect/TorchExt/Transforms/RAAI.h"
 
 namespace trident::torch {

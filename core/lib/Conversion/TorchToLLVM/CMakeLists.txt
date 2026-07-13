@@ -17,7 +17,7 @@ add_mlir_conversion_library(
   MLIRConversionPassIncGen
   LINK_LIBS
   PUBLIC
-  BackendTypeConversion
+  TorchExtTransforms
   MLIRLLVMDialect
   MLIRPass
   TorchMLIRTorchDialect

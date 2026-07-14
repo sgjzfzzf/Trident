@@ -5,9 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 
@@ -19,42 +20,43 @@ namespace trident::torch {
 
 namespace {
 
+class EliminateRefCountPairPattern
+    : public mlir::OpRewritePattern<torchext::ObjectIncRefOp> {
+public:
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(torchext::ObjectIncRefOp incRef,
+                  mlir::PatternRewriter &rewriter) const override {
+    mlir::Value object = incRef.getObject();
+
+    // getNextNode() only visits operations in the same block, so the matched
+    // order is always IncRef first and DecRef second.
+    for (mlir::Operation *operation = incRef->getNextNode(); operation;
+         operation = operation->getNextNode()) {
+      auto decRef = llvm::dyn_cast<torchext::ObjectDecRefOp>(operation);
+      if (!decRef || decRef.getObject() != object)
+        continue;
+
+      rewriter.eraseOp(incRef);
+      rewriter.eraseOp(decRef);
+      return mlir::success();
+    }
+
+    return mlir::failure();
+  }
+};
+
 class EliminateRefCountPairsPass
     : public impl::EliminateRefCountPairsBase<EliminateRefCountPairsPass> {
 public:
   void runOnOperation() final {
-    getOperation()->walk([&](mlir::Block *block) {
-      llvm::DenseMap<mlir::Value,
-                     llvm::SmallVector<torchext::ObjectIncRefOp, 1>>
-          unmatchedIncRefs;
-      llvm::SmallVector<mlir::Operation *> operationsToErase;
+    mlir::RewritePatternSet patterns(&getContext());
+    patterns.add<EliminateRefCountPairPattern>(&getContext());
 
-      // Only inspect operations directly contained in this block. Nested
-      // blocks are visited separately, so pairs never cross block boundaries.
-      for (mlir::Operation &operation : *block) {
-        if (auto incRef =
-                llvm::dyn_cast<torchext::ObjectIncRefOp>(&operation)) {
-          unmatchedIncRefs[incRef.getObject()].push_back(incRef);
-          continue;
-        }
-
-        auto decRef = llvm::dyn_cast<torchext::ObjectDecRefOp>(&operation);
-        if (!decRef)
-          continue;
-
-        auto it = unmatchedIncRefs.find(decRef.getObject());
-        if (it == unmatchedIncRefs.end() || it->second.empty())
-          continue;
-
-        torchext::ObjectIncRefOp incRef = it->second.pop_back_val();
-        operationsToErase.push_back(incRef.getOperation());
-        operationsToErase.push_back(decRef.getOperation());
-      }
-
-      // Delay erasure until after the scan to keep the block iterator valid.
-      for (mlir::Operation *operation : operationsToErase)
-        operation->erase();
-    });
+    if (mlir::failed(
+            mlir::applyPatternsGreedily(getOperation(), std::move(patterns))))
+      signalPassFailure();
   }
 };
 

@@ -13,10 +13,10 @@
 namespace trident::torch {
 
 #define GEN_PASS_DECL_ELIMINATEREFCOUNTPAIRS
-#include "trident-core/Dialect/TorchExt/Transforms/Passes.h.inc"
+#include "trident/core/Dialect/TorchExt/Transforms/Passes.h.inc"
 
 #define GEN_PASS_REGISTRATION_ELIMINATEREFCOUNTPAIRS
-#include "trident-core/Dialect/TorchExt/Transforms/Passes.h.inc"
+#include "trident/core/Dialect/TorchExt/Transforms/Passes.h.inc"
 
 } // namespace trident::torch
 

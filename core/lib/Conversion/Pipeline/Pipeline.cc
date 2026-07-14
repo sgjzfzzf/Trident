@@ -25,19 +25,8 @@
 #include "trident/core/Conversion/TorchToLLVM/FuncBackendTypeConversion.h"
 #include "trident/core/Conversion/TorchToLLVM/TorchToLLVM.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
-#include "trident/core/Dialect/TorchExt/Transforms/EliminateRefCounter.h"
+#include "trident/core/Dialect/TorchExt/Transforms/EliminateRefCountPairs.h"
 #include "trident/core/Dialect/TorchExt/Transforms/RAAI.h"
-=======
-#include "trident-core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
-#include "trident-core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
-#include "trident-core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
-#include "trident-core/Conversion/TorchToCf/TorchToCf.h"
-#include "trident-core/Conversion/TorchToLLVM/FuncBackendTypeConversion.h"
-#include "trident-core/Conversion/TorchToLLVM/TorchToLLVM.h"
-#include "trident-core/Dialect/TorchExt/IR/TorchExtDialect.h"
-#include "trident-core/Dialect/TorchExt/Transforms/EliminateRefCountPairs.h"
-#include "trident-core/Dialect/TorchExt/Transforms/RAAI.h"
->>>>>>> 5329a85 (	modified:   trident-core/include/trident-core/Dialect/TorchExt/Transforms/Passes.td):trident-core/lib/Conversion/Pipeline/Pipeline.cc
 
 namespace trident::torch {
 

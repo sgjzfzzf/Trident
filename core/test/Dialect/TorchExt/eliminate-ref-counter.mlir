@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s --eliminate-ref-count-pairs -split-input-file | FileCheck %s
+// RUN: trident-core-opt %s --eliminate-ref-counter -split-input-file | FileCheck %s
 
 // CHECK-LABEL: @single_pair
 // CHECK-NOT: torchext.Object

@@ -14,13 +14,13 @@
 
 namespace trident::torch {
 
-#define GEN_PASS_DEF_ELIMINATEREFCOUNTPAIRS
-#define GEN_PASS_REGISTRATION_ELIMINATEREFCOUNTPAIRS
+#define GEN_PASS_DEF_ELIMINATEREFCOUNTER
+#define GEN_PASS_REGISTRATION_ELIMINATEREFCOUNTER
 #include "trident/core/Dialect/TorchExt/Transforms/Passes.h.inc"
 
 namespace {
 
-class EliminateRefCountPairPattern
+class EliminateRefCounterPattern
     : public mlir::OpRewritePattern<torchext::ObjectIncRefOp> {
 public:
   using OpRewritePattern::OpRewritePattern;
@@ -34,25 +34,25 @@ public:
     // order is always IncRef first and DecRef second.
     for (mlir::Operation *operation = incRef->getNextNode(); operation;
          operation = operation->getNextNode()) {
-      auto decRef = llvm::dyn_cast<torchext::ObjectDecRefOp>(operation);
-      if (!decRef || decRef.getObject() != object)
-        continue;
-
-      rewriter.eraseOp(incRef);
-      rewriter.eraseOp(decRef);
-      return mlir::success();
+      if (torchext::ObjectDecRefOp decRef =
+              llvm::dyn_cast<torchext::ObjectDecRefOp>(operation);
+          decRef && decRef.getObject() == object) {
+        rewriter.eraseOp(incRef);
+        rewriter.eraseOp(decRef);
+        return mlir::success();
+      }
     }
 
     return mlir::failure();
   }
 };
 
-class EliminateRefCountPairsPass
-    : public impl::EliminateRefCountPairsBase<EliminateRefCountPairsPass> {
+class EliminateRefCounterPass
+    : public impl::EliminateRefCounterBase<EliminateRefCounterPass> {
 public:
   void runOnOperation() final {
     mlir::RewritePatternSet patterns(&getContext());
-    patterns.add<EliminateRefCountPairPattern>(&getContext());
+    patterns.add<EliminateRefCounterPattern>(&getContext());
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns))))

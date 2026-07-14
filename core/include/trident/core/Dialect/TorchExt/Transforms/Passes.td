@@ -22,8 +22,8 @@ def RAAI : Pass<"raai", "mlir::ModuleOp"> {
   let dependentDialects = ["trident::torchext::TorchExtDialect"];
 }
 
-def EliminateRefCountPairs
-    : Pass<"eliminate-ref-count-pairs", "mlir::ModuleOp"> {
+def EliminateRefCounter
+    : Pass<"eliminate-ref-counter", "mlir::ModuleOp"> {
   let summary = "Eliminate balanced reference-count operations in a block";
   let description = [{
     Walks every block in the module and pairs each torchext.ObjectDecRef with

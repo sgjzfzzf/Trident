@@ -5,7 +5,7 @@ add_mlir_library(
   MLIRTorchExtPassIncGen
   LINK_LIBS
   PUBLIC
-  BackendTypeConversion
+  TorchExtTransforms
   TorchExtToGPU
   TorchExtToLLVM
   MLIRRegisterAllDialects

@@ -24,6 +24,7 @@
 #include "trident/core/Conversion/TorchToLLVM/TorchToLLVM.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "trident/core/Dialect/TorchExt/Transforms/EliminateRefCounter.h"
 #include "trident/core/Dialect/TorchExt/Transforms/RAAI.h"
 
 void trident::conversion::registerAllPasses() {
@@ -31,6 +32,7 @@ void trident::conversion::registerAllPasses() {
   mlir::registerConvertToLLVMPass();
   mlir::registerReconcileUnrealizedCastsPass();
   mlir::torch::registerTorchPasses();
+  trident::torch::registerEliminateRefCounterPass();
   trident::torch::registerRAAIPass();
   trident::torchext::registerConvertTorchExtToGPUPass();
   trident::torchext::registerConvertTorchExtToLLVMPass();

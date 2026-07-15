@@ -75,6 +75,9 @@ class TridentGraphModule(object):
             f"recompilation limit ({self._max_compiles}) exceeded without finding a matching specialization"
         )
 
+    def __name__(self) -> str:
+        return self.fn.__name__
+
     def compile(self, *args: Any, **kwargs) -> Any:
         """Build a new sub-module for *args* and rebuild the combined
         module + dispatcher.  Called automatically from ``__call__`` when a

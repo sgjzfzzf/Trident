@@ -166,7 +166,7 @@ def _import_hop_triton_kernel_wrapper_mutation(
         grid: Tuple[int, int, int] = grids[i]
     else:
         [grid] = grids
-    binary_name: Final[str] = f"_{node.name}_{random.randint(0, 1 << 32)}"
+    binary_name: Final[str] = f"_{node.name}"
     module_op = self.fx_importer.module.operation
     module_op.attributes["gpu.container_module"] = ir.UnitAttr.get()
     if all(
@@ -183,11 +183,11 @@ def _import_hop_triton_kernel_wrapper_mutation(
         )
         with ir.InsertionPoint(self.fx_importer.module.body):
             gpu.binary(
-                ir.StringAttr.get(binary_name),
+                binary_name,
                 ir.ArrayAttr.get([gpu_object]),
                 offloading_handler=ir.Attribute.parse("#gpu.select_object"),
                 loc=loc,
-            )
+            ).attributes["sym_visibility"] = ir.StringAttr.get("private")
     i64_type = ir.IntegerType.get_signless(64)
     i32_type = ir.IntegerType.get_signless(32)
     grid_x, grid_y, grid_z = grid

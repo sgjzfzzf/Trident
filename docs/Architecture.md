@@ -196,8 +196,17 @@ launches. Its lowering is split across two passes in `trident-lowering-pipeline`
 Reference counting ops are automatically inserted by the `RAAI` pass (Reference-count
 Auto-Insertion) at the start of the pipeline, which scans each single-block region
 and adds `IncRef`/`DecRef` pairs around Torch object uses. The RAAI pass supports
-`TupleType` and `OptionalType` values in addition to individual Torch objects. CUDA
-leak checks are integrated into examples to verify correctness.
+`TupleType` and `OptionalType` values in addition to individual Torch objects.
+
+The `EliminateRefCounter` pass runs immediately after `RAAI` and eliminates
+balanced `IncRef`/`DecRef` pairs on the same SSA value within a single block.
+For each `torchext.ObjectIncRef`, it scans forward for the nearest unmatched
+`torchext.ObjectDecRef` on the same value and erases both operations. Matching
+never crosses a block boundary, and a `DecRef` that precedes an `IncRef` is
+not eliminated. This cleanup reduces unnecessary reference count traffic before
+lowering to LLVM.
+
+CUDA leak checks are integrated into examples to verify correctness.
 
 ## LLVM Dispatcher Semantics
 

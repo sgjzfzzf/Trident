@@ -24,7 +24,7 @@
 #include "trident/core/Conversion/TorchToLLVM/TorchToLLVM.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
-#include "trident/core/Dialect/TorchExt/Transforms/EliminateRefCountPairs.h"
+#include "trident/core/Dialect/TorchExt/Transforms/EliminateRefCounter.h"
 #include "trident/core/Dialect/TorchExt/Transforms/RAAI.h"
 
 void trident::conversion::registerAllPasses() {

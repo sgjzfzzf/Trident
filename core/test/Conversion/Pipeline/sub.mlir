@@ -9,8 +9,8 @@
 //
 // This test verifies that aten.sub.Scalar and aten.sub.Tensor are lowered
 // via the AtenGen FFI dispatch path: "trident.aten.sub.Scalar" and
-// "trident.aten.sub.Tensor", called via TVMFFIFunctionGetGlobal /
-// TVMFFIFunctionCall / TVMFFIObjectDecRef.
+// "trident.aten.sub.Tensor", called through independently cached TVM FFI
+// function handles.
 
 // CHECK-DAG: llvm.func @TVMFFIObjectDecRef(!llvm.ptr) -> i32
 // CHECK-DAG: llvm.func @TVMFFIFunctionCall(!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
@@ -18,23 +18,22 @@
 
 // CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.sub.Scalar_trident.aten.sub.Scalar("trident.aten.sub.Scalar\00")
 // CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.sub.Tensor_trident.aten.sub.Tensor("trident.aten.sub.Tensor\00")
+// CHECK-DAG: llvm.mlir.global internal @__trident_tvm_ffi_handle_trident.aten.sub.Scalar(#llvm.zero)
+// CHECK-DAG: llvm.mlir.global internal @__trident_tvm_ffi_handle_trident.aten.sub.Tensor(#llvm.zero)
 
 // CHECK-LABEL: llvm.func @torch.aten.sub.Scalar(
 // CHECK-SAME:    %[[ARG0:.*]]: !llvm.struct<(i32, i32, i64)>, %[[ARG1:.*]]: !llvm.struct<(i32, i32, i64)>, %[[ARG2:.*]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
+// CHECK:         %[[HANDLE_ADDR:.*]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_trident.aten.sub.Scalar
 // Allocate the args array for 3 operands.
 // CHECK:         %[[ARRAY:.*]] = llvm.alloca %[[CNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
 // Store the input operands.
 // CHECK:         llvm.store %[[ARG0]], %[[ARRAY]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK:         llvm.store %[[ARG1]], {{%.*}} : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK:         llvm.store %[[ARG2]], {{%.*}} : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// Build the function name struct {ptr, i64} and call TVMFFIFunctionGetGlobal.
-// CHECK:         %[[GETGLOBAL:.*]] = llvm.call @TVMFFIFunctionGetGlobal(%[[NAME_SLOT:.*]], %[[HANDLE_SLOT:.*]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// Load the function handle from the result slot.
-// CHECK:         %[[HANDLE:.*]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
+// Load the cached function handle.
+// CHECK:         %[[HANDLE:.*]] = llvm.load %[[HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
 // Set up the return value slot and call TVMFFIFunctionCall with the args.
 // CHECK:         %[[FUNCCALL:.*]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[ARGS_COPY:.*]], %[[NARGS:.*]], %[[RET_SLOT:.*]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// Release the function handle.
-// CHECK:         %[[DECREF_HANDLE:.*]] = llvm.call @TVMFFIObjectDecRef(%[[HANDLE]]) : (!llvm.ptr) -> i32
 // Load the result TVMFFIAny from the return slot.
 // CHECK:         %[[RETLOAD:.*]] = llvm.load %[[RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK:         llvm.return %[[RETLOAD]] : !llvm.struct<(i32, i32, i64)>
@@ -45,20 +44,17 @@ func.func @torch.aten.sub.Scalar(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch
 
 // CHECK-LABEL: llvm.func @torch.aten.sub.Tensor(
 // CHECK-SAME:    %[[ARG0:.*]]: !llvm.struct<(i32, i32, i64)>, %[[ARG1:.*]]: !llvm.struct<(i32, i32, i64)>, %[[ARG2:.*]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
+// CHECK:         %[[HANDLE_ADDR:.*]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_trident.aten.sub.Tensor
 // Allocate the args array for 3 operands.
 // CHECK:         %[[ARRAY:.*]] = llvm.alloca %[[CNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
 // Store the input operands.
 // CHECK:         llvm.store %[[ARG0]], %[[ARRAY]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK:         llvm.store %[[ARG1]], {{%.*}} : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK:         llvm.store %[[ARG2]], {{%.*}} : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// Build the function name struct {ptr, i64} and call TVMFFIFunctionGetGlobal.
-// CHECK:         %[[GETGLOBAL:.*]] = llvm.call @TVMFFIFunctionGetGlobal(%[[NAME_SLOT:.*]], %[[HANDLE_SLOT:.*]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// Load the function handle from the result slot.
-// CHECK:         %[[HANDLE:.*]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
+// Load the cached function handle.
+// CHECK:         %[[HANDLE:.*]] = llvm.load %[[HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
 // Set up the return value slot and call TVMFFIFunctionCall with the args.
 // CHECK:         %[[FUNCCALL:.*]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[ARGS_COPY:.*]], %[[NARGS:.*]], %[[RET_SLOT:.*]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// Release the function handle.
-// CHECK:         %[[DECREF_HANDLE:.*]] = llvm.call @TVMFFIObjectDecRef(%[[HANDLE]]) : (!llvm.ptr) -> i32
 // Load the result TVMFFIAny from the return slot.
 // CHECK:         %[[RETLOAD:.*]] = llvm.load %[[RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK:         llvm.return %[[RETLOAD]] : !llvm.struct<(i32, i32, i64)>
@@ -98,3 +94,22 @@ tvm_ffi.func @sub_tensor(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.vtensor
   %0 = func.call @torch.aten.sub.Tensor(%arg0, %arg1, %arg2) : (!torch.vtensor<[2,3],f32>, !torch.vtensor<[2,3],f32>, !torch.float) -> !torch.vtensor<[2,3],f32>
   tvm_ffi.return %0 : !torch.vtensor<[2,3],f32>
 }
+
+// CHECK-LABEL: llvm.func internal @__trident_tvm_ffi_ctor_trident.aten.sub.Scalar() {
+// CHECK:         llvm.call @TVMFFIFunctionGetGlobal
+// CHECK:         llvm.store {{%.*}}, {{%.*}} : !llvm.ptr, !llvm.ptr
+// CHECK:         llvm.return
+// CHECK-LABEL: llvm.func internal @__trident_tvm_ffi_dtor_trident.aten.sub.Scalar() {
+// CHECK:         llvm.call @TVMFFIObjectDecRef
+// CHECK:         llvm.return
+
+// CHECK: llvm.mlir.global_ctors ctors = [@__trident_tvm_ffi_ctor_trident.aten.sub.Scalar, @__trident_tvm_ffi_ctor_trident.aten.sub.Tensor], priorities = [65535 : i32, 65535 : i32], data = [#llvm.zero, #llvm.zero]
+// CHECK: llvm.mlir.global_dtors dtors = [@__trident_tvm_ffi_dtor_trident.aten.sub.Scalar, @__trident_tvm_ffi_dtor_trident.aten.sub.Tensor], priorities = [65535 : i32, 65535 : i32], data = [#llvm.zero, #llvm.zero]
+
+// CHECK-LABEL: llvm.func internal @__trident_tvm_ffi_ctor_trident.aten.sub.Tensor() {
+// CHECK:         llvm.call @TVMFFIFunctionGetGlobal
+// CHECK:         llvm.store {{%.*}}, {{%.*}} : !llvm.ptr, !llvm.ptr
+// CHECK:         llvm.return
+// CHECK-LABEL: llvm.func internal @__trident_tvm_ffi_dtor_trident.aten.sub.Tensor() {
+// CHECK:         llvm.call @TVMFFIObjectDecRef
+// CHECK:         llvm.return

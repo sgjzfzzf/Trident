@@ -90,14 +90,14 @@ func.func @torch.constant.none() -> !torch.none {
 // CHECK:           llvm.store {{%.*}}, {{%.*}} : i32, !llvm.ptr
 // CHECK:           llvm.getelementptr {{%.*}}[0, 2]
 // CHECK:           llvm.store {{%.*}}, {{%.*}} : i64, !llvm.ptr
-// Build slot pointers and call ffi.Array via TVMFFIFunctionGetGlobal.
+// Build slot pointers and call ffi.Array through its cached function handle.
 // CHECK:           llvm.getelementptr %[[ARR]][0]
 // CHECK:           llvm.getelementptr %[[ARR]][1]
-// CHECK:           llvm.mlir.addressof @__trident_constant_ffi.Array_ffi.Array
-// CHECK:           llvm.call @TVMFFIFunctionGetGlobal
-// TVMFFIFunctionCall + TVMFFIObjectDecRef
-// CHECK:           llvm.call @TVMFFIFunctionCall
-// CHECK:           llvm.call @TVMFFIObjectDecRef
+// CHECK:           %[[HANDLE_ADDR:.*]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_ffi.Array
+// CHECK-NEXT:      %[[HANDLE:.*]] = llvm.load %[[HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
+// CHECK-NOT:       llvm.call @TVMFFIFunctionGetGlobal
+// CHECK-NOT:       llvm.call @TVMFFIObjectDecRef
+// CHECK:           llvm.call @TVMFFIFunctionCall(%[[HANDLE]],
 // Build TVMFFIAny(kTVMFFIArray=71) from the ffi.Array result.
 // CHECK:           llvm.getelementptr {{%.*}}[0, 2]
 // CHECK:           %[[VOBJ:.*]] = llvm.load {{%.*}} : !llvm.ptr -> i64
@@ -112,3 +112,20 @@ func.func @torch.prim.list_construct(%arg0: !torch.int, %arg1: !torch.int) -> !t
   %0 = torch.prim.ListConstruct %arg0, %arg1 : (!torch.int, !torch.int) -> !torch.list<int>
   return %0 : !torch.list<int>
 }
+
+// CHECK-LABEL: llvm.func internal @__trident_tvm_ffi_ctor_ffi.Array() {
+// CHECK:         llvm.mlir.addressof @__trident_constant_ffi.Array_ffi.Array
+// CHECK:         %[[GET_GLOBAL:.*]] = llvm.call @TVMFFIFunctionGetGlobal
+// CHECK:         %[[CTOR_HANDLE:.*]] = llvm.load
+// CHECK:         %[[GLOBAL_ADDR:.*]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_ffi.Array
+// CHECK:         llvm.store %[[CTOR_HANDLE]], %[[GLOBAL_ADDR]] : !llvm.ptr, !llvm.ptr
+// CHECK:         llvm.return
+
+// CHECK-LABEL: llvm.func internal @__trident_tvm_ffi_dtor_ffi.Array() {
+// CHECK:         %[[DTOR_ADDR:.*]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_ffi.Array
+// CHECK:         %[[DTOR_HANDLE:.*]] = llvm.load %[[DTOR_ADDR]] : !llvm.ptr -> !llvm.ptr
+// CHECK:         llvm.call @TVMFFIObjectDecRef(%[[DTOR_HANDLE]])
+// CHECK:         llvm.return
+
+// CHECK: llvm.mlir.global_ctors ctors = [@__trident_tvm_ffi_ctor_ffi.Array], priorities = [65535 : i32], data = [#llvm.zero]
+// CHECK: llvm.mlir.global_dtors dtors = [@__trident_tvm_ffi_dtor_ffi.Array], priorities = [65535 : i32], data = [#llvm.zero]

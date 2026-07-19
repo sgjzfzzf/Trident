@@ -17,15 +17,13 @@ namespace trident::conversion::utils {
 
 /// Call a TVM FFI global function by name.
 ///
-/// Encapsulates the common pattern:
-///   TVMFFIFunctionGetGlobal -> TVMFFIFunctionCall -> TVMFFIObjectDecRef
+/// The TVM FFI function handle is cached in a module-level LLVM global. It is
+/// initialized when the generated shared library is loaded and released when
+/// the shared library is unloaded.
 ///
-/// 1. Creates a TVMFFIByteArray with the function name (via global string).
-/// 2. Obtains the function handle via TVMFFIFunctionGetGlobal.
-/// 3. Copies each pre-built TVMFFIAny slot into a contiguous args array.
-/// 4. Calls TVMFFIFunctionCall with the packed arguments.
-/// 5. Releases the function handle via TVMFFIObjectDecRef.
-/// 6. Extracts and returns the result i64 value.
+/// 1. Copies each pre-built TVMFFIAny slot into a contiguous args array.
+/// 2. Loads the cached function handle.
+/// 3. Calls TVMFFIFunctionCall with the packed arguments.
 ///
 /// \param builder   The op builder (insertion point must be valid).
 /// \param loc       Source location for generated ops.
@@ -44,9 +42,9 @@ callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
 /// Call a TVM FFI global function with a pre-built contiguous args array
 /// and a runtime-determined number of arguments.
 ///
-/// Same pattern (GetGlobal -> Call -> DecRef) but the caller provides
-/// the args array already populated instead of individual slots, and
-/// \p numArgs is a runtime i32 Value instead of a compile-time constant.
+/// The caller provides the args array already populated instead of individual
+/// slots, and \p numArgs is a runtime i32 Value instead of a compile-time
+/// constant. The cached function handle is loaded from a module-level global.
 ///
 /// \param argsArray A !llvm.ptr to a contiguous array of TVMFFIAny elements.
 /// \param numArgs   A runtime i32 value specifying how many elements to pass.

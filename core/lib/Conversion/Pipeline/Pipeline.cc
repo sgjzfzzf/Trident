@@ -17,7 +17,6 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
-<<<<<<< HEAD:core/lib/Conversion/Pipeline/Pipeline.cc
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "trident/core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
 #include "trident/core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"

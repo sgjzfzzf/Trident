@@ -12,6 +12,7 @@
 #include "trident/core/Conversion/Utils/GlobalString.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/Type.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 
 namespace trident::conversion::utils {
@@ -32,10 +33,9 @@ getOrCreateTVMFFIGlobalHandle(mlir::OpBuilder &builder,
 
   if (mlir::LLVM::GlobalOp existing =
           moduleOp.lookupSymbol<mlir::LLVM::GlobalOp>(globalName)) {
-    if (existing.getGlobalType() != ptrTy) {
-      existing.emitError("cached TVM FFI handle has incompatible type");
-      return mlir::failure();
-    }
+    if (existing.getGlobalType() != ptrTy)
+      return existing.emitError(
+          "cached TVM FFI handle has incompatible type");
     return existing;
   }
 
@@ -47,66 +47,88 @@ getOrCreateTVMFFIGlobalHandle(mlir::OpBuilder &builder,
 }
 
 mlir::FailureOr<mlir::LLVM::LLVMFuncOp>
+getOrCreateTVMFFIGlobalLifecycle(
+    mlir::OpBuilder &builder, mlir::Location loc, mlir::ModuleOp moduleOp,
+    llvm::StringRef funcName, llvm::StringRef symbolPrefix,
+    llvm::StringRef description,
+    llvm::function_ref<mlir::LogicalResult()> buildBody) {
+  mlir::OpBuilder::InsertionGuard guard(builder);
+  mlir::MLIRContext *ctx = moduleOp.getContext();
+  mlir::Type voidTy = mlir::LLVM::LLVMVoidType::get(ctx);
+  mlir::LLVM::LLVMFunctionType functionTy =
+      mlir::LLVM::LLVMFunctionType::get(voidTy, {});
+  std::string symbolName = llvm::formatv("{0}{1}", symbolPrefix, funcName);
+
+  if (mlir::LLVM::LLVMFuncOp existing =
+          moduleOp.lookupSymbol<mlir::LLVM::LLVMFuncOp>(symbolName)) {
+    if (existing.getFunctionType() != functionTy)
+      return existing.emitError()
+             << "cached TVM FFI " << description
+             << " has incompatible type";
+    return existing;
+  }
+
+  builder.setInsertionPointToEnd(moduleOp.getBody());
+  mlir::LLVM::LLVMFuncOp function = mlir::LLVM::LLVMFuncOp::create(
+      builder, loc, symbolName, functionTy, mlir::LLVM::Linkage::Internal);
+  mlir::Block *entryBlock = function.addEntryBlock(builder);
+  builder.setInsertionPointToStart(entryBlock);
+
+  if (mlir::failed(buildBody())) {
+    function.erase();
+    return mlir::failure();
+  }
+
+  mlir::LLVM::ReturnOp::create(builder, loc, mlir::ValueRange{});
+  return function;
+}
+
+mlir::FailureOr<mlir::LLVM::LLVMFuncOp>
 getOrCreateTVMFFIGlobalCtor(mlir::OpBuilder &builder, mlir::Location loc,
                             mlir::ModuleOp moduleOp,
                             llvm::StringRef funcName,
                             mlir::LLVM::GlobalOp handleStorage) {
-  mlir::OpBuilder::InsertionGuard guard(builder);
   mlir::MLIRContext *ctx = moduleOp.getContext();
   mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
   mlir::Type i64Ty = mlir::IntegerType::get(ctx, 64);
   mlir::Type byteArrayTy =
       mlir::LLVM::LLVMStructType::getLiteral(ctx, {ptrTy, i64Ty});
-  mlir::Type voidTy = mlir::LLVM::LLVMVoidType::get(ctx);
-  mlir::LLVM::LLVMFunctionType functionTy =
-      mlir::LLVM::LLVMFunctionType::get(voidTy, {});
-  std::string ctorName =
-      llvm::formatv("__trident_tvm_ffi_ctor_{0}", funcName);
 
-  if (mlir::LLVM::LLVMFuncOp existing =
-          moduleOp.lookupSymbol<mlir::LLVM::LLVMFuncOp>(ctorName)) {
-    if (existing.getFunctionType() != functionTy) {
-      existing.emitError("cached TVM FFI constructor has incompatible type");
-      return mlir::failure();
-    }
-    return existing;
-  }
+  return getOrCreateTVMFFIGlobalLifecycle(
+      builder, loc, moduleOp, funcName, "__trident_tvm_ffi_ctor_",
+      "constructor", [&]() -> mlir::LogicalResult {
+        mlir::LLVM::LLVMFuncOp getGlobalCAPI = TRIDENT_CHECK_FAILURE(
+            getOrCreateTVMFFIFunctionGetGlobal(moduleOp));
+        mlir::Value namePtr =
+            getOrCreateGlobalString(builder, loc, moduleOp, funcName, funcName);
+        mlir::Value one =
+            mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1);
+        mlir::Value nameSlot = mlir::LLVM::AllocaOp::create(
+            builder, loc, ptrTy, byteArrayTy, one);
+        mlir::LLVM::StoreOp::create(
+            builder, loc, namePtr,
+            mlir::LLVM::GEPOp::create(
+                builder, loc, ptrTy, byteArrayTy, nameSlot,
+                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0}));
+        mlir::LLVM::StoreOp::create(
+            builder, loc,
+            mlir::LLVM::ConstantOp::create(builder, loc, i64Ty,
+                                            funcName.size()),
+            mlir::LLVM::GEPOp::create(
+                builder, loc, ptrTy, byteArrayTy, nameSlot,
+                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 1}));
 
-  mlir::LLVM::LLVMFuncOp getGlobalCAPI = TRIDENT_CHECK_FAILURE(
-      getOrCreateTVMFFIFunctionGetGlobal(moduleOp));
-
-  builder.setInsertionPointToEnd(moduleOp.getBody());
-  mlir::LLVM::LLVMFuncOp ctor = mlir::LLVM::LLVMFuncOp::create(
-      builder, loc, ctorName, functionTy, mlir::LLVM::Linkage::Internal);
-  mlir::Block *entryBlock = ctor.addEntryBlock(builder);
-  builder.setInsertionPointToStart(entryBlock);
-
-  mlir::Value namePtr =
-      getOrCreateGlobalString(builder, loc, moduleOp, funcName, funcName);
-  mlir::Value one = mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1);
-  mlir::Value nameSlot = mlir::LLVM::AllocaOp::create(
-      builder, loc, ptrTy, byteArrayTy, one);
-  mlir::LLVM::StoreOp::create(
-      builder, loc, namePtr,
-      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, byteArrayTy, nameSlot,
-                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0}));
-  mlir::LLVM::StoreOp::create(
-      builder, loc,
-      mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, funcName.size()),
-      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, byteArrayTy, nameSlot,
-                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 1}));
-
-  mlir::Value funcSlot =
-      mlir::LLVM::AllocaOp::create(builder, loc, ptrTy, ptrTy, one);
-  mlir::LLVM::CallOp::create(builder, loc, getGlobalCAPI,
-                             {nameSlot, funcSlot});
-  mlir::Value funcHandle =
-      mlir::LLVM::LoadOp::create(builder, loc, ptrTy, funcSlot);
-  mlir::Value globalAddress =
-      mlir::LLVM::AddressOfOp::create(builder, loc, handleStorage).getResult();
-  mlir::LLVM::StoreOp::create(builder, loc, funcHandle, globalAddress);
-  mlir::LLVM::ReturnOp::create(builder, loc, mlir::ValueRange{});
-  return ctor;
+        mlir::Value funcSlot =
+            mlir::LLVM::AllocaOp::create(builder, loc, ptrTy, ptrTy, one);
+        mlir::LLVM::CallOp::create(builder, loc, getGlobalCAPI,
+                                   {nameSlot, funcSlot});
+        mlir::Value funcHandle =
+            mlir::LLVM::LoadOp::create(builder, loc, ptrTy, funcSlot);
+        mlir::Value globalAddress = mlir::LLVM::AddressOfOp::create(
+            builder, loc, handleStorage);
+        mlir::LLVM::StoreOp::create(builder, loc, funcHandle, globalAddress);
+        return mlir::success();
+      });
 }
 
 mlir::FailureOr<mlir::LLVM::LLVMFuncOp>
@@ -114,39 +136,20 @@ getOrCreateTVMFFIGlobalDtor(mlir::OpBuilder &builder, mlir::Location loc,
                             mlir::ModuleOp moduleOp,
                             llvm::StringRef funcName,
                             mlir::LLVM::GlobalOp handleStorage) {
-  mlir::OpBuilder::InsertionGuard guard(builder);
-  mlir::MLIRContext *ctx = moduleOp.getContext();
-  mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
-  mlir::Type voidTy = mlir::LLVM::LLVMVoidType::get(ctx);
-  mlir::LLVM::LLVMFunctionType functionTy =
-      mlir::LLVM::LLVMFunctionType::get(voidTy, {});
-  std::string dtorName =
-      llvm::formatv("__trident_tvm_ffi_dtor_{0}", funcName);
+  mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(moduleOp.getContext());
 
-  if (mlir::LLVM::LLVMFuncOp existing =
-          moduleOp.lookupSymbol<mlir::LLVM::LLVMFuncOp>(dtorName)) {
-    if (existing.getFunctionType() != functionTy) {
-      existing.emitError("cached TVM FFI destructor has incompatible type");
-      return mlir::failure();
-    }
-    return existing;
-  }
-
-  mlir::LLVM::LLVMFuncOp decRef =
-      TRIDENT_CHECK_FAILURE(getOrCreateTVMFFIObjectDecRef(moduleOp));
-
-  builder.setInsertionPointToEnd(moduleOp.getBody());
-  mlir::LLVM::LLVMFuncOp dtor = mlir::LLVM::LLVMFuncOp::create(
-      builder, loc, dtorName, functionTy, mlir::LLVM::Linkage::Internal);
-  mlir::Block *entryBlock = dtor.addEntryBlock(builder);
-  builder.setInsertionPointToStart(entryBlock);
-  mlir::Value globalAddress =
-      mlir::LLVM::AddressOfOp::create(builder, loc, handleStorage).getResult();
-  mlir::Value funcHandle =
-      mlir::LLVM::LoadOp::create(builder, loc, ptrTy, globalAddress);
-  mlir::LLVM::CallOp::create(builder, loc, decRef, {funcHandle});
-  mlir::LLVM::ReturnOp::create(builder, loc, mlir::ValueRange{});
-  return dtor;
+  return getOrCreateTVMFFIGlobalLifecycle(
+      builder, loc, moduleOp, funcName, "__trident_tvm_ffi_dtor_",
+      "destructor", [&]() -> mlir::LogicalResult {
+        mlir::LLVM::LLVMFuncOp decRef =
+            TRIDENT_CHECK_FAILURE(getOrCreateTVMFFIObjectDecRef(moduleOp));
+        mlir::Value globalAddress = mlir::LLVM::AddressOfOp::create(
+            builder, loc, handleStorage);
+        mlir::Value funcHandle =
+            mlir::LLVM::LoadOp::create(builder, loc, ptrTy, globalAddress);
+        mlir::LLVM::CallOp::create(builder, loc, decRef, {funcHandle});
+        return mlir::success();
+      });
 }
 
 mlir::LogicalResult registerGlobalCtor(mlir::OpBuilder &builder,

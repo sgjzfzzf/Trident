@@ -76,7 +76,8 @@ getOrCreateTVMFFIGlobalLifecycle(
 
   if (mlir::failed(buildBody())) {
     function.erase();
-    return mlir::failure();
+    return mlir::emitError(loc)
+           << "failed to build TVM FFI global " << description;
   }
 
   mlir::LLVM::ReturnOp::create(builder, loc, mlir::ValueRange{});

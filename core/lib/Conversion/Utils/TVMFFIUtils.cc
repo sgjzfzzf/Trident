@@ -153,10 +153,9 @@ getOrCreateTVMFFIGlobalDtor(mlir::OpBuilder &builder, mlir::Location loc,
       });
 }
 
-mlir::LogicalResult registerGlobalCtor(mlir::OpBuilder &builder,
-                                       mlir::Location loc,
-                                       mlir::ModuleOp moduleOp,
-                                       mlir::LLVM::LLVMFuncOp ctor) {
+void registerGlobalCtor(mlir::OpBuilder &builder, mlir::Location loc,
+                        mlir::ModuleOp moduleOp,
+                        mlir::LLVM::LLVMFuncOp ctor) {
   mlir::OpBuilder::InsertionGuard guard(builder);
   for (mlir::LLVM::GlobalCtorsOp op :
        moduleOp.getOps<mlir::LLVM::GlobalCtorsOp>()) {
@@ -164,7 +163,7 @@ mlir::LogicalResult registerGlobalCtor(mlir::OpBuilder &builder,
           auto symbol = mlir::dyn_cast<mlir::FlatSymbolRefAttr>(attr);
           return symbol && symbol.getValue() == ctor.getSymName();
         }))
-      return mlir::success();
+      return;
   }
 
   mlir::Attribute ctorRef =
@@ -176,13 +175,11 @@ mlir::LogicalResult registerGlobalCtor(mlir::OpBuilder &builder,
   mlir::LLVM::GlobalCtorsOp::create(
       builder, loc, builder.getArrayAttr({ctorRef}),
       builder.getArrayAttr({priority}), builder.getArrayAttr({data}));
-  return mlir::success();
 }
 
-mlir::LogicalResult registerGlobalDtor(mlir::OpBuilder &builder,
-                                       mlir::Location loc,
-                                       mlir::ModuleOp moduleOp,
-                                       mlir::LLVM::LLVMFuncOp dtor) {
+void registerGlobalDtor(mlir::OpBuilder &builder, mlir::Location loc,
+                        mlir::ModuleOp moduleOp,
+                        mlir::LLVM::LLVMFuncOp dtor) {
   mlir::OpBuilder::InsertionGuard guard(builder);
   for (mlir::LLVM::GlobalDtorsOp op :
        moduleOp.getOps<mlir::LLVM::GlobalDtorsOp>()) {
@@ -190,7 +187,7 @@ mlir::LogicalResult registerGlobalDtor(mlir::OpBuilder &builder,
           auto symbol = mlir::dyn_cast<mlir::FlatSymbolRefAttr>(attr);
           return symbol && symbol.getValue() == dtor.getSymName();
         }))
-      return mlir::success();
+      return;
   }
 
   mlir::Attribute dtorRef =
@@ -202,7 +199,6 @@ mlir::LogicalResult registerGlobalDtor(mlir::OpBuilder &builder,
   mlir::LLVM::GlobalDtorsOp::create(
       builder, loc, builder.getArrayAttr({dtorRef}),
       builder.getArrayAttr({priority}), builder.getArrayAttr({data}));
-  return mlir::success();
 }
 
 } // namespace
@@ -247,21 +243,16 @@ mlir::FailureOr<mlir::Value> getTVMFFIGlobalFunction(mlir::OpBuilder &builder,
   mlir::LLVM::LLVMStructType anyTy =
       trident::conversion::utils::getTVMFFIAnyType(ctx);
 
-  mlir::LLVM::GlobalOp handleGlobal;
-  {
-    mlir::OpBuilder::InsertionGuard guard(builder);
-    handleGlobal = TRIDENT_CHECK_FAILURE(
-        getOrCreateTVMFFIGlobalHandle(builder, moduleOp, funcName));
-    mlir::LLVM::LLVMFuncOp ctor = TRIDENT_CHECK_FAILURE(
-        getOrCreateTVMFFIGlobalCtor(builder, loc, moduleOp, funcName,
-                                    handleGlobal));
-    mlir::LLVM::LLVMFuncOp dtor = TRIDENT_CHECK_FAILURE(
-        getOrCreateTVMFFIGlobalDtor(builder, loc, moduleOp, funcName,
-                                    handleGlobal));
-    if (mlir::failed(registerGlobalCtor(builder, loc, moduleOp, ctor)) ||
-        mlir::failed(registerGlobalDtor(builder, loc, moduleOp, dtor)))
-      return mlir::failure();
-  }
+  mlir::LLVM::GlobalOp handleGlobal = TRIDENT_CHECK_FAILURE(
+      getOrCreateTVMFFIGlobalHandle(builder, moduleOp, funcName));
+  mlir::LLVM::LLVMFuncOp ctor = TRIDENT_CHECK_FAILURE(
+      getOrCreateTVMFFIGlobalCtor(builder, loc, moduleOp, funcName,
+                                  handleGlobal));
+  mlir::LLVM::LLVMFuncOp dtor = TRIDENT_CHECK_FAILURE(
+      getOrCreateTVMFFIGlobalDtor(builder, loc, moduleOp, funcName,
+                                  handleGlobal));
+  registerGlobalCtor(builder, loc, moduleOp, ctor);
+  registerGlobalDtor(builder, loc, moduleOp, dtor);
   mlir::Value globalAddress =
       mlir::LLVM::AddressOfOp::create(builder, loc, handleGlobal).getResult();
   mlir::Value funcHandle =

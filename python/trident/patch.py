@@ -119,9 +119,9 @@ def _import_hop_triton_kernel_wrapper_mutation(
     ]
     call_arguments: Dict[str, ir.Value] = {}
     for name, triton_type in runtime_parameters:
-        if value := kvalues.get(name):
+        if (value := kvalues.get(name)) is not None:
             call_arguments[name] = value
-        elif value := constant_args.get(name):
+        elif (value := constant_args.get(name)) is not None:
             with loc:
                 if triton_type.startswith("*") and value is None:
                     call_arguments[name] = self._make_null_ptr()

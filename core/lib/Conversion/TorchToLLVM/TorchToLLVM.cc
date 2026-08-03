@@ -33,8 +33,18 @@ public:
 
     populateTorchToLLVMConversionPatterns(target, typeConverter, patterns);
 
-    if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
-                                                  std::move(patterns)))) {
+    // Fold only as a fallback *after* running the conversion patterns.
+    // With the default `BeforePatterns` mode, torch.aten.clone (whose fold
+    // unconditionally returns the self operand when the types match, ignoring
+    // memory_format) gets folded before ConvertAtenDispatcherOp can lower it to
+    // the trident.aten.clone FFI call. That would alias the clone result with
+    // its operand, unbalancing the reference counting inserted by RAAI and
+    // causing a premature release / double free at runtime.
+    if (mlir::failed(mlir::applyPartialConversion(
+            getOperation(), target, std::move(patterns),
+            mlir::ConversionConfig{
+                .foldingMode =
+                    mlir::DialectConversionFoldingMode::AfterPatterns}))) {
       signalPassFailure();
     }
   }

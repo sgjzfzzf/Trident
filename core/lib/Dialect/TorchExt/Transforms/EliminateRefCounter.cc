@@ -54,8 +54,15 @@ public:
     mlir::RewritePatternSet patterns(&getContext());
     patterns.add<EliminateRefCounterPattern>(&getContext());
 
-    if (mlir::failed(
-            mlir::applyPatternsGreedily(getOperation(), std::move(patterns))))
+    // Disable folding: the greedy driver folds any op with a folder by
+    // default. In particular torch.aten.clone (which has a folder that
+    // unconditionally returns its self operand when the types match) would be
+    // folded here, aliasing the clone result with its operand and unbalancing
+    // the reference counts inserted by RAAI. This pass only cancels
+    // IncRef/DecRef pairs; it must not rewrite other ops.
+    if (mlir::failed(mlir::applyPatternsGreedily(
+            getOperation(), std::move(patterns),
+            mlir::GreedyRewriteConfig().enableFolding(false))))
       signalPassFailure();
   }
 };

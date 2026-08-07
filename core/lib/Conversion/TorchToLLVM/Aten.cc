@@ -28,10 +28,12 @@ namespace {
 class ConvertAtenDispatcherOp : public mlir::ConversionPattern {
 public:
   ConvertAtenDispatcherOp(const mlir::TypeConverter &typeConverter,
-                          mlir::MLIRContext *context)
+                          mlir::MLIRContext *context,
+                          RefCountTable &refCountTable)
       : mlir::ConversionPattern(typeConverter,
                                 mlir::Pattern::MatchAnyOpTypeTag(),
-                                /*benefit=*/1, context) {}
+                                /*benefit=*/1, context),
+        refCountTable(refCountTable) {}
 
   mlir::LogicalResult
   matchAndRewrite(mlir::Operation *op, llvm::ArrayRef<mlir::Value> operands,
@@ -157,16 +159,35 @@ public:
           });
       rewriter.replaceOp(op, results);
     }
+
+    // Record the converted object results so that the post-conversion
+    // ref-counting can Inc/DecRef them.  Only ref-counted Torch types
+    // (tensor / list / tuple / optional) are tracked; scalars and none are
+    // not.  Entries start at a net count of zero; insertRefCounting() then
+    // accumulates +1 for escapes and -1 for in-scope last uses.
+    for (auto [i, result] : llvm::enumerate(op->getResults())) {
+      if (isRefCountedObjectType(result.getType())) {
+        mlir::Value remapped = rewriter.getRemappedValue(result);
+        refCountTable.insert({remapped, /*netRefCount=*/0});
+      }
+    }
     return mlir::success();
   }
+
+private:
+  /// Reference to the conversion's ref-count table.  The table is owned by
+  /// the ConvertTorchToLLVM pass; the patterns merely record converted
+  /// objects into it.
+  RefCountTable &refCountTable;
 };
 
 } // namespace
 
 void populateTorchToLLVMAtenConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
-    mlir::RewritePatternSet &patterns) {
-  patterns.add<ConvertAtenDispatcherOp>(typeConverter, patterns.getContext());
+    mlir::RewritePatternSet &patterns, RefCountTable &refCountTable) {
+  patterns.add<ConvertAtenDispatcherOp>(typeConverter, patterns.getContext(),
+                                        refCountTable);
   // Force torch.aten.* ops through this file's dispatcher lowering, while
   // keeping other Torch dialect ops dynamically legal in this stage.
   target.addDynamicallyLegalDialect<mlir::torch::Torch::TorchDialect>(

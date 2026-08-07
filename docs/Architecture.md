@@ -190,23 +190,15 @@ launches. Its lowering is split across two passes in `trident-lowering-pipeline`
 |---|---|---|
 | `torchext.cast` | `ConvertTorchExtToGPU` | Converts `!torch.float` / `!torch.int` scalars to native MLIR types (f32/f64/i32/i64) for typed scalar passing to Triton kernels. Implements `CastOpInterface` for standard MLIR cast semantics. |
 | `torchext.trident_kernel_launch` | `ConvertTorchExtToGPU` | Launches Triton kernels with explicit grid/block dimensions (I64); unpacks tensor/scalar args from TVMFFIAny into kernel parameters and emits `gpu.launch_func`. Uses TVMFFI stream API for CUDA stream management. |
-| `torchext.ObjectIncRef` | `ConvertTorchExtToLLVM` | Increments Torch object reference count via `TVMFFIObjectIncRef(handle)` |
-| `torchext.ObjectDecRef` | `ConvertTorchExtToLLVM` | Decrements Torch object reference count via `TVMFFIObjectDecRef(handle)` |
 
-Reference counting ops are automatically inserted by the `RAAI` pass (Reference-count
-Auto-Insertion) at the start of the pipeline, which scans each single-block region
-and adds `IncRef`/`DecRef` pairs around Torch object uses. The RAAI pass supports
-`TupleType` and `OptionalType` values in addition to individual Torch objects.
-
-The `EliminateRefCounter` pass runs immediately after `RAAI` and eliminates
-balanced `IncRef`/`DecRef` pairs on the same SSA value within a single block.
-For each `torchext.ObjectIncRef`, it scans forward for the nearest unmatched
-`torchext.ObjectDecRef` on the same value and erases both operations. Matching
-never crosses a block boundary, and a `DecRef` that precedes an `IncRef` is
-not eliminated. This cleanup reduces unnecessary reference count traffic before
-lowering to LLVM.
-
-CUDA leak checks are integrated into examples to verify correctness.
+Reference counting for Torch objects (tensors, lists, tuples, optionals)
+backed by manually-managed resources is handled inside `ConvertTorchToLLVM`
+itself: the conversion records every object it produces in a counter table and,
+after conversion, emits `TVMFFIObjectIncRef` for values that escape a scope
+(terminator operands, e.g. returns) and `TVMFFIObjectDecRef` for values whose
+last use is inside the scope. Inc/Dec of the same object emitted back-to-back
+cancel out at runtime, handing the caller a reference-count-1 object. No
+separate RAAI / pair-elimination pass is needed.
 
 ## LLVM Dispatcher Semantics
 

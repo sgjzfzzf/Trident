@@ -28,7 +28,12 @@ class ConvertPrimListConstructOp
     : public mlir::OpConversionPattern<
           mlir::torch::Torch::PrimListConstructOp> {
 public:
-  using OpConversionPattern::OpConversionPattern;
+  ConvertPrimListConstructOp(const mlir::TypeConverter &typeConverter,
+                             mlir::MLIRContext *context,
+                             RefCountTable &refCountTable)
+      : mlir::OpConversionPattern<mlir::torch::Torch::PrimListConstructOp>(
+            typeConverter, context),
+        refCountTable(refCountTable) {}
 
   mlir::LogicalResult
   matchAndRewrite(mlir::torch::Torch::PrimListConstructOp op, OpAdaptor adaptor,
@@ -91,9 +96,9 @@ public:
 
     // Extract v_obj (field[2]) from result TVMFFIAny and wrap it back
     // in a TVMFFIAny with kTVMFFIArray tag so downstream consumers
-    // (CAPI for aten ops, ConvertObjectDecRefOp, etc.) always
-    // see a proper TVMFFIAny value instead of a raw pointer that would
-    // force an unreconcilable unrealized_conversion_cast.
+    // (CAPI for aten ops, the ref-counting pass in TorchToLLVM, etc.)
+    // always see a proper TVMFFIAny value instead of a raw pointer that
+    // would force an unreconcilable unrealized_conversion_cast.
     mlir::Value resultSlot = result;
     mlir::Value vObjGEP =
         mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, anyTy, resultSlot,
@@ -110,17 +115,28 @@ public:
                                                   llvm::ArrayRef<int64_t>{0});
     rewriter.replaceOpWithNewOp<mlir::LLVM::InsertValueOp>(
         op, anyTy, anyResult, vObj, llvm::ArrayRef<int64_t>{2});
+
+    // The list is a heap-allocated FFI array; register it so the
+    // post-conversion ref-counting can Inc/DecRef it.
+    mlir::Value remapped = rewriter.getRemappedValue(op->getResult(0));
+    refCountTable.insert({remapped, /*netRefCount=*/0});
     return mlir::success();
   }
+
+private:
+  /// Reference to the conversion's ref-count table.  The table is owned by
+  /// the ConvertTorchToLLVM pass; the patterns merely record converted
+  /// objects into it.
+  RefCountTable &refCountTable;
 };
 
 } // namespace
 
 void populateTorchToLLVMPrimConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
-    mlir::RewritePatternSet &patterns) {
-  patterns.add<ConvertPrimListConstructOp>(typeConverter,
-                                           patterns.getContext());
+    mlir::RewritePatternSet &patterns, RefCountTable &refCountTable) {
+  patterns.add<ConvertPrimListConstructOp>(typeConverter, patterns.getContext(),
+                                           refCountTable);
   target.addIllegalOp<mlir::torch::Torch::PrimListConstructOp>();
 }
 

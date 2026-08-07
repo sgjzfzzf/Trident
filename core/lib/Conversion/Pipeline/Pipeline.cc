@@ -24,8 +24,6 @@
 #include "trident/core/Conversion/TorchToLLVM/FuncBackendTypeConversion.h"
 #include "trident/core/Conversion/TorchToLLVM/TorchToLLVM.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
-#include "trident/core/Dialect/TorchExt/Transforms/EliminateRefCounter.h"
-#include "trident/core/Dialect/TorchExt/Transforms/RAAI.h"
 
 namespace trident::torch {
 
@@ -38,8 +36,8 @@ class TridentLoweringPipelinePass
     : public impl::TridentLoweringPipelineBase<TridentLoweringPipelinePass> {
   void runOnOperation() final {
     mlir::OpPassManager pm;
-    pm.addPass(trident::torch::createRAAI());
-    pm.addPass(trident::torch::createEliminateRefCounter());
+    // Reference counting is handled by TorchToLLVM itself (see
+    // TorchToLLVM.cc::insertRefCounting), so no separate RAAI pass is needed.
     pm.addPass(trident::torch::createConvertTorchToCf());
     pm.addPass(trident::torch::createConvertTorchToLLVM());
     pm.addPass(trident::torchext::createConvertTorchExtToGPU());

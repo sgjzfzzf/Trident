@@ -1,8 +1,6 @@
 add_mlir_library(
   TridentUtilsRegistration
   Registration.cc
-  DEPENDS
-  MLIRTorchExtPassIncGen
   LINK_LIBS
   PUBLIC
   TorchExtTransforms

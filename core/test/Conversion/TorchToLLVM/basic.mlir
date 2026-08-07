@@ -107,7 +107,12 @@ func.func @torch.constant.none() -> !torch.none {
 // CHECK:           llvm.insertvalue %[[VOBJ]], {{%.*}}[2] : !llvm.struct<(i32, i32, i64)>
 // Wrap in unrealized_conversion_cast for the Torch return type.
 // CHECK:           builtin.unrealized_conversion_cast {{%.*}} : !llvm.struct<(i32, i32, i64)> to !torch.list<int>
-// CHECK-NEXT:      return {{%.*}} : !torch.list<int>
+// The list result escapes through the return: the ref-counting pass inserts an
+// IncRef (escape) followed by a DecRef (last use in this scope), which cancel
+// out at runtime and hand the caller a reference-count-1 list.
+// CHECK:           llvm.call @TVMFFIObjectIncRef
+// CHECK:           llvm.call @TVMFFIObjectDecRef
+// CHECK:           return {{%.*}} : !torch.list<int>
 func.func @torch.prim.list_construct(%arg0: !torch.int, %arg1: !torch.int) -> !torch.list<int> {
   %0 = torch.prim.ListConstruct %arg0, %arg1 : (!torch.int, !torch.int) -> !torch.list<int>
   return %0 : !torch.list<int>

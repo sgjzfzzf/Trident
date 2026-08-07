@@ -10,7 +10,6 @@
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
-#include "mlir/Transforms/Passes.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchDialect.h"
 #include "torch-mlir/Dialect/Torch/Transforms/Passes.h"
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
@@ -24,16 +23,12 @@
 #include "trident/core/Conversion/TorchToLLVM/TorchToLLVM.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
-#include "trident/core/Dialect/TorchExt/Transforms/EliminateRefCounter.h"
-#include "trident/core/Dialect/TorchExt/Transforms/RAAI.h"
 
 void trident::conversion::registerAllPasses() {
   mlir::registerAllPasses();
   mlir::registerConvertToLLVMPass();
   mlir::registerReconcileUnrealizedCastsPass();
   mlir::torch::registerTorchPasses();
-  trident::torch::registerEliminateRefCounterPass();
-  trident::torch::registerRAAIPass();
   trident::torchext::registerConvertTorchExtToGPUPass();
   trident::torchext::registerConvertTorchExtToLLVMPass();
   trident::tvm_ffi::registerConvertTVMFFIToLLVMPass();

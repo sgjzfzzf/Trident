@@ -27,7 +27,7 @@ add_custom_command(
   COMMENT "Generating tvm-ffi stubs from libTridentFFI.so"
   VERBATIM)
 
-add_custom_target(TridentFFIStubs DEPENDS "${STUBGEN_OUTPUT}")
+add_custom_target(TridentFFIStubs ALL DEPENDS "${STUBGEN_OUTPUT}")
 
 install(FILES "${STUBGEN_OUTPUT}" "${CMAKE_SOURCE_DIR}/python/__init__.py"
         DESTINATION ffi)

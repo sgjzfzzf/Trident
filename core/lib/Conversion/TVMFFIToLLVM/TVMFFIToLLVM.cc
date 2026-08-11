@@ -347,21 +347,16 @@ public:
                                .getResult(0);
       mapping.map(arg, casted);
 
-      // ── Guard checking: if any guard fails, return immediately with -1 ──
+      // ── Guard checking: any failure returns immediately with -1 ──
       if (mlir::ArrayAttr guardAttrs = mlir::dyn_cast_or_null<mlir::ArrayAttr>(
               op.getArgAttr(i, "tvm_ffi.guard"))) {
-        for (mlir::Attribute g : guardAttrs) {
-          mlir::Value guardResult = buildGuards(rewriter, slot, g);
-          if (!guardResult) {
-            return op.emitError("unsupported guard attribute on argument ")
-                   << i;
-          }
+        // Emit a CondBr on `cond`; on failure write a GuardMatch exception to
+        // retPtr and return 0 so the dispatcher tries the next specialization.
+        auto emitGuardBranch = [&](mlir::Value cond) -> mlir::LogicalResult {
           mlir::Block *currentBlock = rewriter.getInsertionBlock();
           mlir::Block *failBlock = rewriter.createBlock(&region);
           rewriter.setInsertionPointToStart(failBlock);
-          // Write an Exception object into retPtr so that the dispatcher
-          // can identify this as a guard mismatch and try the next
-          // specialization (or convert to Error if none left).
+          // Write a GuardMatch Exception into retPtr for the dispatcher.
           mlir::ModuleOp moduleOp =
               op->template getParentOfType<mlir::ModuleOp>();
           if (!moduleOp) {
@@ -394,7 +389,7 @@ public:
           mlir::LLVM::StoreOp::create(rewriter, loc, buildRawStrAny(kindPtr),
                                       kindSlot);
 
-          // Call trident.ffi.Exception(kind) — only passes the kind argument.
+          // Call trident.ffi.Exception(kind).
           mlir::Value resultSlot = TRIDENT_CHECK(
               conversion::utils::callTVMFFIGlobalFunction(
                   rewriter, loc, moduleOp, "trident.ffi.Exception",
@@ -403,7 +398,7 @@ public:
           mlir::Value exceptionAny =
               mlir::LLVM::LoadOp::create(rewriter, loc, anyTy, resultSlot);
 
-          // Store the Exception into retPtr and return 0 (success).
+          // Store the Exception into retPtr and return 0.
           mlir::LLVM::StoreOp::create(rewriter, loc, exceptionAny, retPtr);
           mlir::LLVM::ConstantOp zeroReturn =
               mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 0);
@@ -411,10 +406,40 @@ public:
 
           mlir::Block *contBlock = rewriter.createBlock(&region);
           rewriter.setInsertionPointToEnd(currentBlock);
-          mlir::LLVM::CondBrOp::create(rewriter, loc, guardResult, contBlock,
+          mlir::LLVM::CondBrOp::create(rewriter, loc, cond, contBlock,
                                        failBlock);
 
           rewriter.setInsertionPointToStart(contBlock);
+          return mlir::success();
+        };
+
+        // ── Tensor type pre-check (SIGSEGV fix) ──
+        // Guards marked RequiresTensorGuardTrait dereference the slot payload
+        // as a DLTensor*; check it is a kTVMFFITensor first so a non-tensor
+        // value (e.g. None) fails the guard instead of segfaulting.
+        if (llvm::any_of(guardAttrs, [](mlir::Attribute g) {
+              return g.hasTrait<RequiresTensorGuardTrait>();
+            })) {
+          mlir::Value typeCodePtr = mlir::LLVM::GEPOp::create(
+              rewriter, loc, ptrTy, anyTy, slot,
+              llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0});
+          mlir::Value loadedTypeCode =
+              mlir::LLVM::LoadOp::create(rewriter, loc, i32Ty, typeCodePtr);
+          mlir::Value isTensor = mlir::LLVM::ICmpOp::create(
+              rewriter, loc, mlir::LLVM::ICmpPredicate::eq, loadedTypeCode,
+              mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty,
+                                             kTVMFFITensor));
+          if (emitGuardBranch(isTensor).failed()) {
+            return mlir::failure();
+          }
+        }
+
+        for (mlir::Attribute g : guardAttrs) {
+          if (mlir::Value guardResult = buildGuards(rewriter, slot, g);
+              !guardResult || emitGuardBranch(guardResult).failed()) {
+            return op.emitError("failed to lower guard attribute on argument ")
+                   << i;
+          }
         }
       }
     }

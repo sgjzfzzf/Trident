@@ -30,6 +30,18 @@ class TVMFFI_GuardAttr<string mnemonicStr, list<Trait> traits = []>
   let summary = "A guard condition attribute for the TVM FFI tracing system";
 }
 
+// Trait for guard attrs whose lowering dereferences the value as a DLTensor*;
+// the TVMFFIToLLVM pass emits a kTVMFFITensor pre-check for these.
+// cppNamespace is cleared so the fully-qualified name below is used verbatim.
+def TVMFFI_RequiresTensorGuardTrait
+    : NativeAttrTrait<"::trident::tvm_ffi::RequiresTensorGuardTrait"> {
+  let cppNamespace = "";
+}
+
+// Base for DLTensor*-dereferencing guard attrs.
+class TVMFFI_TensorGuardAttr<string mnemonicStr>
+    : TVMFFI_GuardAttr<mnemonicStr, [TVMFFI_RequiresTensorGuardTrait]>;
+
 //===----------------------------------------------------------------------===//
 // ConstantGuardAttr
 //===----------------------------------------------------------------------===//
@@ -47,7 +59,7 @@ def TVMFFI_ConstantGuardAttr : TVMFFI_GuardAttr<"ConstantGuard"> {
 // CUDADeviceGuardAttr
 //===----------------------------------------------------------------------===//
 
-def TVMFFI_CUDADeviceGuardAttr : TVMFFI_GuardAttr<"CudaDeviceGuard"> {
+def TVMFFI_CUDADeviceGuardAttr : TVMFFI_TensorGuardAttr<"CudaDeviceGuard"> {
   let description =
       [{Guards that a tensor variable resides on a specific CUDA device.}];
 
@@ -60,7 +72,7 @@ def TVMFFI_CUDADeviceGuardAttr : TVMFFI_GuardAttr<"CudaDeviceGuard"> {
 // DimensionGuardAttr
 //===----------------------------------------------------------------------===//
 
-def TVMFFI_DimensionGuardAttr : TVMFFI_GuardAttr<"DimensionGuard"> {
+def TVMFFI_DimensionGuardAttr : TVMFFI_TensorGuardAttr<"DimensionGuard"> {
   let description =
       [{Guards the number of dimensions(ndimension) of a tensor variable.}];
 
@@ -72,7 +84,7 @@ def TVMFFI_DimensionGuardAttr : TVMFFI_GuardAttr<"DimensionGuard"> {
 // DTypeGuardAttr
 //===----------------------------------------------------------------------===//
 
-def TVMFFI_DTypeGuardAttr : TVMFFI_GuardAttr<"DtypeGuard"> {
+def TVMFFI_DTypeGuardAttr : TVMFFI_TensorGuardAttr<"DtypeGuard"> {
   let description =
       [{Guards the dtype of a tensor variable(e.g.torch.float32).}];
 
@@ -86,7 +98,7 @@ def TVMFFI_DTypeGuardAttr : TVMFFI_GuardAttr<"DtypeGuard"> {
 // SizeGuardAttr
 //===----------------------------------------------------------------------===//
 
-def TVMFFI_SizeGuardAttr : TVMFFI_GuardAttr<"SizeGuard"> {
+def TVMFFI_SizeGuardAttr : TVMFFI_TensorGuardAttr<"SizeGuard"> {
   let description =
       [{Guards the size of a specific dimension of a tensor variable.}];
 
@@ -99,7 +111,7 @@ def TVMFFI_SizeGuardAttr : TVMFFI_GuardAttr<"SizeGuard"> {
 // StorageOffsetGuardAttr
 //===----------------------------------------------------------------------===//
 
-def TVMFFI_StorageOffsetGuardAttr : TVMFFI_GuardAttr<"StorageOffsetGuard"> {
+def TVMFFI_StorageOffsetGuardAttr : TVMFFI_TensorGuardAttr<"StorageOffsetGuard"> {
   let description = [{Guards the storage offset of a tensor variable.}];
 
   let parameters = (ins "int64_t" : $expected);
@@ -110,7 +122,7 @@ def TVMFFI_StorageOffsetGuardAttr : TVMFFI_GuardAttr<"StorageOffsetGuard"> {
 // StrideGuardAttr
 //===----------------------------------------------------------------------===//
 
-def TVMFFI_StrideGuardAttr : TVMFFI_GuardAttr<"StrideGuard"> {
+def TVMFFI_StrideGuardAttr : TVMFFI_TensorGuardAttr<"StrideGuard"> {
   let description =
       [{Guards the stride of a specific dimension of a tensor variable.}];
 

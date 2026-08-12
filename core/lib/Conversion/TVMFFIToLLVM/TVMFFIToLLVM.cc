@@ -25,6 +25,7 @@
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchDialect.h"
+#include "trident/core/Conversion/TorchToLLVM/TorchToLLVM.h"
 #include "trident/core/Conversion/Utils/Check.h"
 #include "trident/core/Conversion/Utils/GlobalString.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
@@ -34,6 +35,7 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
+#include "tvm/ffi/c_api.h"
 #include "llvm/Support/FormatVariadic.h"
 
 #include <string>
@@ -67,6 +69,26 @@ static mlir::Value getDLTensorPtr(mlir::OpBuilder &builder, mlir::Value slot) {
   return mlir::LLVM::GEPOp::create(
       builder, loc, ptrTy, i8Ty, handleObj,
       llvm::ArrayRef<mlir::LLVM::GEPArg>{sizeof(TVMFFIObject)});
+}
+
+/// Emit `TVMFFIObjectDecRef(handle)` for an object-typed result element that
+/// was packed into an ffi.Array container (which holds its own reference to
+/// it).  Scalar elements live inline in the TVMFFIAny payload and must never
+/// be passed here.
+static void emitObjectDecRef(mlir::OpBuilder &builder, mlir::Location loc,
+                             mlir::ModuleOp moduleOp, mlir::Value anyValue) {
+  mlir::MLIRContext *ctx = builder.getContext();
+  mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
+  mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
+  mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
+      builder, loc, anyValue, llvm::ArrayRef<int64_t>{2});
+  mlir::Value handle =
+      mlir::LLVM::IntToPtrOp::create(builder, loc, ptrTy, payload);
+  mlir::FailureOr<mlir::LLVM::LLVMFuncOp> callee =
+      trident::conversion::utils::getOrCreateTVMFFIObjectDecRef(moduleOp);
+  assert(mlir::succeeded(callee) &&
+         "failed to create TVMFFIObjectDecRef declaration");
+  mlir::LLVM::CallOp::create(builder, loc, *callee, mlir::ValueRange{handle});
 }
 
 //===----------------------------------------------------------------------===//
@@ -303,10 +325,9 @@ public:
     mlir::Location loc = op.getLoc();
     mlir::MLIRContext *context = rewriter.getContext();
 
-    // Without support for tvm_ffi.Array, at most one return value is allowed.
-    assert(op.getFunctionType().getResults().size() <= 1 &&
-           "Without the support of `tvm.ffi.Array`, we only support at most "
-           "one return value temporarily.");
+    // Multi-return is supported: results are packed into an ffi.Array
+    // container (see Step 6) so the single TVMFFIAny* ABI result can carry
+    // an arbitrary number of values.
 
     // TVM-FFI C ABI: int32_t(void*, void*, int32_t, void*)
     mlir::IntegerType i32Ty = rewriter.getIntegerType(32);
@@ -465,7 +486,10 @@ public:
       rewriter.setInsertionPointToEnd(dest);
       for (mlir::Operation &operation : llvm::make_early_inc_range(blk)) {
         if (ReturnOp returnOp = mlir::dyn_cast<ReturnOp>(&operation)) {
-          for (mlir::Value operand : returnOp.getOperands()) {
+          const size_t numResults = returnOp.getNumOperands();
+          if (numResults == 1) {
+            // Single result: store the TVMFFIAny directly into retPtr.
+            mlir::Value operand = returnOp.getOperand(0);
             mlir::Value retVal = mapping.lookupOrDefault(operand);
             mlir::Type operandTy = operand.getType();
             // All torch types uniformly lower to TVMFFIAny; store directly.
@@ -475,6 +499,85 @@ public:
                     retVal)
                     .getResult(0);
             mlir::LLVM::StoreOp::create(rewriter, loc, casted, retPtr);
+          } else if (numResults > 1) {
+            // Multi-result: the TVM FFI C API carries a single TVMFFIAny*
+            // result, so pack all values into an ffi.Array container; the
+            // Python side unwraps kTVMFFIArray back into a tuple.
+            //
+            // Ref-counting: escaping object operands carry a +1 reference
+            // (TorchToLLVM ref-counting); ffi.Array adds its own, so each
+            // object element is DecRef'd after packing.  Scalars live inline
+            // in the TVMFFIAny payload and need no ref-counting.
+            mlir::ModuleOp moduleOp =
+                op->template getParentOfType<mlir::ModuleOp>();
+            if (!moduleOp) {
+              return op.emitError(
+                  "failed to get parent ModuleOp for multi-result packing");
+            }
+            mlir::IntegerType i64Ty = rewriter.getIntegerType(64);
+
+            // Cast each operand to its converted (TVMFFIAny) type.
+            llvm::SmallVector<mlir::Value> castedVals = llvm::map_to_vector(
+                returnOp.getOperands(), [&](mlir::Value operand) {
+                  mlir::Value retVal = mapping.lookupOrDefault(operand);
+                  return mlir::UnrealizedConversionCastOp::create(
+                             rewriter, loc,
+                             getTypeConverter()->convertType(operand.getType()),
+                             retVal)
+                      .getResult(0);
+                });
+
+            // Allocate one TVMFFIAny slot per result, fill it with the
+            // casted value, and collect the slot pointers for ffi.Array.
+            mlir::Value slots = mlir::LLVM::AllocaOp::create(
+                rewriter, loc, ptrTy, anyTy,
+                mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty,
+                                               numResults));
+            llvm::SmallVector<mlir::Value> slotPtrs = llvm::map_to_vector(
+                llvm::seq(numResults), [&](size_t i) -> mlir::Value {
+                  mlir::Value slot = mlir::LLVM::GEPOp::create(
+                      rewriter, loc, ptrTy, anyTy, slots,
+                      llvm::ArrayRef<mlir::LLVM::GEPArg>{i});
+                  mlir::LLVM::StoreOp::create(rewriter, loc, castedVals[i],
+                                              slot);
+                  return slot;
+                });
+
+            // ffi.Array(slot[0], ..., slot[N-1]) builds the container.
+            mlir::Value resultSlot = TRIDENT_CHECK(
+                conversion::utils::callTVMFFIGlobalFunction(
+                    rewriter, loc, moduleOp, "ffi.Array", slotPtrs),
+                return op.emitError("failed to call ffi.Array"));
+
+            // Re-tag the container handle as a kTVMFFIArray TVMFFIAny.
+            mlir::Value vObj = mlir::LLVM::LoadOp::create(
+                rewriter, loc, i64Ty,
+                mlir::LLVM::GEPOp::create(
+                    rewriter, loc, ptrTy, anyTy, resultSlot,
+                    llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
+            mlir::Value arrayAny =
+                mlir::LLVM::UndefOp::create(rewriter, loc, anyTy);
+            arrayAny = mlir::LLVM::InsertValueOp::create(
+                rewriter, loc, arrayAny,
+                mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty,
+                                               kTVMFFIArray),
+                llvm::ArrayRef<int64_t>{0});
+            arrayAny = mlir::LLVM::InsertValueOp::create(
+                rewriter, loc, arrayAny,
+                mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 0),
+                llvm::ArrayRef<int64_t>{1});
+            arrayAny = mlir::LLVM::InsertValueOp::create(
+                rewriter, loc, arrayAny, vObj, llvm::ArrayRef<int64_t>{2});
+            mlir::LLVM::StoreOp::create(rewriter, loc, arrayAny, retPtr);
+
+            // Release our references to object elements; the container now
+            // owns them.
+            for (auto [operand, casted] :
+                 llvm::zip(returnOp.getOperands(), castedVals)) {
+              if (trident::torch::isRefCountedObjectType(operand.getType())) {
+                emitObjectDecRef(rewriter, loc, moduleOp, casted);
+              }
+            }
           }
           mlir::LLVM::ConstantOp cnst =
               mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 0);

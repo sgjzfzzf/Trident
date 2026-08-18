@@ -101,6 +101,38 @@ Each `compile(*args, **kwargs)` produces a new sub-module with these properties:
 - Guards exported by Dynamo are converted to MLIR attributes and attached to `tvm_ffi.func` argument attributes.
 - `torch._dynamo.reset()` is called after each FX import to release tracing resources.
 
+### `tvm_ffi.func` signature reconstruction via `gm._in_spec`
+
+The `tvm_ffi.func` signature mirrors the *Python* function signature (one SSA
+argument per parameter; container parameters typed `!torch.any`), reconstructed
+from the `_in_spec` TreeSpec stored on the GraphModule returned by
+`torch._dynamo.export`.  This keeps `num_args` (as seen by the Python kwargs
+wrapper) equal to the number of SSA arguments, so tuple/list/dict parameters no
+longer overrun the FFI argument array.
+
+- `backend.py::_build_sub_module` walks `gm._in_spec` (the pytree spec of
+  `(args, kwargs)`) in a single recursion: each node yields its SSA type (leaf
+  -> the flat type from `main_{i}`'s argument list; container -> `!torch.any`)
+  plus an unpack closure that emits `torch.prim.ListUnpack` when the entry
+  block exists.
+- Container parameters are destructured in the `tvm_ffi.func` body with
+  torch-mlir's standard `torch.prim.ListUnpack` op (one op per container
+  node, recursively for nested containers), which yields the flattened leaf
+  order expected by `main_{i}`.  `torch.prim.ListUnpack` is lowered in
+  TVMFFIToLLVM to runtime `ffi.ArrayGetItem` calls — no new dialect op is
+  needed (the op is the inverse of the already-lowered
+  `torch.prim.ListConstruct`).
+- `ffi.ArrayGetItem` returns a *borrowed* reference (the container argument is
+  kept alive by the FFI call context for the duration of the call), so no
+  ref-counting is emitted for extracted elements.
+- dict parameters are currently rejected during signature reconstruction by
+  an assertion (runtime `ffi.MapGetItem` exists; lowering support is future
+  work), and
+  keyword arguments must be passed in signature order (the flat tree order must
+  match the signature parameter order).
+- `gm._in_spec` is currently required. Older Dynamo versions or export paths
+  that do not attach it are rejected during signature reconstruction.
+
 When runtime inputs change and guards no longer match:
 
 - A sub-function returns a `trident.ffi.Exception` ObjectRef (not a Python exception) via the FFI layer.
@@ -125,6 +157,14 @@ attributes on `tvm_ffi.func`:
 | `StrideGuard` | Validates tensor strides |
 | `TensorTypeGuard` | Ensures value is a tensor |
 | `Guards` | Collection that aggregates individual guards |
+
+Note: the current guard grammar matches only plain parameter references
+(`L['x']`).  Guards referencing container *elements* (e.g.
+`L['s'][0].size()[0] == 4`) are not parsed and therefore attach no guards to
+container parameters — the corresponding values flow through as runtime
+placeholders and the ATen dispatch is shape/dtype dynamic, so correctness is
+preserved (only per-element re-specialization is deferred until the guard
+grammar is extended).
 
 ## FX Import And Triton Kernel Handling
 

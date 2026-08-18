@@ -2,15 +2,17 @@
 # SPDX-License-Identifier: MIT
 
 from __future__ import annotations
-from typing import Any, Callable, Dict, Final, List, Tuple
 
 import inspect
+from collections.abc import Callable
+from typing import Any, Dict, Final, Iterator, List, Tuple
+
 import torch
+import torch.utils._pytree as pytree
 import tvm_ffi
 import tvm_ffi.utils
 
 from trident import capi_utils
-
 from trident.core import (
     ir,
     passmanager,
@@ -21,16 +23,35 @@ from trident.core.dialects import (
     func,
     llvm,
     transform,
+)
+from trident.core.dialects import (
+    torch as torch_d,
+)
+from trident.core.dialects import (
     tvm_ffi as tvm_ffi_d,
 )
 from trident.core.execution_engine import ExecutionEngine
 from trident.core.extras.fx_importer import FxImporter
 from trident.ffi import Exception
+
 from .guards import parse_guards
 from .patch import apply_patch
 
+_ANY_TYPE_CACHE: Dict[ir.Context, ir.Type] = {}
 
-class TridentGraphModule(object):
+
+def _any_type(context: ir.Context) -> ir.Type:
+    """The ``!torch.any`` type used for container parameters."""
+    cached = _ANY_TYPE_CACHE.get(context)
+    if cached is not None:
+        return cached
+    with context:
+        ty = ir.Type.parse("!torch.any", context=context)
+    _ANY_TYPE_CACHE[context] = ty
+    return ty
+
+
+class TridentGraphModule:
     """Compiles a torch function via Torch-MLIR and wraps with tvm_ffi.
 
     Maintains a list of sub-modules, one per unique guard specialization
@@ -78,7 +99,7 @@ class TridentGraphModule(object):
     def __name__(self) -> str:
         return self.fn.__name__
 
-    def compile(self, *args: Any, **kwargs) -> Any:
+    def compile(self, *args: Any, **kwargs: Any) -> None:
         """Build a new sub-module for *args* and rebuild the combined
         module + dispatcher.  Called automatically from ``__call__`` when a
         ``GuardMatchException`` is raised."""
@@ -177,26 +198,115 @@ class TridentGraphModule(object):
 
         torch._dynamo.reset()
 
-        # Step 3: Wrap with tvm_ffi.func  ----------------------------------
-        tvm_ffi_name: Final[str] = f"{fn.__name__}_{index}"
-        arg_attrs: ir.ArrayAttr = parse_guards(gs).build(
-            [*inspect.signature(fn).parameters.keys()], ctx
+        # Step 3: Wrap with tvm_ffi.func.
+        signature = inspect.signature(fn)
+        flat_types = main_func.type.inputs
+
+        in_spec = getattr(gm, "_in_spec", None)
+        assert isinstance(in_spec, pytree.TreeSpec), (
+            "trident.jit requires a pytree TreeSpec for exported inputs; "
+            f"got {in_spec!r}"
         )
+
+        root_children: List[pytree.TreeSpec] = in_spec.children()
+        assert in_spec.type is tuple and len(root_children) == 2, (
+            f"unexpected _in_spec root (expected tuple TreeSpec, got {in_spec})"
+        )
+        args_spec, kwargs_spec = root_children
+        assert isinstance(args_spec, pytree.TreeSpec), (
+            f"expected args tree spec, got {type(args_spec)!r}"
+        )
+        assert isinstance(kwargs_spec, pytree.TreeSpec), (
+            f"expected kwargs tree spec, got {type(kwargs_spec)!r}"
+        )
+
+        # The ABI receives arguments in signature order.
+        pos_params: List[str] = [
+            name
+            for name, p in signature.parameters.items()
+            if p.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+        ]
+        args_names: List[str] = [
+            name for name, _ in zip(pos_params, args_spec.children())
+        ]
+        kwargs_names: List[str] = [*kwargs_spec.context]
+        tree_names: List[str] = [*args_names, *kwargs_names]
+        signature_names: List[str] = [*signature.parameters]
+        assert tree_names == signature_names, (
+            "keyword arguments must be passed in signature order for "
+            "trident.jit (flat tree order must match the function "
+            f"signature); tree={tree_names}, signature={signature_names}"
+        )
+
+        leaf_iter: Iterator[ir.Type] = iter(flat_types)
+
+        def walk(
+            node: pytree.TreeSpec,
+            name: str,
+        ) -> Tuple[ir.Type, Callable[[ir.Value], List[ir.Value]]]:
+            """Map one pytree node to its type and unpack builder."""
+            if node.is_leaf():
+                ty = next(leaf_iter)
+                return ty, (lambda arg: [arg])
+            assert node.type is not dict, (
+                f"dict parameters (path step {name!r}) are not yet "
+                "supported by trident.jit"
+            )
+            child_specs = [walk(c, name) for c in node.children()]
+
+            def build(arg: ir.Value) -> List[ir.Value]:
+                op = torch_d.PrimListUnpackOp(
+                    results_=[ty for ty, _ in child_specs], operand=arg
+                )
+                return [
+                    value
+                    for (_, build_child), result in zip(child_specs, op.results)
+                    for value in build_child(result)
+                ]
+
+            return _any_type(ctx), build
+
+        entries: List[Tuple[str, ir.Type, Callable[[ir.Value], List[ir.Value]]]] = [
+            (name, *walk(child, name))
+            for name, child in zip(pos_params, args_spec.children())
+        ] + [
+            (key, *walk(child, key))
+            for key, child in zip(kwargs_spec.context, kwargs_spec.children())
+        ]
+        param_names: List[str] = [name for name, _, _ in entries]
+        param_types: List[ir.Type] = [ty for _, ty, _ in entries]
+        builders: List[Callable[[ir.Value], List[ir.Value]]] = [
+            build for _, _, build in entries
+        ]
+
+        with ctx:
+            ffi_type = ir.FunctionType.get(param_types, main_func.type.results)
+
+        tvm_ffi_name: Final[str] = f"{fn.__name__}_{index}"
+        # Attach guards to top-level parameters.
+        arg_attrs: ir.ArrayAttr = parse_guards(gs).build(param_names, ctx)
 
         with ir.InsertionPoint(module.body), main_func.operation.location:
             ffi_func: tvm_ffi_d.FuncOp = tvm_ffi_d.func(
                 tvm_ffi_name,
-                ir.TypeAttr.get(main_func.type),
+                ir.TypeAttr.get(ffi_type),
                 arg_attrs=arg_attrs,
             )
-            entry_block: ir.Block = ir.Block.create_at_start(
-                ffi_func.body, main_func.type.inputs
-            )
+            entry_block: ir.Block = ir.Block.create_at_start(ffi_func.body, param_types)
             with ir.InsertionPoint(entry_block):
+                leaf_values: List[ir.Value] = [
+                    value
+                    for arg, build in zip(entry_block.arguments, builders)
+                    for value in build(arg)
+                ]
                 call_op = func.CallOp(
                     main_func.type.results,
                     main_func_name,
-                    entry_block.arguments,
+                    leaf_values,
                 )
                 tvm_ffi_d.return_(call_op)
 

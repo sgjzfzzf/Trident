@@ -15,17 +15,12 @@
 
 namespace trident::conversion::utils {
 
+/// Allocate a TVMFFIAny slot containing an integer scalar.
+mlir::Value buildIntAnySlot(mlir::OpBuilder &builder, mlir::Location loc,
+                            int64_t value);
+
 /// Call a TVM FFI global function by name.
 ///
-/// Encapsulates the common pattern:
-///   TVMFFIFunctionGetGlobal -> TVMFFIFunctionCall -> TVMFFIObjectDecRef
-///
-/// 1. Creates a TVMFFIByteArray with the function name (via global string).
-/// 2. Obtains the function handle via TVMFFIFunctionGetGlobal.
-/// 3. Copies each pre-built TVMFFIAny slot into a contiguous args array.
-/// 4. Calls TVMFFIFunctionCall with the packed arguments.
-/// 5. Releases the function handle via TVMFFIObjectDecRef.
-/// 6. Extracts and returns the result i64 value.
 ///
 /// \param builder   The op builder (insertion point must be valid).
 /// \param loc       Source location for generated ops.

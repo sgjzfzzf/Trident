@@ -130,6 +130,76 @@ private:
   RefCountTable &refCountTable;
 };
 
+/// Lowers torch.prim.ListUnpack from an ffi.Array container.
+class ConvertPrimListUnpackOp
+    : public mlir::OpConversionPattern<mlir::torch::Torch::PrimListUnpackOp> {
+public:
+  using mlir::OpConversionPattern<
+      mlir::torch::Torch::PrimListUnpackOp>::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(mlir::torch::Torch::PrimListUnpackOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::Location loc = op.getLoc();
+    mlir::MLIRContext *ctx = op.getContext();
+    mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
+    mlir::LLVM::LLVMStructType anyTy =
+        trident::conversion::utils::getTVMFFIAnyType(ctx);
+    mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
+    mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
+
+    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    if (!moduleOp) {
+      return op.emitError("op is not inside a module");
+    }
+
+    mlir::Value container = adaptor.getOperand();
+    if (container.getType() != anyTy) {
+      container = getTypeConverter()->materializeTargetConversion(
+          rewriter, loc, anyTy, container);
+      if (!container) {
+        return op.emitError("failed to materialize ListUnpack container to "
+                            "TVMFFIAny");
+      }
+    }
+
+    // Reuse one two-element argument array for each runtime call.
+    mlir::Value argsArray = mlir::LLVM::AllocaOp::create(
+        rewriter, loc, ptrTy, anyTy,
+        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 2));
+    mlir::LLVM::StoreOp::create(
+        rewriter, loc, container,
+        mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, anyTy, argsArray,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0}));
+
+    // Call ffi.ArrayGetItem once for each result.
+    mlir::Value numArgs =
+        mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 2);
+    llvm::SmallVector<mlir::Value> results;
+    results.reserve(op.getNumResults());
+    for (size_t i = 0; i < op.getNumResults(); ++i) {
+      mlir::Value idxAny = mlir::LLVM::LoadOp::create(
+          rewriter, loc, anyTy,
+          trident::conversion::utils::buildIntAnySlot(rewriter, loc, i));
+      mlir::LLVM::StoreOp::create(
+          rewriter, loc, idxAny,
+          mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, anyTy, argsArray,
+                                    llvm::ArrayRef<mlir::LLVM::GEPArg>{1}));
+      mlir::FailureOr<mlir::Value> resultSlot =
+          trident::conversion::utils::callTVMFFIGlobalFunction(
+              rewriter, loc, moduleOp, "ffi.ArrayGetItem", argsArray, numArgs);
+      if (mlir::failed(resultSlot)) {
+        return op.emitError("failed to call ffi.ArrayGetItem");
+      }
+      results.push_back(
+          mlir::LLVM::LoadOp::create(rewriter, loc, anyTy, *resultSlot));
+    }
+
+    rewriter.replaceOp(op, results);
+    return mlir::success();
+  }
+};
+
 } // namespace
 
 void populateTorchToLLVMPrimConversionPatterns(
@@ -137,7 +207,9 @@ void populateTorchToLLVMPrimConversionPatterns(
     mlir::RewritePatternSet &patterns, RefCountTable &refCountTable) {
   patterns.add<ConvertPrimListConstructOp>(typeConverter, patterns.getContext(),
                                            refCountTable);
-  target.addIllegalOp<mlir::torch::Torch::PrimListConstructOp>();
+  patterns.add<ConvertPrimListUnpackOp>(typeConverter, patterns.getContext());
+  target.addIllegalOp<mlir::torch::Torch::PrimListConstructOp,
+                      mlir::torch::Torch::PrimListUnpackOp>();
 }
 
 } // namespace trident::torch

@@ -10,7 +10,6 @@ the triton-tvm-ffi attention example, but wired to Trident's usage style.
 
 import math
 import os
-from typing import List, Optional
 
 import torch
 import triton
@@ -89,7 +88,7 @@ def _attn_fwd_inner(
 
 
 NUM_STAGES_OPTIONS = [2, 3, 4]
-configs: List[triton.Config] = [
+configs: list[triton.Config] = [
     triton.Config(
         {"BLOCK_M": bm, "BLOCK_N": bn},
         num_stages=s,
@@ -102,7 +101,7 @@ configs: List[triton.Config] = [
 ]
 
 if "PYTEST_VERSION" in os.environ:
-    configs: List[triton.Config] = [
+    configs: list[triton.Config] = [
         triton.Config(
             dict(BLOCK_M=128, BLOCK_N=64),
             num_stages=2,
@@ -253,7 +252,7 @@ def attn_fwd(
     k: torch.Tensor,
     v: torch.Tensor,
     causal: bool = False,
-    sm_scale: Optional[float] = None,
+    sm_scale: float | None = None,
 ) -> torch.Tensor:
     assert q.ndim == 4 and k.ndim == 4 and v.ndim == 4, "expected [B, H, N, D] tensors"
     assert q.shape == k.shape == v.shape, "q, k, v must share shape"
@@ -295,7 +294,7 @@ def attn_torch(
     k: torch.Tensor,
     v: torch.Tensor,
     causal: bool = False,
-    sm_scale: Optional[float] = None,
+    sm_scale: float | None = None,
 ) -> torch.Tensor:
     n_ctx: int = q.shape[2]
     if sm_scale is None:
@@ -315,7 +314,7 @@ def attn_triton(
     k: torch.Tensor,
     v: torch.Tensor,
     causal: bool = False,
-    sm_scale: Optional[float] = None,
+    sm_scale: float | None = None,
 ) -> torch.Tensor:
     return attn_fwd(q, k, v, causal=causal, sm_scale=sm_scale)
 
@@ -326,7 +325,7 @@ def attn_jit(
     k: torch.Tensor,
     v: torch.Tensor,
     causal: bool = False,
-    sm_scale: Optional[float] = None,
+    sm_scale: float | None = None,
 ) -> torch.Tensor:
     return attn_fwd(q, k, v, causal=causal, sm_scale=sm_scale)
 

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Final, Optional
+from typing import Any, Final
 from typing_extensions import override
 
 import tvm_ffi
@@ -29,7 +29,7 @@ class DTypeGuard(Guard):
 
     @classmethod
     @override
-    def _parse(cls, code: str) -> Optional[DTypeGuard]:
+    def _parse(cls, code: str) -> DTypeGuard | None:
         if match := cls._regex_pattern.match(code):
             variable, expected = match.groups()
             return DTypeGuard(variable, expected)
@@ -37,7 +37,7 @@ class DTypeGuard(Guard):
             return None
 
     @override
-    def to_attribute(self, context: ir.Context) -> Optional[ir.Attribute]:
+    def to_attribute(self, context: ir.Context) -> ir.Attribute | None:
         # Strip the "torch." prefix to get a bare dtype name (e.g. "float16")
         # and delegate to tvm_ffi.dtype for code/bits/lanes resolution.
         dt: tvm_ffi.dtype = tvm_ffi.dtype(self.expected.removeprefix("torch."))

@@ -27,7 +27,8 @@ import argparse
 import itertools
 from pathlib import Path
 import os
-from typing import Final, Iterator, List, Tuple
+from typing import Final
+from collections.abc import Iterator
 
 import jinja2
 import torch
@@ -99,11 +100,11 @@ def _type_kind_expr(jit_type: torch.JitType) -> str:
 
 
 # ===========================================================================
-# Schema -> Tuple[str, str, str]
+# Schema -> tuple[str, str, str]
 # ===========================================================================
 
 
-def schema_to_descriptor(schema: torch.FunctionSchema) -> Tuple[str, str, str]:
+def schema_to_descriptor(schema: torch.FunctionSchema) -> tuple[str, str, str]:
     name: Final[str] = schema.name.removeprefix("aten::")
 
     # --- Build ret_expr ---
@@ -135,7 +136,7 @@ def schema_to_descriptor(schema: torch.FunctionSchema) -> Tuple[str, str, str]:
 # ===========================================================================
 
 
-def generate_source(operators: List[Tuple[str, str, str]]) -> str:
+def generate_source(operators: list[tuple[str, str, str]]) -> str:
     env: jinja2.Environment = jinja2.Environment(
         loader=jinja2.FileSystemLoader(_TEMPLATE_DIR),
         keep_trailing_newline=True,
@@ -179,7 +180,7 @@ def main() -> None:
             (name.split(".", 1) if "." in name else (name, "") for name in args.op),
         )
 
-    operators: List[Tuple[str, str, str]] = [schema_to_descriptor(s) for s in schemas]
+    operators: list[tuple[str, str, str]] = [schema_to_descriptor(s) for s in schemas]
     source_content: Final[str] = generate_source(operators)
 
     if args.out:

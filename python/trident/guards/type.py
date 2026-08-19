@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any
 from typing_extensions import override
 
 from trident.core import ir
@@ -26,7 +26,7 @@ class TensorTypeGuard(Guard):
 
     @classmethod
     @override
-    def _parse(cls, code: str) -> Optional[TensorTypeGuard]:
+    def _parse(cls, code: str) -> TensorTypeGuard | None:
         if match := cls._regex_pattern.match(code):
             variable, _ = match.groups()
             return TensorTypeGuard(variable)
@@ -34,5 +34,5 @@ class TensorTypeGuard(Guard):
             return None
 
     @override
-    def to_attribute(self, context: ir.Context) -> Optional[ir.Attribute]:
+    def to_attribute(self, context: ir.Context) -> ir.Attribute | None:
         return ir.Attribute.parse("#tvm_ffi.TensorTypeGuard<>", context=context)

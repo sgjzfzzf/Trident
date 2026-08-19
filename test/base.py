@@ -12,7 +12,7 @@ from __future__ import annotations
 from abc import abstractmethod
 import pathlib
 import unittest
-from typing import Dict, Final, List
+from typing import Final
 
 import tvm_ffi
 
@@ -69,11 +69,11 @@ class AtenOpTest(unittest.TestCase):
             )
             pm.run(module.operation)
 
-        shared_libs: Final[List[str]] = capi_utils.find_runtime_libraries()
+        shared_libs: Final[list[str]] = capi_utils.find_runtime_libraries()
         self._engine: execution_engine.ExecutionEngine = (
             execution_engine.ExecutionEngine(module, shared_libs=shared_libs)
         )
-        self._ffi_funcs: Dict[str, tvm_ffi.Function] = {}
+        self._ffi_funcs: dict[str, tvm_ffi.Function] = {}
 
     def get_ffi_func(self, func_name: str) -> tvm_ffi.Function:
         """Return a wrapped ``tvm_ffi.Function`` by exported function name."""

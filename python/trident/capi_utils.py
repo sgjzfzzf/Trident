@@ -4,7 +4,6 @@
 import functools
 import importlib.metadata as im
 import pathlib
-from typing import List
 
 import torch
 import tvm_ffi
@@ -73,7 +72,7 @@ def find_mlir_cuda_runtime_library() -> str:
     return f"{cuda_runtime_lib}"
 
 
-def find_runtime_libraries() -> List[str]:
+def find_runtime_libraries() -> list[str]:
     """Find the Trident runtime libraries.
 
     Returns:

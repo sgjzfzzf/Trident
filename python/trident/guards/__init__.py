@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from .collection import Guards
 from .constant import ConstantGuard  # noqa: F401
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     import torch._guards
 
 
-def parse_guard(code: str) -> Optional[Guard]:
+def parse_guard(code: str) -> Guard | None:
     return Guard.parse(code)
 
 

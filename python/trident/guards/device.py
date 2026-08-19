@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Final, Optional
+from typing import Any, Final
 from typing_extensions import override
 
 import tvm_ffi
@@ -29,7 +29,7 @@ class CUDADeviceGuard(Guard):
 
     @classmethod
     @override
-    def _parse(cls, code: str) -> Optional[CUDADeviceGuard]:
+    def _parse(cls, code: str) -> CUDADeviceGuard | None:
         if match := cls._regex_pattern.match(code):
             variable, expected = match.groups()
             return CUDADeviceGuard(variable, expected)
@@ -37,7 +37,7 @@ class CUDADeviceGuard(Guard):
             return None
 
     @override
-    def to_attribute(self, context: ir.Context) -> Optional[ir.Attribute]:
+    def to_attribute(self, context: ir.Context) -> ir.Attribute | None:
         dev: tvm_ffi.Device = tvm_ffi.device(self.expected)
         return ir.Attribute.parse(
             f"#tvm_ffi.CudaDeviceGuard<device_type = {dev.dlpack_device_type()}, device_index = {dev.index}>",

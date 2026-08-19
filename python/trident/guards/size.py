@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import ast
 import re
-from typing import Any, Final, Optional
+from typing import Any, Final
 from typing_extensions import override
 
 from trident.core import ir
@@ -31,7 +31,7 @@ class SizeGuard(Guard):
 
     @classmethod
     @override
-    def _parse(cls, code: str) -> Optional[SizeGuard]:
+    def _parse(cls, code: str) -> SizeGuard | None:
         if match := cls._regex_pattern.match(code):
             variable, index, expected = match.groups()
             return SizeGuard(
@@ -41,7 +41,7 @@ class SizeGuard(Guard):
             return None
 
     @override
-    def to_attribute(self, context: ir.Context) -> Optional[ir.Attribute]:
+    def to_attribute(self, context: ir.Context) -> ir.Attribute | None:
         return ir.Attribute.parse(
             f"#tvm_ffi.SizeGuard<index = {self.index}, expected = {self.expected}>",
             context=context,

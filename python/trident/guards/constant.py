@@ -6,7 +6,7 @@ from __future__ import annotations
 import ast
 import re
 import struct
-from typing import Any, Final, Optional
+from typing import Any, Final
 from typing_extensions import override
 
 from trident.core import ir
@@ -37,7 +37,7 @@ class ConstantGuard(Guard):
 
     @classmethod
     @override
-    def _parse(cls, code: str) -> Optional[ConstantGuard]:
+    def _parse(cls, code: str) -> ConstantGuard | None:
         if not (match := cls._regex_pattern.fullmatch(code)):
             return None
 
@@ -56,7 +56,7 @@ class ConstantGuard(Guard):
             return None
 
     @override
-    def to_attribute(self, context: ir.Context) -> Optional[ir.Attribute]:
+    def to_attribute(self, context: ir.Context) -> ir.Attribute | None:
         return ir.Attribute.parse(
             f"#tvm_ffi.ConstantGuard<type_index = {self.type_index}, payload = {self.payload}>",
             context=context,

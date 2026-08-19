@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import ast
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from typing_extensions import Final
 
 import torch
@@ -23,7 +23,7 @@ from trident.core.extras.fx_importer import GraphNodeImporter
 
 class GraphNodeImporterTritonHopPatchState:
     refcount: int = 0
-    original_attrs: Dict[str, Any] = {}
+    original_attrs: dict[str, Any] = {}
     _lock: Final[threading.RLock] = threading.RLock()
 
     @classmethod
@@ -72,17 +72,17 @@ def _import_hop_triton_kernel_wrapper_mutation(
     node: torch.fx.Node,
     hop: Any,
 ) -> None:
-    knodes: Dict[str, Any] = node.kwargs["kwargs"]
-    ktensors: Dict[str, torch.Tensor] = {
+    knodes: dict[str, Any] = node.kwargs["kwargs"]
+    ktensors: dict[str, torch.Tensor] = {
         name: triton.MockTensor(dtype=value.meta["val"].dtype)
         for name, value in knodes.items()
     }
-    kvalues: Dict[str, ir.Value] = {
+    kvalues: dict[str, ir.Value] = {
         name: self._import_argument(loc, value) for name, value in knodes.items()
     }
-    output_names: List[str] = node.kwargs.get("tensors_to_clone", [])
+    output_names: list[str] = node.kwargs.get("tensors_to_clone", [])
     constant_args_idx: Final[int] = node.kwargs["constant_args_idx"]
-    constant_args: Dict[str, Any] = (
+    constant_args: dict[str, Any] = (
         torch._higher_order_ops.triton_kernel_wrap.kernel_side_table.get_constant_args(
             constant_args_idx
         )
@@ -94,12 +94,12 @@ def _import_hop_triton_kernel_wrapper_mutation(
         )
     )
     device = triton.runtime.driver.active.get_current_device()
-    configs: List[triton.Config] = getattr(function, "configs", [])
-    best_config: Optional[triton.Config] = getattr(function, "best_config", None)
+    configs: list[triton.Config] = getattr(function, "configs", [])
+    best_config: triton.Config | None = getattr(function, "best_config", None)
     while not isinstance(function, triton.JITFunction):
         function = function.fn
     kernel_cache, kernel_key_cache, _, _, binder = function.device_caches[device]
-    args: Dict[str, Any] = {**ktensors, **constant_args}
+    args: dict[str, Any] = {**ktensors, **constant_args}
     _, specialization, options = binder(
         *[],
         **args,
@@ -112,12 +112,12 @@ def _import_hop_triton_kernel_wrapper_mutation(
     )
     kernel: triton.compiler.CompiledKernel = kernel_cache.get(key)
     assert kernel is not None, f"failed to get compiled Triton kernel for {node.name}"
-    runtime_parameters: List[Tuple[str, str]] = [
+    runtime_parameters: list[tuple[str, str]] = [
         (arg_name, triton_type)
         for arg_name, triton_type in kernel.src.signature.items()
         if triton_type != "constexpr"
     ]
-    call_arguments: Dict[str, ir.Value] = {}
+    call_arguments: dict[str, ir.Value] = {}
     for name, triton_type in runtime_parameters:
         if (value := kvalues.get(name)) is not None:
             call_arguments[name] = value
@@ -158,11 +158,11 @@ def _import_hop_triton_kernel_wrapper_mutation(
             raise RuntimeError(
                 f"missing runtime argument for {name} of type {triton_type}"
             )
-    operands: List[ir.Value] = [call_arguments[name] for name, _ in runtime_parameters]
-    grids: List[Tuple[int, int, int]] = node.kwargs["grid"]
+    operands: list[ir.Value] = [call_arguments[name] for name, _ in runtime_parameters]
+    grids: list[tuple[int, int, int]] = node.kwargs["grid"]
     if len(configs) > 0 and best_config is not None:
         i: Final[int] = configs.index(best_config)
-        grid: Tuple[int, int, int] = grids[i]
+        grid: tuple[int, int, int] = grids[i]
     else:
         [grid] = grids
     binary_name: Final[str] = f"_{node.name}"

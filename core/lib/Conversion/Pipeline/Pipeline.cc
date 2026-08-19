@@ -24,6 +24,11 @@
 #include "trident/core/Conversion/TorchToCf/TorchToCf.h"
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
+<<<<<<< HEAD
+=======
+#include "trident/core/Dialect/TorchExt/Transforms/EliminateRefCount.h"
+#include "trident/core/Dialect/TorchExt/Transforms/RAAI.h"
+>>>>>>> 97a7fc5 (	modified:   core/lib/Conversion/Pipeline/Pipeline.cc)
 
 namespace trident::torch {
 

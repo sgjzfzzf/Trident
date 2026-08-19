@@ -9,8 +9,8 @@
 //
 // This test verifies that aten.sub.Scalar and aten.sub.Tensor are lowered
 // via the AtenGen FFI dispatch path: "trident.aten.sub.Scalar" and
-// "trident.aten.sub.Tensor", called via TVMFFIFunctionGetGlobal /
-// TVMFFIFunctionCall / TVMFFIObjectDecRef.
+// "trident.aten.sub.Tensor", called through independently cached TVM FFI
+// function handles.
 
 // CHECK-DAG: llvm.func @TVMFFIFunctionGetGlobal(!llvm.ptr, !llvm.ptr) -> i32
 // CHECK-DAG: llvm.func @TVMFFIFunctionCall(!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
@@ -92,3 +92,22 @@ tvm_ffi.func @sub_tensor(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.vtensor
   %0 = torch.aten.sub.Tensor %arg0, %arg1, %arg2 : !torch.vtensor<[2,3],f32>, !torch.vtensor<[2,3],f32>, !torch.float -> !torch.vtensor<[2,3],f32>
   tvm_ffi.return %0 : !torch.vtensor<[2,3],f32>
 }
+
+// CHECK-LABEL: llvm.func internal @__trident_tvm_ffi_ctor_trident.aten.sub.Scalar() {
+// CHECK:         llvm.call @TVMFFIFunctionGetGlobal
+// CHECK:         llvm.store {{%.*}}, {{%.*}} : !llvm.ptr, !llvm.ptr
+// CHECK:         llvm.return
+// CHECK-LABEL: llvm.func internal @__trident_tvm_ffi_dtor_trident.aten.sub.Scalar() {
+// CHECK:         llvm.call @TVMFFIObjectDecRef
+// CHECK:         llvm.return
+
+// CHECK: llvm.mlir.global_ctors ctors = [@__trident_tvm_ffi_ctor_trident.aten.sub.Scalar, @__trident_tvm_ffi_ctor_trident.aten.sub.Tensor], priorities = [65535 : i32, 65535 : i32], data = [#llvm.zero, #llvm.zero]
+// CHECK: llvm.mlir.global_dtors dtors = [@__trident_tvm_ffi_dtor_trident.aten.sub.Scalar, @__trident_tvm_ffi_dtor_trident.aten.sub.Tensor], priorities = [65535 : i32, 65535 : i32], data = [#llvm.zero, #llvm.zero]
+
+// CHECK-LABEL: llvm.func internal @__trident_tvm_ffi_ctor_trident.aten.sub.Tensor() {
+// CHECK:         llvm.call @TVMFFIFunctionGetGlobal
+// CHECK:         llvm.store {{%.*}}, {{%.*}} : !llvm.ptr, !llvm.ptr
+// CHECK:         llvm.return
+// CHECK-LABEL: llvm.func internal @__trident_tvm_ffi_dtor_trident.aten.sub.Tensor() {
+// CHECK:         llvm.call @TVMFFIObjectDecRef
+// CHECK:         llvm.return

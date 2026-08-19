@@ -36,7 +36,12 @@ class TridentLoweringPipelinePass
     : public impl::TridentLoweringPipelineBase<TridentLoweringPipelinePass> {
   void runOnOperation() final {
     mlir::OpPassManager pm;
+<<<<<<< HEAD
     // TorchToTVMFFI owns semantic conversion and region reference counting.
+=======
+    pm.addPass(trident::torch::createRAAI());
+    pm.addPass(trident::torch::createEliminateRefCountPairs());
+>>>>>>> 9fa3f8d (	modified:   trident-core/include/trident-core/Dialect/TorchExt/Transforms/Passes.td)
     pm.addPass(trident::torch::createConvertTorchToCf());
     pm.addPass(trident::torch::createConvertTorchToTVMFFI());
     pm.addPass(trident::torchext::createConvertTorchExtToGPU());

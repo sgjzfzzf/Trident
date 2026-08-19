@@ -57,9 +57,9 @@ callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
 /// Call a TVM FFI global function with a pre-built contiguous args array
 /// and a runtime-determined number of arguments.
 ///
-/// Same pattern (GetGlobal -> Call -> DecRef) but the caller provides
-/// the args array already populated instead of individual slots, and
-/// \p numArgs is a runtime i32 Value instead of a compile-time constant.
+/// The caller provides the args array already populated instead of individual
+/// slots, and \p numArgs is a runtime i32 Value instead of a compile-time
+/// constant. The cached function handle is loaded from a module-level global.
 ///
 /// \param argsArray A !llvm.ptr to a contiguous array of TVMFFIAny elements.
 /// \param numArgs   A runtime i32 value specifying how many elements to pass.

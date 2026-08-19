@@ -16,6 +16,7 @@
 #include "torch-mlir/Dialect/Torch/IR/TorchDialect.h"
 #include "torch-mlir/Dialect/Torch/Transforms/Passes.h"
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
+#include "trident/core/Conversion/ArithExtToScf/ArithExtToScf.h"
 #include "trident/core/Conversion/DecomposeTVMFFI/DecomposeTVMFFI.h"
 #include "trident/core/Conversion/Pipeline/Pipeline.h"
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
@@ -24,6 +25,7 @@
 #include "trident/core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
 #include "trident/core/Conversion/TorchToCf/TorchToCf.h"
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
+#include "trident/core/Dialect/ArithExt/IR/ArithExtDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
 
@@ -33,6 +35,7 @@ void trident::conversion::registerAllPasses() {
   mlir::registerReconcileUnrealizedCastsPass();
   mlir::torch::registerTorchPasses();
   trident::torchext::registerConvertTorchExtToGPUPass();
+  trident::arithex::registerConvertArithExtToScfPass();
   trident::torchext::registerConvertTorchExtToLLVMPass();
   trident::tvm_ffi::registerConvertTVMFFIToLLVMPass();
   trident::tvm_ffi::registerDecomposeTVMFFIPass();
@@ -44,10 +47,10 @@ void trident::conversion::registerAllPasses() {
 
 void trident::conversion::registerAllDialects(mlir::DialectRegistry &registry) {
   mlir::registerAllDialects(registry);
-  registry
-      .insert<trident::torchext::TorchExtDialect,
-              trident::tvm_ffi::TVMFFIDialect, mlir::torch::Torch::TorchDialect,
-              mlir::torch::TorchConversion::TorchConversionDialect>();
+  registry.insert<
+      trident::arithex::ArithExtDialect, trident::torchext::TorchExtDialect,
+      trident::tvm_ffi::TVMFFIDialect, mlir::torch::Torch::TorchDialect,
+      mlir::torch::TorchConversion::TorchConversionDialect>();
   mlir::registerAllExtensions(registry);
   mlir::arith::registerConvertArithToLLVMInterface(registry);
   mlir::gpu::registerConvertGpuToLLVMInterface(registry);

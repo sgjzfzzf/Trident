@@ -7,6 +7,20 @@
 
 include "mlir/Pass/PassBase.td"
 
+def ConvertArithExtToScf
+    : Pass<"convert-arith-ext-to-scf", "mlir::ModuleOp"> {
+  let summary = "Lower ArithExt operations to nested SCF operations";
+  let description = [{
+    Lower arithex.and_then to scf.execute_region operations feeding nested
+    scf.if operations.
+  }];
+  let dependentDialects = [
+    "trident::arithex::ArithExtDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::scf::SCFDialect"
+  ];
+}
+
 def ConvertTorchConversionToLLVM
     : Pass<"convert-torch-conversion-to-llvm", "mlir::ModuleOp"> {
   let summary = "Lower TorchConversion dialect operations to LLVM dialect";

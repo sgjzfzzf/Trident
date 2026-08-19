@@ -1,0 +1,9 @@
+add_mlir_dialect_library(
+  ArithExtDialect
+  ArithExtDialect.cc
+  DEPENDS
+  MLIRArithExtIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRControlFlowInterfaces)

@@ -1,3 +1,4 @@
+add_subdirectory(ArithExtToScf)
 add_subdirectory(DecomposeTVMFFI)
 add_subdirectory(Pipeline)
 add_subdirectory(TorchConversionToLLVM)

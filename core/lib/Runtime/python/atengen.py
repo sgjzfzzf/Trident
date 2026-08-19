@@ -24,11 +24,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import itertools
-from pathlib import Path
-import os
-from typing import Final
 from collections.abc import Iterator
+import itertools
+import os
+from pathlib import Path
+from typing import Final
 
 import jinja2
 import torch

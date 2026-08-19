@@ -3,6 +3,8 @@ add_mlir_library(
   Registration.cc
   LINK_LIBS
   PUBLIC
+  ArithExtDialect
+  ArithExtToScf
   TorchExtTransforms
   TorchExtToGPU
   TorchExtToLLVM

@@ -1,10 +1,6 @@
 add_mlir_library(
   TorchExtTransforms
   BackendTypeConversion.cc
-  EliminateRefCounter.cc
-  RAAI.cc
-  DEPENDS
-  MLIRTorchExtPassIncGen
   LINK_LIBS
   PUBLIC
   MLIRLLVMCommonConversion

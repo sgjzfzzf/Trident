@@ -17,15 +17,17 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
-#include "torch-mlir/Dialect/Torch/IR/TorchDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttributes.h"
-#include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
-#include "llvm/ADT/TypeSwitch.h"
-
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.cpp.inc"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 #define GET_ATTRDEF_CLASSES
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttributes.cpp.inc"
+
+#define GET_TYPEDEF_CLASSES
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.cpp.inc"
 
 #define GET_OP_CLASSES
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFI.cpp.inc"
@@ -36,6 +38,11 @@ void TVMFFIDialect::initialize() {
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttributes.cpp.inc"
+      >();
+
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.cpp.inc"
       >();
 
   addOperations<
@@ -88,14 +95,9 @@ void FuncOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
 
 mlir::LogicalResult FuncOp::verify() {
   mlir::FunctionType functionType = getFunctionType();
-  if (!llvm::all_of(llvm::concat<const mlir::Type>(functionType.getInputs(),
-                                                   functionType.getResults()),
-                    [](mlir::Type type) {
-                      return mlir::isa<mlir::torch::Torch::TorchDialect>(
-                          type.getDialect());
-                    })) {
-    return emitOpError("all inputs and outputs must be Torch dialect types");
-  }
+  // Existing frontends initially construct this wrapper with Torch types.
+  // They are a supported input form; conversion makes the ownership-bearing
+  // TVM FFI types explicit before runtime operations are lowered.
 
   if (std::optional<llvm::StringRef> visibility = getSymVisibility();
       visibility && *visibility != "public") {
@@ -103,6 +105,40 @@ mlir::LogicalResult FuncOp::verify() {
   }
 
   return mlir::success();
+}
+
+mlir::LogicalResult ConstantOp::verify() {
+  mlir::Type type = getResult().getType();
+  if (mlir::isa<BoolType>(type) && !mlir::isa<mlir::BoolAttr>(getValue())) {
+    return emitOpError("bool result requires a BoolAttr");
+  } else if (mlir::isa<IntType>(type) &&
+             !mlir::isa<mlir::IntegerAttr>(getValue())) {
+    return emitOpError("int result requires an IntegerAttr");
+  } else if (mlir::isa<FloatType>(type) &&
+             !mlir::isa<mlir::FloatAttr>(getValue())) {
+    return emitOpError("float result requires a FloatAttr");
+  } else if (mlir::isa<NoneType>(type) &&
+             !mlir::isa<mlir::UnitAttr>(getValue())) {
+    return emitOpError("none result requires a UnitAttr");
+  } else if (type.hasTrait<mlir::TypeTrait::Object>()) {
+    return emitOpError("object constants are not supported");
+  } else {
+    return mlir::success();
+  }
+}
+
+mlir::LogicalResult ArrayGetItemOp::verify() {
+  mlir::Type base = getArray().getType();
+  if (!mlir::isa<ArrayType>(base)) {
+    return emitOpError("array operand must be !tvm_ffi.array");
+  } else if (!getElementType()) {
+    return emitOpError("array element type must be specified");
+  } else if (mlir::Type element = *getElementType();
+             getResult().getType() != element) {
+    return emitOpError("result type must be ") << element;
+  } else {
+    return mlir::success();
+  }
 }
 
 } // namespace trident::tvm_ffi

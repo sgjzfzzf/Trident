@@ -35,14 +35,14 @@ def ConvertTorchToCf : Pass<"convert-torch-to-cf", "mlir::ModuleOp"> {
   let dependentDialects = ["mlir::cf::ControlFlowDialect"];
 }
 
-def ConvertTorchToLLVM : Pass<"convert-torch-to-llvm", "mlir::ModuleOp"> {
-  let summary = "Lower Torch dialect constant ops to LLVM dialect";
+def ConvertTorchToTVMFFI : Pass<"convert-torch-to-tvm-ffi", "mlir::ModuleOp"> {
+  let summary = "Expose Torch runtime calls and ownership in TVM FFI IR";
   let description = [{
-    Lowers Torch dialect constant operations (torch.constant.bool,
-    torch.constant.int, torch.constant.float) directly to LLVM::ConstantOp,
-    bypassing arith.constant and TorchConversion bridge ops.
+    Rewrites Torch ATen dispatcher calls to tvm_ffi.FunctionGetGlobal /
+    tvm_ffi.FunctionCall. Torch list and tuple
+    values share !tvm_ffi.array, and object results carry explicit ownership.
   }];
-  let dependentDialects = ["mlir::LLVM::LLVMDialect"];
+  let dependentDialects = ["trident::tvm_ffi::TVMFFIDialect"];
 }
 
 def ConvertTVMFFIToLLVM : Pass<"convert-tvm-ffi-to-llvm", "mlir::ModuleOp"> {
@@ -52,15 +52,10 @@ def ConvertTVMFFIToLLVM : Pass<"convert-tvm-ffi-to-llvm", "mlir::ModuleOp"> {
       ["mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect"];
 }
 
-def FuncBackendTypeConversion
-  : Pass<"func-backend-type-conversion", "mlir::ModuleOp"> {
-  let summary =
-      "Convert Torch dialect types to LLVM types along function boundaries";
-  let description = [{
-    Converts func::FuncOp signatures and func::ReturnOp / func::CallOp operands
-    from Torch dialect types to LLVM / builtin types (e.g. !torch.bool -> i1,
-    !torch.int -> i64, !torch.float -> f64, !torch.vtensor -> llvm.ptr).
-  }];
+def DecomposeTVMFFI : Pass<"decompose-tvm-ffi", "mlir::ModuleOp"> {
+  let summary = "Decompose composite TVMFFI operations";
+  let description = [{Decompose TVMFFI array operations into function calls.}];
+  let dependentDialects = ["trident::tvm_ffi::TVMFFIDialect"];
 }
 
 def TridentLoweringPipeline

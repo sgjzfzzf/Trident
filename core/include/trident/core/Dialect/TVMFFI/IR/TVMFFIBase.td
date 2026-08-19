@@ -24,6 +24,7 @@ def TVMFFI_Dialect : Dialect {
   }];
 
   let useDefaultAttributePrinterParser = 1;
+  let useDefaultTypePrinterParser = 1;
 }
 
 #endif // TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIBASE_TD_

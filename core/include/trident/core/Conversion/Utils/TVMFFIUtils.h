@@ -19,6 +19,24 @@ namespace trident::conversion::utils {
 mlir::Value buildIntAnySlot(mlir::OpBuilder &builder, mlir::Location loc,
                             int64_t value);
 
+/// Get an owned TVM FFI global function handle by name.
+mlir::FailureOr<mlir::Value> getTVMFFIGlobalFunction(mlir::OpBuilder &builder,
+                                                     mlir::Location loc,
+                                                     mlir::ModuleOp moduleOp,
+                                                     llvm::StringRef funcName);
+
+/// Call a TVM FFI function handle.
+mlir::LogicalResult
+callTVMFFIFunction(mlir::OpBuilder &builder, mlir::Location loc,
+                   mlir::ModuleOp moduleOp, mlir::Value funcHandle,
+                   llvm::ArrayRef<mlir::Value> args, mlir::Value resultSlot);
+
+mlir::LogicalResult
+callTVMFFIFunction(mlir::OpBuilder &builder, mlir::Location loc,
+                   mlir::ModuleOp moduleOp, mlir::Value funcHandle,
+                   mlir::Value argsArray, mlir::Value numArgs,
+                   mlir::Value resultSlot);
+
 /// Call a TVM FFI global function by name.
 ///
 ///

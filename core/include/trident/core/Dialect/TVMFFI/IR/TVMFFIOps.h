@@ -21,7 +21,7 @@
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
-#include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 
 #define GET_OP_CLASSES
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFI.h.inc"

@@ -6,20 +6,21 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TRIDENT_CORE_CONVERSION_TORCHTOLLVM_FUNCBACKENDTYPECONVERSION_H_
-#define TRIDENT_CORE_CONVERSION_TORCHTOLLVM_FUNCBACKENDTYPECONVERSION_H_
+#ifndef TRIDENT_CORE_CONVERSION_DECOMPOSETVMFFI_DECOMPOSETVMFFI_H_
+#define TRIDENT_CORE_CONVERSION_DECOMPOSETVMFFI_DECOMPOSETVMFFI_H_
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 
-namespace trident::torch {
+namespace trident::tvm_ffi {
 
-#define GEN_PASS_DECL_FUNCBACKENDTYPECONVERSION
+#define GEN_PASS_DECL_DECOMPOSETVMFFI
 #include "trident/core/Conversion/Passes.h.inc"
 
-#define GEN_PASS_REGISTRATION_FUNCBACKENDTYPECONVERSION
+#define GEN_PASS_REGISTRATION_DECOMPOSETVMFFI
 #include "trident/core/Conversion/Passes.h.inc"
 
-} // namespace trident::torch
+} // namespace trident::tvm_ffi
 
-#endif // TRIDENT_CORE_CONVERSION_TORCHTOLLVM_FUNCBACKENDTYPECONVERSION_H_
+#endif // TRIDENT_CORE_CONVERSION_DECOMPOSETVMFFI_DECOMPOSETVMFFI_H_

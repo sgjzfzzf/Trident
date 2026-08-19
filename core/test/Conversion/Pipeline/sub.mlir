@@ -12,89 +12,83 @@
 // "trident.aten.sub.Tensor", called via TVMFFIFunctionGetGlobal /
 // TVMFFIFunctionCall / TVMFFIObjectDecRef.
 
-// CHECK-DAG: llvm.func @TVMFFIObjectDecRef(!llvm.ptr) -> i32
-// CHECK-DAG: llvm.func @TVMFFIFunctionCall(!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK-DAG: llvm.func @TVMFFIFunctionGetGlobal(!llvm.ptr, !llvm.ptr) -> i32
-
+// CHECK-DAG: llvm.func @TVMFFIFunctionCall(!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.sub.Scalar_trident.aten.sub.Scalar("trident.aten.sub.Scalar\00")
 // CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.sub.Tensor_trident.aten.sub.Tensor("trident.aten.sub.Tensor\00")
+// CHECK-LABEL:   llvm.func @torch.aten.sub.Scalar
+// CHECK-SAME: %[[SCALAR_ARG0:.*]]: !llvm.struct<(i32, i32, i64)>, %[[SCALAR_ARG1:.*]]: !llvm.struct<(i32, i32, i64)>, %[[SCALAR_ARG2:.*]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: %[[SCALAR_ARGS:.*]] = llvm.alloca %[[SCALAR_COUNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
+// CHECK: llvm.store %[[SCALAR_ARG0]], %[[SCALAR_ARGS]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK: %[[SCALAR_SLOT1:.*]] = llvm.getelementptr %[[SCALAR_ARGS]][1]
+// CHECK: llvm.store %[[SCALAR_ARG1]], %[[SCALAR_SLOT1]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK: %[[SCALAR_SLOT2:.*]] = llvm.getelementptr %[[SCALAR_ARGS]][2]
+// CHECK: llvm.store %[[SCALAR_ARG2]], %[[SCALAR_SLOT2]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK: llvm.call @TVMFFIFunctionCall
+// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: %[[SCALAR_RET:.*]] = llvm.load %[[SCALAR_RET_SLOT:.*]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.call @TVMFFIObjectIncRef
+// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: llvm.return %[[SCALAR_RET]] : !llvm.struct<(i32, i32, i64)>
+// CHECK-LABEL:   llvm.func @torch.aten.sub.Tensor
+// CHECK-SAME: %[[TENSOR_ARG0:.*]]: !llvm.struct<(i32, i32, i64)>, %[[TENSOR_ARG1:.*]]: !llvm.struct<(i32, i32, i64)>, %[[TENSOR_ARG2:.*]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: %[[TENSOR_ARGS:.*]] = llvm.alloca %[[TENSOR_COUNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
+// CHECK: llvm.store %[[TENSOR_ARG0]], %[[TENSOR_ARGS]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK: %[[TENSOR_SLOT1:.*]] = llvm.getelementptr %[[TENSOR_ARGS]][1]
+// CHECK: llvm.store %[[TENSOR_ARG1]], %[[TENSOR_SLOT1]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK: %[[TENSOR_SLOT2:.*]] = llvm.getelementptr %[[TENSOR_ARGS]][2]
+// CHECK: llvm.store %[[TENSOR_ARG2]], %[[TENSOR_SLOT2]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK: llvm.call @TVMFFIFunctionCall
+// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: %[[TENSOR_RET:.*]] = llvm.load %[[TENSOR_RET_SLOT:.*]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.call @TVMFFIObjectIncRef
+// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: llvm.return %[[TENSOR_RET]] : !llvm.struct<(i32, i32, i64)>
+// CHECK-LABEL: llvm.func @__tvm_ffi_sub_scalar(
+// CHECK-SAME: %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
+// CHECK: llvm.load %arg1 : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.getelementptr %arg1[2]
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: llvm.call @TVMFFIFunctionCall
+// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: %[[WRAP_RET:.*]] = llvm.load %[[WRAP_RET_SLOT:.*]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.call @TVMFFIObjectIncRef
+// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: llvm.store %[[WRAP_RET]], %arg3
 
-// CHECK-LABEL: llvm.func @torch.aten.sub.Scalar(
-// CHECK-SAME:    %[[ARG0:.*]]: !llvm.struct<(i32, i32, i64)>, %[[ARG1:.*]]: !llvm.struct<(i32, i32, i64)>, %[[ARG2:.*]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
+
 // Allocate the args array for 3 operands.
-// CHECK:         %[[ARRAY:.*]] = llvm.alloca %[[CNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
 // Store the input operands.
-// CHECK:         llvm.store %[[ARG0]], %[[ARRAY]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK:         llvm.store %[[ARG1]], {{%.*}} : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK:         llvm.store %[[ARG2]], {{%.*}} : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // Build the function name struct {ptr, i64} and call TVMFFIFunctionGetGlobal.
-// CHECK:         %[[GETGLOBAL:.*]] = llvm.call @TVMFFIFunctionGetGlobal(%[[NAME_SLOT:.*]], %[[HANDLE_SLOT:.*]]) : (!llvm.ptr, !llvm.ptr) -> i32
 // Load the function handle from the result slot.
-// CHECK:         %[[HANDLE:.*]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
 // Set up the return value slot and call TVMFFIFunctionCall with the args.
-// CHECK:         %[[FUNCCALL:.*]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[ARGS_COPY:.*]], %[[NARGS:.*]], %[[RET_SLOT:.*]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // Release the function handle.
-// CHECK:         %[[DECREF_HANDLE:.*]] = llvm.call @TVMFFIObjectDecRef(%[[HANDLE]]) : (!llvm.ptr) -> i32
 // Load the result TVMFFIAny from the return slot.
-// CHECK:         %[[RETLOAD:.*]] = llvm.load %[[RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK:         llvm.return %[[RETLOAD]] : !llvm.struct<(i32, i32, i64)>
 func.func @torch.aten.sub.Scalar(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.float, %arg2: !torch.float) -> !torch.vtensor<[2,3],f32> {
   %0 = torch.aten.sub.Scalar %arg0, %arg1, %arg2 : !torch.vtensor<[2,3],f32>, !torch.float, !torch.float -> !torch.vtensor<[2,3],f32>
   return %0 : !torch.vtensor<[2,3],f32>
 }
 
-// CHECK-LABEL: llvm.func @torch.aten.sub.Tensor(
-// CHECK-SAME:    %[[ARG0:.*]]: !llvm.struct<(i32, i32, i64)>, %[[ARG1:.*]]: !llvm.struct<(i32, i32, i64)>, %[[ARG2:.*]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // Allocate the args array for 3 operands.
-// CHECK:         %[[ARRAY:.*]] = llvm.alloca %[[CNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
 // Store the input operands.
-// CHECK:         llvm.store %[[ARG0]], %[[ARRAY]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK:         llvm.store %[[ARG1]], {{%.*}} : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK:         llvm.store %[[ARG2]], {{%.*}} : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // Build the function name struct {ptr, i64} and call TVMFFIFunctionGetGlobal.
-// CHECK:         %[[GETGLOBAL:.*]] = llvm.call @TVMFFIFunctionGetGlobal(%[[NAME_SLOT:.*]], %[[HANDLE_SLOT:.*]]) : (!llvm.ptr, !llvm.ptr) -> i32
 // Load the function handle from the result slot.
-// CHECK:         %[[HANDLE:.*]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
 // Set up the return value slot and call TVMFFIFunctionCall with the args.
-// CHECK:         %[[FUNCCALL:.*]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[ARGS_COPY:.*]], %[[NARGS:.*]], %[[RET_SLOT:.*]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // Release the function handle.
-// CHECK:         %[[DECREF_HANDLE:.*]] = llvm.call @TVMFFIObjectDecRef(%[[HANDLE]]) : (!llvm.ptr) -> i32
 // Load the result TVMFFIAny from the return slot.
-// CHECK:         %[[RETLOAD:.*]] = llvm.load %[[RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK:         llvm.return %[[RETLOAD]] : !llvm.struct<(i32, i32, i64)>
 func.func @torch.aten.sub.Tensor(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.vtensor<[2,3],f32>, %arg2: !torch.float) -> !torch.vtensor<[2,3],f32> {
   %0 = torch.aten.sub.Tensor %arg0, %arg1, %arg2 : !torch.vtensor<[2,3],f32>, !torch.vtensor<[2,3],f32>, !torch.float -> !torch.vtensor<[2,3],f32>
   return %0 : !torch.vtensor<[2,3],f32>
 }
 
-// CHECK-LABEL: llvm.func @__tvm_ffi_sub_scalar(
-// CHECK-SAME:    %arg0: !llvm.ptr, %[[ARGS:.*]]: !llvm.ptr, %arg2: i32, %[[RET:.*]]: !llvm.ptr) -> i32 {
-// CHECK:         %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK:         %[[TENSOR_LOAD:.*]] = llvm.load %[[ARGS]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK:         %[[SCALAR_GEP:.*]] = llvm.getelementptr %[[ARGS]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
-// CHECK:         %[[SCALAR_LOAD:.*]] = llvm.load %[[SCALAR_GEP]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK:         %[[ALPHA_GEP:.*]] = llvm.getelementptr %[[ARGS]][2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
-// CHECK:         %[[ALPHA_LOAD:.*]] = llvm.load %[[ALPHA_GEP]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK:         %[[CALLEE_RET:.*]] = llvm.call @torch.aten.sub.Scalar(%[[TENSOR_LOAD]], %[[SCALAR_LOAD]], %[[ALPHA_LOAD]]) : (!llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
-// CHECK:         llvm.store %[[CALLEE_RET]], %[[RET]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK:         llvm.return %[[ZERO]] : i32
 tvm_ffi.func @sub_scalar(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.float, %arg2: !torch.float) -> !torch.vtensor<[2,3],f32> {
-  %0 = func.call @torch.aten.sub.Scalar(%arg0, %arg1, %arg2) : (!torch.vtensor<[2,3],f32>, !torch.float, !torch.float) -> !torch.vtensor<[2,3],f32>
+  %0 = torch.aten.sub.Scalar %arg0, %arg1, %arg2 : !torch.vtensor<[2,3],f32>, !torch.float, !torch.float -> !torch.vtensor<[2,3],f32>
   tvm_ffi.return %0 : !torch.vtensor<[2,3],f32>
 }
 
-// CHECK-LABEL: llvm.func @__tvm_ffi_sub_tensor(
-// CHECK-SAME:    %arg0: !llvm.ptr, %[[ARGS:.*]]: !llvm.ptr, %arg2: i32, %[[RET:.*]]: !llvm.ptr) -> i32 {
-// CHECK:         %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK:         %[[LHS_LOAD:.*]] = llvm.load %[[ARGS]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK:         %[[RHS_GEP:.*]] = llvm.getelementptr %[[ARGS]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
-// CHECK:         %[[RHS_LOAD:.*]] = llvm.load %[[RHS_GEP]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK:         %[[ALPHA_GEP:.*]] = llvm.getelementptr %[[ARGS]][2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
-// CHECK:         %[[ALPHA_LOAD:.*]] = llvm.load %[[ALPHA_GEP]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK:         %[[CALLEE_RET:.*]] = llvm.call @torch.aten.sub.Tensor(%[[LHS_LOAD]], %[[RHS_LOAD]], %[[ALPHA_LOAD]]) : (!llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
-// CHECK:         llvm.store %[[CALLEE_RET]], %[[RET]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK:         llvm.return %[[ZERO]] : i32
 tvm_ffi.func @sub_tensor(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.vtensor<[2,3],f32>, %arg2: !torch.float) -> !torch.vtensor<[2,3],f32> {
-  %0 = func.call @torch.aten.sub.Tensor(%arg0, %arg1, %arg2) : (!torch.vtensor<[2,3],f32>, !torch.vtensor<[2,3],f32>, !torch.float) -> !torch.vtensor<[2,3],f32>
+  %0 = torch.aten.sub.Tensor %arg0, %arg1, %arg2 : !torch.vtensor<[2,3],f32>, !torch.vtensor<[2,3],f32>, !torch.float -> !torch.vtensor<[2,3],f32>
   tvm_ffi.return %0 : !torch.vtensor<[2,3],f32>
 }

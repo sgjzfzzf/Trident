@@ -1,0 +1,11 @@
+add_mlir_conversion_library(
+  DecomposeTVMFFI
+  DecomposeTVMFFI.cc
+  DEPENDS
+  MLIRConversionPassIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRTransformUtils
+  TVMFFIDialect)

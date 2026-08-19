@@ -8,12 +8,6 @@
 
 #include "trident/core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
-#include "mlir/Dialect/ControlFlow/Transforms/StructuralTypeConversions.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/Transforms/DialectConversion.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchDialect.h"
 #include "trident/core/Conversion/Utils/Type.h"
 
@@ -48,31 +42,6 @@ setupTorchToTVMFFIAnyConversion(mlir::TypeConverter &typeConverter) {
                    builder, loc, mlir::TypeRange(type), inputs)
             .getResult(0);
       });
-}
-
-void trident::torch::populateFuncBackendTypeConversionPatterns(
-    mlir::TypeConverter &typeConverter, mlir::RewritePatternSet &patterns,
-    mlir::ConversionTarget &target) {
-  mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
-      patterns, typeConverter);
-  target.addDynamicallyLegalOp<mlir::func::FuncOp>([&](mlir::func::FuncOp op) {
-    return typeConverter.isSignatureLegal(op.getFunctionType());
-  });
-  mlir::populateCallOpTypeConversionPattern(patterns, typeConverter);
-  target.addDynamicallyLegalOp<mlir::func::CallOp>(
-      [&](mlir::func::CallOp op) { return typeConverter.isLegal(op); });
-
-  mlir::cf::populateCFStructuralTypeConversionsAndLegality(typeConverter,
-                                                           patterns, target);
-  mlir::populateReturnOpTypeConversionPattern(patterns, typeConverter);
-  target.addLegalOp<mlir::ModuleOp>();
-
-  target.markUnknownOpDynamicallyLegal([&](mlir::Operation *op) {
-    return mlir::isNotBranchOpInterfaceOrReturnLikeOp(op) ||
-           mlir::isLegalForBranchOpInterfaceTypeConversionPattern(
-               op, typeConverter) ||
-           mlir::isLegalForReturnOpTypeConversionPattern(op, typeConverter);
-  });
 }
 
 void trident::torch::setupBackendTypeConversion(

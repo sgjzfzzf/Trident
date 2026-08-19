@@ -1,0 +1,12 @@
+add_mlir_conversion_library(
+  TorchToTVMFFI
+  TorchToTVMFFI.cc
+  DEPENDS
+  MLIRConversionPassIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRTransformUtils
+  TorchMLIRTorchDialect
+  TVMFFIDialect)

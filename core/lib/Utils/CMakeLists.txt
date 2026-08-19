@@ -9,6 +9,7 @@ add_mlir_library(
   MLIRRegisterAllDialects
   MLIRRegisterAllExtensions
   MLIRRegisterAllPasses
+  MLIRToLLVMIRTranslationRegistration
   MLIRSCFDialect
   TorchConversionToLLVM
   TorchMLIRCAPI
@@ -17,6 +18,6 @@ add_mlir_library(
   TorchMLIRConversionUtils
   TorchPipeline
   TorchToCf
-  TorchToLLVM
+  TorchToTVMFFI
   TVMFFIDialect
   TVMFFIToLLVM)

@@ -4,6 +4,7 @@ add_mlir_dialect_library(
   DEPENDS
   MLIRTVMFFIIncGen
   MLIRTVMFFIAttrDefsIncGen
+  MLIRTVMFFITypeDefsIncGen
   LINK_LIBS
   PUBLIC
   MLIRIR

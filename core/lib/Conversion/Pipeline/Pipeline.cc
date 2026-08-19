@@ -17,12 +17,12 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
+#include "trident/core/Conversion/DecomposeTVMFFI/DecomposeTVMFFI.h"
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "trident/core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
 #include "trident/core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
 #include "trident/core/Conversion/TorchToCf/TorchToCf.h"
-#include "trident/core/Conversion/TorchToLLVM/FuncBackendTypeConversion.h"
-#include "trident/core/Conversion/TorchToLLVM/TorchToLLVM.h"
+#include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
 
 namespace trident::torch {
@@ -36,15 +36,15 @@ class TridentLoweringPipelinePass
     : public impl::TridentLoweringPipelineBase<TridentLoweringPipelinePass> {
   void runOnOperation() final {
     mlir::OpPassManager pm;
-    // Reference counting is handled by TorchToLLVM itself (see
-    // TorchToLLVM.cc::insertRefCounting), so no separate RAAI pass is needed.
+    // TorchToTVMFFI owns semantic conversion and region reference counting.
     pm.addPass(trident::torch::createConvertTorchToCf());
-    pm.addPass(trident::torch::createConvertTorchToLLVM());
+    pm.addPass(trident::torch::createConvertTorchToTVMFFI());
     pm.addPass(trident::torchext::createConvertTorchExtToGPU());
     pm.addPass(mlir::createConvertIndexToLLVMPass());
     pm.addPass(trident::torchext::createConvertTorchExtToLLVM());
+    pm.addPass(trident::tvm_ffi::createDecomposeTVMFFI());
     pm.addPass(trident::tvm_ffi::createConvertTVMFFIToLLVM());
-    pm.addPass(trident::torch::createFuncBackendTypeConversion());
+    pm.addPass(mlir::createArithToLLVMConversionPass());
     pm.addPass(mlir::createConvertFuncToLLVMPass());
     pm.addPass(mlir::createGpuToLLVMConversionPass());
     pm.addPass(mlir::createCanonicalizerPass());

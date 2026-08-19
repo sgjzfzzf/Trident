@@ -43,6 +43,7 @@ declare_mlir_python_extension(
   EMBED_CAPI_LINK_LIBS
   TridentCoreCAPI
   PRIVATE_LINK_LIBS
+  MLIRToLLVMIRTranslationRegistration
   LLVMSupport)
 
 list(APPEND TRIDENT_CORE_MLIR_SOURCE_COMPONENTS TridentCorePythonExtensions)

@@ -15,16 +15,48 @@ include "mlir/IR/CommonTypeConstraints.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "torch-mlir/Dialect/Torch/IR/TorchTypes.td"
-
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIBase.td"
+include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.td"
 
 class TVMFFI_Op<string mnemonic, list<Trait> traits = []>
     : Op<TVMFFI_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
-// FuncOp
+// Minimal value and lifetime operations.
 //===----------------------------------------------------------------------===//
+
+def TVMFFI_ArrayCreateOp : TVMFFI_Op<"array.create"> {
+  let summary = "Create a TVM FFI Array from semantic values";
+  let arguments = (ins Variadic<AnyTVMFFISemanticType>:$elements);
+  let results = (outs TVMFFI_ArrayType:$result);
+}
+
+def TVMFFI_ArrayGetItemOp : TVMFFI_Op<"array.get_item"> {
+  let summary = "Borrow an element from a TVM FFI Array";
+  let arguments = (ins AnyTVMFFIObjectType:$array,
+                       TVMFFI_IntType:$index,
+                       OptionalAttr<TypeAttr>:$element_type);
+  let results = (outs AnyTVMFFISemanticType:$result);
+  let assemblyFormat = "$array `[` $index `]` (`as` $element_type^)? attr-dict `:` type($array) `,` type($index) `->` type($result)";
+  let hasVerifier = 1;
+}
+
+def TVMFFI_CallOp : TVMFFI_Op<"call"> {
+  let summary = "Call a TVM FFI function defined in the current module";
+  let arguments = (ins FlatSymbolRefAttr:$callee,
+                       Variadic<AnyType>:$operands,
+                       OptionalAttr<DictArrayAttr>:$arg_attrs,
+                       OptionalAttr<DictArrayAttr>:$res_attrs);
+  let results = (outs Variadic<AnyType>:$results);
+  let assemblyFormat = "$callee `(` $operands `)` attr-dict `:` functional-type($operands, $results)";
+}
+
+def TVMFFI_ConstantOp : TVMFFI_Op<"constant"> {
+  let summary = "Create a TVM FFI scalar or owned tensor constant";
+  let arguments = (ins AnyAttr:$value);
+  let results = (outs AnyTVMFFISemanticType:$result);
+  let hasVerifier = 1;
+}
 
 def TVMFFI_FuncOp : TVMFFI_Op<"func", [
   AffineScope, AutomaticAllocationScope, FunctionOpInterface, IsolatedFromAbove,
@@ -37,7 +69,7 @@ def TVMFFI_FuncOp : TVMFFI_Op<"func", [
     Example:
 
     ```mlir
-    tvm_ffi.func @add(%a: !torch.int, %b: !torch.int) -> !torch.int {
+    tvm_ffi.func @add(%a: !tvm_ffi.int, %b: !tvm_ffi.int) -> !tvm_ffi.int {
       ...
     }
     ```
@@ -68,9 +100,32 @@ def TVMFFI_FuncOp : TVMFFI_Op<"func", [
   let skipDefaultBuilders = 1;
 }
 
-//===----------------------------------------------------------------------===//
-// ReturnOp
-//===----------------------------------------------------------------------===//
+def TVMFFI_FunctionCallOp : TVMFFI_Op<"FunctionCall"> {
+  let summary = "Call a TVM FFI function handle";
+  let arguments = (ins TVMFFI_FunctionType:$callee,
+                       Variadic<AnyTVMFFISemanticType>:$arguments);
+  let results = (outs Variadic<AnyTVMFFISemanticType>:$results);
+  let assemblyFormat = "$callee `(` $arguments `)` attr-dict `:` functional-type($arguments, $results)";
+}
+
+def TVMFFI_FunctionGetGlobalOp : TVMFFI_Op<"FunctionGetGlobal"> {
+  let summary = "Get a TVM FFI global function by name";
+  let arguments = (ins StrAttr:$name);
+  let results = (outs TVMFFI_FunctionType:$result);
+  let assemblyFormat = "$name attr-dict `:` type($result)";
+}
+
+def TVMFFI_ObjectDecRefOp : TVMFFI_Op<"ObjectDecRef"> {
+  let summary = "Decrement a TVM FFI object reference";
+  let arguments = (ins AnyType:$object);
+  let assemblyFormat = "$object attr-dict `:` type($object)";
+}
+
+def TVMFFI_ObjectIncRefOp : TVMFFI_Op<"ObjectIncRef"> {
+  let summary = "Increment a TVM FFI object reference";
+  let arguments = (ins AnyType:$object);
+  let assemblyFormat = "$object attr-dict `:` type($object)";
+}
 
 def TVMFFI_ReturnOp
     : TVMFFI_Op<"return", [Pure, HasParent<"FuncOp">, ReturnLike, Terminator]> {
@@ -86,9 +141,11 @@ def TVMFFI_ReturnOp
     ```
   }];
 
-let arguments = (ins Variadic<AnyTorchType> : $operands);
+  // Torch types are accepted here as a transitional frontend boundary. The
+  // Torch-to-TVMFFI pass rewrites them before lifetime-sensitive operations.
+  let arguments = (ins Variadic<AnyType> : $operands);
 
-let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
+  let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
 }
 
 #endif // TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIOPS_TD_

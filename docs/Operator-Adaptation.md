@@ -223,10 +223,10 @@ kernel launches. Its lowering is split across two passes:
 | `ConvertTorchExtToGPU` | Lowers `torchext.cast` (Torch scalar → native MLIR types, implements `CastOpInterface`) and `torchext.trident_kernel_launch` (Triton kernel → `gpu.launch_func` with I64 grid/block dimensions, uses TVMFFI stream API) |
 | `ConvertTorchExtToLLVM` | Lowers any remaining TorchExt ops to LLVM |
 
-Reference counting for Torch objects is handled inside `ConvertTorchToLLVM`
-via a counter table (see `TorchToLLVM.cc::insertRefCounting`): escaping
-values get a `TVMFFIObjectIncRef`, dead in-scope values a
-`TVMFFIObjectDecRef`. The legacy `RAAI` / `EliminateRefCounter` passes have
+Reference counting for Torch objects is handled inside `ConvertTorchToTVMFFI`
+by scanning each region (see `TorchToTVMFFI.cc::insertRegionRefCounts`): escaping
+values get a `tvm_ffi.ObjectIncRef`, and locally-produced object values get a
+`tvm_ffi.ObjectDecRef`. The legacy `RAAI` / `EliminateRefCounter` passes have
 been removed.
 
 ### Adding A New `torchext` Op

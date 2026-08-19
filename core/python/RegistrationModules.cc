@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
+#include "mlir/InitAllTranslations.h"
 #include "torch-mlir-c/Dialects.h"
 #include "trident-c/core/Dialects.h"
 #include "trident-c/core/Registration.h"
@@ -24,6 +25,11 @@ void registerAllPasses() { tridentCoreRegisterAllPasses(); }
 
 NB_MODULE(_trident, m) {
   m.doc() = "trident-core python extension";
+
+  // Translation registrations are global and must be installed before Python
+  // creates an MLIRContext.  ExecutionEngine uses these interfaces when it
+  // translates the lowered module to LLVM IR.
+  mlir::registerToLLVMIRTranslation();
 
   m.def("register_all_dialects", &registerAllDialects, nb::arg("context"));
   m.def("register_all_passes", &registerAllPasses);

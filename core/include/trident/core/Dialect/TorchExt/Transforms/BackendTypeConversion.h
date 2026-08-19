@@ -13,14 +13,6 @@
 
 namespace trident::torch {
 
-/// Populate function callback type conversion patterns and set up legality.
-/// This handles func::FuncOp, func::CallOp, control flow structural
-/// conversions, return ops, and marks unknown ops dynamically legal with
-/// respect to branch/return type conversion.
-void populateFuncBackendTypeConversionPatterns(
-    mlir::TypeConverter &typeConverter, mlir::RewritePatternSet &patterns,
-    mlir::ConversionTarget &target);
-
 /// Set up the provided ConversionTarget and LLVMTypeConverter for converting
 /// from Torch dialect types to LLVM types along the backend boundary.
 /// Currently handles:

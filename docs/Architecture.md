@@ -210,16 +210,16 @@ This design decouples the MLIR lowering layer from `c10::Dispatcher` — the low
 only needs to know the `trident.aten.*` FFI symbol name, while the runtime wrapper
 handles all PyTorch type-system interaction.
 
-### Special Lowering: `torch.vtensor.literal`
+### TVMFFI semantic lowering
 
-The `torch.vtensor.literal` op (produced during FX import for constant tensors)
-bypasses the generic `trident.aten.*` dispatch with a dedicated lowering in
-`core/lib/Conversion/TorchToLLVM/Literal.cc`:
-
-- **Splat path**: When all elements are identical, emits `aoti_torch_aten_full`
-  for efficient compile-time constant creation.
-- **Non-splat path**: Stages data on CPU and copies to device via
-  `aoti_torch_copy_`.
+Torch values cross the runtime boundary through the `tvm_ffi` dialect.  The
+`ConvertTorchToTVMFFI` pass converts scalar, device, tensor, list, and tuple
+types to their semantic TVMFFI counterparts (lists and tuples use
+`!tvm_ffi.array`), rewrites dispatcher calls to `tvm_ffi.FunctionGetGlobal` /
+`tvm_ffi.FunctionCall`, and emits
+explicit `tvm_ffi.ObjectIncRef`/`tvm_ffi.ObjectDecRef` operations for manually-managed
+objects.  `ConvertTVMFFIToLLVM` then lowers these operations to the TVM FFI
+ABI.  LLVM lowering consumes only the semantic TVMFFI representation.
 
 ## TorchExt Dialect
 
@@ -232,7 +232,7 @@ launches. Its lowering is split across two passes in `trident-lowering-pipeline`
 | `torchext.trident_kernel_launch` | `ConvertTorchExtToGPU` | Launches Triton kernels with explicit grid/block dimensions (I64); unpacks tensor/scalar args from TVMFFIAny into kernel parameters and emits `gpu.launch_func`. Uses TVMFFI stream API for CUDA stream management. |
 
 Reference counting for Torch objects (tensors, lists, tuples, optionals)
-backed by manually-managed resources is handled inside `ConvertTorchToLLVM`
+backed by manually-managed resources is handled inside `ConvertTorchToTVMFFI`
 itself: the conversion records every object it produces in a counter table and,
 after conversion, emits `TVMFFIObjectIncRef` for values that escape a scope
 (terminator operands, e.g. returns) and `TVMFFIObjectDecRef` for values whose

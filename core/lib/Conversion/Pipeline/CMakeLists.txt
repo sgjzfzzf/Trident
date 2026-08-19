@@ -8,5 +8,6 @@ add_mlir_conversion_library(
   TorchExtToGPU
   TorchExtToLLVM
   MLIRPass
+  DecomposeTVMFFI
   TorchToCf
-  TorchToLLVM)
+  TorchToTVMFFI)

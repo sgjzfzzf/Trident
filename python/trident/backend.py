@@ -22,12 +22,8 @@ from trident.core import (
 from trident.core.dialects import (
     func,
     llvm,
-    transform,
-)
-from trident.core.dialects import (
     torch as torch_d,
-)
-from trident.core.dialects import (
+    transform,
     tvm_ffi as tvm_ffi_d,
 )
 from trident.core.execution_engine import ExecutionEngine
@@ -303,12 +299,21 @@ class TridentGraphModule:
                     for arg, build in zip(entry_block.arguments, builders)
                     for value in build(arg)
                 ]
-                call_op = func.CallOp(
+                # main_* is an ordinary func.func. Only the surrounding
+                # tvm_ffi.func is exposed through the TVM FFI ABI.
+                call_op = func.call(
                     main_func.type.results,
                     main_func_name,
                     leaf_values,
                 )
-                tvm_ffi_d.return_(call_op)
+                call_results: Any = (
+                    [call_op]
+                    if len(main_func.type.results) == 1
+                    else []
+                    if len(main_func.type.results) == 0
+                    else call_op
+                )
+                tvm_ffi_d.return_(call_results)
 
         return module
 

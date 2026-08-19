@@ -61,8 +61,13 @@
 
 // Allocate the args array for 3 operands.
 // Store the input operands.
-// Build the function name struct {ptr, i64} and call TVMFFIFunctionGetGlobal.
-// Load the function handle from the result slot.
+// CHECK:         llvm.store %[[ARG0]], %[[ARRAY]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK:         %[[SCALAR_ARG1_SLOT:.*]] = llvm.getelementptr %[[ARRAY]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
+// CHECK:         llvm.store %[[ARG1]], %[[SCALAR_ARG1_SLOT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK:         %[[SCALAR_ARG2_SLOT:.*]] = llvm.getelementptr %[[ARRAY]][2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
+// CHECK:         llvm.store %[[ARG2]], %[[SCALAR_ARG2_SLOT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// Load the cached function handle.
+// CHECK:         %[[HANDLE:.*]] = llvm.load %[[HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
 // Set up the return value slot and call TVMFFIFunctionCall with the args.
 // Release the function handle.
 // Load the result TVMFFIAny from the return slot.
@@ -73,8 +78,13 @@ func.func @torch.aten.sub.Scalar(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch
 
 // Allocate the args array for 3 operands.
 // Store the input operands.
-// Build the function name struct {ptr, i64} and call TVMFFIFunctionGetGlobal.
-// Load the function handle from the result slot.
+// CHECK:         llvm.store %[[ARG0]], %[[ARRAY]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK:         %[[TENSOR_ARG1_SLOT:.*]] = llvm.getelementptr %[[ARRAY]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
+// CHECK:         llvm.store %[[ARG1]], %[[TENSOR_ARG1_SLOT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK:         %[[TENSOR_ARG2_SLOT:.*]] = llvm.getelementptr %[[ARRAY]][2] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
+// CHECK:         llvm.store %[[ARG2]], %[[TENSOR_ARG2_SLOT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// Load the cached function handle.
+// CHECK:         %[[HANDLE:.*]] = llvm.load %[[HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
 // Set up the return value slot and call TVMFFIFunctionCall with the args.
 // Release the function handle.
 // Load the result TVMFFIAny from the return slot.

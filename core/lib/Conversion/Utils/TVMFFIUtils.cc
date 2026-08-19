@@ -12,7 +12,6 @@
 #include "trident/core/Conversion/Utils/GlobalString.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/Type.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
 
 namespace trident::conversion::utils {
@@ -22,8 +21,10 @@ namespace {
 constexpr int32_t kGlobalCtorDtorPriority = 65535;
 
 mlir::FailureOr<mlir::LLVM::GlobalOp>
-getOrCreateTVMFFIGlobalHandle(mlir::ModuleOp moduleOp,
+getOrCreateTVMFFIGlobalHandle(mlir::OpBuilder &builder,
+                              mlir::ModuleOp moduleOp,
                               llvm::StringRef funcName) {
+  mlir::OpBuilder::InsertionGuard guard(builder);
   mlir::MLIRContext *ctx = moduleOp.getContext();
   mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
   std::string globalName =
@@ -38,7 +39,6 @@ getOrCreateTVMFFIGlobalHandle(mlir::ModuleOp moduleOp,
     return existing;
   }
 
-  mlir::OpBuilder builder(ctx);
   builder.setInsertionPointToStart(moduleOp.getBody());
   return mlir::LLVM::GlobalOp::create(
       builder, moduleOp.getLoc(), ptrTy, /*isConstant=*/false,
@@ -167,28 +167,6 @@ mlir::LogicalResult registerGlobalCtor(mlir::OpBuilder &builder,
       mlir::FlatSymbolRefAttr::get(moduleOp.getContext(), ctor.getSymName());
   mlir::Attribute priority = builder.getI32IntegerAttr(kGlobalCtorDtorPriority);
   mlir::Attribute data = mlir::LLVM::ZeroAttr::get(moduleOp.getContext());
-  auto ops = moduleOp.getOps<mlir::LLVM::GlobalCtorsOp>();
-  if (ops.begin() != ops.end()) {
-    mlir::LLVM::GlobalCtorsOp op = *ops.begin();
-    if (op.getCtors().size() != op.getPriorities().size() ||
-        op.getCtors().size() != op.getData().size()) {
-      op.emitError("malformed global constructor registration");
-      return mlir::failure();
-    }
-    llvm::SmallVector<mlir::Attribute> ctors(op.getCtors().begin(),
-                                              op.getCtors().end());
-    llvm::SmallVector<mlir::Attribute> priorities(op.getPriorities().begin(),
-                                                   op.getPriorities().end());
-    llvm::SmallVector<mlir::Attribute> dataEntries(op.getData().begin(),
-                                                   op.getData().end());
-    ctors.push_back(ctorRef);
-    priorities.push_back(priority);
-    dataEntries.push_back(data);
-    op.setCtorsAttr(builder.getArrayAttr(ctors));
-    op.setPrioritiesAttr(builder.getArrayAttr(priorities));
-    op.setDataAttr(builder.getArrayAttr(dataEntries));
-    return mlir::success();
-  }
 
   builder.setInsertionPointToEnd(moduleOp.getBody());
   mlir::LLVM::GlobalCtorsOp::create(
@@ -215,28 +193,6 @@ mlir::LogicalResult registerGlobalDtor(mlir::OpBuilder &builder,
       mlir::FlatSymbolRefAttr::get(moduleOp.getContext(), dtor.getSymName());
   mlir::Attribute priority = builder.getI32IntegerAttr(kGlobalCtorDtorPriority);
   mlir::Attribute data = mlir::LLVM::ZeroAttr::get(moduleOp.getContext());
-  auto ops = moduleOp.getOps<mlir::LLVM::GlobalDtorsOp>();
-  if (ops.begin() != ops.end()) {
-    mlir::LLVM::GlobalDtorsOp op = *ops.begin();
-    if (op.getDtors().size() != op.getPriorities().size() ||
-        op.getDtors().size() != op.getData().size()) {
-      op.emitError("malformed global destructor registration");
-      return mlir::failure();
-    }
-    llvm::SmallVector<mlir::Attribute> dtors(op.getDtors().begin(),
-                                              op.getDtors().end());
-    llvm::SmallVector<mlir::Attribute> priorities(op.getPriorities().begin(),
-                                                   op.getPriorities().end());
-    llvm::SmallVector<mlir::Attribute> dataEntries(op.getData().begin(),
-                                                   op.getData().end());
-    dtors.push_back(dtorRef);
-    priorities.push_back(priority);
-    dataEntries.push_back(data);
-    op.setDtorsAttr(builder.getArrayAttr(dtors));
-    op.setPrioritiesAttr(builder.getArrayAttr(priorities));
-    op.setDataAttr(builder.getArrayAttr(dataEntries));
-    return mlir::success();
-  }
 
   builder.setInsertionPointToEnd(moduleOp.getBody());
   mlir::LLVM::GlobalDtorsOp::create(
@@ -291,7 +247,7 @@ mlir::FailureOr<mlir::Value> getTVMFFIGlobalFunction(mlir::OpBuilder &builder,
   {
     mlir::OpBuilder::InsertionGuard guard(builder);
     handleGlobal = TRIDENT_CHECK_FAILURE(
-        getOrCreateTVMFFIGlobalHandle(moduleOp, funcName));
+        getOrCreateTVMFFIGlobalHandle(builder, moduleOp, funcName));
     mlir::LLVM::LLVMFuncOp ctor = TRIDENT_CHECK_FAILURE(
         getOrCreateTVMFFIGlobalCtor(builder, loc, moduleOp, funcName,
                                     handleGlobal));

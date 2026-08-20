@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from typing import Any, Final
 
 import torch
@@ -22,12 +22,8 @@ from trident.core import (
 from trident.core.dialects import (
     func,
     llvm,
-    transform,
-)
-from trident.core.dialects import (
     torch as torch_d,
-)
-from trident.core.dialects import (
+    transform,
     tvm_ffi as tvm_ffi_d,
 )
 from trident.core.execution_engine import ExecutionEngine
@@ -156,8 +152,10 @@ class TridentGraphModule:
             keep_alive_object=engine,
         )
 
-        f: Callable = tvm_ffi.utils.kwargs_wrapper.make_kwargs_wrapper_from_signature(
-            fn, inspect.signature(self.fn)
+        f: Callable[..., Any] = (
+            tvm_ffi.utils.kwargs_wrapper.make_kwargs_wrapper_from_signature(
+                fn, inspect.signature(self.fn)
+            )
         )
 
         return f
@@ -182,6 +180,8 @@ class TridentGraphModule:
         """
 
         # Step 1: Export  ---------------------------------------------------
+        gm: torch.fx.GraphModule
+        gs: torch._guards.GuardsSet
         gm, gs = torch._dynamo.export(
             fn, aten_graph=True, assume_static_by_default=True
         )(*args, **kwargs)
@@ -191,7 +191,7 @@ class TridentGraphModule:
         with apply_patch():
             importer: FxImporter = FxImporter(context=ctx)
             main_func_name: Final[str] = f"main_{index}"
-            main_func = importer.import_stateless_graph(
+            main_func: func.FuncOp = importer.import_stateless_graph(
                 gm.graph, func_name=main_func_name
             )
             module: ir.Module = importer.module
@@ -199,15 +199,14 @@ class TridentGraphModule:
         torch._dynamo.reset()
 
         # Step 3: Wrap with tvm_ffi.func.
-        signature = inspect.signature(fn)
-        parameters = list(signature.parameters.values())
-        bound = signature.bind(*args, **kwargs)
+        signature: inspect.Signature = inspect.signature(fn)
+        bound: inspect.BoundArguments = signature.bind(*args, **kwargs)
         bound.apply_defaults()
-        external_names = [parameter.name for parameter in parameters]
-        external_values = [bound.arguments[name] for name in external_names]
-        flat_types = main_func.type.inputs
+        signature_names: list[str] = [*signature.parameters]
+        external_values: list[Any] = [bound.arguments[name] for name in signature_names]
+        flat_types: Sequence[ir.Type] = main_func.type.inputs
 
-        in_spec = getattr(gm, "_in_spec", None)
+        in_spec: pytree.TreeSpec | None = getattr(gm, "_in_spec", None)
         assert isinstance(in_spec, pytree.TreeSpec), (
             "trident.jit requires a pytree TreeSpec for exported inputs; "
             f"got {in_spec!r}"
@@ -217,6 +216,8 @@ class TridentGraphModule:
         assert in_spec.type is tuple and len(root_children) == 2, (
             f"unexpected _in_spec root (expected tuple TreeSpec, got {in_spec})"
         )
+        args_spec: pytree.TreeSpec
+        kwargs_spec: pytree.TreeSpec
         args_spec, kwargs_spec = root_children
         assert isinstance(args_spec, pytree.TreeSpec), (
             f"expected args tree spec, got {type(args_spec)!r}"
@@ -225,70 +226,66 @@ class TridentGraphModule:
             f"expected kwargs tree spec, got {type(kwargs_spec)!r}"
         )
 
-        positional_names: list[str] = [
-            parameter.name
-            for parameter in parameters
-            if parameter.kind
+        # The ABI receives arguments in signature order.
+        pos_params: list[str] = [
+            name
+            for name, p in signature.parameters.items()
+            if p.kind
             in (
                 inspect.Parameter.POSITIONAL_ONLY,
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
             )
         ]
-        args_names: list[str] = positional_names[: len(args_spec.children())]
+        args_names: list[str] = [
+            name for name, _ in zip(pos_params, args_spec.children())
+        ]
         kwargs_names: list[str] = [*kwargs_spec.context]
-        assert len(args_names) == len(args_spec.children())
-        assert all(name in bound.arguments for name in kwargs_names)
 
-        leaf_iter: Iterator[ir.Type] = iter(flat_types)
-        next_leaf_index = 0
+        leaf_iter: Iterator[tuple[int, ir.Type]] = iter(enumerate(flat_types))
 
         def walk(
             node: pytree.TreeSpec,
             name: str,
-        ) -> tuple[ir.Type, Callable[[ir.Value], list[ir.Value]], list[int]]:
+        ) -> tuple[
+            ir.Type,
+            Callable[[ir.Value], list[tuple[int, ir.Value]]],
+        ]:
             """Map one pytree node to its type and unpack builder."""
-            nonlocal next_leaf_index
             if node.is_leaf():
-                ty = next(leaf_iter)
-                index = next_leaf_index
-                next_leaf_index += 1
-                return ty, (lambda arg: [arg]), [index]
+                index, ty = next(leaf_iter)
+                return ty, lambda arg: [(index, arg)]
             assert node.type is not dict, (
                 f"dict parameters (path step {name!r}) are not yet "
                 "supported by trident.jit"
             )
-            child_specs = [walk(c, name) for c in node.children()]
+            child_specs: list[
+                tuple[ir.Type, Callable[[ir.Value], list[tuple[int, ir.Value]]]]
+            ] = [walk(c, name) for c in node.children()]
 
-            def build(arg: ir.Value) -> list[ir.Value]:
-                op = torch_d.PrimListUnpackOp(
-                    results_=[ty for ty, _, _ in child_specs], operand=arg
+            def build(arg: ir.Value) -> list[tuple[int, ir.Value]]:
+                op: torch_d.PrimListUnpackOp = torch_d.PrimListUnpackOp(
+                    results_=[ty for ty, _ in child_specs], operand=arg
                 )
                 return [
                     value
-                    for (_, build_child, _), result in zip(child_specs, op.results)
+                    for (_, build_child), result in zip(child_specs, op.results)
                     for value in build_child(result)
                 ]
 
-            return (
-                _any_type(ctx),
-                build,
-                [index for _, _, indices in child_specs for index in indices],
-            )
+            return _any_type(ctx), build
 
-        provided_entries = {
+        provided_entries: dict[
+            str, tuple[ir.Type, Callable[[ir.Value], list[tuple[int, ir.Value]]]]
+        ] = {
             name: walk(child, name)
             for name, child in [
                 *zip(args_names, args_spec.children()),
                 *zip(kwargs_names, kwargs_spec.children()),
             ]
         }
-        assert next_leaf_index == len(flat_types)
-
-        def ignore(_: ir.Value) -> list[ir.Value]:
-            return []
 
         entries: list[
-            tuple[ir.Type, Callable[[ir.Value], list[ir.Value]], list[int]]
+            tuple[ir.Type, Callable[[ir.Value], list[tuple[int, ir.Value]]]]
         ] = [
             provided_entries[name]
             if name in provided_entries
@@ -296,19 +293,20 @@ class TridentGraphModule:
                 _any_type(ctx)
                 if isinstance(value, (list, tuple))
                 else importer._cc.value_info_to_type(value),
-                ignore,
-                [],
+                lambda _: [],
             )
-            for name, value in zip(external_names, external_values)
+            for name, value in zip(signature_names, external_values)
         ]
-        param_types = [ty for ty, _, _ in entries]
+        param_types: list[ir.Type] = [ty for ty, _ in entries]
 
         with ctx:
-            ffi_type = ir.FunctionType.get(param_types, main_func.type.results)
+            ffi_type: ir.FunctionType = ir.FunctionType.get(
+                param_types, main_func.type.results
+            )
 
         tvm_ffi_name: Final[str] = f"{fn.__name__}_{index}"
         # Attach guards to top-level parameters.
-        arg_attrs: ir.ArrayAttr = parse_guards(gs).build(external_names, ctx)
+        arg_attrs: ir.ArrayAttr = parse_guards(gs).build(signature_names, ctx)
 
         with ir.InsertionPoint(module.body), main_func.operation.location:
             ffi_func: tvm_ffi_d.FuncOp = tvm_ffi_d.func(
@@ -318,21 +316,22 @@ class TridentGraphModule:
             )
             entry_block: ir.Block = ir.Block.create_at_start(ffi_func.body, param_types)
             with ir.InsertionPoint(entry_block):
-                main_args_by_index = {
+                main_args_by_index: dict[int, ir.Value] = {
                     leaf_index: value
-                    for arg, (_, build, leaf_indices) in zip(
-                        entry_block.arguments, entries
-                    )
-                    for leaf_index, value in zip(leaf_indices, build(arg))
+                    for arg, (_, build) in zip(entry_block.arguments, entries)
+                    for leaf_index, value in build(arg)
                 }
-                assert len(main_args_by_index) == len(flat_types)
-                main_args = [
+                assert len(main_args_by_index) == len(flat_types), (
+                    "unexpected number of reconstructed graph inputs: "
+                    f"got {len(main_args_by_index)}, expected {len(flat_types)}"
+                )
+                main_args: list[ir.Value] = [
                     main_args_by_index[leaf_index]
                     for leaf_index in range(len(flat_types))
                 ]
                 # main_* is an ordinary func.func. Only the surrounding
                 # tvm_ffi.func is exposed through the TVM FFI ABI.
-                call_op = func.call(
+                call_op: func.CallOp = func.call(
                     main_func.type.results,
                     main_func_name,
                     main_args,

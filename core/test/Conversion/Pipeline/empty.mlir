@@ -16,7 +16,7 @@
 // CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.empty.memory_format_trident.aten.empty.memory_format("trident.aten.empty.memory_format\00")
 // CHECK-LABEL:   llvm.func @torch.aten.empty.memory_format
 // CHECK-SAME: %[[SHAPE_ARG:.*]]: !llvm.struct<(i32, i32, i64)>, %[[DTYPE_ARG:.*]]: !llvm.struct<(i32, i32, i64)>, %[[DEVICE_ARG:.*]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[FUNCTION_NAME:[0-9]+]], %[[HANDLE_SLOT:[0-9]+]])
 // CHECK: %[[ARGS:.*]] = llvm.alloca %[[ARGS_COUNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
 // CHECK: llvm.store %[[SHAPE_ARG]], %[[ARGS]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK: %[[DTYPE_SLOT:.*]] = llvm.getelementptr %[[ARGS]][1]
@@ -25,11 +25,11 @@
 // CHECK: llvm.store %[[LAYOUT:.*]], %[[LAYOUT_SLOT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK: %[[DEVICE_SLOT:.*]] = llvm.getelementptr %[[ARGS]][3]
 // CHECK: llvm.store %[[DEVICE_ARG]], %[[DEVICE_SLOT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK: llvm.call @TVMFFIFunctionCall
-// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[HANDLE:[0-9]+]], %[[ARGS_COPY:[0-9]+]], %[[NARGS:[0-9]+]], %[[RET_SLOT:[0-9]+]])
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[HANDLE]])
 // CHECK: %[[RET:.*]] = llvm.load %[[RET_SLOT:.*]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.call @TVMFFIObjectIncRef
-// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: llvm.call @TVMFFIObjectIncRef(%[[RESULT_OBJECT:[0-9]+]])
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[INPUT_OBJECT:[0-9]+]])
 // CHECK: llvm.return %[[RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_empty(
 // CHECK-SAME: %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
@@ -38,9 +38,9 @@
 // CHECK: %[[WRAP_DEVICE:.*]] = llvm.load %[[WRAP_DEVICE_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: %[[WRAP_DTYPE_SLOT:.*]] = llvm.getelementptr %arg1[2]
 // CHECK: %[[WRAP_DTYPE:.*]] = llvm.load %[[WRAP_DTYPE_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal
-// CHECK: llvm.call @TVMFFIFunctionCall
-// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[WRAP_FUNCTION_NAME:[0-9]+]], %[[WRAP_HANDLE_SLOT:[0-9]+]])
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[WRAP_HANDLE:[0-9]+]], %[[WRAP_ARGS:[0-9]+]], %[[WRAP_NARGS:[0-9]+]], %[[WRAP_RET_SLOT:[0-9]+]])
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[WRAP_HANDLE]])
 // CHECK: llvm.store %[[WRAP_RET:.*]], %arg3
 
 

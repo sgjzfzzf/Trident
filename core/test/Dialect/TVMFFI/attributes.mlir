@@ -86,7 +86,7 @@ tvm_ffi.func @constant_guard_int_42(%arg0: !torch.int {tvm_ffi.guard = [#tvm_ffi
 // CHECK:         [[AND:%[a-z0-9]+]] = llvm.and [[TYPE_CMP]], [[ID_CMP]]
 // CHECK-NEXT:    llvm.cond_br [[AND]], ^bb{{[0-9]+}}, ^bb{{[0-9]+}}
 // CHECK-NEXT:  ^bb{{[0-9]+}}:
-// CHECK:         llvm.call @TVMFFIFunctionCall
+// CHECK:         llvm.call @TVMFFIFunctionCall([[CALL_ARG0:%[a-z0-9]+]], [[CALL_ARG1:%[a-z0-9]+]], [[CALL_ARG2:%[a-z0-9]+]], [[CALL_ARG3:%[a-z0-9]+]])
 // CHECK:         llvm.return {{.*}} : i32
 tvm_ffi.func @cuda_device_guard(%arg0: !torch.tensor {tvm_ffi.guard = [#tvm_ffi.CudaDeviceGuard<device_type = 2, device_index = 0>]}) {
   tvm_ffi.return
@@ -108,7 +108,7 @@ tvm_ffi.func @cuda_device_guard(%arg0: !torch.tensor {tvm_ffi.guard = [#tvm_ffi.
 // CHECK:         [[CMP:%[a-z0-9]+]] = llvm.icmp "eq" [[NDIM]], [[EXPECTED]]
 // CHECK-NEXT:    llvm.cond_br [[CMP]], ^bb{{[0-9]+}}, ^bb{{[0-9]+}}
 // CHECK-NEXT:  ^bb{{[0-9]+}}:
-// CHECK:         llvm.call @TVMFFIFunctionCall
+// CHECK:         llvm.call @TVMFFIFunctionCall([[CALL_ARG0:%[a-z0-9]+]], [[CALL_ARG1:%[a-z0-9]+]], [[CALL_ARG2:%[a-z0-9]+]], [[CALL_ARG3:%[a-z0-9]+]])
 // CHECK:         llvm.return {{.*}} : i32
 tvm_ffi.func @dimension_guard(%arg0: !torch.tensor {tvm_ffi.guard = [#tvm_ffi.DimensionGuard<expected = 2>]}) {
   tvm_ffi.return
@@ -158,7 +158,7 @@ tvm_ffi.func @dtype_guard_f16(%arg0: !torch.tensor {tvm_ffi.guard = [#tvm_ffi.Dt
 // CHECK:         [[ALL:%[a-z0-9]+]] = llvm.and [[CODE_BITS]], [[LANES_CMP]]
 // CHECK-NEXT:    llvm.cond_br [[ALL]], ^bb{{[0-9]+}}, ^bb{{[0-9]+}}
 // CHECK-NEXT:  ^bb{{[0-9]+}}:
-// CHECK:         llvm.call @TVMFFIFunctionCall
+// CHECK:         llvm.call @TVMFFIFunctionCall([[CALL_ARG0:%[a-z0-9]+]], [[CALL_ARG1:%[a-z0-9]+]], [[CALL_ARG2:%[a-z0-9]+]], [[CALL_ARG3:%[a-z0-9]+]])
 // CHECK:         llvm.return {{.*}} : i32
 tvm_ffi.func @dtype_guard_f32(%arg0: !torch.tensor {tvm_ffi.guard = [#tvm_ffi.DtypeGuard<code = 2, bits = 32, lanes = 1>]}) {
   tvm_ffi.return
@@ -182,7 +182,7 @@ tvm_ffi.func @dtype_guard_f32(%arg0: !torch.tensor {tvm_ffi.guard = [#tvm_ffi.Dt
 // CHECK:         [[CMP:%[a-z0-9]+]] = llvm.icmp "eq" [[SHAPE_ELEM]], [[EXP]]
 // CHECK-NEXT:    llvm.cond_br [[CMP]], ^bb{{[0-9]+}}, ^bb{{[0-9]+}}
 // CHECK-NEXT:  ^bb{{[0-9]+}}:
-// CHECK:         llvm.call @TVMFFIFunctionCall
+// CHECK:         llvm.call @TVMFFIFunctionCall([[CALL_ARG0:%[a-z0-9]+]], [[CALL_ARG1:%[a-z0-9]+]], [[CALL_ARG2:%[a-z0-9]+]], [[CALL_ARG3:%[a-z0-9]+]])
 // CHECK:         llvm.return {{.*}} : i32
 tvm_ffi.func @size_guard(%arg0: !torch.tensor {tvm_ffi.guard = [#tvm_ffi.SizeGuard<index = 0, expected = 64>]}) {
   tvm_ffi.return
@@ -204,7 +204,7 @@ tvm_ffi.func @size_guard(%arg0: !torch.tensor {tvm_ffi.guard = [#tvm_ffi.SizeGua
 // CHECK:         [[CMP:%[a-z0-9]+]] = llvm.icmp "eq" [[OFFSET]], [[EXP]]
 // CHECK-NEXT:    llvm.cond_br [[CMP]], ^bb{{[0-9]+}}, ^bb{{[0-9]+}}
 // CHECK-NEXT:  ^bb{{[0-9]+}}:
-// CHECK:         llvm.call @TVMFFIFunctionCall
+// CHECK:         llvm.call @TVMFFIFunctionCall([[CALL_ARG0:%[a-z0-9]+]], [[CALL_ARG1:%[a-z0-9]+]], [[CALL_ARG2:%[a-z0-9]+]], [[CALL_ARG3:%[a-z0-9]+]])
 // CHECK:         llvm.return {{.*}} : i32
 tvm_ffi.func @storage_offset_guard(%arg0: !torch.tensor {tvm_ffi.guard = [#tvm_ffi.StorageOffsetGuard<expected = 0>]}) {
   tvm_ffi.return
@@ -228,7 +228,7 @@ tvm_ffi.func @storage_offset_guard(%arg0: !torch.tensor {tvm_ffi.guard = [#tvm_f
 // CHECK:         [[CMP:%[a-z0-9]+]] = llvm.icmp "eq" [[STRIDE_ELEM]], [[EXP]]
 // CHECK-NEXT:    llvm.cond_br [[CMP]], ^bb{{[0-9]+}}, ^bb{{[0-9]+}}
 // CHECK-NEXT:  ^bb{{[0-9]+}}:
-// CHECK:         llvm.call @TVMFFIFunctionCall
+// CHECK:         llvm.call @TVMFFIFunctionCall([[CALL_ARG0:%[a-z0-9]+]], [[CALL_ARG1:%[a-z0-9]+]], [[CALL_ARG2:%[a-z0-9]+]], [[CALL_ARG3:%[a-z0-9]+]])
 // CHECK:         llvm.return {{.*}} : i32
 tvm_ffi.func @stride_guard(%arg0: !torch.tensor {tvm_ffi.guard = [#tvm_ffi.StrideGuard<index = 1, expected = 1>]}) {
   tvm_ffi.return
@@ -246,7 +246,7 @@ tvm_ffi.func @stride_guard(%arg0: !torch.tensor {tvm_ffi.guard = [#tvm_ffi.Strid
 // CHECK:         [[CMP:%[a-z0-9]+]] = llvm.icmp "eq" [[TYPE_CODE]], [[EXPECTED]]
 // CHECK-NEXT:    llvm.cond_br [[CMP]], ^bb{{[0-9]+}}, ^bb{{[0-9]+}}
 // CHECK-NEXT:  ^bb{{[0-9]+}}:
-// CHECK:         llvm.call @TVMFFIFunctionCall
+// CHECK:         llvm.call @TVMFFIFunctionCall([[CALL_ARG0:%[a-z0-9]+]], [[CALL_ARG1:%[a-z0-9]+]], [[CALL_ARG2:%[a-z0-9]+]], [[CALL_ARG3:%[a-z0-9]+]])
 // CHECK:         llvm.return {{.*}} : i32
 tvm_ffi.func @tensor_type_guard(%arg0: !torch.tensor {tvm_ffi.guard = [#tvm_ffi.TensorTypeGuard<>]}) {
   tvm_ffi.return

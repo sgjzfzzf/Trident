@@ -18,44 +18,44 @@
 // CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.sub.Tensor_trident.aten.sub.Tensor("trident.aten.sub.Tensor\00")
 // CHECK-LABEL:   llvm.func @torch.aten.sub.Scalar
 // CHECK-SAME: %[[SCALAR_ARG0:.*]]: !llvm.struct<(i32, i32, i64)>, %[[SCALAR_ARG1:.*]]: !llvm.struct<(i32, i32, i64)>, %[[SCALAR_ARG2:.*]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[SCALAR_FUNCTION_NAME:[0-9]+]], %[[SCALAR_HANDLE_SLOT:[0-9]+]])
 // CHECK: %[[SCALAR_ARGS:.*]] = llvm.alloca %[[SCALAR_COUNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
 // CHECK: llvm.store %[[SCALAR_ARG0]], %[[SCALAR_ARGS]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK: %[[SCALAR_SLOT1:.*]] = llvm.getelementptr %[[SCALAR_ARGS]][1]
 // CHECK: llvm.store %[[SCALAR_ARG1]], %[[SCALAR_SLOT1]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK: %[[SCALAR_SLOT2:.*]] = llvm.getelementptr %[[SCALAR_ARGS]][2]
 // CHECK: llvm.store %[[SCALAR_ARG2]], %[[SCALAR_SLOT2]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK: llvm.call @TVMFFIFunctionCall
-// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[SCALAR_HANDLE:[0-9]+]], %[[SCALAR_CALL_ARGS:[0-9]+]], %[[SCALAR_ARG_COUNT:[0-9]+]], %[[SCALAR_RETURN_SLOT:[0-9]+]])
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[SCALAR_HANDLE]])
 // CHECK: %[[SCALAR_RET:.*]] = llvm.load %[[SCALAR_RET_SLOT:.*]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.call @TVMFFIObjectIncRef
-// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: llvm.call @TVMFFIObjectIncRef(%[[SCALAR_RESULT_OBJECT:[0-9]+]])
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[SCALAR_INPUT_OBJECT:[0-9]+]])
 // CHECK: llvm.return %[[SCALAR_RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL:   llvm.func @torch.aten.sub.Tensor
 // CHECK-SAME: %[[TENSOR_ARG0:.*]]: !llvm.struct<(i32, i32, i64)>, %[[TENSOR_ARG1:.*]]: !llvm.struct<(i32, i32, i64)>, %[[TENSOR_ARG2:.*]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[TENSOR_FUNCTION_NAME:[0-9]+]], %[[TENSOR_HANDLE_SLOT:[0-9]+]])
 // CHECK: %[[TENSOR_ARGS:.*]] = llvm.alloca %[[TENSOR_COUNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
 // CHECK: llvm.store %[[TENSOR_ARG0]], %[[TENSOR_ARGS]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK: %[[TENSOR_SLOT1:.*]] = llvm.getelementptr %[[TENSOR_ARGS]][1]
 // CHECK: llvm.store %[[TENSOR_ARG1]], %[[TENSOR_SLOT1]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK: %[[TENSOR_SLOT2:.*]] = llvm.getelementptr %[[TENSOR_ARGS]][2]
 // CHECK: llvm.store %[[TENSOR_ARG2]], %[[TENSOR_SLOT2]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK: llvm.call @TVMFFIFunctionCall
-// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[TENSOR_HANDLE:[0-9]+]], %[[TENSOR_CALL_ARGS:[0-9]+]], %[[TENSOR_ARG_COUNT:[0-9]+]], %[[TENSOR_RETURN_SLOT:[0-9]+]])
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[TENSOR_HANDLE]])
 // CHECK: %[[TENSOR_RET:.*]] = llvm.load %[[TENSOR_RET_SLOT:.*]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.call @TVMFFIObjectIncRef
-// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: llvm.call @TVMFFIObjectIncRef(%[[TENSOR_RESULT_OBJECT:[0-9]+]])
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[TENSOR_INPUT_OBJECT:[0-9]+]])
 // CHECK: llvm.return %[[TENSOR_RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_sub_scalar(
 // CHECK-SAME: %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
 // CHECK: llvm.load %arg1 : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.getelementptr %arg1[2]
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal
-// CHECK: llvm.call @TVMFFIFunctionCall
-// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[WRAP_FUNCTION_NAME:[0-9]+]], %[[WRAP_HANDLE_SLOT:[0-9]+]])
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[WRAP_HANDLE:[0-9]+]], %[[WRAP_CALL_ARGS:[0-9]+]], %[[WRAP_ARG_COUNT:[0-9]+]], %[[WRAP_RETURN_SLOT:[0-9]+]])
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[WRAP_HANDLE]])
 // CHECK: %[[WRAP_RET:.*]] = llvm.load %[[WRAP_RET_SLOT:.*]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.call @TVMFFIObjectIncRef
-// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: llvm.call @TVMFFIObjectIncRef(%[[WRAP_RESULT_OBJECT:[0-9]+]])
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[WRAP_INPUT_OBJECT:[0-9]+]])
 // CHECK: llvm.store %[[WRAP_RET]], %arg3
 
 

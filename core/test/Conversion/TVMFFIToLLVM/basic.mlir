@@ -111,11 +111,11 @@ tvm_ffi.func @make_tensor() -> !torch.tensor {
 // CHECK-LABEL: llvm.func @__tvm_ffi_multi_return_tensor_bool(
 // CHECK: llvm.mlir.constant(2 : i64) : i64
 // CHECK: %[[ELEMENT_SLOTS:.*]] = llvm.alloca %[[ELEMENT_COUNT:.*]] x !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal
-// CHECK: llvm.call @TVMFFIFunctionCall
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[ARRAY_NAME:[0-9]+]], %[[ARRAY_HANDLE_SLOT:[0-9]+]])
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[ARRAY_HANDLE:[0-9]+]], %[[ARRAY_ARGS:[0-9]+]], %[[ARRAY_ARG_COUNT:[0-9]+]], %[[ARRAY_RETURN_SLOT:[0-9]+]])
 // CHECK: llvm.mlir.constant(71 : i32) : i32
 // CHECK: llvm.store %[[ARRAY_RESULT:.*]], %arg3
-// CHECK: llvm.call @TVMFFIObjectDecRef
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[TENSOR_ELEMENT:[0-9]+]])
 tvm_ffi.func @multi_return_tensor_bool(%arg0: !torch.tensor, %arg1: !torch.bool) -> (!torch.tensor, !torch.bool) {
   tvm_ffi.return %arg0, %arg1 : !torch.tensor, !torch.bool
 }

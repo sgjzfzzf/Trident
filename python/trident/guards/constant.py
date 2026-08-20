@@ -7,6 +7,7 @@ import ast
 import re
 import struct
 from typing import Any, Final
+
 from typing_extensions import override
 
 from trident.core import ir
@@ -18,6 +19,7 @@ class ConstantGuard(Guard):
     _regex_pattern: re.Pattern = re.compile(
         rf"{Guard._regex_variable}\s*==\s*(.+?)\s*$"
     )
+    _none_pattern: re.Pattern = re.compile(rf"{Guard._regex_variable}\s+is\s+None\s*$")
 
     def __init__(
         self,
@@ -38,6 +40,8 @@ class ConstantGuard(Guard):
     @classmethod
     @override
     def _parse(cls, code: str) -> ConstantGuard | None:
+        if match := cls._none_pattern.fullmatch(code):
+            return ConstantGuard(match.group(1), 0, 0)
         if not (match := cls._regex_pattern.fullmatch(code)):
             return None
 

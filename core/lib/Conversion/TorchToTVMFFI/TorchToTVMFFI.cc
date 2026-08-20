@@ -735,15 +735,19 @@ class ConvertTorchToTVMFFIPass final
     mlir::RewritePatternSet literalPatterns(&getContext());
     literalPatterns.add<ConvertTorchValueTensorLiteralOp>(typeConverter,
                                                           &getContext());
-    if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),
-                                                 std::move(literalPatterns)))) {
+    if (mlir::failed(mlir::applyPatternsGreedily(
+            getOperation(), std::move(literalPatterns),
+            mlir::GreedyRewriteConfig().enableFolding(false)))) {
       signalPassFailure();
       return;
     }
     mlir::populateReturnOpTypeConversionPattern(loweringPatterns,
                                                 typeConverter);
     if (mlir::failed(mlir::applyPartialConversion(
-            getOperation(), loweringTarget, std::move(loweringPatterns)))) {
+            getOperation(), loweringTarget, std::move(loweringPatterns),
+            mlir::ConversionConfig{
+                .foldingMode =
+                    mlir::DialectConversionFoldingMode::AfterPatterns}))) {
       signalPassFailure();
       return;
     }

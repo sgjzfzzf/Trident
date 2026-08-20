@@ -21,6 +21,24 @@ func.func @transpose(%arg0: !torch.vtensor<[2,3],f32>)
   return %0 : !torch.vtensor<[3,2],f32>
 }
 
+// A value-semantic Torch clone may materialize a new memory layout before a
+// raw-pointer kernel launch. It must reach the FFI lowering before Torch's
+// folder, which ignores memory_format, can replace it with its input.
+// CHECK-LABEL: func.func @clone_contiguous(
+// CHECK: %[[FORMAT:.*]] = "tvm_ffi.constant"() <{value = 0 : i64}> : () -> !tvm_ffi.int
+// CHECK: %[[FUNC:.*]] = tvm_ffi.FunctionGetGlobal "trident.aten.clone"
+// CHECK: %[[CLONE:.*]] = tvm_ffi.FunctionCall %[[FUNC]](%arg0, %[[FORMAT]])
+// CHECK-SAME: -> !tvm_ffi.tensor
+// CHECK: return %[[CLONE]] : !tvm_ffi.tensor
+func.func @clone_contiguous(%arg0: !torch.vtensor<[32,2],f32>)
+    -> !torch.vtensor<[32,2],f32> {
+  %memory_format = torch.constant.int 0
+  %0 = torch.aten.clone %arg0, %memory_format
+      : !torch.vtensor<[32,2],f32>, !torch.int
+      -> !torch.vtensor<[32,2],f32>
+  return %0 : !torch.vtensor<[32,2],f32>
+}
+
 // Constants are converted to their semantic TVM FFI scalar types, rather than
 // being lowered through the LLVM representation used by the final ABI pass.
 // CHECK-LABEL: func.func @constants(

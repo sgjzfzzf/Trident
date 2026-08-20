@@ -280,7 +280,10 @@ public:
   mlir::LogicalResult
   matchAndRewrite(mlir::Operation *op, llvm::ArrayRef<mlir::Value> operands,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    llvm::StringRef name = op->getName().getStringRef();
+    mlir::torch::Torch::OperatorOp maybeOperatorOp =
+        llvm::dyn_cast<mlir::torch::Torch::OperatorOp>(op);
+    llvm::StringRef name = maybeOperatorOp ? maybeOperatorOp.getName()
+                                           : op->getName().getStringRef();
     if (!name.starts_with("torch.aten.")) {
       return mlir::failure();
     }
@@ -709,6 +712,10 @@ class ConvertTorchToTVMFFIPass final
     loweringTarget.addLegalOp<mlir::ModuleOp, mlir::func::FuncOp,
                               mlir::torch::Torch::PrimIfOp,
                               mlir::torch::Torch::PrimIfYieldOp>();
+    loweringTarget.addDynamicallyLegalOp<mlir::torch::Torch::OperatorOp>(
+        [](mlir::torch::Torch::OperatorOp op) {
+          return !op.getName().starts_with("torch.aten.");
+        });
     loweringTarget.addIllegalOp<mlir::torch::Torch::ValueTensorLiteralOp>();
     loweringTarget.addDynamicallyLegalOp<mlir::func::ReturnOp>(
         [&](mlir::func::ReturnOp ret) {

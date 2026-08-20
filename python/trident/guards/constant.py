@@ -7,7 +7,6 @@ import ast
 import re
 import struct
 from typing import Any, Final
-
 from typing_extensions import override
 
 from trident.core import ir

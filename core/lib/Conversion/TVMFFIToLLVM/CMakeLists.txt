@@ -7,8 +7,12 @@ add_mlir_conversion_library(
   PUBLIC
   TorchExtTransforms
   ConversionUtils
+  MLIRControlFlowTransforms
   MLIRFuncDialect
   MLIRLLVMCommonConversion
   MLIRLLVMDialect
   MLIRPass
+  MLIRSCFDialect
   TVMFFIDialect)
+
+target_link_libraries(TVMFFIToLLVM PUBLIC ${TORCH_LIBRARIES})

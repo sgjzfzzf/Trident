@@ -5,8 +5,7 @@ from __future__ import annotations
 
 import ast
 import threading
-from typing import Any
-from typing_extensions import Final
+from typing import Any, ClassVar, Final, Self
 
 import torch
 import triton
@@ -15,15 +14,17 @@ from trident.core import ir
 from trident.core.dialects import (
     arith,
     gpu,
-    torch as torch_d,
     torchext,
+)
+from trident.core.dialects import (
+    torch as torch_d,
 )
 from trident.core.extras.fx_importer import GraphNodeImporter
 
 
 class GraphNodeImporterTritonHopPatchState:
     refcount: int = 0
-    original_attrs: dict[str, Any] = {}
+    original_attrs: ClassVar[dict[str, Any]] = {}
     _lock: Final[threading.RLock] = threading.RLock()
 
     @classmethod
@@ -58,7 +59,7 @@ class GraphNodeImporterTritonHopPatchState:
             if attr_name in cls.original_attrs:
                 setattr(GraphNodeImporter, attr_name, cls.original_attrs.pop(attr_name))
 
-    def __enter__(self) -> GraphNodeImporterTritonHopPatchState:
+    def __enter__(self) -> Self:
         self.apply()
         return self
 
@@ -137,19 +138,19 @@ def _import_hop_triton_kernel_wrapper_mutation(
                     "i64",
                     "u64",
                 ):
-                    const_val = torch_d.ConstantIntOp(value)
+                    const_val = torch_d.constant_int(value)
                     target = ir.IntegerType.get_signless(
                         ast.literal_eval(triton_type[1:])
                     )
-                    call_arguments[name] = torchext.CastOp(target, const_val)
+                    call_arguments[name] = torchext.cast(target, const_val)
                 elif triton_type == "fp32":
-                    const_val = torch_d.ConstantFloatOp(value)
+                    const_val = torch_d.constant_float(value)
                     target = ir.F32Type.get()
-                    call_arguments[name] = torchext.CastOp(target, const_val)
+                    call_arguments[name] = torchext.cast(target, const_val)
                 elif triton_type == "fp64":
-                    const_val = torch_d.ConstantFloatOp(value)
+                    const_val = torch_d.constant_float(value)
                     target = ir.F64Type.get()
-                    call_arguments[name] = torchext.CastOp(target, const_val)
+                    call_arguments[name] = torchext.cast(target, const_val)
                 else:
                     raise RuntimeError(
                         f"unsupported constant argument type: {triton_type}"
@@ -175,10 +176,8 @@ def _import_hop_triton_kernel_wrapper_mutation(
         cubin = kernel.asm["cubin"]
         cubin_mlir: str = "".join(f"\\{byte:02X}" for byte in cubin)
         gpu_object = ir.Attribute.parse(
-            '#gpu.object<#nvvm.target<chip = "sm_{arch}">, "{cubin}">'.format(
-                arch=kernel.metadata.target.arch,
-                cubin=cubin_mlir,
-            )
+            f'#gpu.object<#nvvm.target<chip = "sm_{kernel.metadata.target.arch}">, '
+            f'"{cubin_mlir}">'
         )
         with ir.InsertionPoint(self.fx_importer.module.body):
             gpu.binary(
@@ -190,7 +189,7 @@ def _import_hop_triton_kernel_wrapper_mutation(
     i64_type = ir.IntegerType.get_signless(64)
     i32_type = ir.IntegerType.get_signless(32)
     grid_x, grid_y, grid_z = grid
-    torchext.TridentKernelLaunchOp(
+    torchext.trident_kernel_launch(
         ir.Attribute.parse(f"@{binary_name}::@{kernel.metadata.name}"),
         arith.constant(i64_type, grid_x, loc=loc),
         arith.constant(i64_type, grid_y, loc=loc),
@@ -203,7 +202,7 @@ def _import_hop_triton_kernel_wrapper_mutation(
         arith.constant(i64_type, 1, loc=loc),
         arith.constant(i64_type, 1, loc=loc),
         operands,
-        dynamicSharedMemorySize=arith.constant(
+        dynamic_shared_memory_size=arith.constant(
             i32_type, kernel.metadata.shared, loc=loc
         ),
         loc=loc,

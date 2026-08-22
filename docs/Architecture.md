@@ -60,7 +60,7 @@ flowchart TD
   C -- "yes" --> E["compile(*args, **kwargs)"]
   E --> F["torch._dynamo.export builds FX graph and guards"]
   F --> G["FxImporter imports FX into MLIR"]
-  G --> H["create tvm_ffi.func wrapper and attach arg_attrs guards"]
+  G --> H["create tvm_ffi.func wrapper and emit guard check chain"]
   H --> I["store sub-module"]
   I --> J["rebuild combined module + dispatcher"]
   J --> K["merge all sub-modules"]
@@ -98,7 +98,7 @@ Each `compile(*args, **kwargs)` produces a new sub-module with these properties:
 
 - The `main` function symbol is indexed to avoid collisions (for example `main_0`, `main_1`).
 - The exported `tvm_ffi.func` is also indexed (for example `<fn>_0`, `<fn>_1`).
-- Guards exported by Dynamo are converted to MLIR attributes and attached to `tvm_ffi.func` argument attributes.
+- Guards exported by Dynamo are converted to semantic check IR in the `tvm_ffi.func` body.
 - `torch._dynamo.reset()` is called after each FX import to release tracing resources.
 
 ### `tvm_ffi.func` signature reconstruction via `gm._in_spec`
@@ -113,8 +113,9 @@ longer overrun the FFI argument array.
 - `backend.py::_build_sub_module` walks `gm._in_spec` (the pytree spec of
   `(args, kwargs)`) in a single recursion: each node yields its SSA type (leaf
   -> the flat type from `main_{i}`'s argument list; container -> `!torch.any`)
-  plus an unpack closure that emits `torch.prim.ListUnpack` when the entry
-  block exists.
+  plus unpack and guard-source resolver closures. The resolver lets guard
+  builders address both top-level parameters and integer-indexed container
+  elements.
 - Container parameters are destructured in the `tvm_ffi.func` body with
   torch-mlir's standard `torch.prim.ListUnpack` op (one op per container
   node, recursively for nested containers), which yields the flattened leaf
@@ -142,29 +143,40 @@ When runtime inputs change and guards no longer match:
 
 The `max_compiles` parameter (default 2) controls the recompilation limit per
 `TridentGraphModule`. Each new specialization appends a sub-module; the
-dispatcher tries them in creation order. The following guard types (implemented
-in `python/trident/guards/`) translate Dynamo's export guards into MLIR argument
-attributes on `tvm_ffi.func`:
+dispatcher tries them in creation order. Guard handling is split into two
+layers under `python/trident/guards`: `handlers/` selects behavior from Dynamo's
+`Guard.create_fn_name()`, while `codes/` parses one expression from the Guard's
+CodeList. Each Handler inherits from a common base class, registers itself when
+the subclass is defined, and declares a tuple of allowed Code classes. Every
+CodeList expression must match exactly one of those classes; zero or multiple
+matches are ignored instead of relying on parser order.
 
-| Guard Class | Purpose |
+Ordinary local sources are parsed from `Guard.name` with Python's AST into a
+root argument plus integer-index path. Code classes use source-aware regular
+expressions except for `ExpressionCode`, which uses an AST because shape
+expressions can combine multiple sources, arithmetic, and comparisons. Each
+parsed Code object owns its IR construction logic together with its deduplication
+key, execution phase, and structural depth. The collection orders the Code
+objects and invokes them in `arithext.and_then` regions so they short-circuit
+before unsafe tensor or container metadata access:
+
+| Dynamo create function | Selected Code classes |
 |---|---|
-| `ConstantGuard` | Checks tensor values against expected constants |
-| `CUDADeviceGuard` | Ensures tensor is on the expected CUDA device |
-| `DimensionGuard` | Validates tensor dimensionality |
-| `DTypeGuard` | Checks tensor element type |
-| `SizeGuard` | Validates specific dimension sizes |
-| `StorageOffsetGuard` | Checks tensor storage offset |
-| `StrideGuard` | Validates tensor strides |
-| `TensorTypeGuard` | Ensures value is a tensor |
-| `Guards` | Collection that aggregates individual guards |
+| `TYPE_MATCH` | Type-id validation; runtime type checking comes from the wrapper signature |
+| `TENSOR_MATCH` | Type-id, dtype, device, rank, requires-grad, and Dynamo-attribute Code classes |
+| `CONSTANT_MATCH` | Scalar constant Code class |
+| `SEQUENCE_LENGTH` | Type-id and runtime sequence-length Code classes |
+| `SHAPE_ENV` | AST shape-expression Code class |
 
-Note: the current guard grammar matches only plain parameter references
-(`L['x']`).  Guards referencing container *elements* (e.g.
-`L['s'][0].size()[0] == 4`) are not parsed and therefore attach no guards to
-container parameters — the corresponding values flow through as runtime
-placeholders and the ATen dispatch is shape/dtype dynamic, so correctness is
-preserved (only per-element re-specialization is deferred until the guard
-grammar is extended).
+Integer-indexed container sources such as `L['s'][0]` are resolved through the
+same pytree structure used to reconstruct the wrapper signature. Unsupported
+create functions or expressions are represented as absent guards and do not
+emit check IR. Structural checks run from shallowest to deepest; value and
+shape checks follow. `SHAPE_ENV`
+is the sole builder that discovers sources from its expressions because its
+Dynamo `Guard.name` is empty and one guard can reference multiple tensors.
+Process-global ambient guards are registered as no-op Guard subclasses, while
+export-resolved global/default capture sources are filtered before IR emission.
 
 ## FX Import And Triton Kernel Handling
 

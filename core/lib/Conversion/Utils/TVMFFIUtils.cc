@@ -12,6 +12,7 @@
 #include "trident/core/Conversion/Utils/GlobalString.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/Type.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 
 namespace trident::conversion::utils {
 
@@ -28,7 +29,8 @@ mlir::Value buildIntAnySlot(mlir::OpBuilder &builder, mlir::Location loc,
   mlir::Value any = mlir::LLVM::UndefOp::create(builder, loc, anyTy);
   any = mlir::LLVM::InsertValueOp::create(
       builder, loc, any,
-      mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, kTVMFFIInt),
+      mlir::LLVM::ConstantOp::create(
+          builder, loc, i32Ty, ::trident::tvm_ffi::IntType::getTypeIndex()),
       llvm::ArrayRef<int64_t>{0});
   any = mlir::LLVM::InsertValueOp::create(
       builder, loc, any, mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, 0),

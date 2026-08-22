@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -24,6 +25,7 @@
 #include "trident/core/Conversion/Utils/Check.h"
 #include "trident/core/Conversion/Utils/TridentCAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/Type.h"
+#include "trident/core/Dialect/ArithExt/IR/ArithExtDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "tvm/ffi/c_api.h"
@@ -59,8 +61,9 @@ public:
   TorchFFITypeConverter() {
     addConversion([](mlir::Type type) -> std::optional<mlir::Type> {
       mlir::MLIRContext *ctx = type.getContext();
-      if (mlir::isa<tvm_ffi::BoolType, tvm_ffi::IntType, tvm_ffi::FloatType,
-                    tvm_ffi::NoneType, tvm_ffi::DeviceType, tvm_ffi::ArrayType,
+      if (mlir::isa<tvm_ffi::AnyType, tvm_ffi::ExceptionType, tvm_ffi::BoolType,
+                    tvm_ffi::IntType, tvm_ffi::FloatType, tvm_ffi::NoneType,
+                    tvm_ffi::DeviceType, tvm_ffi::ArrayType,
                     tvm_ffi::TensorType>(type)) {
         return type;
       } else if (mlir::isa<mlir::torch::Torch::BoolType>(type)) {
@@ -85,6 +88,7 @@ public:
         return std::nullopt;
       }
     });
+    addConversion([](mlir::IntegerType type) -> mlir::Type { return type; });
     addTargetMaterialization([](mlir::OpBuilder &builder, mlir::Type type,
                                 mlir::ValueRange inputs,
                                 mlir::Location loc) -> mlir::Value {
@@ -233,6 +237,23 @@ private:
   const TorchFFITypeConverter &typeConverter;
 };
 
+/// Keep an already-semantic operation while converting its operands.
+template <typename Op>
+class ConvertGenericOp final : public mlir::OpConversionPattern<Op> {
+public:
+  ConvertGenericOp(const TorchFFITypeConverter &typeConverter,
+                   mlir::MLIRContext *context)
+      : mlir::OpConversionPattern<Op>(typeConverter, context) {}
+
+  mlir::LogicalResult
+  matchAndRewrite(Op op, typename Op::Adaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    rewriter.modifyOpInPlace(op,
+                             [&] { op->setOperands(adaptor.getOperands()); });
+    return mlir::success();
+  }
+};
+
 template <typename ConstantOp>
 class ConvertTorchConstant final
     : public mlir::OpConversionPattern<ConstantOp> {
@@ -347,17 +368,17 @@ private:
 };
 
 class ConvertTorchValueTensorLiteralOp final
-    : public mlir::OpRewritePattern<mlir::torch::Torch::ValueTensorLiteralOp> {
+    : public mlir::OpConversionPattern<
+          mlir::torch::Torch::ValueTensorLiteralOp> {
 public:
   ConvertTorchValueTensorLiteralOp(const TorchFFITypeConverter &typeConverter,
                                    mlir::MLIRContext *ctx)
-      : mlir::OpRewritePattern<mlir::torch::Torch::ValueTensorLiteralOp>(ctx,
-                                                                         1),
-        typeConverter(typeConverter) {}
+      : mlir::OpConversionPattern<mlir::torch::Torch::ValueTensorLiteralOp>(
+            typeConverter, ctx, 1) {}
 
   mlir::LogicalResult
-  matchAndRewrite(mlir::torch::Torch::ValueTensorLiteralOp op,
-                  mlir::PatternRewriter &rewriter) const override {
+  matchAndRewrite(mlir::torch::Torch::ValueTensorLiteralOp op, OpAdaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
     mlir::DenseElementsAttr dense =
         mlir::dyn_cast<mlir::DenseElementsAttr>(op.getValue());
     auto tensorType =
@@ -602,7 +623,7 @@ public:
     result = mlir::LLVM::InsertValueOp::create(
         rewriter, op.getLoc(), result,
         mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i32Ty,
-                                       kTVMFFITensor),
+                                       tvm_ffi::TensorType::getTypeIndex()),
         llvm::ArrayRef<int64_t>{0});
     result = mlir::LLVM::InsertValueOp::create(
         rewriter, op.getLoc(), result,
@@ -613,9 +634,6 @@ public:
     rewriter.replaceOp(op, result);
     return mlir::success();
   }
-
-private:
-  const TorchFFITypeConverter &typeConverter;
 };
 
 class ConvertTVMFFIReturn final
@@ -634,6 +652,10 @@ public:
       return mlir::failure();
     }
     mlir::FunctionType type = func.getFunctionType();
+    if (type.getNumResults() == 1 &&
+        mlir::isa<tvm_ffi::AnyType>(type.getResult(0))) {
+      return mlir::failure();
+    }
     bool changed = false;
     llvm::SmallVector<mlir::Value> operands(ret.getOperands());
     for (auto [index, resultType] : llvm::enumerate(type.getResults())) {
@@ -641,8 +663,20 @@ public:
       if (value.getType() == resultType) {
         continue;
       }
-      operands[index] = typeConverter.materializeTargetConversion(
-          rewriter, ret.getLoc(), resultType, value);
+      mlir::UnrealizedConversionCastOp cast;
+      while (typeConverter.convertType(value.getType()) == resultType &&
+             (cast = value.getDefiningOp<mlir::UnrealizedConversionCastOp>()) &&
+             cast->getNumOperands() == 1) {
+        value = cast->getOperand(0);
+      }
+      if (value.getType() != resultType) {
+        value = typeConverter.materializeTargetConversion(
+            rewriter, ret.getLoc(), resultType, value);
+        if (!value) {
+          return mlir::failure();
+        }
+      }
+      operands[index] = value;
       changed = true;
     }
     if (!changed) {
@@ -660,76 +694,18 @@ class ConvertTorchToTVMFFIPass final
     : public impl::ConvertTorchToTVMFFIBase<ConvertTorchToTVMFFIPass> {
   void runOnOperation() final {
     TorchFFITypeConverter typeConverter;
-    mlir::RewritePatternSet signaturePatterns(&getContext());
-    mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
-        signaturePatterns, typeConverter);
-    mlir::populateCallOpTypeConversionPattern(signaturePatterns, typeConverter);
-    mlir::populateFunctionOpInterfaceTypeConversionPattern<tvm_ffi::FuncOp>(
-        signaturePatterns, typeConverter);
-    mlir::populateReturnOpTypeConversionPattern(signaturePatterns,
-                                                typeConverter);
-    mlir::ConversionTarget signatureTarget(getContext());
-    signatureTarget.markUnknownOpDynamicallyLegal(
-        [](mlir::Operation *) { return true; });
-    signatureTarget.addDynamicallyLegalOp<mlir::func::FuncOp>(
-        [&](mlir::func::FuncOp func) {
-          return typeConverter.isSignatureLegal(func.getFunctionType());
-        });
-    signatureTarget.addDynamicallyLegalOp<tvm_ffi::FuncOp>(
-        [&](tvm_ffi::FuncOp func) {
-          return typeConverter.isSignatureLegal(func.getFunctionType());
-        });
-    signatureTarget.addDynamicallyLegalOp<mlir::func::ReturnOp>(
-        [&](mlir::func::ReturnOp ret) {
-          return mlir::isLegalForReturnOpTypeConversionPattern(ret,
-                                                               typeConverter);
-        });
-    signatureTarget.addDynamicallyLegalOp<mlir::func::CallOp>(
-        [&](mlir::func::CallOp call) {
-          return llvm::all_of(call.getOperandTypes(),
-                              [&](mlir::Type type) {
-                                return typeConverter.isLegal(type);
-                              }) &&
-                 llvm::all_of(call.getResultTypes(), [&](mlir::Type type) {
-                   return typeConverter.isLegal(type);
-                 });
-        });
-    if (mlir::failed(mlir::applyPartialConversion(
-            getOperation(), signatureTarget, std::move(signaturePatterns)))) {
-      signalPassFailure();
-      return;
-    }
-
     OwnedValues ownedValues;
 
-    mlir::ConversionTarget loweringTarget(getContext());
-    loweringTarget.addLegalDialect<mlir::BuiltinDialect>();
-    loweringTarget
-        .addLegalOp<tvm_ffi::ArrayCreateOp, tvm_ffi::ArrayGetItemOp,
-                    tvm_ffi::CallOp, tvm_ffi::FunctionGetGlobalOp,
-                    tvm_ffi::FunctionCallOp, tvm_ffi::ConstantOp,
-                    tvm_ffi::ObjectDecRefOp, tvm_ffi::ObjectIncRefOp>();
-    loweringTarget.addLegalOp<mlir::ModuleOp, mlir::func::FuncOp,
-                              mlir::torch::Torch::PrimIfOp,
-                              mlir::torch::Torch::PrimIfYieldOp>();
-    loweringTarget.addDynamicallyLegalOp<mlir::torch::Torch::OperatorOp>(
-        [](mlir::torch::Torch::OperatorOp op) {
-          return !op.getName().starts_with("torch.aten.");
-        });
-    loweringTarget.addIllegalOp<mlir::torch::Torch::ValueTensorLiteralOp>();
-    loweringTarget.addDynamicallyLegalOp<mlir::func::ReturnOp>(
-        [&](mlir::func::ReturnOp ret) {
-          return mlir::isLegalForReturnOpTypeConversionPattern(ret,
-                                                               typeConverter);
-        });
-    loweringTarget.addDynamicallyLegalOp<tvm_ffi::FuncOp>(
-        [&](tvm_ffi::FuncOp func) {
-          return typeConverter.isSignatureLegal(func.getFunctionType());
-        });
-    loweringTarget.addLegalOp<tvm_ffi::ReturnOp>();
-
-    mlir::RewritePatternSet loweringPatterns(&getContext());
-    loweringPatterns.add<
+    mlir::RewritePatternSet conversionPatterns(&getContext());
+    mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
+        conversionPatterns, typeConverter);
+    mlir::populateCallOpTypeConversionPattern(conversionPatterns,
+                                              typeConverter);
+    mlir::populateFunctionOpInterfaceTypeConversionPattern<tvm_ffi::FuncOp>(
+        conversionPatterns, typeConverter);
+    mlir::populateReturnOpTypeConversionPattern(conversionPatterns,
+                                                typeConverter);
+    conversionPatterns.add<
         ConvertTorchArrayConstruct<mlir::torch::Torch::PrimListConstructOp>,
         ConvertTorchArrayConstruct<mlir::torch::Torch::PrimTupleConstructOp>,
         ConvertTorchArrayUnpack,
@@ -739,19 +715,69 @@ class ConvertTorchToTVMFFIPass final
         ConvertTorchConstant<mlir::torch::Torch::ConstantFloatOp>,
         ConvertTorchConstant<mlir::torch::Torch::ConstantDeviceOp>,
         ConvertAtenCall>(typeConverter, ownedValues, &getContext());
-    mlir::RewritePatternSet literalPatterns(&getContext());
-    literalPatterns.add<ConvertTorchValueTensorLiteralOp>(typeConverter,
-                                                          &getContext());
-    if (mlir::failed(mlir::applyPatternsGreedily(
-            getOperation(), std::move(literalPatterns),
-            mlir::GreedyRewriteConfig().enableFolding(false)))) {
-      signalPassFailure();
-      return;
-    }
-    mlir::populateReturnOpTypeConversionPattern(loweringPatterns,
-                                                typeConverter);
+    conversionPatterns.add<ConvertGenericOp<tvm_ffi::EqOp>,
+                           ConvertGenericOp<tvm_ffi::TensorDimOp>,
+                           ConvertGenericOp<tvm_ffi::TensorSizeOp>,
+                           ConvertGenericOp<tvm_ffi::TensorStrideOp>,
+                           ConvertGenericOp<tvm_ffi::TensorStorageOffsetOp>,
+                           ConvertGenericOp<tvm_ffi::TensorDTypeOp>,
+                           ConvertGenericOp<tvm_ffi::TensorDeviceOp>,
+                           ConvertGenericOp<tvm_ffi::ArrayLengthOp>,
+                           ConvertTorchValueTensorLiteralOp>(typeConverter,
+                                                             &getContext());
+
+    mlir::ConversionTarget conversionTarget(getContext());
+    conversionTarget.addLegalDialect<
+        mlir::BuiltinDialect, mlir::arith::ArithDialect,
+        mlir::LLVM::LLVMDialect, trident::arithext::ArithExtDialect>();
+    conversionTarget.addLegalOp<
+        tvm_ffi::ArrayCreateOp, tvm_ffi::ArrayGetItemOp, tvm_ffi::CallOp,
+        tvm_ffi::FunctionGetGlobalOp, tvm_ffi::FunctionCallOp,
+        tvm_ffi::ConstantOp, tvm_ffi::CastOp, tvm_ffi::ObjectDecRefOp,
+        tvm_ffi::ObjectIncRefOp, tvm_ffi::ExceptionOp>();
+    conversionTarget.addDynamicallyLegalOp<mlir::func::FuncOp>(
+        [&](mlir::func::FuncOp func) {
+          return typeConverter.isSignatureLegal(func.getFunctionType());
+        });
+    conversionTarget.addDynamicallyLegalOp<tvm_ffi::FuncOp>(
+        [&](tvm_ffi::FuncOp func) {
+          return typeConverter.isSignatureLegal(func.getFunctionType());
+        });
+    conversionTarget.addDynamicallyLegalOp<mlir::func::ReturnOp>(
+        [&](mlir::func::ReturnOp ret) {
+          return mlir::isLegalForReturnOpTypeConversionPattern(ret,
+                                                               typeConverter);
+        });
+    conversionTarget.addDynamicallyLegalOp<mlir::func::CallOp>(
+        [&](mlir::func::CallOp call) {
+          return llvm::all_of(call.getOperandTypes(),
+                              [&](mlir::Type type) {
+                                return typeConverter.isLegal(type);
+                              }) &&
+                 llvm::all_of(call.getResultTypes(), [&](mlir::Type type) {
+                   return typeConverter.isLegal(type);
+                 });
+        });
+    conversionTarget.addDynamicallyLegalOp<
+        tvm_ffi::EqOp, tvm_ffi::TensorDimOp, tvm_ffi::TensorSizeOp,
+        tvm_ffi::TensorStrideOp, tvm_ffi::TensorStorageOffsetOp,
+        tvm_ffi::TensorDTypeOp, tvm_ffi::TensorDeviceOp,
+        tvm_ffi::ArrayLengthOp>([&](mlir::Operation *op) {
+      return llvm::all_of(op->getOperandTypes(), [&](mlir::Type type) {
+        mlir::Type convertedType = typeConverter.convertType(type);
+        return !convertedType || convertedType == type;
+      });
+    });
+    conversionTarget
+        .addLegalOp<mlir::ModuleOp, mlir::torch::Torch::PrimIfOp,
+                    mlir::torch::Torch::PrimIfYieldOp, tvm_ffi::ReturnOp>();
+    conversionTarget.addDynamicallyLegalOp<mlir::torch::Torch::OperatorOp>(
+        [](mlir::torch::Torch::OperatorOp op) {
+          return !op.getName().starts_with("torch.aten.");
+        });
+    conversionTarget.addIllegalOp<mlir::torch::Torch::ValueTensorLiteralOp>();
     if (mlir::failed(mlir::applyPartialConversion(
-            getOperation(), loweringTarget, std::move(loweringPatterns),
+            getOperation(), conversionTarget, std::move(conversionPatterns),
             mlir::ConversionConfig{
                 .foldingMode =
                     mlir::DialectConversionFoldingMode::AfterPatterns}))) {

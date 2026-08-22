@@ -17,14 +17,10 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
-#include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttributes.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.cpp.inc"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "llvm/ADT/TypeSwitch.h"
-
-#define GET_ATTRDEF_CLASSES
-#include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttributes.cpp.inc"
 
 #define GET_TYPEDEF_CLASSES
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.cpp.inc"
@@ -35,11 +31,6 @@
 namespace trident::tvm_ffi {
 
 void TVMFFIDialect::initialize() {
-  addAttributes<
-#define GET_ATTRDEF_LIST
-#include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttributes.cpp.inc"
-      >();
-
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.cpp.inc"
@@ -49,6 +40,18 @@ void TVMFFIDialect::initialize() {
 #define GET_OP_LIST
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFI.cpp.inc"
       >();
+}
+
+bool CastOp::areCastCompatible(mlir::TypeRange inputs,
+                               mlir::TypeRange outputs) {
+  if (inputs.size() != 1 || outputs.size() != 1 ||
+      !mlir::isa<AnyType>(outputs.front())) {
+    return false;
+  }
+
+  mlir::Type input = inputs.front();
+  return input.hasTrait<::mlir::TypeTrait::AnyABI>() ||
+         input.getDialect().getNamespace() == "torch";
 }
 
 // FuncOp custom assembly format.
@@ -104,6 +107,31 @@ mlir::LogicalResult FuncOp::verify() {
     return emitOpError("must have public visibility");
   }
 
+  return mlir::success();
+}
+
+mlir::LogicalResult ReturnOp::verify() {
+  FuncOp func = getOperation()->getParentOfType<FuncOp>();
+  if (!func) {
+    return emitOpError("must be nested directly in a tvm_ffi.func");
+  }
+
+  mlir::FunctionType functionType = func.getFunctionType();
+  if (functionType.getNumResults() != 1 ||
+      !mlir::isa<AnyType>(functionType.getResult(0))) {
+    return mlir::success();
+  }
+
+  if (getNumOperands() == 0) {
+    return emitOpError(
+        "a !tvm_ffi.any function must return at least one value");
+  }
+  for (mlir::Value operand : getOperands()) {
+    if (!operand.getType().hasTrait<mlir::TypeTrait::AnyABI>()) {
+      return emitOpError("operand type must have a TVMFFIAny ABI: ")
+             << operand.getType();
+    }
+  }
   return mlir::success();
 }
 

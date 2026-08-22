@@ -5,7 +5,12 @@ set_target_properties(trident-core-opt PROPERTIES RUNTIME_OUTPUT_DIRECTORY
 
 target_link_libraries(
   trident-core-opt
-  PRIVATE TorchExtDialect TridentUtilsRegistration MLIRMlirOptMain
-          TVMFFIDialect CUDA::cudart CUDA::cupti)
+  PRIVATE TorchExtDialect
+          TridentUtilsRegistration
+          MLIRMlirOptMain
+          TVMFFIDialect
+          CUDA::cudart
+          CUDA::cupti
+          ${TORCH_LIBRARIES})
 
 mlir_check_all_link_libraries(trident-core-opt)

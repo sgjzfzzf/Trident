@@ -17,7 +17,7 @@
 // CHECK:     } else {
 // CHECK:       scf.yield %[[FALSE_VALUE]] : i1
 // CHECK:     }
-// CHECK:     scf.yield %[[NESTED_SECOND]] : i1
+// CHECK:   scf.yield %[[NESTED_SECOND]] : i1
 // CHECK:   } else {
 // CHECK:     scf.yield %[[FALSE_VALUE]] : i1
 // CHECK:   }
@@ -27,15 +27,15 @@
 // CHECK: }
 // CHECK: return %[[RESULT]] : i1
 func.func @and_then() -> i1 {
-  %result = "arithex.and_then"() ({
+  %result = "arithext.and_then"() ({
     %first = arith.constant true
-    arithex.and_then.yield %first : i1
+    arithext.and_then.yield %first : i1
   }, {
     %second = arith.constant false
-    arithex.and_then.yield %second : i1
+    arithext.and_then.yield %second : i1
   }, {
     %third = arith.constant true
-    arithex.and_then.yield %third : i1
+    arithext.and_then.yield %third : i1
   }) : () -> i1
   return %result : i1
 }
@@ -44,6 +44,6 @@ func.func @and_then() -> i1 {
 // CHECK: %[[EMPTY_RESULT:.*]] = arith.constant true
 // CHECK: return %[[EMPTY_RESULT]] : i1
 func.func @and_then_empty() -> i1 {
-  %result = "arithex.and_then"() : () -> i1
+  %result = "arithext.and_then"() : () -> i1
   return %result : i1
 }

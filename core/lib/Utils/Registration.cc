@@ -19,6 +19,7 @@
 #include "trident/core/Conversion/ArithExtToScf/ArithExtToScf.h"
 #include "trident/core/Conversion/DecomposeTVMFFI/DecomposeTVMFFI.h"
 #include "trident/core/Conversion/Pipeline/Pipeline.h"
+#include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h"
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "trident/core/Conversion/TorchConversionToLLVM/TorchConversionToLLVM.h"
 #include "trident/core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
@@ -35,9 +36,10 @@ void trident::conversion::registerAllPasses() {
   mlir::registerReconcileUnrealizedCastsPass();
   mlir::torch::registerTorchPasses();
   trident::torchext::registerConvertTorchExtToGPUPass();
-  trident::arithex::registerConvertArithExtToScfPass();
+  trident::arithext::registerConvertArithExtToScfPass();
   trident::torchext::registerConvertTorchExtToLLVMPass();
   trident::tvm_ffi::registerConvertTVMFFIToLLVMPass();
+  trident::tvm_ffi::registerConvertTVMFFIToFuncPass();
   trident::tvm_ffi::registerDecomposeTVMFFIPass();
   trident::torch::registerConvertTorchToCfPass();
   trident::torch::registerConvertTorchToTVMFFIPass();
@@ -48,7 +50,7 @@ void trident::conversion::registerAllPasses() {
 void trident::conversion::registerAllDialects(mlir::DialectRegistry &registry) {
   mlir::registerAllDialects(registry);
   registry.insert<
-      trident::arithex::ArithExtDialect, trident::torchext::TorchExtDialect,
+      trident::arithext::ArithExtDialect, trident::torchext::TorchExtDialect,
       trident::tvm_ffi::TVMFFIDialect, mlir::torch::Torch::TorchDialect,
       mlir::torch::TorchConversion::TorchConversionDialect>();
   mlir::registerAllExtensions(registry);

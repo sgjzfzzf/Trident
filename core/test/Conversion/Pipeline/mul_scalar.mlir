@@ -30,20 +30,7 @@
 // CHECK: llvm.call @TVMFFIObjectDecRef(%[[INPUT_OBJECT:[0-9]+]])
 // CHECK: llvm.return %[[RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_mul_scalar(
-// CHECK-SAME: %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
-// CHECK: %[[WRAP_TENSOR:.*]] = llvm.load %arg1 : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[SCALAR_SLOT:.*]] = llvm.getelementptr %arg1[1]
-// CHECK: %[[WRAP_SCALAR:.*]] = llvm.load %[[SCALAR_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[WRAP_GETGLOBAL:.*]] = llvm.call @TVMFFIFunctionGetGlobal(%[[WRAP_FUNCTION_NAME:[0-9]+]], %[[WRAP_HANDLE_SLOT:[0-9]+]])
-// CHECK: %[[WRAP_HANDLE:.*]] = llvm.load %[[WRAP_HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
-// CHECK: %[[WRAP_ARGS:.*]] = llvm.alloca %[[WRAP_ARGS_COUNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
-// CHECK: %[[WRAP_RET_SLOT:.*]] = llvm.alloca %[[WRAP_RET_COUNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
-// CHECK: %[[WRAP_CALL:.*]] = llvm.call @TVMFFIFunctionCall(%[[WRAP_HANDLE]], %[[WRAP_ARGS_COPY:.*]], %[[WRAP_NARGS:.*]], %[[WRAP_RET_SLOT]])
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[WRAP_HANDLE]])
-// CHECK: %[[WRAP_RET:.*]] = llvm.load %[[WRAP_RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.call @TVMFFIObjectIncRef(%[[WRAP_RESULT_OBJECT:[0-9]+]])
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[WRAP_INPUT_OBJECT:[0-9]+]])
-// CHECK: llvm.store %[[WRAP_RET]], %arg3
+// CHECK: llvm.call @mul_scalar
 
 
 // Allocate the args array for 2 operands.
@@ -58,7 +45,7 @@ func.func @torch.aten.mul.Scalar(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch
   return %0 : !torch.vtensor<[2,3],f32>
 }
 
-tvm_ffi.func @mul_scalar(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.float) -> !torch.vtensor<[2,3],f32> {
+tvm_ffi.func @mul_scalar(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.float) -> !torch.vtensor<[2,3],f32> attributes {emit_tvm_ffi_abi} {
   %0 = torch.aten.mul.Scalar %arg0, %arg1 : !torch.vtensor<[2,3],f32>, !torch.float -> !torch.vtensor<[2,3],f32>
   tvm_ffi.return %0 : !torch.vtensor<[2,3],f32>
 }

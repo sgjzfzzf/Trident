@@ -5,9 +5,12 @@ add_mlir_conversion_library(
   MLIRConversionPassIncGen
   LINK_LIBS
   PUBLIC
-  TorchExtToGPU
-  TorchExtToLLVM
-  MLIRPass
+  ArithExtToScf
   DecomposeTVMFFI
+  MLIRConvertToLLVMPass
+  MLIRPass
+  MLIRSCFToControlFlow
+  TorchExtToGPU
   TorchToCf
-  TorchToTVMFFI)
+  TorchToTVMFFI
+  TVMFFIToFunc)

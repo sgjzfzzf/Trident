@@ -17,7 +17,7 @@
 #define GET_OP_CLASSES
 #include "trident/core/Dialect/ArithExt/IR/ArithExt.cpp.inc"
 
-namespace trident::arithex {
+namespace trident::arithext {
 
 void ArithExtDialect::initialize() {
   addOperations<
@@ -33,7 +33,7 @@ mlir::LogicalResult AndThenOp::verify() {
     } else if (region.front().empty() ||
                !llvm::isa<AndThenYieldOp>(region.front().back())) {
       return emitOpError(
-          "expects each region to terminate with arithex.and_then.yield");
+          "expects each region to terminate with arithext.and_then.yield");
     }
   }
   return mlir::success();
@@ -79,4 +79,4 @@ void AndThenYieldOp::getSuccessorRegions(
       .getSuccessorRegions(mlir::RegionBranchPoint(*this), successors);
 }
 
-} // namespace trident::arithex
+} // namespace trident::arithext

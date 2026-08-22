@@ -28,18 +28,7 @@
 // CHECK: llvm.call @TVMFFIObjectDecRef(%[[INPUT_OBJECT:[0-9]+]])
 // CHECK: llvm.return %[[RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_empty_like(
-// CHECK-SAME: %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
-// CHECK: %[[WRAP_ARG:.*]] = llvm.load %arg1 : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[WRAP_GETGLOBAL:.*]] = llvm.call @TVMFFIFunctionGetGlobal(%[[WRAP_FUNCTION_NAME:[0-9]+]], %[[WRAP_HANDLE_SLOT:[0-9]+]])
-// CHECK: %[[WRAP_HANDLE:.*]] = llvm.load %[[WRAP_HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
-// CHECK: %[[WRAP_ARGS:.*]] = llvm.alloca %[[WRAP_ARGS_COUNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
-// CHECK: %[[WRAP_RET_SLOT:.*]] = llvm.alloca %[[WRAP_RET_COUNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
-// CHECK: %[[WRAP_CALL:.*]] = llvm.call @TVMFFIFunctionCall(%[[WRAP_HANDLE]], %[[WRAP_ARGS_COPY:.*]], %[[WRAP_NARGS:.*]], %[[WRAP_RET_SLOT]])
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[WRAP_HANDLE]])
-// CHECK: %[[WRAP_RET:.*]] = llvm.load %[[WRAP_RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.call @TVMFFIObjectIncRef(%[[WRAP_RESULT_OBJECT:[0-9]+]])
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[WRAP_INPUT_OBJECT:[0-9]+]])
-// CHECK: llvm.store %[[WRAP_RET]], %arg3
+// CHECK: llvm.call @empty_like
 
 
 // Allocate the args array for 6 operands.
@@ -57,7 +46,7 @@ func.func @torch.aten.empty_like(%arg0: !torch.vtensor<[200,200,26],f64>) -> !to
 }
 
 // tvm_ffi.func wrapper: calls the registered ATen wrapper through TVM FFI.
-tvm_ffi.func @empty_like(%arg0: !torch.vtensor<[200,200,26],f64>) -> !torch.vtensor<[200,200,26],f64> {
+tvm_ffi.func @empty_like(%arg0: !torch.vtensor<[200,200,26],f64>) -> !torch.vtensor<[200,200,26],f64> attributes {emit_tvm_ffi_abi} {
   %none = torch.constant.none
   %false = torch.constant.bool false
   %0 = torch.aten.empty_like %arg0, %none, %none, %none, %false, %none : !torch.vtensor<[200,200,26],f64>, !torch.none, !torch.none, !torch.none, !torch.bool, !torch.none -> !torch.vtensor<[200,200,26],f64>

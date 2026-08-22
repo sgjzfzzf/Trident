@@ -32,16 +32,7 @@
 // CHECK: llvm.call @TVMFFIObjectDecRef(%[[INPUT_OBJECT:[0-9]+]])
 // CHECK: llvm.return %[[RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_empty(
-// CHECK-SAME: %arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: i32, %arg3: !llvm.ptr) -> i32 {
-// CHECK: %[[WRAP_SHAPE:.*]] = llvm.load %arg1 : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[WRAP_DEVICE_SLOT:.*]] = llvm.getelementptr %arg1[1]
-// CHECK: %[[WRAP_DEVICE:.*]] = llvm.load %[[WRAP_DEVICE_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[WRAP_DTYPE_SLOT:.*]] = llvm.getelementptr %arg1[2]
-// CHECK: %[[WRAP_DTYPE:.*]] = llvm.load %[[WRAP_DTYPE_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[WRAP_FUNCTION_NAME:[0-9]+]], %[[WRAP_HANDLE_SLOT:[0-9]+]])
-// CHECK: llvm.call @TVMFFIFunctionCall(%[[WRAP_HANDLE:[0-9]+]], %[[WRAP_ARGS:[0-9]+]], %[[WRAP_NARGS:[0-9]+]], %[[WRAP_RET_SLOT:[0-9]+]])
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[WRAP_HANDLE]])
-// CHECK: llvm.store %[[WRAP_RET:.*]], %arg3
+// CHECK: llvm.call @empty
 
 
 // Allocate the args array for 6 operands.
@@ -59,7 +50,7 @@ func.func @torch.aten.empty.memory_format(%shape: !torch.list<int>, %dtype: !tor
 }
 
 // tvm_ffi.func wrapper: unpacks shape, device, and dtype from TVM FFI args.
-tvm_ffi.func @empty(%shape: !torch.list<int>, %device: !torch.Device, %dtype: !torch.int) -> !torch.tensor {
+tvm_ffi.func @empty(%shape: !torch.list<int>, %device: !torch.Device, %dtype: !torch.int) -> !torch.tensor attributes {emit_tvm_ffi_abi} {
   %none = torch.constant.none
   %layout = torch.constant.int 0
   %0 = torch.aten.empty.memory_format %shape, %dtype, %layout, %device, %none, %none : !torch.list<int>, !torch.int, !torch.int, !torch.Device, !torch.none, !torch.none -> !torch.vtensor<[?,?],f64>

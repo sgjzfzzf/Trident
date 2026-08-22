@@ -1,1 +1,1 @@
-add_mlir_dialect(ArithExt arithex)
+add_mlir_dialect(ArithExt arithext)

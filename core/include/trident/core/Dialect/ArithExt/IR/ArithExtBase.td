@@ -11,8 +11,8 @@
 include "mlir/IR/DialectBase.td"
 
 def ArithExt_Dialect : Dialect {
-  let name = "arithex";
-  let cppNamespace = "::trident::arithex";
+  let name = "arithext";
+  let cppNamespace = "::trident::arithext";
   let summary = "ArithExt dialect";
   let description = [{
     The ArithExt dialect provides arithmetic-adjacent control-flow

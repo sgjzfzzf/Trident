@@ -3,51 +3,72 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
-from typing import Any, Final
-from collections.abc import Sequence
+from collections.abc import Iterable
+from typing import Final
+
+import torch._guards
+from torch._guards import GuardSource
 
 from trident.core import ir
+from trident.core.dialects import arithext
 
-from .guard import Guard
+from .codes import GuardCode
+from .kinds import Guard
+from .local import SourceTree
+
+_CAPTURE_GUARD_SOURCES: Final[frozenset[GuardSource]] = frozenset(
+    {
+        GuardSource.CONSTANT,
+        GuardSource.GLOBAL,
+        GuardSource.GLOBAL_FSDP_MODULE,
+        GuardSource.GLOBAL_SPECIALIZED_NN_MODULE,
+        GuardSource.GLOBAL_UNSPECIALIZED_BUILTIN_NN_MODULE,
+        GuardSource.GLOBAL_UNSPECIALIZED_NN_MODULE,
+    }
+)
 
 
-class Guards(object):
-    """Represents a normalized set of guard code snippets."""
+class Guards:
+    """Build a short-circuiting IR chain from a Torch ``GuardsSet``."""
 
-    def __init__(self, codes: Sequence[str], *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.guards: Final[list[Guard]] = [
-            g for code in codes if (g := Guard.parse(code)) is not None
-        ]
-
-    def __hash__(self) -> int:
-        return hash(self.__class__) ^ hash(tuple(self.guards))
+    def __init__(self, guards: Iterable[torch._guards.Guard]) -> None:
+        self.guards: Final[list[torch._guards.Guard]] = list(guards)
 
     def build(
         self,
-        names: Sequence[str],
+        tree: SourceTree,
         context: ir.Context,
-    ) -> ir.ArrayAttr:
-        """Build arg_attrs for a function-like operation.
-
-        Returns an ``ir.ArrayAttr`` of ``ir.DictAttr`` entries, one per
-        parameter, with ``tvm_ffi.guard`` set to an ``ArrayAttr`` of all
-        matching guard attributes (or empty dict for parameters with no
-        guards).
-        """
-        with context:
-            guards_by_index: dict[int, list[ir.Attribute]] = defaultdict(list)
-            for guard in self.guards:
-                if (index := names.index(guard.variable)) is not None and (
-                    attr := guard.to_attribute(context)
-                ) is not None:
-                    guards_by_index[index].append(attr)
-
-            arg_attrs: list[ir.DictAttr] = [ir.DictAttr.get({}) for _ in names]
-            for index, attrs in guards_by_index.items():
-                arg_attrs[index] = ir.DictAttr.get(
-                    {"tvm_ffi.guard": ir.ArrayAttr.get(attrs)}
+    ) -> ir.Value:
+        codes: list[GuardCode] = []
+        for guard in self.guards:
+            # Export has already resolved captured globals/defaults into the
+            # graph. They are not wrapper ABI arguments, so there is no runtime
+            # value from which Trident could build a semantic check.
+            if guard.source not in _CAPTURE_GUARD_SOURCES:
+                parsed = Guard.parse(guard)
+                assert parsed is not None, (
+                    "unsupported Dynamo guard: "
+                    f"{guard.create_fn_name()} {guard.name!r} "
+                    f"{guard.code_list!r}"
                 )
+                codes.extend(parsed.codes)
 
-            return ir.ArrayAttr.get(arg_attrs)
+        unique: dict[object, GuardCode] = {code.key: code for code in codes}
+        ordered: list[GuardCode] = sorted(
+            unique.values(),
+            key=lambda code: (
+                # Lower priorities run first; depth orders checks within each
+                # priority, with nested structure checks running outside-in.
+                code.priority,
+                code.depth,
+            ),
+        )
+
+        i1 = ir.IntegerType.get_signless(1, context)
+        and_then = arithext.AndThenOp(i1, len(ordered))
+        for region, code in zip(and_then.regions_, ordered):
+            block = ir.Block.create_at_start(region, [])
+            with ir.InsertionPoint(block):
+                result = code.build(tree, context)
+                arithext.and_then_yield(result)
+        return and_then.result

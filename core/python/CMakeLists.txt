@@ -82,8 +82,19 @@ declare_mlir_python_sources(
   TridentCorePythonSources
   SOURCES
   __init__.py
+  dialects/arithext.py
   dialects/torchext.py
   dialects/tvm_ffi.py)
+
+declare_mlir_dialect_python_bindings(
+  ADD_TO_PARENT
+  TridentCorePythonSources.Core
+  ROOT_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}"
+  TD_FILE
+  dialects/ArithExtOpsPyBind.td
+  DIALECT_NAME
+  arithext)
 
 declare_mlir_python_sources(
   TridentCorePythonSources.TorchMlirCompat
@@ -138,9 +149,10 @@ add_mlir_python_sources_target(
   ${TRIDENT_CORE_PYTHON_OUTPUT_ROOT}
   SOURCES_TARGETS
   TridentCorePythonSources.Core
+  TridentCorePythonSources.Core.arithext.ops_gen
+  TridentCorePythonSources.Core.torch.ops_gen
   TridentCorePythonSources.Core.torchext.ops_gen
   TridentCorePythonSources.Core.tvm_ffi.ops_gen
-  TridentCorePythonSources.Core.torch.ops_gen
   TridentCorePythonSources.TorchMlirCompat)
 
 build_nanobind_lib(

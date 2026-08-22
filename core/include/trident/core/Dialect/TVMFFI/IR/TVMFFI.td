@@ -12,7 +12,6 @@
 include "mlir/IR/OpBase.td"
 
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIBase.td"
-include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttributes.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.td"
 

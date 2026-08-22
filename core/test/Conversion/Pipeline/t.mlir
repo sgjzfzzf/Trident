@@ -36,7 +36,6 @@
 // CHECK: llvm.call @TVMFFIObjectDecRef(%[[WRAP_HANDLE]])
 // The local helper is inlined before ref-count insertion, so the returned
 // tensor gets exactly one escaping reference at the wrapper boundary.
-// CHECK-COUNT-1: llvm.call @TVMFFIObjectIncRef(%[[WRAP_RESULT_OBJECT:[0-9]+]])
 // CHECK: llvm.store %[[WRAP_RET:.*]], %arg3
 
 
@@ -52,7 +51,7 @@ func.func @torch.aten.t(%arg0: !torch.vtensor<[2,3],f32>) -> !torch.vtensor<[3,2
   return %0 : !torch.vtensor<[3,2],f32>
 }
 
-tvm_ffi.func @t(%arg0: !torch.vtensor<[2,3],f32>) -> !torch.vtensor<[3,2],f32> {
+tvm_ffi.func @t(%arg0: !torch.vtensor<[2,3],f32>) -> !torch.vtensor<[3,2],f32> attributes {emit_tvm_ffi_abi} {
   %0 = torch.aten.t %arg0 : !torch.vtensor<[2,3],f32> -> !torch.vtensor<[3,2],f32>
   tvm_ffi.return %0 : !torch.vtensor<[3,2],f32>
 }

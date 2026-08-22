@@ -12,7 +12,7 @@
 #include "mlir/Pass/PassRegistry.h"
 #include "trident/core/Dialect/ArithExt/IR/ArithExtDialect.h"
 
-namespace trident::arithex {
+namespace trident::arithext {
 
 #define GEN_PASS_DECL_CONVERTARITHEXTTOSCF
 #include "trident/core/Conversion/Passes.h.inc"
@@ -20,6 +20,6 @@ namespace trident::arithex {
 #define GEN_PASS_REGISTRATION_CONVERTARITHEXTTOSCF
 #include "trident/core/Conversion/Passes.h.inc"
 
-} // namespace trident::arithex
+} // namespace trident::arithext
 
 #endif // TRIDENT_CORE_CONVERSION_ARITHEXT_TO_SCF_ARITHEXT_TO_SCF_H_

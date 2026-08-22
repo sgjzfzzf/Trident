@@ -11,11 +11,10 @@ def ConvertArithExtToScf
     : Pass<"convert-arith-ext-to-scf", "mlir::ModuleOp"> {
   let summary = "Lower ArithExt operations to nested SCF operations";
   let description = [{
-    Lower arithex.and_then to scf.execute_region operations feeding nested
-    scf.if operations.
+    Lower arithext.and_then to nested scf.if operations.
   }];
   let dependentDialects = [
-    "trident::arithex::ArithExtDialect",
+    "trident::arithext::ArithExtDialect",
     "mlir::arith::ArithDialect",
     "mlir::scf::SCFDialect"
   ];
@@ -56,7 +55,9 @@ def ConvertTorchToTVMFFI : Pass<"convert-torch-to-tvm-ffi", "mlir::ModuleOp"> {
     tvm_ffi.FunctionCall. Torch list and tuple
     values share !tvm_ffi.array, and object results carry explicit ownership.
   }];
-  let dependentDialects = ["trident::tvm_ffi::TVMFFIDialect"];
+  let dependentDialects = [
+    "trident::tvm_ffi::TVMFFIDialect", "mlir::LLVM::LLVMDialect"
+  ];
 }
 
 def ConvertTVMFFIToLLVM : Pass<"convert-tvm-ffi-to-llvm", "mlir::ModuleOp"> {
@@ -64,6 +65,16 @@ def ConvertTVMFFIToLLVM : Pass<"convert-tvm-ffi-to-llvm", "mlir::ModuleOp"> {
   let description = [{Lower TVMFFI dialect operations to LLVM dialect.}];
   let dependentDialects =
       ["mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect"];
+}
+
+def ConvertTVMFFIToFunc : Pass<"convert-tvm-ffi-to-func", "mlir::ModuleOp"> {
+  let summary = "Convert TVMFFI functions to Func operations";
+  let description = [{Convert TVMFFI functions to Any ABI Func operations.}];
+  let dependentDialects = [
+    "mlir::arith::ArithDialect", "mlir::cf::ControlFlowDialect",
+    "mlir::func::FuncDialect", "mlir::LLVM::LLVMDialect",
+    "mlir::scf::SCFDialect"
+  ];
 }
 
 def DecomposeTVMFFI : Pass<"decompose-tvm-ffi", "mlir::ModuleOp"> {
@@ -77,7 +88,9 @@ def TridentLoweringPipeline
   let summary = "Lower Torch dialect operations to LLVM dialect";
   let description = [{Lower Torch dialect operations to LLVM dialect.}];
   let dependentDialects = [
-    "trident::torchext::TorchExtDialect", "mlir::LLVM::LLVMDialect",
+    "trident::arithext::ArithExtDialect", "trident::torchext::TorchExtDialect",
+    "mlir::arith::ArithDialect", "mlir::LLVM::LLVMDialect",
+    "mlir::scf::SCFDialect",
     "mlir::torch::TorchConversion::TorchConversionDialect"
   ];
 }

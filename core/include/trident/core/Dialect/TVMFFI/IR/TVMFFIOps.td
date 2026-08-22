@@ -10,9 +10,10 @@
 #define TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIOPS_TD_
 
 include "mlir/IR/OpAsmInterface.td"
-include "mlir/IR/SymbolInterfaces.td"
 include "mlir/IR/CommonTypeConstraints.td"
+include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/CastInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIBase.td"
@@ -21,9 +22,12 @@ include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.td"
 class TVMFFI_Op<string mnemonic, list<Trait> traits = []>
     : Op<TVMFFI_Dialect, mnemonic, traits>;
 
-//===----------------------------------------------------------------------===//
-// Minimal value and lifetime operations.
-//===----------------------------------------------------------------------===//
+class TVMFFI_TensorIndexedMetadataOp<string mnemonic>
+    : TVMFFI_Op<mnemonic, [Pure]> {
+  let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor, I64:$index);
+  let results = (outs I64:$result);
+  let assemblyFormat = "$tensor `[` $index `]` attr-dict `:` type($tensor)";
+}
 
 def TVMFFI_ArrayCreateOp : TVMFFI_Op<"array.create"> {
   let summary = "Create a TVM FFI Array from semantic values";
@@ -33,7 +37,7 @@ def TVMFFI_ArrayCreateOp : TVMFFI_Op<"array.create"> {
 
 def TVMFFI_ArrayGetItemOp : TVMFFI_Op<"array.get_item"> {
   let summary = "Borrow an element from a TVM FFI Array";
-  let arguments = (ins AnyTVMFFIObjectType:$array,
+  let arguments = (ins TVMFFI_ArrayType:$array,
                        TVMFFI_IntType:$index,
                        OptionalAttr<TypeAttr>:$element_type);
   let results = (outs AnyTVMFFISemanticType:$result);
@@ -41,14 +45,33 @@ def TVMFFI_ArrayGetItemOp : TVMFFI_Op<"array.get_item"> {
   let hasVerifier = 1;
 }
 
+def TVMFFI_ArrayLengthOp : TVMFFI_Op<"array.length", [Pure]> {
+  let summary = "Read the length of a runtime TVM FFI array";
+  let arguments = (ins AnyTVMFFIArrayOrTorchType:$array);
+  let results = (outs I64:$result);
+  let assemblyFormat = "$array attr-dict `:` type($array)";
+}
+
 def TVMFFI_CallOp : TVMFFI_Op<"call"> {
   let summary = "Call a TVM FFI function defined in the current module";
   let arguments = (ins FlatSymbolRefAttr:$callee,
-                       Variadic<AnyType>:$operands,
+                       Variadic<AnyTVMFFIAnyABIOrTorchType>:$operands,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<DictArrayAttr>:$res_attrs);
-  let results = (outs Variadic<AnyType>:$results);
+  let results = (outs Variadic<AnyTVMFFIAnyABIOrTorchType>:$results);
   let assemblyFormat = "$callee `(` $operands `)` attr-dict `:` functional-type($operands, $results)";
+}
+
+def TVMFFI_CastOp : TVMFFI_Op<"cast", [
+  Pure, DeclareOpInterfaceMethods<CastOpInterface>
+]> {
+  let summary = "Pack a TVM FFI value into the !tvm_ffi.any ABI type";
+  // Torch types are accepted here as a transitional frontend boundary.  The
+  // Torch-toTVMFFI conversion establishes the AnyABI representation before
+  // this operation reaches LLVM lowering.
+  let arguments = (ins AnyTVMFFIAnyABIOrTorchType:$value);
+  let results = (outs TVMFFI_AnyType:$result);
+  let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
 }
 
 def TVMFFI_ConstantOp : TVMFFI_Op<"constant"> {
@@ -56,6 +79,21 @@ def TVMFFI_ConstantOp : TVMFFI_Op<"constant"> {
   let arguments = (ins AnyAttr:$value);
   let results = (outs AnyTVMFFISemanticType:$result);
   let hasVerifier = 1;
+}
+
+def TVMFFI_EqOp : TVMFFI_Op<"eq", [Pure]> {
+  let summary = "Compare the ABI representation of two TVM FFI values";
+  let arguments = (ins AnyTVMFFIAnyABIOrTorchType:$lhs,
+                       AnyTVMFFIAnyABIOrTorchType:$rhs);
+  let results = (outs I1:$result);
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)";
+}
+
+def TVMFFI_ExceptionOp : TVMFFI_Op<"exception"> {
+  let summary = "Create a Trident FFI exception object";
+  let arguments = (ins StrAttr:$kind);
+  let results = (outs TVMFFI_ExceptionType:$result);
+  let assemblyFormat = "$kind attr-dict `:` type($result)";
 }
 
 def TVMFFI_FuncOp : TVMFFI_Op<"func", [
@@ -78,6 +116,7 @@ def TVMFFI_FuncOp : TVMFFI_Op<"func", [
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttrOf<FunctionType>:$function_type,
                        OptionalAttr<StrAttr>:$sym_visibility,
+                       OptionalAttr<UnitAttr>:$emit_tvm_ffi_abi,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<DictArrayAttr>:$res_attrs);
   let regions = (region AnyRegion : $body);
@@ -117,13 +156,13 @@ def TVMFFI_FunctionGetGlobalOp : TVMFFI_Op<"FunctionGetGlobal"> {
 
 def TVMFFI_ObjectDecRefOp : TVMFFI_Op<"ObjectDecRef"> {
   let summary = "Decrement a TVM FFI object reference";
-  let arguments = (ins AnyType:$object);
+  let arguments = (ins AnyTVMFFIObjectOrAnyType:$object);
   let assemblyFormat = "$object attr-dict `:` type($object)";
 }
 
 def TVMFFI_ObjectIncRefOp : TVMFFI_Op<"ObjectIncRef"> {
   let summary = "Increment a TVM FFI object reference";
-  let arguments = (ins AnyType:$object);
+  let arguments = (ins AnyTVMFFIObjectOrAnyType:$object);
   let assemblyFormat = "$object attr-dict `:` type($object)";
 }
 
@@ -143,9 +182,49 @@ def TVMFFI_ReturnOp
 
   // Torch types are accepted here as a transitional frontend boundary. The
   // Torch-to-TVMFFI pass rewrites them before lifetime-sensitive operations.
-  let arguments = (ins Variadic<AnyType> : $operands);
+  let arguments = (ins Variadic<AnyTVMFFIAnyABIOrTorchType> : $operands);
 
   let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
+  let hasVerifier = 1;
+}
+
+def TVMFFI_TensorDeviceOp : TVMFFI_Op<"tensor.device", [Pure]> {
+  let summary = "Read DLPack device fields from a runtime tensor";
+  let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);
+  let results = (outs I32:$device_type, I32:$device_index);
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
+def TVMFFI_TensorDimOp : TVMFFI_Op<"tensor.dim", [Pure]> {
+  let summary = "Read the rank of a runtime tensor";
+  let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);
+  let results = (outs I64:$result);
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
+def TVMFFI_TensorDTypeOp : TVMFFI_Op<"tensor.dtype", [Pure]> {
+  let summary = "Read DLPack dtype fields from a runtime tensor";
+  let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);
+  let results = (outs I8:$code, I8:$bits, I16:$lanes);
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
+def TVMFFI_TensorSizeOp
+    : TVMFFI_TensorIndexedMetadataOp<"tensor.size"> {
+  let summary = "Read a runtime tensor dimension size";
+}
+
+def TVMFFI_TensorStorageOffsetOp
+    : TVMFFI_Op<"tensor.storage_offset", [Pure]> {
+  let summary = "Read a runtime tensor storage offset";
+  let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);
+  let results = (outs I64:$result);
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
+def TVMFFI_TensorStrideOp
+    : TVMFFI_TensorIndexedMetadataOp<"tensor.stride"> {
+  let summary = "Read a runtime tensor stride";
 }
 
 #endif // TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIOPS_TD_

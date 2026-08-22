@@ -142,7 +142,7 @@ Suspect:
 - Dispatcher guard-miss recognition path not classifying errors correctly.
 
 Check:
-- Guard parsing and attr generation in `python/trident/guards/`
+- Guard parsing and semantic check IR generation in `python/trident/guards/`
 - Specialization/dispatcher flow in `python/trident/backend.py`
 - Exception kind string (e.g., `"GuardMatchException"`) in the FFI `Exception` ObjectRef returned by guard failures. The `python/trident/error.py` module has been removed — guard failure is now signaled by returning a `trident.ffi.Exception` ObjectRef through the FFI layer rather than raising a Python exception.
 

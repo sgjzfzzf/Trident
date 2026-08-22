@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/Utils/Type.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/BuiltinTypes.h"
 

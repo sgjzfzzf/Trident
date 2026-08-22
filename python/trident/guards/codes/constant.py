@@ -43,7 +43,13 @@ class ConstantCode(GuardCode):
         literal = match.group("literal")
         if match.group("operation") == "is" and literal != "None":
             return None
-        return cls(text, source, ast.literal_eval(literal))
+        try:
+            value = ast.literal_eval(literal)
+        except (SyntaxError, ValueError, TypeError):
+            return None
+        if type(value) not in (type(None), bool, int, float):
+            return None
+        return cls(text, source, value)
 
     @property
     def key(self) -> Hashable:

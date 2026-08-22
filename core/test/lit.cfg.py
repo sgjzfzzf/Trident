@@ -4,7 +4,6 @@
 import os
 
 import lit.formats
-
 from lit.llvm import llvm_config
 
 config.name = "TRIDENT_CORE"

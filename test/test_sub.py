@@ -5,12 +5,10 @@
 
 from __future__ import annotations
 
-from typing_extensions import override
-
 import torch
 import tvm_ffi
-
 from base import AtenOpTest
+from typing_extensions import override
 
 
 class SubTest(AtenOpTest):

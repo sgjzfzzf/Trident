@@ -7,8 +7,6 @@
 
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "mlir/InitAllTranslations.h"
-#include "torch-mlir-c/Dialects.h"
-#include "trident-c/core/Dialects.h"
 #include "trident-c/core/Registration.h"
 
 namespace nb = nanobind;

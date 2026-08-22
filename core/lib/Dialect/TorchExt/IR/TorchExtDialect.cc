@@ -14,10 +14,8 @@
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/DialectImplementation.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
-#include "llvm/ADT/TypeSwitch.h"
 
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.cpp.inc"
 #define GET_OP_CLASSES

@@ -5,11 +5,9 @@
 
 from __future__ import annotations
 
-from typing_extensions import override
-
 import torch
-
 from base import AtenOpTest
+from typing_extensions import override
 
 
 class MulScalarTest(AtenOpTest):

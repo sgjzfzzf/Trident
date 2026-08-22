@@ -2,4 +2,3 @@
 # SPDX-License-Identifier: MIT
 
 from ._arithext_ops_gen import *
-from ._arithext_ops_gen import _Dialect

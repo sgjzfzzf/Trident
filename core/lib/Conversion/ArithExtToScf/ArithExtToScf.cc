@@ -12,7 +12,6 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "trident/core/Dialect/ArithExt/IR/ArithExtOps.h"
-#include "llvm/ADT/STLExtras.h"
 
 namespace trident::arithext {
 

@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 import torch
-
+import trident
 import triton
 import triton.language as tl
-import trident
 
 DEVICE = triton.runtime.driver.active.get_active_torch_device()
 

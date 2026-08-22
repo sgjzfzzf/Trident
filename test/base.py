@@ -9,15 +9,13 @@ base class handles parsing, compilation, JIT, and ``tvm_ffi.Function`` wrapping.
 
 from __future__ import annotations
 
-from abc import abstractmethod
 import pathlib
 import unittest
+from abc import abstractmethod
 from typing import Final
 
 import tvm_ffi
-
 from trident import capi_utils
-
 from trident.core import (
     execution_engine,
     ir,

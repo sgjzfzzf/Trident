@@ -8,7 +8,6 @@
 
 #include "trident/core/Conversion/Utils/TVMFFIUtils.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "trident/core/Conversion/Utils/Check.h"
 #include "trident/core/Conversion/Utils/GlobalString.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/Type.h"

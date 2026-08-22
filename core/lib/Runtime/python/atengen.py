@@ -24,9 +24,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
-from collections.abc import Iterator
 import itertools
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Final
 

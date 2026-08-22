@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 import torch
+import trident
 import triton
 import triton.language as tl
-import trident
 
 
 @triton.jit

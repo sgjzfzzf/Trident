@@ -235,6 +235,15 @@ class TensorRankCode(GuardCode):
 
 
 class RequiresGradCode(GuardCode):
+    def __init__(
+        self,
+        text: str,
+        source: Local,
+        expected: bool,
+    ) -> None:
+        super().__init__(text, source)
+        self.expected: Final[bool] = expected
+
     @classmethod
     def parse(
         cls,
@@ -250,15 +259,14 @@ class RequiresGradCode(GuardCode):
         )
         if match is None:
             return None
-        if match.group("value") == "True":
-            return None
-        return cls(text, source)
+        else:
+            return cls(text, source, match.group("value") == "True")
 
     @override
     def build(self, tree: SourceTree, context: ir.Context) -> ir.Value:
-        # TVM FFI tensor metadata does not expose autograd state.  Dynamo's
-        # false case is the invariant used by the current backend; a true
-        # case is rejected during parsing rather than silently accepted.
+        # TVM FFI tensor metadata does not expose autograd state.  Treat this
+        # specialization guard as satisfied; the wrapper ABI cannot perform a
+        # runtime requires_grad check.
         i1 = ir.IntegerType.get_signless(1, context)
         return reduce(
             arith.andi,

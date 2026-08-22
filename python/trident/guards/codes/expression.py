@@ -39,36 +39,38 @@ class ExpressionVisitor(ast.NodeVisitor):
                 i64,
                 ir.IntegerAttr.get(i64, node.value),
             )
-        return None
+        else:
+            return None
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> ir.Value | None:
         value = self.visit(node.operand)
         if value is None:
             return None
-        if isinstance(node.op, ast.UAdd):
+        elif isinstance(node.op, ast.UAdd):
             return value
-        if isinstance(node.op, ast.USub):
+        elif isinstance(node.op, ast.USub):
             i64 = ir.IntegerType.get_signless(64, self.context)
             zero = arith.constant(i64, ir.IntegerAttr.get(i64, 0))
             return arith.subi(zero, value)
-        if isinstance(node.op, ast.Not):
+        elif isinstance(node.op, ast.Not):
             i1 = ir.IntegerType.get_signless(1, self.context)
             true = arith.constant(i1, ir.IntegerAttr.get(i1, 1))
             return arith.xori(value, true)
-        return None
+        else:
+            return None
 
     def visit_BinOp(self, node: ast.BinOp) -> ir.Value | None:
         lhs = self.visit(node.left)
         rhs = self.visit(node.right)
         if lhs is None or rhs is None:
             return None
-        if isinstance(node.op, ast.Add):
+        elif isinstance(node.op, ast.Add):
             return arith.addi(lhs, rhs)
-        if isinstance(node.op, ast.Sub):
+        elif isinstance(node.op, ast.Sub):
             return arith.subi(lhs, rhs)
-        if isinstance(node.op, ast.Mult):
+        elif isinstance(node.op, ast.Mult):
             return arith.muli(lhs, rhs)
-        if isinstance(node.op, (ast.FloorDiv, ast.Mod)):
+        elif isinstance(node.op, (ast.FloorDiv, ast.Mod)):
             if not (
                 isinstance(node.right, ast.Constant)
                 and isinstance(node.right.value, int)
@@ -76,11 +78,14 @@ class ExpressionVisitor(ast.NodeVisitor):
                 and node.right.value != 0
             ):
                 return None
-            quotient = self.floor_div(lhs, rhs)
-            if isinstance(node.op, ast.FloorDiv):
-                return quotient
-            return arith.subi(lhs, arith.muli(quotient, rhs))
-        return None
+            else:
+                quotient = self.floor_div(lhs, rhs)
+                if isinstance(node.op, ast.FloorDiv):
+                    return quotient
+                else:
+                    return arith.subi(lhs, arith.muli(quotient, rhs))
+        else:
+            return None
 
     def visit_Compare(self, node: ast.Compare) -> ir.Value | None:
         lhs = self.visit(node.left)

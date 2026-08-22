@@ -346,9 +346,33 @@ class GuardParserTest(unittest.TestCase):
                 )
                 self.assertEqual(parsed.source, Local(("xs", 0)))
 
+    def test_tensor_match_parses_requires_grad_true(self) -> None:
+        parsed = self.assert_parsed(
+            FakeGuard(
+                "TENSOR_MATCH",
+                ["L['x'].requires_grad == True"],
+                "L['x']",
+            ),
+            TensorMatchGuard,
+            (RequiresGradCode,),
+        )
+        code = parsed.codes[0]
+        assert isinstance(code, RequiresGradCode)
+        self.assertTrue(code.expected)
+
+    def test_requires_grad_builds_an_i1_true_value(self) -> None:
+        code = RequiresGradCode(
+            "L['x'].requires_grad == True",
+            Local(("x",)),
+            True,
+        )
+        context = ir.Context()
+        with context, ir.Location.unknown(context):
+            result = code.build(None, context)  # type: ignore[arg-type]
+        self.assertEqual(str(result.type), "i1")
+
     def test_tensor_match_rejects_unsupported_codes(self) -> None:
         cases = (
-            "L['x'].requires_grad == True",
             "str(L['x'].dtype) == 'torch.not_a_dtype'",
             "str(L['x'].device) == 'not-a-device'",
             "L['x'].ndimension() >= 2",

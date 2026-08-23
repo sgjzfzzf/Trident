@@ -243,8 +243,7 @@ class ExpressionCode(GuardCode):
         result = ExpressionVisitor(tree, context, self.text).visit(self.expression)
         if result is not None:
             return result
-
-        if any(
+        elif any(
             isinstance(node, ast.Attribute) and node.attr == "_base"
             for node in ast.walk(self.expression)
         ):
@@ -256,5 +255,5 @@ class ExpressionCode(GuardCode):
             )
             i1 = ir.IntegerType.get_signless(1, context)
             return arith.constant(i1, ir.IntegerAttr.get(i1, 1))
-
-        return super().build(tree, context)
+        else:
+            return super().build(tree, context)

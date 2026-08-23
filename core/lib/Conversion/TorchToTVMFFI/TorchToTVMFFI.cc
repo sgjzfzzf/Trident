@@ -773,11 +773,12 @@ class ConvertTorchToTVMFFIPass final
           return !op.getName().starts_with("torch.aten.");
         });
     conversionTarget.addIllegalOp<mlir::torch::Torch::ValueTensorLiteralOp>();
+    // Preserve torch.aten.clone so contiguous() keeps its storage semantics;
+    // its folder would otherwise replace it with the input value.
     if (mlir::failed(mlir::applyPartialConversion(
             getOperation(), conversionTarget, std::move(conversionPatterns),
             mlir::ConversionConfig{
-                .foldingMode =
-                    mlir::DialectConversionFoldingMode::AfterPatterns}))) {
+                .foldingMode = mlir::DialectConversionFoldingMode::Never}))) {
       signalPassFailure();
       return;
     }

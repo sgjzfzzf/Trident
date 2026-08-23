@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import ast
 import unittest
 from dataclasses import dataclass
 from typing import Any
@@ -370,6 +371,39 @@ class GuardParserTest(unittest.TestCase):
         with context, ir.Location.unknown(context):
             result = code.build(None, context)  # type: ignore[arg-type]
         self.assertEqual(str(result.type), "i1")
+
+    def test_expression_with_base_is_skipped_with_warning(self) -> None:
+        cases = (
+            "L['x']._base.size()[0] == 1",
+            "L['x']._base.stride()[0] == 1",
+            "L['x']._base.storage_offset() == 0",
+        )
+        for text in cases:
+            with self.subTest(text=text):
+                expression = ast.parse(text, mode="eval").body
+                code = ExpressionCode(text, expression)
+                context = ir.Context()
+                with (
+                    context,
+                    ir.Location.unknown(context),
+                    self.assertWarnsRegex(
+                        RuntimeWarning,
+                        "Skipping unsupported Tensor\\._base guard",
+                    ),
+                ):
+                    result = code.build(None, context)  # type: ignore[arg-type]
+                self.assertEqual(str(result.type), "i1")
+
+    def test_unsupported_expression_without_base_still_fails(self) -> None:
+        text = "True == 1"
+        code = ExpressionCode(text, ast.parse(text, mode="eval").body)
+        context = ir.Context()
+        with (
+            context,
+            ir.Location.unknown(context),
+            self.assertRaisesRegex(NotImplementedError, "cannot be lowered"),
+        ):
+            code.build(None, context)  # type: ignore[arg-type]
 
     def test_tensor_match_rejects_unsupported_codes(self) -> None:
         cases = (

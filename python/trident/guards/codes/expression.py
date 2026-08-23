@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import warnings
 from collections.abc import Hashable
 from functools import reduce
 from typing import Final, Self, override
@@ -240,4 +241,20 @@ class ExpressionCode(GuardCode):
         context: ir.Context,
     ) -> ir.Value:
         result = ExpressionVisitor(tree, context, self.text).visit(self.expression)
-        return result if result is not None else super().build(tree, context)
+        if result is not None:
+            return result
+
+        if any(
+            isinstance(node, ast.Attribute) and node.attr == "_base"
+            for node in ast.walk(self.expression)
+        ):
+            warnings.warn(
+                "Skipping unsupported Tensor._base guard; view metadata will "
+                f"not be validated: {self.text!r}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            i1 = ir.IntegerType.get_signless(1, context)
+            return arith.constant(i1, ir.IntegerAttr.get(i1, 1))
+
+        return super().build(tree, context)

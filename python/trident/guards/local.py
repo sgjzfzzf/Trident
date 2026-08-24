@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import re
+from collections.abc import Sequence
 from typing import Protocol
 
 from trident.core import ir
@@ -13,7 +14,7 @@ Subscript = int | str
 
 
 class SourceTree(Protocol):
-    def __getitem__(self, subscripts: tuple[Subscript, ...]) -> ir.Value | None: ...
+    def __getitem__(self, subscripts: Sequence[Subscript]) -> ir.Value | None: ...
 
 
 class Local:
@@ -21,7 +22,7 @@ class Local:
 
     __slots__ = ("_subscripts",)
 
-    def __init__(self, subscripts: tuple[Subscript, ...]) -> None:
+    def __init__(self, subscripts: Sequence[Subscript]) -> None:
         assert subscripts, "local subscripts must not be empty"
         root, *follows = subscripts
         assert isinstance(root, str) and root, (
@@ -31,7 +32,7 @@ class Local:
             isinstance(step, (int, str)) and not isinstance(step, bool)
             for step in follows
         ), "local subscripts must be integers or strings"
-        self._subscripts: tuple[Subscript, ...] = subscripts
+        self._subscripts: tuple[Subscript, ...] = tuple(subscripts)
 
     @property
     def subscripts(self) -> tuple[Subscript, ...]:
@@ -57,7 +58,7 @@ class Local:
 
     @classmethod
     def from_expression(cls, expression: ast.expr) -> Local | None:
-        def parse(node: ast.expr) -> tuple[Subscript, ...] | None:
+        def parse(node: ast.expr) -> list[Subscript] | None:
             if not isinstance(node, ast.Subscript):
                 return None
 
@@ -65,7 +66,7 @@ class Local:
                 if isinstance(node.slice, ast.Constant) and isinstance(
                     node.slice.value, str
                 ):
-                    return (node.slice.value,)
+                    return [node.slice.value]
                 return None
 
             if not (
@@ -78,7 +79,7 @@ class Local:
             subscripts = parse(node.value)
             if subscripts is None:
                 return None
-            return (*subscripts, node.slice.value)
+            return [*subscripts, node.slice.value]
 
         subscripts = parse(expression)
         return cls(subscripts) if subscripts is not None else None

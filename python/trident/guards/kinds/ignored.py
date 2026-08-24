@@ -26,10 +26,10 @@ class IgnoredGuard(Guard):
     @classmethod
     def parse_codes(
         cls,
-        texts: tuple[str, ...],
+        texts: list[str],
         source: Local | None,
-    ) -> tuple[GuardCode, ...]:
-        return ()
+    ) -> list[GuardCode]:
+        return []
 
 
 class AutogradSavedTensorsHooksGuard(IgnoredGuard):

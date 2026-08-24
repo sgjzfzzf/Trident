@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from torch._guards import GuardSource
-from trident.core import ir
+from trident.core import ir, register_all_dialects
+from trident.core.dialects import func
 from trident.guards.codes import (
     ConstantCode,
     DynamoAttributeAbsentCode,
@@ -419,16 +420,75 @@ class GuardParserTest(unittest.TestCase):
                     result = code.build(None, context)  # type: ignore[arg-type]
                 self.assertEqual(str(result.type), "i1")
 
-    def test_unsupported_expression_without_base_still_fails(self) -> None:
-        text = "True == 1"
+    def test_chained_comparison_builds_an_i1_value(self) -> None:
+        text = "1 == 1 <= 3"
         code = ExpressionCode(text, ast.parse(text, mode="eval").body)
         context = ir.Context()
-        with (
-            context,
-            ir.Location.unknown(context),
-            self.assertRaisesRegex(NotImplementedError, "cannot be lowered"),
-        ):
-            code.build(None, context)  # type: ignore[arg-type]
+        register_all_dialects(context)
+        with context, ir.Location.unknown(context):
+            module = ir.Module.create()
+            with ir.InsertionPoint(module.body):
+                function = func.FuncOp(
+                    "chained_comparison",
+                    ir.FunctionType.get([], []),
+                )
+                block = function.add_entry_block()
+                with ir.InsertionPoint(block):
+                    result = code.build(None, context)  # type: ignore[arg-type]
+                    func.ReturnOp([])
+        self.assertEqual(str(result.type), "i1")
+
+    def test_tensor_identity_is_skipped_with_warning(self) -> None:
+        text = "L['x'] is L['y']"
+        code = ExpressionCode(text, ast.parse(text, mode="eval").body)
+        context = ir.Context()
+        register_all_dialects(context)
+        with context, ir.Location.unknown(context):
+            module = ir.Module.create()
+            with ir.InsertionPoint(module.body):
+                tensor_type = ir.Type.parse("!torch.tensor", context=context)
+                function = func.FuncOp(
+                    "tensor_identity",
+                    ir.FunctionType.get([tensor_type, tensor_type], []),
+                )
+                block = function.add_entry_block()
+                with ir.InsertionPoint(block):
+                    func.ReturnOp([])
+            [x, y] = block.arguments
+            tree = {
+                ("x",): x,
+                ("y",): y,
+            }
+            with self.assertWarnsRegex(
+                RuntimeWarning,
+                "Skipping unsupported Tensor identity guard",
+            ):
+                result = code.build(tree, context)  # type: ignore[arg-type]
+        self.assertEqual(str(result.type), "i1")
+
+    def test_invalid_comparison_violates_guard_code_invariants(self) -> None:
+        cases = (
+            ("True == 1", "guard comparison operand cannot be lowered"),
+            (
+                "L['x'] is L['y'] is L['z']",
+                "identity guard comparison must be binary",
+            ),
+            (
+                "L['x'] == L['y'] is L['z']",
+                "identity guard comparison must be binary",
+            ),
+            ("1 in (1, 2)", "unsupported guard comparison operator"),
+        )
+        for text, message in cases:
+            with self.subTest(text=text):
+                code = ExpressionCode(text, ast.parse(text, mode="eval").body)
+                context = ir.Context()
+                with (
+                    context,
+                    ir.Location.unknown(context),
+                    self.assertRaisesRegex(AssertionError, message),
+                ):
+                    code.build(None, context)  # type: ignore[arg-type]
 
     def test_tensor_match_rejects_unsupported_codes(self) -> None:
         cases = (

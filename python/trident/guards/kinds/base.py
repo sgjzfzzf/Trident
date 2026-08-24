@@ -22,10 +22,10 @@ class Guard:
     def __init__(
         self,
         source: Local | None,
-        codes: tuple[GuardCode, ...],
+        codes: list[GuardCode],
     ) -> None:
         self.source: Final[Local | None] = source
-        self.codes: Final[tuple[GuardCode, ...]] = codes
+        self.codes: Final[list[GuardCode]] = codes
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -53,7 +53,7 @@ class Guard:
         )
         if builder is None or not builder.validate_guard(guard):
             return None
-        texts = tuple(guard.code_list or ())
+        texts = guard.code_list or []
         if not builder.validate_code_list(texts):
             return None
         source = builder.parse_source(guard)
@@ -65,7 +65,7 @@ class Guard:
     @classmethod
     def validate_code_list(
         cls,
-        texts: tuple[str, ...],
+        texts: list[str],
     ) -> bool:
         """Validate create-function-specific CodeList cardinality."""
         return True
@@ -84,18 +84,18 @@ class Guard:
     @classmethod
     def parse_codes(
         cls,
-        texts: tuple[str, ...],
+        texts: list[str],
         source: Local | None,
-    ) -> tuple[GuardCode, ...] | None:
+    ) -> list[GuardCode] | None:
         assert cls.create_fn_name is not None
         parsed_codes: list[GuardCode] = []
         for text in texts:
-            matches = tuple(
+            matches = [
                 parsed
                 for code_type in cls.code_types
                 if (parsed := code_type.parse(text, source)) is not None
-            )
+            ]
             if len(matches) != 1:
                 return None
             parsed_codes.append(matches[0])
-        return tuple(parsed_codes)
+        return parsed_codes

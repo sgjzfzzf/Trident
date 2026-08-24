@@ -3,10 +3,7 @@
 
 from __future__ import annotations
 
-import ast
-
-from ..codes import ExpressionCode
-from ..codes.expression import ExpressionVisitor
+from ..codes.expression import ExpressionCode
 from ..local import Local
 from .base import Guard
 
@@ -18,23 +15,15 @@ class DuplicateInputGuard(Guard):
     code_types = (ExpressionCode,)
 
     @classmethod
-    def validate_code_list(cls, texts: tuple[str, ...]) -> bool:
+    def validate_code_list(cls, texts: list[str]) -> bool:
         return len(texts) == 1
 
     @classmethod
     def parse_codes(
         cls,
-        texts: tuple[str, ...],
+        texts: list[str],
         source: Local | None,
-    ) -> tuple[ExpressionCode, ...] | None:
+    ) -> list[ExpressionCode] | None:
         if source is None:
             return None
-        (code,) = texts
-        try:
-            expression = ast.parse(code, mode="eval").body
-        except SyntaxError:
-            return None
-        operands = ExpressionVisitor.parse_identity(expression)
-        if operands is None or source not in operands:
-            return None
-        return (ExpressionCode(code, expression),)
+        return super().parse_codes(texts, source)  # type: ignore[return-value]

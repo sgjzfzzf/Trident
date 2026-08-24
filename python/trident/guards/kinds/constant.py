@@ -14,6 +14,6 @@ class ConstantMatchGuard(Guard):
     @classmethod
     def validate_code_list(
         cls,
-        texts: tuple[str, ...],
+        texts: list[str],
     ) -> bool:
         return len(texts) == 1

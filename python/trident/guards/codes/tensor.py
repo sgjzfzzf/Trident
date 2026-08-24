@@ -268,11 +268,7 @@ class RequiresGradCode(GuardCode):
         # specialization guard as satisfied; the wrapper ABI cannot perform a
         # runtime requires_grad check.
         i1 = ir.IntegerType.get_signless(1, context)
-        return reduce(
-            arith.andi,
-            [],
-            arith.constant(i1, ir.IntegerAttr.get(i1, 1)),
-        )
+        return arith.constant(i1, ir.IntegerAttr.get(i1, 1))
 
 
 class DynamoAttributeAbsentCode(GuardCode):
@@ -307,8 +303,4 @@ class DynamoAttributeAbsentCode(GuardCode):
     def build(self, tree: SourceTree, context: ir.Context) -> ir.Value:
         # These private Dynamo attributes are not part of the TVM FFI ABI.
         i1 = ir.IntegerType.get_signless(1, context)
-        return reduce(
-            arith.andi,
-            [],
-            arith.constant(i1, ir.IntegerAttr.get(i1, 1)),
-        )
+        return arith.constant(i1, ir.IntegerAttr.get(i1, 1))

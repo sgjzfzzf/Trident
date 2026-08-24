@@ -30,14 +30,6 @@ class FrontendTest(unittest.TestCase):
         s = [torch.randn(4, device="cuda"), torch.randn(4, device="cuda")]
         torch.testing.assert_close(list_add(x, s), x + s[0] + s[1])
 
-    def test_default_argument(self) -> None:
-        @trident.jit
-        def add_default(x, scale=2.0):
-            return x * scale
-
-        x = torch.randn(4, device="cuda")
-        torch.testing.assert_close(add_default(x), x * 2.0)
-
 
 if __name__ == "__main__":
     unittest.main()

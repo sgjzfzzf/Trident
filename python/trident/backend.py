@@ -60,19 +60,22 @@ class _InputTreeNode:
     def __init__(
         self,
         type: ir.Type,
-        children: tuple[_InputTreeNode, ...] = (),
-        keys: tuple[int | str, ...] | None = None,
+        children: list[_InputTreeNode] = [],  # noqa: B006
+        keys: list[int | str] | None = None,
         leaf_index: int | None = None,
     ) -> None:
+        children = [*children]
         if keys is None:
-            keys = tuple(range(len(children)))
+            keys = [i for i, _ in enumerate(children)]
+        else:
+            keys = [*keys]
         assert len(keys) == len(children), (
             "tree keys and children must have equal lengths"
         )
         assert len(set(keys)) == len(keys), "tree keys must be unique"
         self.type: Final[ir.Type] = type
-        self.children: Final[tuple[_InputTreeNode, ...]] = children
-        self.keys: Final[tuple[int | str, ...]] = keys
+        self.children: Final[list[_InputTreeNode]] = children
+        self.keys: Final[list[int | str]] = keys
         self.child_indices: Final[dict[int | str, int]] = {
             key: index for index, key in enumerate(keys)
         }
@@ -96,22 +99,26 @@ class _InputTreeMap:
     ) -> None:
         self._root: Final[_InputTreeNode] = root
         self._arguments: Final[dict[str, ir.Value]] = arguments
-        self._values: dict[tuple[int | str, ...], ir.Value] = {
-            (name,): argument for name, argument in arguments.items()
+        self._values: dict[str, ir.Value] = {
+            self._path_key([name]): argument for name, argument in arguments.items()
         }
+
+    @staticmethod
+    def _path_key(path: list[int | str]) -> str:
+        return repr(path)
 
     def _unpack(
         self,
         node: _InputTreeNode,
-        path: tuple[int | str, ...],
-        values: dict[tuple[int | str, ...], ir.Value],
+        path: list[int | str],
+        values: dict[str, ir.Value],
     ) -> None:
         if not node.children:
             return
         key, *_ = node.keys
-        if path + (key,) in values:
+        if self._path_key([*path, key]) in values:
             return
-        argument: ir.Value = values[path]
+        argument: ir.Value = values[self._path_key(path)]
         unpacked = torch_d.prim_ListUnpack(
             [child.type for child in node.children], operand=argument
         )
@@ -123,14 +130,16 @@ class _InputTreeMap:
             else []
         )
         for key, result in zip(node.keys, results):
-            values[path + (key,)] = result
+            values[self._path_key([*path, key])] = result
 
-    def __getitem__(self, path: tuple[int | str, ...]) -> ir.Value | None:
-        values: dict[tuple[int | str, ...], ir.Value] = {
-            (name,): argument for name, argument in self._arguments.items()
+    def __getitem__(self, path: Sequence[int | str]) -> ir.Value | None:
+        path = list(path)
+        values: dict[str, ir.Value] = {
+            self._path_key([name]): argument
+            for name, argument in self._arguments.items()
         }
         node: _InputTreeNode = self._root
-        prefix: tuple[int | str, ...] = ()
+        prefix: list[int | str] = []
         for step in path:
             assert node.leaf_index is None, "path indexes through a leaf"
             if not prefix and step not in node.child_indices:
@@ -139,21 +148,21 @@ class _InputTreeMap:
                 f"path step {step!r} is not present in the input tree"
             )
             key, *_ = node.keys
-            if prefix and prefix + (key,) not in values:
+            if prefix and self._path_key([*prefix, key]) not in values:
                 self._unpack(node, prefix, values)
             child_index: int = node.child_indices[step]
-            prefix += (step,)
+            prefix.append(step)
             node = node.children[child_index]
-        if prefix not in values:
+        if self._path_key(prefix) not in values:
             self._unpack(node, prefix, values)
-        return values[prefix]
+        return values[self._path_key(prefix)]
 
     def flatten(self) -> list[tuple[int, ir.Value]]:
         """Return all leaf values in the exported graph's flat order."""
 
         def visit(
             node: _InputTreeNode,
-            path: tuple[int | str, ...],
+            path: list[int | str],
         ) -> list[tuple[int, ir.Value]]:
             if node.leaf_index is not None:
                 value: ir.Value | None = self[path]
@@ -163,13 +172,13 @@ class _InputTreeMap:
             return [
                 value
                 for key, child in zip(node.keys, node.children)
-                for value in visit(child, path + (key,))
+                for value in visit(child, [*path, key])
             ]
 
         return [
             value
             for key, child in zip(self._root.keys, self._root.children)
-            for value in visit(child, (key,))
+            for value in visit(child, [key])
         ]
 
 
@@ -227,7 +236,7 @@ class TridentGraphModule:
         ``GuardMatchException`` is raised."""
         # 1. Build a new sub-module for the current arguments.
         sub_mod: ir.Module = self._build_sub_module(
-            self.fn, self.ctx, len(self._sub_modules), args, kwargs
+            self.fn, self.ctx, len(self._sub_modules), list(args), kwargs
         )
         self._sub_modules.append(sub_mod)
 
@@ -295,7 +304,7 @@ class TridentGraphModule:
         fn: Callable[..., Any],
         ctx: ir.Context,
         index: int,
-        args: tuple[Any, ...],
+        args: list[Any],
         kwargs: dict[str, Any],
     ) -> ir.Module:
         """Export -> import -> wrap a single sub-module for *args*.
@@ -378,9 +387,9 @@ class TridentGraphModule:
                     f"dict parameters (path step {name!r}) are not yet "
                     "supported by trident.jit"
                 )
-                children: tuple[_InputTreeNode, ...] = tuple(
+                children: list[_InputTreeNode] = [
                     build_tree(child, name) for child in node.children()
-                )
+                ]
                 return _InputTreeNode(_any_type(ctx), children=children)
 
         provided_entries: dict[str, _InputTreeNode] = {
@@ -404,8 +413,8 @@ class TridentGraphModule:
         param_types: list[ir.Type] = [node.type for node in entries]
         input_root = _InputTreeNode(
             _any_type(ctx),
-            children=tuple(entries),
-            keys=tuple(signature_names),
+            children=entries,
+            keys=signature_names,
         )
 
         with ctx:

@@ -63,15 +63,8 @@ public:
     setupBackendTypeConversion(target, typeConverter);
     populateTorchToCfConversionPatterns(target, typeConverter, patterns);
 
-    // Disable folding: the greedy driver folds any op with a folder by
-    // default. torch.aten.clone (folder unconditionally returns its self
-    // operand when the types match) would be folded here, aliasing the clone
-    // result with its operand and unbalancing the reference counts inserted
-    // by the semantic bridge (premature release / double free). This pass only
-    // lowers the runtime assert to cf.assert; it must not rewrite other ops.
-    if (mlir::failed(mlir::applyPatternsGreedily(
-            getOperation(), std::move(patterns),
-            mlir::GreedyRewriteConfig().enableFolding(false)))) {
+    if (mlir::failed(
+            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }

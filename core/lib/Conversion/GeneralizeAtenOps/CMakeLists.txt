@@ -1,0 +1,11 @@
+add_mlir_conversion_library(
+  GeneralizeAtenOps
+  GeneralizeAtenOps.cc
+  DEPENDS
+  MLIRConversionPassIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRPass
+  MLIRTransformUtils
+  TorchMLIRTorchDialect)

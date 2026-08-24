@@ -12,8 +12,8 @@
 
 namespace trident::conversion {
 
-void registerAllPasses();
 void registerAllDialects(mlir::DialectRegistry &registry);
+void registerAllPasses();
 
 } // namespace trident::conversion
 

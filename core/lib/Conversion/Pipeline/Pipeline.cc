@@ -20,6 +20,7 @@
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
 #include "trident/core/Conversion/ArithExtToScf/ArithExtToScf.h"
 #include "trident/core/Conversion/DecomposeTVMFFI/DecomposeTVMFFI.h"
+#include "trident/core/Conversion/GeneralizeAtenOps/GeneralizeAtenOps.h"
 #include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h"
 #include "trident/core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
 #include "trident/core/Conversion/TorchToCf/TorchToCf.h"
@@ -37,6 +38,7 @@ class TridentLoweringPipelinePass
     : public impl::TridentLoweringPipelineBase<TridentLoweringPipelinePass> {
   void runOnOperation() final {
     mlir::PassManager pm(&getContext(), mlir::ModuleOp::getOperationName());
+    pm.addPass(trident::torch::createGeneralizeAtenOps());
     pm.addPass(trident::arithext::createConvertArithExtToScf());
     pm.addPass(trident::torch::createConvertTorchToCf());
     pm.addPass(trident::torch::createConvertTorchToTVMFFI());

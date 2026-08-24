@@ -287,26 +287,25 @@ private:
       &ownedValues;
 };
 
-class ConvertAtenCall final : public mlir::ConversionPattern {
+class ConvertAtenCall final
+    : public mlir::OpConversionPattern<mlir::torch::Torch::OperatorOp> {
 public:
   explicit ConvertAtenCall(const TorchFFITypeConverter &typeConverter,
                            OwnedValues &ownedValues, mlir::MLIRContext *ctx)
-      : ConversionPattern(typeConverter, mlir::Pattern::MatchAnyOpTypeTag(), 1,
-                          ctx),
+      : mlir::OpConversionPattern<mlir::torch::Torch::OperatorOp>(typeConverter,
+                                                                  ctx, 1),
         typeConverter(typeConverter), ownedValues(ownedValues) {}
 
   mlir::LogicalResult
-  matchAndRewrite(mlir::Operation *op, llvm::ArrayRef<mlir::Value> operands,
+  matchAndRewrite(mlir::torch::Torch::OperatorOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::torch::Torch::OperatorOp maybeOperatorOp =
-        llvm::dyn_cast<mlir::torch::Torch::OperatorOp>(op);
-    llvm::StringRef name = maybeOperatorOp ? maybeOperatorOp.getName()
-                                           : op->getName().getStringRef();
+    llvm::StringRef name = op.getName();
     if (!name.starts_with("torch.aten.")) {
       return mlir::failure();
     }
     std::string callee =
         ("trident." + name.drop_front(sizeof("torch.") - 1)).str();
+    mlir::ValueRange operands = adaptor.getOperands();
     llvm::SmallVector<mlir::Value> replacements;
     if (op->getNumResults() <= 1) {
       llvm::SmallVector<mlir::Type> resultTypes;
@@ -324,7 +323,8 @@ public:
               callee);
       tvm_ffi::FunctionCallOp call = tvm_ffi::FunctionCallOp::create(
           rewriter, op->getLoc(), resultTypes, getGlobal.getResult(), operands);
-      recordOwnedObjectResults(op, call->getResults(), ownedValues);
+      recordOwnedObjectResults(op.getOperation(), call->getResults(),
+                               ownedValues);
       if (op->getNumResults()) {
         replacements.push_back(call.getResult(0));
       }
@@ -337,7 +337,8 @@ public:
       tvm_ffi::FunctionCallOp call = tvm_ffi::FunctionCallOp::create(
           rewriter, op->getLoc(), mlir::TypeRange{arrayType},
           getGlobal.getResult(), operands);
-      recordOwnedObjectResults(op, call->getResults(), ownedValues);
+      recordOwnedObjectResults(op.getOperation(), call->getResults(),
+                               ownedValues);
       for (auto [index, result] : llvm::enumerate(op->getResults())) {
         tvm_ffi::ConstantOp idx = tvm_ffi::ConstantOp::create(
             rewriter, op->getLoc(), tvm_ffi::IntType::get(getContext()),
@@ -773,12 +774,8 @@ class ConvertTorchToTVMFFIPass final
           return !op.getName().starts_with("torch.aten.");
         });
     conversionTarget.addIllegalOp<mlir::torch::Torch::ValueTensorLiteralOp>();
-    // Preserve torch.aten.clone so contiguous() keeps its storage semantics;
-    // its folder would otherwise replace it with the input value.
     if (mlir::failed(mlir::applyPartialConversion(
-            getOperation(), conversionTarget, std::move(conversionPatterns),
-            mlir::ConversionConfig{
-                .foldingMode = mlir::DialectConversionFoldingMode::Never}))) {
+            getOperation(), conversionTarget, std::move(conversionPatterns)))) {
       signalPassFailure();
       return;
     }

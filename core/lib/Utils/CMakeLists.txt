@@ -5,6 +5,7 @@ add_mlir_library(
   PUBLIC
   ArithExtDialect
   ArithExtToScf
+  GeneralizeAtenOps
   TorchExtTransforms
   TorchExtToGPU
   TorchExtToLLVM

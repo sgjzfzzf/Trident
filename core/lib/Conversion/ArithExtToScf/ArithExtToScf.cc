@@ -74,12 +74,8 @@ public:
   void runOnOperation() final {
     mlir::RewritePatternSet patterns(&getContext());
     patterns.add<ConvertAndThenOp>(&getContext());
-    // Do not fold torch.aten.clone here: its folder replaces the clone with
-    // the input, which loses the storage materialization required by
-    // contiguous() after a permute.
-    if (mlir::failed(mlir::applyPatternsGreedily(
-            getOperation(), std::move(patterns),
-            mlir::GreedyRewriteConfig().enableFolding(false)))) {
+    if (mlir::failed(
+            mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();
     }
   }

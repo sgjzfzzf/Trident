@@ -7,6 +7,7 @@ add_mlir_conversion_library(
   PUBLIC
   ArithExtToScf
   DecomposeTVMFFI
+  GeneralizeAtenOps
   MLIRConvertToLLVMPass
   MLIRPass
   MLIRSCFToControlFlow

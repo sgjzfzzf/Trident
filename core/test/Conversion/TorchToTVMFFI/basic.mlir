@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s -convert-torch-to-tvm-ffi | FileCheck %s
+// RUN: trident-core-opt %s -generalize-aten-ops -convert-torch-to-tvm-ffi | FileCheck %s
 
 func.func @transpose(%arg0: !torch.vtensor<[2,3],f32>)
     -> !torch.vtensor<[3,2],f32> {
@@ -37,6 +37,16 @@ func.func @clone_contiguous(%arg0: !torch.vtensor<[32,2],f32>)
       : !torch.vtensor<[32,2],f32>, !torch.int
       -> !torch.vtensor<[32,2],f32>
   return %0 : !torch.vtensor<[32,2],f32>
+}
+
+// Non-ATen opaque operators are already legal for this conversion and must
+// remain untouched.  ConvertAtenCall only handles generalized ATen names.
+// CHECK-LABEL: func.func @opaque_operator() {
+// CHECK-NEXT: torch.operator "torch.foo"() : () -> ()
+// CHECK-NEXT: return
+func.func @opaque_operator() {
+  torch.operator "torch.foo"() : () -> ()
+  return
 }
 
 // Constants are converted to their semantic TVM FFI scalar types, rather than

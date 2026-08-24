@@ -18,6 +18,7 @@
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
 #include "trident/core/Conversion/ArithExtToScf/ArithExtToScf.h"
 #include "trident/core/Conversion/DecomposeTVMFFI/DecomposeTVMFFI.h"
+#include "trident/core/Conversion/GeneralizeAtenOps/GeneralizeAtenOps.h"
 #include "trident/core/Conversion/Pipeline/Pipeline.h"
 #include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h"
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
@@ -30,34 +31,36 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
 
-void trident::conversion::registerAllPasses() {
-  mlir::registerAllPasses();
-  mlir::registerConvertToLLVMPass();
-  mlir::registerReconcileUnrealizedCastsPass();
-  mlir::torch::registerTorchPasses();
-  trident::torchext::registerConvertTorchExtToGPUPass();
-  trident::arithext::registerConvertArithExtToScfPass();
-  trident::torchext::registerConvertTorchExtToLLVMPass();
-  trident::tvm_ffi::registerConvertTVMFFIToLLVMPass();
-  trident::tvm_ffi::registerConvertTVMFFIToFuncPass();
-  trident::tvm_ffi::registerDecomposeTVMFFIPass();
-  trident::torch::registerConvertTorchToCfPass();
-  trident::torch::registerConvertTorchToTVMFFIPass();
-  trident::torch::registerConvertTorchConversionToLLVMPass();
-  trident::torch::registerTridentLoweringPipelinePass();
-}
-
 void trident::conversion::registerAllDialects(mlir::DialectRegistry &registry) {
   mlir::registerAllDialects(registry);
-  registry.insert<
-      trident::arithext::ArithExtDialect, trident::torchext::TorchExtDialect,
-      trident::tvm_ffi::TVMFFIDialect, mlir::torch::Torch::TorchDialect,
-      mlir::torch::TorchConversion::TorchConversionDialect>();
+  registry.insert<mlir::torch::Torch::TorchDialect,
+                  mlir::torch::TorchConversion::TorchConversionDialect,
+                  trident::arithext::ArithExtDialect,
+                  trident::torchext::TorchExtDialect,
+                  trident::tvm_ffi::TVMFFIDialect>();
   mlir::registerAllExtensions(registry);
   mlir::arith::registerConvertArithToLLVMInterface(registry);
-  mlir::gpu::registerConvertGpuToLLVMInterface(registry);
   mlir::registerConvertFuncToLLVMInterface(registry);
+  mlir::gpu::registerConvertGpuToLLVMInterface(registry);
+  trident::torch::registerConvertTorchConversionToLLVMInterface(registry);
   trident::torchext::registerConvertTorchExtToLLVMInterface(registry);
   trident::tvm_ffi::registerConvertTVMFFIToLLVMInterface(registry);
-  trident::torch::registerConvertTorchConversionToLLVMInterface(registry);
+}
+
+void trident::conversion::registerAllPasses() {
+  mlir::registerAllPasses();
+  trident::arithext::registerConvertArithExtToScfPass();
+  mlir::registerConvertToLLVMPass();
+  trident::torch::registerConvertTorchConversionToLLVMPass();
+  trident::torchext::registerConvertTorchExtToGPUPass();
+  trident::torchext::registerConvertTorchExtToLLVMPass();
+  trident::torch::registerConvertTorchToCfPass();
+  trident::torch::registerConvertTorchToTVMFFIPass();
+  trident::tvm_ffi::registerConvertTVMFFIToFuncPass();
+  trident::tvm_ffi::registerConvertTVMFFIToLLVMPass();
+  trident::tvm_ffi::registerDecomposeTVMFFIPass();
+  trident::torch::registerGeneralizeAtenOpsPass();
+  mlir::registerReconcileUnrealizedCastsPass();
+  mlir::torch::registerTorchPasses();
+  trident::torch::registerTridentLoweringPipelinePass();
 }

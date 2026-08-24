@@ -26,6 +26,7 @@ from trident.guards.codes import (
 )
 from trident.guards.kinds import (
     ConstantMatchGuard,
+    DuplicateInputGuard,
     Guard,
     IgnoredGuard,
     SequenceLengthGuard,
@@ -118,6 +119,30 @@ class GuardParserTest(unittest.TestCase):
                 assert isinstance(code, ConstantCode)
                 self.assertEqual(code.value, expected)
                 self.assertIs(type(code.value), type(expected))
+
+    def test_duplicate_input_parses_identity_guard(self) -> None:
+        parsed = self.assert_parsed(
+            FakeGuard(
+                "DUPLICATE_INPUT",
+                ["L['out_grad'] is L['new_out']"],
+                "L['new_out']",
+            ),
+            DuplicateInputGuard,
+            (ExpressionCode,),
+        )
+        (code,) = parsed.codes
+        assert isinstance(code, ExpressionCode)
+
+    def test_duplicate_input_rejects_non_identity_expressions(self) -> None:
+        for text in (
+            "L['out_grad'] == L['new_out']",
+            "L['out_grad'] is not L['new_out']",
+            "L['out_grad'] is L['new_out'] or True",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(
+                    Guard.parse(FakeGuard("DUPLICATE_INPUT", [text], "L['new_out']"))
+                )
 
     def test_constant_match_rejects_unsupported_literals(self) -> None:
         for literal in ("'constant'", "[1, 2]", "{'value': 1}", "not valid"):

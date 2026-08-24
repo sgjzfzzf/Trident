@@ -30,6 +30,36 @@ class ExpressionVisitor(ast.NodeVisitor):
     def visit(self, node: ast.AST) -> ir.Value | None:
         return super().visit(node)
 
+    @staticmethod
+    def parse_identity(expression: ast.expr) -> tuple[Local, Local] | None:
+        if not (
+            isinstance(expression, ast.Compare)
+            and len(expression.ops) == 1
+            and isinstance(expression.ops[0], ast.Is)
+            and len(expression.comparators) == 1
+        ):
+            return None
+        lhs = Local.from_expression(expression.left)
+        rhs = Local.from_expression(expression.comparators[0])
+        if lhs is None or rhs is None or lhs == rhs:
+            return None
+        return lhs, rhs
+
+    def visit_identity(self, expression: ast.expr) -> ir.Value | None:
+        operands = self.parse_identity(expression)
+        if operands is None:
+            return None
+        lhs, rhs = operands
+        lhs_value = lhs.resolve(self.tree)
+        rhs_value = rhs.resolve(self.tree)
+        if lhs_value is None or rhs_value is None:
+            return None
+        return tvm_ffi.eq(
+            ir.IntegerType.get_signless(1, self.context),
+            lhs_value,
+            rhs_value,
+        )
+
     def generic_visit(self, node: ast.AST) -> None:
         return None
 
@@ -89,6 +119,8 @@ class ExpressionVisitor(ast.NodeVisitor):
             return None
 
     def visit_Compare(self, node: ast.Compare) -> ir.Value | None:
+        if self.parse_identity(node) is not None:
+            return self.visit_identity(node)
         lhs = self.visit(node.left)
         if lhs is None:
             return None

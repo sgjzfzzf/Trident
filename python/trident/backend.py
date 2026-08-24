@@ -409,9 +409,11 @@ class TridentGraphModule:
         )
 
         with ctx:
-            ffi_type: ir.FunctionType = ir.FunctionType.get(
-                param_types, main_func.type.results
-            )
+            # Guarded wrappers have one TVM FFI ABI result.  A main function
+            # may still have multiple semantic results; those are packed into
+            # a TVM FFI array in the guarded success branch below.
+            any_type = ir.Type.parse("!tvm_ffi.any", context=ctx)
+            ffi_type: ir.FunctionType = ir.FunctionType.get(param_types, [any_type])
 
         tvm_ffi_name: Final[str] = f"{fn.__name__}_{index}"
         with ir.InsertionPoint(module.body), main_func.operation.location:
@@ -431,7 +433,6 @@ class TridentGraphModule:
                 # value.  This keeps both scf.yield operations type-identical
                 # while preserving the dispatcher convention that a
                 # GuardMatch exception is returned from the wrapper.
-                any_type = ir.Type.parse("!tvm_ffi.any", context=ctx)
                 guard_if: scf.IfOp = scf.IfOp(guard_result, [any_type], has_else=True)
                 then_block: ir.Block = guard_if.then_block
                 with ir.InsertionPoint(then_block):
@@ -445,15 +446,33 @@ class TridentGraphModule:
                         main_args_by_index[leaf_index]
                         for leaf_index in range(len(flat_types))
                     ]
-                    call_op: func.CallOp = func.call(
+                    call_result: ir.Value | Sequence[ir.Value] = func.call(
                         main_func.type.results,
                         main_func_name,
                         main_args,
                     )
-                    assert len(main_func.type.results) == 1, (
-                        "guarded wrappers currently require one result"
+                    call_results: Sequence[ir.Value] = (
+                        [call_result]
+                        if len(main_func.type.results) == 1
+                        else call_result
                     )
-                    normal_value = tvm_ffi_d.cast(any_type, call_op)
+                    if len(call_results) == 1:
+                        normal_value = tvm_ffi_d.cast(any_type, call_results[0])
+                    else:
+                        tuple_type = ir.Type.parse(
+                            "!torch.tuple<{}>".format(
+                                ", ".join(
+                                    str(result.type).replace("!torch.", "")
+                                    for result in call_results
+                                )
+                            ),
+                            context=ctx,
+                        )
+                        packed_value = torch_d.prim_TupleConstruct(
+                            tuple_type,
+                            call_results,
+                        )
+                        normal_value = tvm_ffi_d.cast(any_type, packed_value)
                     scf.yield_([normal_value])
 
                 else_block: ir.Block | None = guard_if.else_block

@@ -6,9 +6,8 @@ add_mlir_library(
   ArithExtDialect
   ArithExtToScf
   GeneralizeAtenOps
-  TorchExtTransforms
   TorchExtToGPU
-  TorchExtToLLVM
+  TorchExtToTVMFFI
   MLIRRegisterAllDialects
   MLIRRegisterAllExtensions
   MLIRRegisterAllPasses

@@ -5,10 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s -split-input-file -decompose-tvm-ffi -convert-tvm-ffi-to-func -convert-scf-to-cf -convert-tvm-ffi-to-llvm -convert-arith-to-llvm -convert-cf-to-llvm -convert-func-to-llvm | FileCheck %s
+// RUN: trident-core-opt %s -split-input-file --trident-lowering-pipeline | FileCheck %s --check-prefix=STRICT
 // RUN: trident-core-opt %s -split-input-file -convert-tvm-ffi-to-func | FileCheck %s --check-prefix=INTERMEDIATE
 // RUN: trident-core-opt %s -split-input-file -convert-tvm-ffi-to-func | FileCheck %s --check-prefix=FUNC
-// RUN: trident-core-opt %s -split-input-file --trident-lowering-pipeline | FileCheck %s --check-prefix=FINAL
+// STRICT-NOT: !torch.
+// STRICT: llvm.func @make_int() -> !llvm.struct<(i32, i32, i64)>
+// STRICT: llvm.func @multi_return_three_tensors(
 
 // === Section 1: no-result / single-result returns ===
 
@@ -39,6 +41,17 @@ tvm_ffi.func @void_func() attributes {emit_tvm_ffi_abi} {
 tvm_ffi.func @make_int() -> !torch.int attributes {emit_tvm_ffi_abi} {
   %0 = torch.constant.int 42
   tvm_ffi.return %0 : !torch.int
+}
+
+// -----
+
+// dtype_constant: pack the DLPack dtype fields into the TVMFFI Any payload.
+// CHECK-LABEL: llvm.func @dtype_constant(
+// CHECK-NOT: !llvm.struct<packed (i8, i8, i16)>
+// CHECK: [[DTYPE_PACKED:%[a-zA-Z0-9_]+]] = llvm.mlir.constant(73730 : i64) : i64
+tvm_ffi.func @dtype_constant() -> !tvm_ffi.dtype attributes {emit_tvm_ffi_abi} {
+  %dtype = "tvm_ffi.constant"() <{value = [2, 32, 1]}> : () -> !tvm_ffi.dtype
+  tvm_ffi.return %dtype : !tvm_ffi.dtype
 }
 
 // -----

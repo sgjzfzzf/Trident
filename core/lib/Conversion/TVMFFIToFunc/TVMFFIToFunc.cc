@@ -18,9 +18,9 @@
 #include "trident/core/Conversion/Utils/TVMFFIUtils.h"
 #include "trident/core/Conversion/Utils/Type.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
-
 #include <optional>
 
 namespace trident::tvm_ffi {
@@ -41,6 +41,8 @@ static std::optional<int32_t> getTVMFFITypeIndex(mlir::Type type) {
     return NoneType::getTypeIndex();
   } else if (mlir::isa<DeviceType, mlir::torch::Torch::DeviceType>(type)) {
     return DeviceType::getTypeIndex();
+  } else if (mlir::isa<DTypeType, trident::torchext::DTypeType>(type)) {
+    return DTypeType::getTypeIndex();
   } else if (mlir::isa<ArrayType, mlir::torch::Torch::ListType,
                        mlir::torch::Torch::TupleType>(type)) {
     return ArrayType::getTypeIndex();

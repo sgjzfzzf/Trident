@@ -37,7 +37,7 @@ def TVMFFI_ArrayCreateOp : TVMFFI_Op<"array.create"> {
 
 def TVMFFI_ArrayGetItemOp : TVMFFI_Op<"array.get_item"> {
   let summary = "Borrow an element from a TVM FFI Array";
-  let arguments = (ins TVMFFI_ArrayType:$array,
+  let arguments = (ins AnyTVMFFIArrayOrTorchType:$array,
                        TVMFFI_IntType:$index,
                        OptionalAttr<TypeAttr>:$element_type);
   let results = (outs AnyTVMFFISemanticType:$result);

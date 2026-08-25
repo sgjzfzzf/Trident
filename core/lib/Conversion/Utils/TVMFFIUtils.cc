@@ -12,6 +12,7 @@
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/Type.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include "tvm/ffi/c_api.h"
 
 namespace trident::conversion::utils {
 
@@ -42,6 +43,76 @@ mlir::Value buildIntAnySlot(mlir::OpBuilder &builder, mlir::Location loc,
   return slot;
 }
 
+mlir::Value buildIntAnySlot(mlir::OpBuilder &builder, mlir::Location loc,
+                            mlir::Value value) {
+  mlir::MLIRContext *ctx = builder.getContext();
+  mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
+  mlir::LLVM::LLVMStructType anyTy = getTVMFFIAnyType(ctx);
+  mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
+  mlir::Value slot = buildIntAnySlot(builder, loc, 0);
+  mlir::LLVM::StoreOp::create(
+      builder, loc, mlir::LLVM::SExtOp::create(builder, loc, i64Ty, value),
+      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, slot,
+                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
+  return slot;
+}
+
+mlir::Value buildDTypeAnySlot(mlir::OpBuilder &builder, mlir::Location loc,
+                              int64_t code, int64_t bits, int64_t lanes) {
+  const int64_t payload =
+      (code & 0xff) | ((bits & 0xff) << 8) | ((lanes & 0xffff) << 16);
+  mlir::MLIRContext *ctx = builder.getContext();
+  mlir::Value slot = buildIntAnySlot(builder, loc, payload);
+  mlir::LLVM::LLVMStructType anyTy = getTVMFFIAnyType(ctx);
+  mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
+  mlir::Value typeIndex = mlir::LLVM::ConstantOp::create(
+      builder, loc, i32Ty, ::trident::tvm_ffi::DTypeType::getTypeIndex());
+  mlir::LLVM::StoreOp::create(
+      builder, loc, typeIndex,
+      mlir::LLVM::GEPOp::create(
+          builder, loc, mlir::LLVM::LLVMPointerType::get(ctx), anyTy, slot,
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0}));
+  return slot;
+}
+
+mlir::Value buildOpaquePtrAnySlot(mlir::OpBuilder &builder, mlir::Location loc,
+                                  mlir::Value pointer) {
+  mlir::MLIRContext *ctx = builder.getContext();
+  mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
+  mlir::Value slot = buildIntAnySlot(builder, loc, 0);
+  mlir::LLVM::LLVMStructType anyTy = getTVMFFIAnyType(ctx);
+  mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
+  mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
+  mlir::Value typeIndex =
+      mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, kTVMFFIOpaquePtr);
+  mlir::LLVM::StoreOp::create(
+      builder, loc, typeIndex,
+      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, slot,
+                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0}));
+  mlir::Value payload =
+      mlir::LLVM::PtrToIntOp::create(builder, loc, i64Ty, pointer);
+  mlir::LLVM::StoreOp::create(
+      builder, loc, payload,
+      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, slot,
+                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
+  return slot;
+}
+
+mlir::Value loadIntFromAnySlot(mlir::OpBuilder &builder, mlir::Location loc,
+                               mlir::Value slot) {
+  mlir::MLIRContext *ctx = builder.getContext();
+  mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
+  mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
+  mlir::LLVM::LLVMStructType anyTy = getTVMFFIAnyType(ctx);
+  mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
+  mlir::Value payloadPtr =
+      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, slot,
+                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2});
+  mlir::Value payload =
+      mlir::LLVM::LoadOp::create(builder, loc, i64Ty, payloadPtr);
+  return mlir::LLVM::TruncOp::create(builder, loc, i32Ty, payload);
+}
+
 mlir::FailureOr<mlir::Value>
 callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
                          mlir::ModuleOp moduleOp, llvm::StringRef funcName,
@@ -52,12 +123,12 @@ callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
   mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
   mlir::LLVM::LLVMStructType anyTy =
       trident::conversion::utils::getTVMFFIAnyType(ctx);
-  const size_t N = args.size();
+  const size_t numArgsCount = args.size();
 
   // Allocate contiguous args array and copy each pre-built slot.
   mlir::Value argsArray = mlir::LLVM::AllocaOp::create(
       builder, loc, ptrTy, anyTy,
-      mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, N));
+      mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, numArgsCount));
   for (auto [i, arg] : llvm::enumerate(args)) {
     mlir::Value dst =
         mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, argsArray,
@@ -66,7 +137,8 @@ callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
     mlir::LLVM::StoreOp::create(builder, loc, loaded, dst);
   }
 
-  mlir::Value numArgs = mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, N);
+  mlir::Value numArgs =
+      mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, numArgsCount);
   return callTVMFFIGlobalFunction(builder, loc, moduleOp, funcName, argsArray,
                                   numArgs);
 }
@@ -187,10 +259,10 @@ callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
       builder, loc, mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 0),
       mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, resultSlot,
                                 llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
-
   if (mlir::failed(callTVMFFIFunction(builder, loc, moduleOp, *funcHandle,
-                                      argsArray, numArgs, resultSlot)))
+                                      argsArray, numArgs, resultSlot))) {
     return mlir::failure();
+  }
   return resultSlot;
 }
 

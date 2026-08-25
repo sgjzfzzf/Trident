@@ -16,7 +16,6 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchOps.h"
-#include "trident/core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
 
 namespace trident::torch {
 
@@ -60,7 +59,6 @@ public:
     mlir::LLVMTypeConverter typeConverter(&context);
     mlir::ConversionTarget target(context);
     mlir::RewritePatternSet patterns(&context);
-    setupBackendTypeConversion(target, typeConverter);
     populateTorchToCfConversionPatterns(target, typeConverter, patterns);
 
     if (mlir::failed(

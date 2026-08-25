@@ -12,18 +12,22 @@
 // - non-splat literal: CPU staging + aoti_torch_copy_ path
 
 // CHECK-LABEL: llvm.func @torch.vtensor.literal.splat(
-// CHECK: llvm.call @mTridentTVMFFIToTorchType
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: llvm.call @TVMFFIFunctionCall
 // CHECK: %[[SHAPE_DATA:.*]] = llvm.alloca %[[SHAPE_COUNT:.*]] x i64
 // CHECK: %[[LITERAL_DATA:.*]] = llvm.alloca %[[LITERAL_COUNT:.*]] x f32
 // CHECK: llvm.call @aoti_torch_aten_full
-// CHECK: llvm.call @mTridentTensorToTVMFFIObject
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: llvm.call @TVMFFIFunctionCall
 // CHECK-LABEL: llvm.func @torch.vtensor.literal.nonsplat(
-// CHECK: llvm.call @mTridentTVMFFIToTorchType
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: llvm.call @TVMFFIFunctionCall
 // CHECK: llvm.call @aoti_torch_create_tensor_from_blob
 // CHECK: llvm.call @aoti_torch_empty_strided
 // CHECK: llvm.call @aoti_torch_copy_
 // CHECK: llvm.call @aoti_torch_delete_tensor_object
-// CHECK: llvm.call @mTridentTensorToTVMFFIObject
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: llvm.call @TVMFFIFunctionCall
 // CHECK-LABEL: llvm.func @__tvm_ffi_vtensor_literal_splat(
 // CHECK: llvm.call @vtensor_literal_splat
 // CHECK-LABEL: llvm.func @__tvm_ffi_vtensor_literal_nonsplat(

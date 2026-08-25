@@ -28,3 +28,15 @@ func.func @cast_int(%arg0: !torch.int) -> i32 {
   %0 = torchext.cast %arg0 : !torch.int -> i32
   return %0 : i32
 }
+
+// -----
+
+// CHECK-LABEL: func.func @convert_dtype(
+// CHECK-SAME:    %[[DTYPE:.*]]: !torchext.dtype) -> !torch.int {
+// CHECK:         %[[SCALAR:.*]] = torchext.convert %[[DTYPE]] : !torchext.dtype -> !torch.int
+// CHECK-NEXT:    return %[[SCALAR]] : !torch.int
+// CHECK-NEXT:  }
+func.func @convert_dtype(%arg0: !torchext.dtype) -> !torch.int {
+  %0 = torchext.convert %arg0 : !torchext.dtype -> !torch.int
+  return %0 : !torch.int
+}

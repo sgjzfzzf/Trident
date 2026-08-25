@@ -14,16 +14,34 @@
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.cpp.inc"
 #define GET_OP_CLASSES
 #include "trident/core/Dialect/TorchExt/IR/TorchExt.cpp.inc"
+#define GET_TYPEDEF_CLASSES
+#include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.cpp.inc"
 
 namespace trident::torchext {
 
+mlir::LogicalResult ConvertOp::verify() {
+  if (mlir::isa<DTypeType>(getOperand().getType()) &&
+      mlir::isa<mlir::torch::Torch::IntType>(getResult().getType())) {
+    return mlir::success();
+  } else {
+    return emitOpError("expects !torchext.dtype -> !torch.int");
+  }
+}
+
 void TorchExtDialect::initialize() {
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.cpp.inc"
+      >();
   addOperations<
 #define GET_OP_LIST
 #include "trident/core/Dialect/TorchExt/IR/TorchExt.cpp.inc"
@@ -49,9 +67,11 @@ bool CastOp::areCastCompatible(mlir::TypeRange inputs,
   mlir::Type input = inputs[0];
   mlir::Type output = outputs[0];
 
-  return (llvm::isa<mlir::torch::Torch::IntType>(input) &&
+  return ((llvm::isa<mlir::torch::Torch::IntType, trident::tvm_ffi::IntType>(
+              input)) &&
           llvm::isa<mlir::IntegerType>(output)) ||
-         (llvm::isa<mlir::torch::Torch::FloatType>(input) &&
+         ((llvm::isa<mlir::torch::Torch::FloatType,
+                     trident::tvm_ffi::FloatType>(input)) &&
           llvm::isa<mlir::FloatType>(output));
 }
 

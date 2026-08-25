@@ -91,6 +91,15 @@ func.func @constant_none() -> !torch.none {
   return %0 : !torch.none
 }
 
+// TorchExt dtype values are already represented by TVM FFI dtypes when the
+// Torch-to-TVMFFI conversion reaches a function boundary.
+// CHECK-LABEL: func.func @dtype_identity(
+// CHECK-SAME: %[[DTYPE:.*]]: !tvm_ffi.dtype) -> !tvm_ffi.dtype {
+// CHECK: return %[[DTYPE]] : !tvm_ffi.dtype
+func.func @dtype_identity(%arg0: !torchext.dtype) -> !torchext.dtype {
+  return %arg0 : !torchext.dtype
+}
+
 // List and tuple containers share the TVM FFI array representation.
 // CHECK-LABEL: func.func @container_construct(
 // CHECK-SAME: -> !tvm_ffi.array {
@@ -289,38 +298,18 @@ tvm_ffi.func @guard_operand_conversion(
 // tensor literal lowering. Dialect conversion materializes the semantic tensor
 // boundary directly, without leaving a Torch-typed cast.
 // CHECK-LABEL: func.func @literal_standalone() -> !tvm_ffi.tensor {
-// CHECK: %[[TYPE_INDEX:[a-zA-Z0-9_]+]] = llvm.mlir.constant(70 : i32) : i32
-// CHECK: %[[ANY_UNDEF:[a-zA-Z0-9_]+]] = llvm.mlir.undef : !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[ZERO_PTR:[a-zA-Z0-9_]+]] = llvm.mlir.zero : !llvm.ptr
-// CHECK: %[[FILL:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1.250000e+00 : f64) : f64
-// CHECK: %[[CUDA_DL_DEVICE:[a-zA-Z0-9_]+]] = llvm.mlir.constant(2 : i32) : i32
-// CHECK: %[[ZERO_I32:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK: %[[ONE_I64:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i64) : i64
-// CHECK: %[[RANK:[a-zA-Z0-9_]+]] = llvm.mlir.constant(2 : i64) : i64
-// CHECK: %[[DTYPE_CODE:[a-zA-Z0-9_]+]] = llvm.mlir.constant(2 : i8) : i8
-// CHECK: %[[DTYPE_BITS:[a-zA-Z0-9_]+]] = llvm.mlir.constant(32 : i8) : i8
-// CHECK: %[[DTYPE:[a-zA-Z0-9_]+]] = llvm.call @mTridentTVMFFIToTorchType(%[[DTYPE_CODE]], %[[DTYPE_BITS]]) : (i8, i8) -> i32
-// CHECK: %[[SIZES:[a-zA-Z0-9_]+]] = llvm.alloca %[[RANK]] x i64 : (i64) -> !llvm.ptr
-// CHECK: %[[CUDA_DEVICE:[a-zA-Z0-9_]+]] = llvm.call @mTridentTVMFFIDeviceToTorchDeviceType(%[[CUDA_DL_DEVICE]]) : (i32) -> i32
-// CHECK: %[[DTYPE_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca %[[ONE_I64]] x i32 : (i64) -> !llvm.ptr
-// CHECK: llvm.store %[[DTYPE]], %[[DTYPE_SLOT]] : i32, !llvm.ptr
-// CHECK: %[[DEVICE_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca %[[ONE_I64]] x i32 : (i64) -> !llvm.ptr
-// CHECK: llvm.store %[[CUDA_DEVICE]], %[[DEVICE_SLOT]] : i32, !llvm.ptr
-// CHECK: %[[DEVICE_INDEX_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca %[[ONE_I64]] x i32 : (i64) -> !llvm.ptr
-// CHECK: %[[DEVICE_STATUS:[a-zA-Z0-9_]+]] = llvm.call @aoti_torch_get_current_device_index(%[[DEVICE_INDEX_SLOT]]) : (!llvm.ptr) -> i32
-// CHECK: %[[DEVICE_INDEX:[a-zA-Z0-9_]+]] = llvm.load %[[DEVICE_INDEX_SLOT]] : !llvm.ptr -> i32
-// CHECK: %[[FULL_OUTPUT:[a-zA-Z0-9_]+]] = llvm.alloca %[[ONE_I64]] x !llvm.ptr : (i64) -> !llvm.ptr
-// CHECK: %[[FULL_STATUS:[a-zA-Z0-9_]+]] = llvm.call @aoti_torch_aten_full(%[[SIZES]], %[[RANK]], %[[FILL]], %[[DTYPE_SLOT]], %[[ZERO_PTR]], %[[DEVICE_SLOT]], %[[DEVICE_INDEX]], %[[ZERO_PTR]], %[[FULL_OUTPUT]]) : (!llvm.ptr, i64, f64, !llvm.ptr, !llvm.ptr, !llvm.ptr, i32, !llvm.ptr, !llvm.ptr) -> i32
-// CHECK: %[[TENSOR_HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[FULL_OUTPUT]] : !llvm.ptr -> !llvm.ptr
-// CHECK: %[[PACK_OUTPUT:[a-zA-Z0-9_]+]] = llvm.alloca %[[ONE_I64]] x !llvm.ptr : (i64) -> !llvm.ptr
-// CHECK: %[[PACK_STATUS:[a-zA-Z0-9_]+]] = llvm.call @mTridentTensorToTVMFFIObject(%[[TENSOR_HANDLE]], %[[PACK_OUTPUT]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[PACK_OUTPUT]] : !llvm.ptr -> !llvm.ptr
-// CHECK: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.ptrtoint %[[HANDLE]] : !llvm.ptr to i64
-// CHECK: %[[ANY_WITH_TYPE:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[TYPE_INDEX]], %[[ANY_UNDEF]][0] : !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[ANY_WITH_FLAGS:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[ZERO_I32]], %[[ANY_WITH_TYPE]][1] : !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[ANY:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[PAYLOAD]], %[[ANY_WITH_FLAGS]][2] : !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[TENSOR:[a-zA-Z0-9_]+]] = builtin.unrealized_conversion_cast %[[ANY]] : !llvm.struct<(i32, i32, i64)> to !tvm_ffi.tensor
-// CHECK-NEXT: return %[[TENSOR]] : !tvm_ffi.tensor
+// CHECK-DAG: llvm.mlir.addressof @__trident_constant_trident.runtime.tensor_to_tvm_ffi_object_trident.runtime.tensor_to_tvm_ffi_object : !llvm.ptr
+// CHECK-DAG: llvm.mlir.addressof @__trident_constant_trident.runtime.tvm_ffi_to_torch_type_trident.runtime.tvm_ffi_to_torch_type : !llvm.ptr
+// CHECK-DAG: llvm.mlir.addressof @__trident_constant_trident.runtime.tvm_ffi_device_to_torch_device_type_trident.runtime.tvm_ffi_device_to_torch_device_type : !llvm.ptr
+// CHECK-DAG: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK-DAG: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK-DAG: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK-DAG: llvm.call @TVMFFIFunctionCall
+// CHECK-DAG: llvm.call @TVMFFIFunctionCall
+// CHECK-DAG: llvm.call @TVMFFIFunctionCall
+// CHECK: llvm.load {{.*}} : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: builtin.unrealized_conversion_cast {{.*}} : !llvm.struct<(i32, i32, i64)> to !tvm_ffi.tensor
+// CHECK: return {{.*}} : !tvm_ffi.tensor
 func.func @literal_standalone() -> !torch.vtensor<[2,3],f32> {
   %literal = torch.vtensor.literal(
       dense<1.250000e+00> : tensor<2x3xf32>)

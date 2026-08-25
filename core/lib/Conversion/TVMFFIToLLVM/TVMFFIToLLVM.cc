@@ -38,7 +38,6 @@
 #include "trident/core/Conversion/Utils/Type.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
-#include "trident/core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
 #include "tvm/ffi/c_api.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -189,6 +188,23 @@ public:
                                                     : IntType::getTypeIndex();
       payload =
           mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, attr.getInt());
+    } else if (mlir::ArrayAttr attr =
+                   mlir::dyn_cast<mlir::ArrayAttr>(op.getValue());
+               attr && mlir::isa<DTypeType>(resultType)) {
+      if (attr.size() != 3 || !llvm::all_of(attr, [](mlir::Attribute value) {
+            return mlir::isa<mlir::IntegerAttr>(value);
+          })) {
+        return op.emitError("dtype constant requires [code, bits, lanes]");
+      }
+      const int64_t code =
+          mlir::cast<mlir::IntegerAttr>(attr[0]).getInt() & 0xff;
+      const int64_t bits =
+          mlir::cast<mlir::IntegerAttr>(attr[1]).getInt() & 0xff;
+      const int64_t lanes =
+          mlir::cast<mlir::IntegerAttr>(attr[2]).getInt() & 0xffff;
+      const int64_t packed = code | (bits << 8) | (lanes << 16);
+      typeIndex = DTypeType::getTypeIndex();
+      payload = mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, packed);
     } else if (mlir::StringAttr attr =
                    mlir::dyn_cast<mlir::StringAttr>(op.getValue());
                attr && mlir::isa<DeviceType>(resultType)) {
@@ -561,18 +577,19 @@ public:
     mlir::Value dtypePtr =
         mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, tensorTy, tensor,
                                   llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 3});
-    llvm::SmallVector<mlir::Type, 3> fieldTypes = {
-        rewriter.getI8Type(), rewriter.getI8Type(), rewriter.getI16Type()};
-    llvm::SmallVector<mlir::Value> values = llvm::map_to_vector(
-        llvm::enumerate(fieldTypes), [&](auto indexedType) -> mlir::Value {
-          auto [index, type] = indexedType;
-          mlir::Value fieldPtr =
-              mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, dtypeTy, dtypePtr,
-                                        llvm::ArrayRef<mlir::LLVM::GEPArg>{
-                                            0, static_cast<int64_t>(index)});
-          return mlir::LLVM::LoadOp::create(rewriter, loc, type, fieldPtr);
-        });
-    rewriter.replaceOp(op, values);
+    mlir::Value code = mlir::LLVM::LoadOp::create(
+        rewriter, loc, rewriter.getI8Type(),
+        mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, dtypeTy, dtypePtr,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0}));
+    mlir::Value bits = mlir::LLVM::LoadOp::create(
+        rewriter, loc, rewriter.getI8Type(),
+        mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, dtypeTy, dtypePtr,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 1}));
+    mlir::Value lanes = mlir::LLVM::LoadOp::create(
+        rewriter, loc, rewriter.getI16Type(),
+        mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, dtypeTy, dtypePtr,
+                                  llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
+    rewriter.replaceOp(op, mlir::ValueRange{code, bits, lanes});
     return mlir::success();
   }
 };
@@ -643,7 +660,6 @@ public:
     mlir::LLVMTypeConverter typeConverter(&context);
     mlir::RewritePatternSet patterns(&context);
 
-    torch::setupBackendTypeConversion(target, typeConverter);
     populateTVMFFIToLLVMConversionPatterns(target, typeConverter, patterns);
     mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
         patterns, typeConverter);
@@ -689,7 +705,6 @@ struct TVMFFIToLLVMDialectInterface
   void populateConvertToLLVMConversionPatterns(
       mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
       mlir::RewritePatternSet &patterns) const final {
-    torch::setupBackendTypeConversion(target, typeConverter);
     populateTVMFFIToLLVMConversionPatterns(target, typeConverter, patterns);
   }
 };
@@ -700,8 +715,9 @@ void populateTVMFFIToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns) {
   typeConverter.addConversion([](mlir::Type type) -> std::optional<mlir::Type> {
-    if (mlir::isa<AnyType, ArrayType, BoolType, DeviceType, ExceptionType,
-                  FloatType, IntType, NoneType, TensorType>(type)) {
+    if (mlir::isa<AnyType, ArrayType, BoolType, DeviceType, DTypeType,
+                  ExceptionType, FloatType, IntType, NoneType, TensorType>(
+            type)) {
       return trident::conversion::utils::getTVMFFIAnyType(type.getContext());
     } else if (mlir::isa<FunctionType>(type)) {
       return mlir::LLVM::LLVMPointerType::get(type.getContext());

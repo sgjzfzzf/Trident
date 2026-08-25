@@ -1,11 +1,11 @@
 add_mlir_conversion_library(
-  TorchExtToGPU
-  TorchExtToGPU.cc
+  TorchExtToTVMFFI
+  TorchExtToTVMFFI.cc
   DEPENDS
   MLIRConversionPassIncGen
   LINK_LIBS
   PUBLIC
   TorchExtDialect
   TVMFFIDialect
-  MLIRGPUDialect
+  MLIRFuncDialect
   MLIRPass)

@@ -14,7 +14,6 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.h"
-#include "trident/core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
 
 namespace trident::torch {
 
@@ -27,9 +26,8 @@ namespace {
 ///
 /// Each of these ops converts between a Torch dialect type and a builtin/LLVM
 /// type (e.g. !torch.bool <-> i1, !torch.int <-> i64, !torch.float <-> f64,
-/// !torch.vtensor <-> tensor).  Since setupBackendTypeConversion maps the
-/// Torch side to the identical builtin/LLVM type, the adapted operand and
-/// result types match and the op can be replaced by its operand directly.
+/// !torch.vtensor <-> tensor). The adapted operand and result types match and
+/// the op can be replaced by its operand directly.
 template <typename OpType>
 class ConvertDirectOp : public mlir::OpConversionPattern<OpType> {
 public:
@@ -52,8 +50,6 @@ public:
     mlir::LLVMTypeConverter typeConverter(&context);
     mlir::ConversionTarget target(context);
     mlir::RewritePatternSet patterns(&context);
-
-    setupBackendTypeConversion(target, typeConverter);
 
     // Let tensor types pass through unchanged; a full tensor->memref->LLVM
     // pipeline is needed to lower them further.
@@ -91,7 +87,6 @@ struct TorchConversionToLLVMDialectInterface
 void populateTorchConversionToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns) {
-  setupBackendTypeConversion(target, typeConverter);
 
   // Order matches TorchConversionOps.td.
   patterns

@@ -6,7 +6,11 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: trident-core-opt %s -split-input-file | FileCheck %s --check-prefix=DIALECT
-// RUN: sed -n '/^\/\/ BEGIN-GUARD-LOWERING/,$p' %s | trident-core-opt -split-input-file -convert-tvm-ffi-to-func -convert-scf-to-cf -convert-tvm-ffi-to-llvm -convert-arith-to-llvm -convert-cf-to-llvm -convert-func-to-llvm | FileCheck %s --check-prefix=LOWER
+// RUN: sed -n '/^\/\/ BEGIN-GUARD-LOWERING/,$p' %s | trident-core-opt -split-input-file --trident-lowering-pipeline | FileCheck %s --check-prefix=STRICT-LOWER
+
+// STRICT-LOWER-NOT: !torch.
+// STRICT-LOWER: llvm.func @tensor_guard(
+// STRICT-LOWER: llvm.func @scalar_guard(
 
 // DIALECT-LABEL: tvm_ffi.func @test() {
 // DIALECT-NEXT:    tvm_ffi.return

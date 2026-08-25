@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s --convert-torchext-to-gpu -split-input-file | FileCheck %s
+// RUN: trident-core-opt %s --convert-torch-to-tvm-ffi --convert-tvm-ffi-to-func --convert-tvm-ffi-to-llvm --convert-torchext-to-gpu -split-input-file | FileCheck %s
 
 // CHECK-LABEL: module attributes {gpu.container_module}
 // CHECK:      llvm.func @TVMFFIEnvGetStream(i32, i32) -> !llvm.ptr
@@ -16,21 +16,18 @@
 // CHECK-NEXT:     gpu.return
 // CHECK-NEXT:   }
 // CHECK:      func.func @test_kernel_launch
-// CHECK-SAME: %[[TENS_ARG:.*]]: !torch.vtensor<[4],f32>
-// CHECK-SAME: %[[SCAL_ARG:.*]]: !torch.int
-// CHECK:      %[[SCALAR_ANY:.*]] = builtin.unrealized_conversion_cast %[[SCAL_ARG]] : !torch.int to !llvm.struct<(i32, i32, i64)>
-// CHECK:      %[[TENSOR_ANY:.*]] = builtin.unrealized_conversion_cast %[[TENS_ARG]] : !torch.vtensor<[4],f32> to !llvm.struct<(i32, i32, i64)>
+// CHECK-SAME: %[[TENS_ARG:.*]]: !llvm.struct<(i32, i32, i64)>, %[[SCAL_ARG:.*]]: !llvm.struct<(i32, i32, i64)>
 // CHECK:      %[[C32:.*]] = llvm.mlir.constant(32 : i64) : i64
 // CHECK:      %[[C16:.*]] = llvm.mlir.constant(16 : i64) : i64
 // CHECK:      %[[C128:.*]] = llvm.mlir.constant(128 : i64) : i64
 // CHECK:      %[[C1:.*]] = llvm.mlir.constant(1 : i64) : i64
 // CHECK:      %[[SHMEM:.*]] = llvm.mlir.constant(16384 : i32) : i32
-// CHECK:      %[[HANDLE_I64:.*]] = llvm.extractvalue %[[TENSOR_ANY]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK:      %[[HANDLE_I64:.*]] = llvm.extractvalue %[[TENS_ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK:      %[[HANDLE:.*]] = llvm.inttoptr %[[HANDLE_I64]] : i64 to !llvm.ptr
 // CHECK:      %[[DLTENSOR_PTR:.*]] = llvm.getelementptr %[[HANDLE]]{{\[}}24] : (!llvm.ptr) -> !llvm.ptr, i8
 // CHECK:      %[[DATA_GEP:.*]] = llvm.getelementptr %[[DLTENSOR_PTR]]{{\[}}0, 0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
 // CHECK:      %[[DATA_PTR:.*]] = llvm.load %[[DATA_GEP]] : !llvm.ptr -> !llvm.ptr
-// CHECK:      %[[SCALAR_PLD:.*]] = llvm.extractvalue %[[SCALAR_ANY]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK:      %[[SCALAR_PLD:.*]] = llvm.extractvalue %[[SCAL_ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK:      %[[ONE:.*]] = llvm.mlir.constant(1 : i64) : i64
 // CHECK:      %[[DEV_IDX_SLOT:.*]] = llvm.alloca %[[ONE]] x i32 : (i64) -> !llvm.ptr
 // CHECK:      llvm.call @aoti_torch_get_current_device_index(%[[DEV_IDX_SLOT]]) : (!llvm.ptr) -> i32
@@ -73,9 +70,8 @@ module attributes { gpu.container_module } {
 // -----
 // Test cast: !torch.float -> f32 (extractvalue + bitcast + fptrunc)
 // CHECK-LABEL: func.func @cast_float_to_f32
-// CHECK-SAME:  %[[ARG:.*]]: !torch.float
-// CHECK:       %[[ANY:.*]] = builtin.unrealized_conversion_cast %[[ARG]] : !torch.float to !llvm.struct<(i32, i32, i64)>
-// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ANY]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK-SAME:  %[[ARG:.*]]: !llvm.struct<(i32, i32, i64)>
+// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK:       %[[F64:.*]] = llvm.bitcast %[[PLD]] : i64 to f64
 // CHECK:       llvm.fptrunc %[[F64]] : f64 to f32
 // CHECK-NOT:   torchext.cast
@@ -87,9 +83,8 @@ func.func @cast_float_to_f32(%arg0: !torch.float) -> f32 {
 // -----
 // Test cast: !torch.float -> f64 (extractvalue + bitcast, no fptrunc)
 // CHECK-LABEL: func.func @cast_float_to_f64
-// CHECK-SAME:  %[[ARG:.*]]: !torch.float
-// CHECK:       %[[ANY:.*]] = builtin.unrealized_conversion_cast %[[ARG]] : !torch.float to !llvm.struct<(i32, i32, i64)>
-// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ANY]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK-SAME:  %[[ARG:.*]]: !llvm.struct<(i32, i32, i64)>
+// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK:       %[[BC:.*]] = llvm.bitcast %[[PLD]] : i64 to f64
 // CHECK-NOT:   llvm.fptrunc
 // CHECK-NOT:   torchext.cast
@@ -102,9 +97,8 @@ func.func @cast_float_to_f64(%arg0: !torch.float) -> f64 {
 // -----
 // Test cast: !torch.int -> i32 (extractvalue + trunc)
 // CHECK-LABEL: func.func @cast_int_to_i32
-// CHECK-SAME:  %[[ARG:.*]]: !torch.int
-// CHECK:       %[[ANY:.*]] = builtin.unrealized_conversion_cast %[[ARG]] : !torch.int to !llvm.struct<(i32, i32, i64)>
-// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ANY]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK-SAME:  %[[ARG:.*]]: !llvm.struct<(i32, i32, i64)>
+// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK:       llvm.trunc %[[PLD]] : i64 to i32
 // CHECK-NOT:   torchext.cast
 func.func @cast_int_to_i32(%arg0: !torch.int) -> i32 {
@@ -115,9 +109,8 @@ func.func @cast_int_to_i32(%arg0: !torch.int) -> i32 {
 // -----
 // Test cast: !torch.int -> i64 (extractvalue, no trunc)
 // CHECK-LABEL: func.func @cast_int_to_i64
-// CHECK-SAME:  %[[ARG:.*]]: !torch.int
-// CHECK:       %[[ANY:.*]] = builtin.unrealized_conversion_cast %[[ARG]] : !torch.int to !llvm.struct<(i32, i32, i64)>
-// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ANY]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK-SAME:  %[[ARG:.*]]: !llvm.struct<(i32, i32, i64)>
+// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK-NOT:   llvm.trunc
 // CHECK-NOT:   torchext.cast
 // CHECK:       return %[[PLD]] : i64
@@ -129,9 +122,8 @@ func.func @cast_int_to_i64(%arg0: !torch.int) -> i64 {
 // -----
 // Test cast: !torch.int -> i1 (extractvalue + trunc)
 // CHECK-LABEL: func.func @cast_int_to_i1
-// CHECK-SAME:  %[[ARG:.*]]: !torch.int
-// CHECK:       %[[ANY:.*]] = builtin.unrealized_conversion_cast %[[ARG]] : !torch.int to !llvm.struct<(i32, i32, i64)>
-// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ANY]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK-SAME:  %[[ARG:.*]]: !llvm.struct<(i32, i32, i64)>
+// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK:       llvm.trunc %[[PLD]] : i64 to i1
 // CHECK-NOT:   torchext.cast
 func.func @cast_int_to_i1(%arg0: !torch.int) -> i1 {
@@ -142,9 +134,8 @@ func.func @cast_int_to_i1(%arg0: !torch.int) -> i1 {
 // -----
 // Test cast: !torch.int -> i8 (extractvalue + trunc)
 // CHECK-LABEL: func.func @cast_int_to_i8
-// CHECK-SAME:  %[[ARG:.*]]: !torch.int
-// CHECK:       %[[ANY:.*]] = builtin.unrealized_conversion_cast %[[ARG]] : !torch.int to !llvm.struct<(i32, i32, i64)>
-// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ANY]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK-SAME:  %[[ARG:.*]]: !llvm.struct<(i32, i32, i64)>
+// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK:       llvm.trunc %[[PLD]] : i64 to i8
 // CHECK-NOT:   torchext.cast
 func.func @cast_int_to_i8(%arg0: !torch.int) -> i8 {
@@ -155,9 +146,8 @@ func.func @cast_int_to_i8(%arg0: !torch.int) -> i8 {
 // -----
 // Test cast: !torch.int -> i16 (extractvalue + trunc)
 // CHECK-LABEL: func.func @cast_int_to_i16
-// CHECK-SAME:  %[[ARG:.*]]: !torch.int
-// CHECK:       %[[ANY:.*]] = builtin.unrealized_conversion_cast %[[ARG]] : !torch.int to !llvm.struct<(i32, i32, i64)>
-// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ANY]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK-SAME:  %[[ARG:.*]]: !llvm.struct<(i32, i32, i64)>
+// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK:       llvm.trunc %[[PLD]] : i64 to i16
 // CHECK-NOT:   torchext.cast
 func.func @cast_int_to_i16(%arg0: !torch.int) -> i16 {
@@ -168,9 +158,8 @@ func.func @cast_int_to_i16(%arg0: !torch.int) -> i16 {
 // -----
 // Test cast: !torch.int -> si32 (trunc to signless, then cast)
 // CHECK-LABEL: func.func @cast_int_to_si32
-// CHECK-SAME:  %[[ARG:.*]]: !torch.int
-// CHECK:       %[[ANY:.*]] = builtin.unrealized_conversion_cast %[[ARG]] : !torch.int to !llvm.struct<(i32, i32, i64)>
-// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ANY]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK-SAME:  %[[ARG:.*]]: !llvm.struct<(i32, i32, i64)>
+// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK:       %[[TRUNC:.*]] = llvm.trunc %[[PLD]] : i64 to i32
 // CHECK:       builtin.unrealized_conversion_cast %[[TRUNC]] : i32 to si32
 // CHECK-NOT:   torchext.cast
@@ -182,9 +171,8 @@ func.func @cast_int_to_si32(%arg0: !torch.int) -> si32 {
 // -----
 // Test cast: !torch.int -> ui32 (trunc to signless, then cast)
 // CHECK-LABEL: func.func @cast_int_to_ui32
-// CHECK-SAME:  %[[ARG:.*]]: !torch.int
-// CHECK:       %[[ANY:.*]] = builtin.unrealized_conversion_cast %[[ARG]] : !torch.int to !llvm.struct<(i32, i32, i64)>
-// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ANY]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK-SAME:  %[[ARG:.*]]: !llvm.struct<(i32, i32, i64)>
+// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK:       %[[TRUNC:.*]] = llvm.trunc %[[PLD]] : i64 to i32
 // CHECK:       builtin.unrealized_conversion_cast %[[TRUNC]] : i32 to ui32
 // CHECK-NOT:   torchext.cast
@@ -196,9 +184,8 @@ func.func @cast_int_to_ui32(%arg0: !torch.int) -> ui32 {
 // -----
 // Test cast: !torch.int -> si64 (no trunc needed, just cast)
 // CHECK-LABEL: func.func @cast_int_to_si64
-// CHECK-SAME:  %[[ARG:.*]]: !torch.int
-// CHECK:       %[[ANY:.*]] = builtin.unrealized_conversion_cast %[[ARG]] : !torch.int to !llvm.struct<(i32, i32, i64)>
-// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ANY]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK-SAME:  %[[ARG:.*]]: !llvm.struct<(i32, i32, i64)>
+// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK:       builtin.unrealized_conversion_cast %[[PLD]] : i64 to si64
 // CHECK-NOT:   torchext.cast
 func.func @cast_int_to_si64(%arg0: !torch.int) -> si64 {
@@ -209,9 +196,8 @@ func.func @cast_int_to_si64(%arg0: !torch.int) -> si64 {
 // -----
 // Test cast: !torch.int -> ui64 (no trunc needed, just cast)
 // CHECK-LABEL: func.func @cast_int_to_ui64
-// CHECK-SAME:  %[[ARG:.*]]: !torch.int
-// CHECK:       %[[ANY:.*]] = builtin.unrealized_conversion_cast %[[ARG]] : !torch.int to !llvm.struct<(i32, i32, i64)>
-// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ANY]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK-SAME:  %[[ARG:.*]]: !llvm.struct<(i32, i32, i64)>
+// CHECK:       %[[PLD:.*]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK:       builtin.unrealized_conversion_cast %[[PLD]] : i64 to ui64
 // CHECK-NOT:   torchext.cast
 func.func @cast_int_to_ui64(%arg0: !torch.int) -> ui64 {

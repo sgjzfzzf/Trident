@@ -20,6 +20,8 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.cpp.inc"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 #define GET_TYPEDEF_CLASSES
@@ -142,6 +144,16 @@ mlir::LogicalResult ConstantOp::verify() {
   } else if (mlir::isa<IntType>(type) &&
              !mlir::isa<mlir::IntegerAttr>(getValue())) {
     return emitOpError("int result requires an IntegerAttr");
+  } else if (mlir::isa<DTypeType>(type)) {
+    if (mlir::ArrayAttr values = mlir::dyn_cast<mlir::ArrayAttr>(getValue());
+        values && values.size() == 3 &&
+        llvm::all_of(values, [](mlir::Attribute value) {
+          return mlir::isa<mlir::IntegerAttr>(value);
+        })) {
+      return mlir::success();
+    } else {
+      return emitOpError("dtype result requires [code, bits, lanes]");
+    }
   } else if (mlir::isa<FloatType>(type) &&
              !mlir::isa<mlir::FloatAttr>(getValue())) {
     return emitOpError("float result requires a FloatAttr");
@@ -157,7 +169,9 @@ mlir::LogicalResult ConstantOp::verify() {
 
 mlir::LogicalResult ArrayGetItemOp::verify() {
   mlir::Type base = getArray().getType();
-  if (!mlir::isa<ArrayType>(base)) {
+  if (!mlir::isa<ArrayType, mlir::torch::Torch::AnyType,
+                 mlir::torch::Torch::ListType, mlir::torch::Torch::TupleType>(
+          base)) {
     return emitOpError("array operand must be !tvm_ffi.array");
   } else if (!getElementType()) {
     return emitOpError("array element type must be specified");

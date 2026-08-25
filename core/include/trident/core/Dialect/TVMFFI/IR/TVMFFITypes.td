@@ -13,6 +13,7 @@
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/CommonTypeConstraints.td"
 include "torch-mlir/Dialect/Torch/IR/TorchTypes.td"
+include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIBase.td"
 
 def TVMFFI_AnyABI : NativeTypeTrait<"AnyABI">;
@@ -39,6 +40,8 @@ def TVMFFI_BoolType
     : TVMFFIABI_Type<"Bool", "bool", 2>;
 def TVMFFI_DeviceType
     : TVMFFIABI_Type<"Device", "device", 6>;
+def TVMFFI_DTypeType
+    : TVMFFIABI_Type<"DType", "dtype", 5>;
 def TVMFFI_ExceptionType
     : TVMFFIABI_Type<"Exception", "exception", 67,
                      [TVMFFI_Object]>;
@@ -56,11 +59,12 @@ def TVMFFI_TensorType
 
 def AnyTVMFFIAnyABIType : AnyTypeOf<[
   TVMFFI_AnyType, TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_DeviceType,
+  TVMFFI_DTypeType,
   TVMFFI_ExceptionType, TVMFFI_FloatType, TVMFFI_FunctionType, TVMFFI_IntType,
   TVMFFI_NoneType, TVMFFI_TensorType
 ], "TVM FFI value with a TVMFFIAny ABI representation">;
 def AnyTVMFFIAnyABIOrTorchType : AnyTypeOf<[
-  AnyTVMFFIAnyABIType, AnyTorchType
+  AnyTVMFFIAnyABIType, AnyTorchType, TorchExt_DTypeType
 ], "TVM FFI ABI value or a Torch frontend value">;
 def AnyTVMFFIArrayOrTorchType : AnyTypeOf<[
   TVMFFI_ArrayType, AnyTorchListType, Torch_TupleType, Torch_AnyType
@@ -70,8 +74,9 @@ def AnyTVMFFIObjectOrAnyType : AnyTypeOf<[
   TVMFFI_FunctionType, TVMFFI_TensorType, AnyTorchTensorType
 ], "TVM FFI object value or !tvm_ffi.any">;
 def AnyTVMFFISemanticType : AnyTypeOf<[
-  TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_DeviceType, TVMFFI_FloatType,
-  TVMFFI_IntType, TVMFFI_NoneType, TVMFFI_TensorType
+  TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_DeviceType, TVMFFI_DTypeType,
+  TVMFFI_FloatType,
+  TVMFFI_IntType, TVMFFI_NoneType, TVMFFI_TensorType, TorchExt_DTypeType
 ], "TVM FFI semantic value">;
 def AnyTVMFFITensorOrTorchType : AnyTypeOf<[
   TVMFFI_TensorType, AnyTorchTensorType

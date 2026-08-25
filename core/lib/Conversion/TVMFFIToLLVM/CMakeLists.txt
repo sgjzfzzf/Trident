@@ -5,7 +5,6 @@ add_mlir_conversion_library(
   MLIRConversionPassIncGen
   LINK_LIBS
   PUBLIC
-  TorchExtTransforms
   ConversionUtils
   MLIRControlFlowTransforms
   MLIRFuncDialect

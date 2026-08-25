@@ -8,8 +8,11 @@ import re
 from collections.abc import Hashable
 from typing import Any, Final, Self, override
 
+import torch
+import tvm_ffi
+
 from trident.core import ir
-from trident.core.dialects import tvm_ffi
+from trident.core.dialects import tvm_ffi as tvm_ffi_d
 
 from ..local import Local, SourceTree
 from .base import GuardCode
@@ -43,11 +46,19 @@ class ConstantCode(GuardCode):
         literal = match.group("literal")
         if match.group("operation") == "is" and literal != "None":
             return None
-        try:
-            value = ast.literal_eval(literal)
-        except (SyntaxError, ValueError, TypeError):
-            return None
-        if type(value) not in (type(None), bool, int, float):
+        if (
+            dtype_match := re.fullmatch(r"torch\.([A-Za-z_][A-Za-z0-9_]*)", literal)
+        ) is not None:
+            (dtype,) = dtype_match.groups()
+            value = getattr(torch, dtype, None)
+            if not isinstance(value, torch.dtype):
+                return None
+        else:
+            try:
+                value = ast.literal_eval(literal)
+            except (SyntaxError, ValueError, TypeError):
+                return None
+        if not isinstance(value, (type(None), bool, int, float, torch.dtype)):
             return None
         return cls(text, source, value)
 
@@ -67,6 +78,15 @@ class ConstantCode(GuardCode):
         if self.value is None:
             expected_type = "!tvm_ffi.none"
             expected_attr: ir.Attribute = ir.UnitAttr.get(context)
+        elif isinstance(self.value, torch.dtype):
+            expected_type = "!tvm_ffi.dtype"
+            dtype = tvm_ffi.convert(self.value)
+            expected_attr = ir.ArrayAttr.get(
+                [
+                    ir.IntegerAttr.get(ir.IntegerType.get_signless(64, context), value)
+                    for value in (dtype.type_code, dtype.bits, dtype.lanes)
+                ]
+            )
         elif isinstance(self.value, bool):
             expected_type = "!tvm_ffi.bool"
             expected_attr = ir.BoolAttr.get(self.value, context=context)
@@ -86,11 +106,11 @@ class ConstantCode(GuardCode):
         actual = source.resolve(tree)
         if actual is None:
             return super().build(tree, context)
-        expected = tvm_ffi.constant(
+        expected = tvm_ffi_d.constant(
             ir.Type.parse(expected_type, context=context),
             expected_attr,
         )
-        return tvm_ffi.eq(
+        return tvm_ffi_d.eq(
             ir.IntegerType.get_signless(1, context),
             actual,
             expected,

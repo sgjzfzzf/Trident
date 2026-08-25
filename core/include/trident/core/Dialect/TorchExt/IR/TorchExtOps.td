@@ -16,13 +16,33 @@ include "mlir/Interfaces/CastInterfaces.td"
 include "torch-mlir/Dialect/Torch/IR/TorchTypes.td"
 
 include "trident/core/Dialect/TorchExt/IR/TorchExtBase.td"
+include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.td"
+include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.td"
 
 class TorchExt_Op<string mnemonic, list<Trait> traits = []>
     : Op<TorchExt_Dialect, mnemonic, traits>;
 
-//===----------------------------------------------------------------------===//
-// Cast
-//===----------------------------------------------------------------------===//
+def TorchExt_CastOperandType : AnyTypeOf<[
+  Torch_FloatType,
+  Torch_IntType,
+  TVMFFI_FloatType,
+  TVMFFI_IntType
+], "Torch scalar accepted by torchext.cast">;
+
+def TorchExt_CastResultType : AnyTypeOf<[
+  AnyFloat,
+  AnyInteger
+], "Native scalar produced by torchext.cast">;
+
+def TorchExt_KernelOperandType : AnyTypeOf<[
+  AnyFloat,
+  AnyInteger,
+  AnyTorchType,
+  TVMFFI_BoolType,
+  TVMFFI_FloatType,
+  TVMFFI_IntType,
+  TVMFFI_TensorType
+], "Operand accepted by a Trident kernel launch">;
 
 def TorchExt_CastOp
     : TorchExt_Op<"cast", [Pure, DeclareOpInterfaceMethods<CastOpInterface>]> {
@@ -41,8 +61,8 @@ def TorchExt_CastOp
     ```
   }];
 
-  let arguments = (ins AnyType:$operand);
-  let results = (outs AnyType:$result);
+  let arguments = (ins TorchExt_CastOperandType:$operand);
+  let results = (outs TorchExt_CastResultType:$result);
   let hasVerifier = 1;
 
   let assemblyFormat = [{
@@ -50,11 +70,27 @@ def TorchExt_CastOp
   }];
 }
 
-//===----------------------------------------------------------------------===//
-// Triton kernel launch
-//===----------------------------------------------------------------------===//
+def TorchExt_ConvertOp
+    : TorchExt_Op<"convert", [Pure]> {
+  let summary = "Convert a wrapper dtype to a Torch ScalarType integer";
+  let description = [{
+    Converts a `!torchext.dtype` wrapper value to `!torch.int` for calling
+    native TorchMLIR Aten operations.  The operation is lowered through the
+    TVM FFI DLPack dtype representation and the Trident runtime conversion
+    helper.
+  }];
 
-def TorchExt_TridentKernelLaunchOp : TorchExt_Op<"trident_kernel_launch", [
+  let arguments = (ins TorchExt_DTypeType:$operand);
+  let results = (outs Torch_IntType:$result);
+  let hasVerifier = 1;
+
+  let assemblyFormat = [{
+    $operand attr-dict `:` type($operand) `->` type($result)
+  }];
+}
+
+def TorchExt_TridentKernelLaunchOp
+    : TorchExt_Op<"trident_kernel_launch", [
   AttrSizedOperandSegments, AllTypesMatch<[
     "gridSizeX", "gridSizeY", "gridSizeZ", "blockSizeX", "blockSizeY",
     "blockSizeZ"
@@ -84,7 +120,7 @@ let arguments = (ins SymbolRefAttr:$kernel,
                    Optional<I64>:$clusterSizeY,
                    Optional<I64>:$clusterSizeZ,
                    Optional<I32>:$dynamicSharedMemorySize,
-                   Variadic<AnyType>:$kernelOperands);
+                   Variadic<TorchExt_KernelOperandType>:$kernelOperands);
 let results = (outs);
 
 let extraClassDeclaration = [{

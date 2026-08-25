@@ -23,6 +23,7 @@ from trident.core.dialects import (
     func,
     llvm,
     scf,
+    torchext,
     transform,
 )
 from trident.core.dialects import (
@@ -213,7 +214,6 @@ class TridentGraphModule:
     # ------------------------------------------------------------------ #
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-
         for _ in range(self._max_compiles):
             result = self.executor(*args, **kwargs)
             if isinstance(result, Exception):
@@ -339,6 +339,13 @@ class TridentGraphModule:
         bound.apply_defaults()
         signature_names: list[str] = [*signature.parameters]
         flat_types: Sequence[ir.Type] = main_func.type.inputs
+        flat_value_is_dtype: list[bool] = [
+            isinstance(value, torch.dtype)
+            for value in pytree.tree_leaves((args, kwargs))
+        ]
+
+        with ctx:
+            dtype_type = ir.Type.parse("!torchext.dtype", context=ctx)
 
         in_spec: pytree.TreeSpec | None = getattr(gm, "_in_spec", None)
         assert isinstance(in_spec, pytree.TreeSpec), (
@@ -381,7 +388,12 @@ class TridentGraphModule:
             """Build static pytree metadata and assign flat leaf indices."""
             if node.is_leaf():
                 index, ty = next(leaf_iter)
-                return _InputTreeNode(ty, leaf_index=index)
+                return _InputTreeNode(
+                    dtype_type
+                    if index < len(flat_value_is_dtype) and flat_value_is_dtype[index]
+                    else ty,
+                    leaf_index=index,
+                )
             else:
                 assert node.type is not dict, (
                     f"dict parameters (path step {name!r}) are not yet "
@@ -390,6 +402,9 @@ class TridentGraphModule:
                 children: list[_InputTreeNode] = [
                     build_tree(child, name) for child in node.children()
                 ]
+                assert not children or not all(
+                    child.type == dtype_type for child in children
+                ), "containers of multiple torch.dtype values are not supported"
                 return _InputTreeNode(_any_type(ctx), children=children)
 
         provided_entries: dict[str, _InputTreeNode] = {
@@ -406,7 +421,11 @@ class TridentGraphModule:
             else _InputTreeNode(
                 _any_type(ctx)
                 if isinstance(bound.arguments[name], (list, tuple))
-                else importer._cc.value_info_to_type(bound.arguments[name])
+                else (
+                    dtype_type
+                    if isinstance(bound.arguments[name], torch.dtype)
+                    else importer._cc.value_info_to_type(bound.arguments[name])
+                )
             )
             for name in signature_names
         ]
@@ -452,8 +471,12 @@ class TridentGraphModule:
                         f"got {len(main_args_by_index)}, expected {len(flat_types)}"
                     )
                     main_args: list[ir.Value] = [
-                        main_args_by_index[leaf_index]
-                        for leaf_index in range(len(flat_types))
+                        torchext.convert(flat_type, main_arg)
+                        if main_arg.type == dtype_type
+                        else main_arg
+                        for flat_type, main_arg in zip(
+                            flat_types, main_args_by_index.values(), strict=True
+                        )
                     ]
                     call_result: ir.Value | Sequence[ir.Value] = func.call(
                         main_func.type.results,

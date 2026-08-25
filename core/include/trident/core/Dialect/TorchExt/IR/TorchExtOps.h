@@ -13,6 +13,8 @@
 #include "mlir/Interfaces/CastInterfaces.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 
 #define GET_OP_CLASSES
 #include "trident/core/Dialect/TorchExt/IR/TorchExt.h.inc"

@@ -12,6 +12,7 @@ add_mlir_conversion_library(
   MLIRPass
   MLIRSCFToControlFlow
   TorchExtToGPU
+  TorchExtToTVMFFI
   TorchToCf
   TorchToTVMFFI
   TVMFFIToFunc)

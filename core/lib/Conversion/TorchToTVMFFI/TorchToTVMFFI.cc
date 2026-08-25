@@ -7,6 +7,7 @@
 
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/Transforms/StructuralTypeConversions.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -21,11 +22,13 @@
 #include "torch-mlir/Dialect/Torch/IR/TorchOps.h"
 #include "trident/core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/Check.h"
-#include "trident/core/Conversion/Utils/TridentCAPIDescriptors.h"
+#include "trident/core/Conversion/Utils/TVMFFIUtils.h"
 #include "trident/core/Conversion/Utils/Type.h"
 #include "trident/core/Dialect/ArithExt/IR/ArithExtDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -60,9 +63,11 @@ public:
       mlir::MLIRContext *ctx = type.getContext();
       if (mlir::isa<tvm_ffi::AnyType, tvm_ffi::ExceptionType, tvm_ffi::BoolType,
                     tvm_ffi::IntType, tvm_ffi::FloatType, tvm_ffi::NoneType,
-                    tvm_ffi::DeviceType, tvm_ffi::ArrayType,
+                    tvm_ffi::DeviceType, tvm_ffi::DTypeType, tvm_ffi::ArrayType,
                     tvm_ffi::TensorType>(type)) {
         return type;
+      } else if (mlir::isa<trident::torchext::DTypeType>(type)) {
+        return tvm_ffi::DTypeType::get(ctx);
       } else if (mlir::isa<mlir::torch::Torch::BoolType>(type)) {
         return tvm_ffi::BoolType::get(ctx);
       } else if (mlir::isa<mlir::torch::Torch::IntType>(type)) {
@@ -86,6 +91,7 @@ public:
       }
     });
     addConversion([](mlir::IntegerType type) -> mlir::Type { return type; });
+    addConversion([](mlir::FloatType type) -> mlir::Type { return type; });
     addTargetMaterialization([](mlir::OpBuilder &builder, mlir::Type type,
                                 mlir::ValueRange inputs,
                                 mlir::Location loc) -> mlir::Value {
@@ -120,6 +126,13 @@ static void populateTerminatorRefCounts(
     }
     mlir::Type convertedType = typeConverter.convertType(value.getType());
     if (convertedType && convertedType.hasTrait<mlir::TypeTrait::Object>()) {
+      if (value.getType() != convertedType) {
+        value = typeConverter.materializeTargetConversion(builder, loc,
+                                                          convertedType, value);
+        if (!value) {
+          continue;
+        }
+      }
       // A normal func.call returns an owned semantic value. Returning it from
       // another normal func.func transfers that ownership to the caller; an
       // additional IncRef here would leak one reference at every ABI wrapper
@@ -136,9 +149,35 @@ static void populateTerminatorRefCounts(
   }
 
   for (mlir::Value value : valuesToRelease) {
-    tvm_ffi::ObjectDecRefOp::create(builder, loc, value);
+    mlir::Type convertedType = typeConverter.convertType(value.getType());
+    if (!convertedType || value.getType() == convertedType) {
+      tvm_ffi::ObjectDecRefOp::create(builder, loc, value);
+    } else {
+      mlir::Value convertedValue = typeConverter.materializeTargetConversion(
+          builder, loc, convertedType, value);
+      if (convertedValue) {
+        tvm_ffi::ObjectDecRefOp::create(builder, loc, convertedValue);
+      }
+    }
   }
 }
+
+template <typename OpType>
+class MaterializeTorchExtOperands final
+    : public mlir::OpConversionPattern<OpType> {
+public:
+  MaterializeTorchExtOperands(const TorchFFITypeConverter &typeConverter,
+                              mlir::MLIRContext *context)
+      : mlir::OpConversionPattern<OpType>(typeConverter, context) {}
+
+  mlir::LogicalResult
+  matchAndRewrite(OpType op, typename OpType::Adaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    rewriter.modifyOpInPlace(op,
+                             [&]() { op->setOperands(adaptor.getOperands()); });
+    return mlir::success();
+  }
+};
 
 template <typename TerminatorOp>
 class ConvertTerminatorOp final : public mlir::OpRewritePattern<TerminatorOp> {
@@ -417,19 +456,17 @@ public:
     } else {
       return op.emitError("unsupported literal element type");
     }
-    mlir::FailureOr<mlir::LLVM::LLVMFuncOp> dtypeFn =
-        conversion::utils::getOrCreateTVMFFIToTorchType(module);
-    if (mlir::failed(dtypeFn)) {
-      return op.emitError("failed to declare tensor dtype conversion helper");
+    mlir::Value dtypeArg = conversion::utils::buildDTypeAnySlot(
+        rewriter, op.getLoc(), dtypeCode, elementBits);
+    mlir::FailureOr<mlir::Value> dtypeResult =
+        conversion::utils::callTVMFFIGlobalFunction(
+            rewriter, op.getLoc(), module,
+            "trident.runtime.tvm_ffi_to_torch_type", {dtypeArg});
+    if (mlir::failed(dtypeResult)) {
+      return op.emitError("failed to call TVM FFI dtype conversion helper");
     }
-
-    mlir::Value dtype = mlir::LLVM::CallOp::create(
-                            rewriter, op.getLoc(), *dtypeFn,
-                            {mlir::LLVM::ConstantOp::create(
-                                 rewriter, op.getLoc(), i8Ty, dtypeCode),
-                             mlir::LLVM::ConstantOp::create(
-                                 rewriter, op.getLoc(), i8Ty, elementBits)})
-                            .getResult();
+    mlir::Value dtype = conversion::utils::loadIntFromAnySlot(
+        rewriter, op.getLoc(), *dtypeResult);
     mlir::Value rank = mlir::LLVM::ConstantOp::create(
         rewriter, op.getLoc(), i64Ty, static_cast<int64_t>(shape.size()));
     mlir::Value sizes = mlir::LLVM::AllocaOp::create(
@@ -501,6 +538,21 @@ public:
         mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i32Ty, 0);
     mlir::Value oneI64 =
         mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i64Ty, 1);
+    auto callDeviceType =
+        [&](mlir::Value deviceType) -> mlir::FailureOr<mlir::Value> {
+      mlir::Value argument =
+          conversion::utils::buildIntAnySlot(rewriter, op.getLoc(), deviceType);
+      mlir::FailureOr<mlir::Value> result =
+          conversion::utils::callTVMFFIGlobalFunction(
+              rewriter, op.getLoc(), module,
+              "trident.runtime.tvm_ffi_device_to_torch_device_type",
+              {argument});
+      if (mlir::failed(result)) {
+        return mlir::failure();
+      }
+      return conversion::utils::loadIntFromAnySlot(rewriter, op.getLoc(),
+                                                   *result);
+    };
 
     if (dense.isSplat()) {
       double fillValue;
@@ -521,12 +573,8 @@ public:
           conversion::utils::getOrCreateAOTITorchGetCurrentDeviceIndex(module));
       mlir::Value cudaDLDeviceType =
           mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i32Ty, kDLCUDA);
-      mlir::LLVM::LLVMFuncOp toDeviceFn = TRIDENT_CHECK_FAILURE(
-          conversion::utils::getOrCreateTVMFFIDeviceToTorchDeviceType(module));
       mlir::Value cudaDeviceType =
-          mlir::LLVM::CallOp::create(rewriter, op.getLoc(), toDeviceFn,
-                                     cudaDLDeviceType)
-              .getResult();
+          TRIDENT_CHECK_FAILURE(callDeviceType(cudaDLDeviceType));
       mlir::Value dtypeSlot = mlir::LLVM::AllocaOp::create(
           rewriter, op.getLoc(), ptrTy, i32Ty, oneI64);
       mlir::LLVM::StoreOp::create(rewriter, op.getLoc(), dtype, dtypeSlot);
@@ -564,20 +612,14 @@ public:
           conversion::utils::getOrCreateAOTITorchDeleteTensorObject(module));
       mlir::LLVM::LLVMFuncOp getDeviceIndexFn = TRIDENT_CHECK_FAILURE(
           conversion::utils::getOrCreateAOTITorchGetCurrentDeviceIndex(module));
-      mlir::LLVM::LLVMFuncOp toDeviceFn = TRIDENT_CHECK_FAILURE(
-          conversion::utils::getOrCreateTVMFFIDeviceToTorchDeviceType(module));
       mlir::Value cpuDLDeviceType =
           mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i32Ty, kDLCPU);
       mlir::Value cudaDLDeviceType =
           mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i32Ty, kDLCUDA);
       mlir::Value cpuDeviceType =
-          mlir::LLVM::CallOp::create(rewriter, op.getLoc(), toDeviceFn,
-                                     cpuDLDeviceType)
-              .getResult();
+          TRIDENT_CHECK_FAILURE(callDeviceType(cpuDLDeviceType));
       mlir::Value cudaDeviceType =
-          mlir::LLVM::CallOp::create(rewriter, op.getLoc(), toDeviceFn,
-                                     cudaDLDeviceType)
-              .getResult();
+          TRIDENT_CHECK_FAILURE(callDeviceType(cudaDLDeviceType));
       mlir::Value deviceIndexSlot = mlir::LLVM::AllocaOp::create(
           rewriter, op.getLoc(), ptrTy, i32Ty, oneI64);
       mlir::LLVM::CallOp::create(rewriter, op.getLoc(), getDeviceIndexFn,
@@ -606,30 +648,16 @@ public:
                                  cpuTensor);
     }
 
-    mlir::LLVM::LLVMFuncOp packFn = TRIDENT_CHECK_FAILURE(
-        conversion::utils::getOrCreateTensorToTVMFFIObject(module));
-    mlir::Value output = mlir::LLVM::AllocaOp::create(rewriter, op.getLoc(),
-                                                      ptrTy, ptrTy, oneI64);
-    mlir::LLVM::CallOp::create(rewriter, op.getLoc(), packFn,
-                               {tensorHandle, output});
-    mlir::Value handle =
-        mlir::LLVM::LoadOp::create(rewriter, op.getLoc(), ptrTy, output);
-    mlir::Value payload =
-        mlir::LLVM::PtrToIntOp::create(rewriter, op.getLoc(), i64Ty, handle);
-    mlir::Value result =
-        mlir::LLVM::UndefOp::create(rewriter, op.getLoc(), anyTy);
-    result = mlir::LLVM::InsertValueOp::create(
-        rewriter, op.getLoc(), result,
-        mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i32Ty,
-                                       tvm_ffi::TensorType::getTypeIndex()),
-        llvm::ArrayRef<int64_t>{0});
-    result = mlir::LLVM::InsertValueOp::create(
-        rewriter, op.getLoc(), result,
-        mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i32Ty, 0),
-        llvm::ArrayRef<int64_t>{1});
-    result = mlir::LLVM::InsertValueOp::create(
-        rewriter, op.getLoc(), result, payload, llvm::ArrayRef<int64_t>{2});
-    rewriter.replaceOp(op, result);
+    mlir::Value tensorArg = conversion::utils::buildOpaquePtrAnySlot(
+        rewriter, op.getLoc(), tensorHandle);
+    mlir::FailureOr<mlir::Value> resultSlot =
+        conversion::utils::callTVMFFIGlobalFunction(
+            rewriter, op.getLoc(), module,
+            "trident.runtime.tensor_to_tvm_ffi_object", {tensorArg});
+    if (mlir::failed(resultSlot)) {
+      return op.emitError("failed to call TVM FFI tensor conversion helper");
+    }
+    rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(op, anyTy, *resultSlot);
     return mlir::success();
   }
 };
@@ -756,6 +784,8 @@ class ConvertTorchToTVMFFIPass final
                    return typeConverter.isLegal(type);
                  });
         });
+    mlir::cf::populateCFStructuralTypeConversionsAndLegality(
+        typeConverter, conversionPatterns, conversionTarget);
     conversionTarget.addDynamicallyLegalOp<
         tvm_ffi::EqOp, tvm_ffi::TensorDimOp, tvm_ffi::TensorSizeOp,
         tvm_ffi::TensorStrideOp, tvm_ffi::TensorStorageOffsetOp,
@@ -768,12 +798,25 @@ class ConvertTorchToTVMFFIPass final
     });
     conversionTarget
         .addLegalOp<mlir::ModuleOp, mlir::torch::Torch::PrimIfOp,
-                    mlir::torch::Torch::PrimIfYieldOp, tvm_ffi::ReturnOp>();
+                    mlir::torch::Torch::PrimIfYieldOp, tvm_ffi::ReturnOp,
+                    trident::torchext::ConvertOp>();
     conversionTarget.addDynamicallyLegalOp<mlir::torch::Torch::OperatorOp>(
         [](mlir::torch::Torch::OperatorOp op) {
           return !op.getName().starts_with("torch.aten.");
         });
     conversionTarget.addIllegalOp<mlir::torch::Torch::ValueTensorLiteralOp>();
+    conversionTarget.addDynamicallyLegalOp<
+        trident::torchext::CastOp, trident::torchext::TridentKernelLaunchOp>(
+        [&](mlir::Operation *op) {
+          return llvm::all_of(op->getOperandTypes(), [&](mlir::Type type) {
+            mlir::Type convertedType = typeConverter.convertType(type);
+            return !convertedType || convertedType == type;
+          });
+        });
+    conversionPatterns.add<
+        MaterializeTorchExtOperands<trident::torchext::CastOp>,
+        MaterializeTorchExtOperands<trident::torchext::TridentKernelLaunchOp>>(
+        typeConverter, &getContext());
     if (mlir::failed(mlir::applyPartialConversion(
             getOperation(), conversionTarget, std::move(conversionPatterns)))) {
       signalPassFailure();

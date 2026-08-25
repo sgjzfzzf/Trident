@@ -24,7 +24,7 @@
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "trident/core/Conversion/TorchConversionToLLVM/TorchConversionToLLVM.h"
 #include "trident/core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
-#include "trident/core/Conversion/TorchExtToLLVM/TorchExtToLLVM.h"
+#include "trident/core/Conversion/TorchExtToTVMFFI/TorchExtToTVMFFI.h"
 #include "trident/core/Conversion/TorchToCf/TorchToCf.h"
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
 #include "trident/core/Dialect/ArithExt/IR/ArithExtDialect.h"
@@ -43,7 +43,6 @@ void trident::conversion::registerAllDialects(mlir::DialectRegistry &registry) {
   mlir::registerConvertFuncToLLVMInterface(registry);
   mlir::gpu::registerConvertGpuToLLVMInterface(registry);
   trident::torch::registerConvertTorchConversionToLLVMInterface(registry);
-  trident::torchext::registerConvertTorchExtToLLVMInterface(registry);
   trident::tvm_ffi::registerConvertTVMFFIToLLVMInterface(registry);
 }
 
@@ -53,7 +52,7 @@ void trident::conversion::registerAllPasses() {
   mlir::registerConvertToLLVMPass();
   trident::torch::registerConvertTorchConversionToLLVMPass();
   trident::torchext::registerConvertTorchExtToGPUPass();
-  trident::torchext::registerConvertTorchExtToLLVMPass();
+  trident::torchext::registerConvertTorchExtToTVMFFIPass();
   trident::torch::registerConvertTorchToCfPass();
   trident::torch::registerConvertTorchToTVMFFIPass();
   trident::tvm_ffi::registerConvertTVMFFIToFuncPass();

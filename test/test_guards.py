@@ -10,6 +10,7 @@ import unittest
 from dataclasses import dataclass
 from typing import Any
 
+import torch
 from torch._guards import GuardSource
 from trident.core import ir, register_all_dialects
 from trident.core.dialects import func
@@ -108,6 +109,7 @@ class GuardParserTest(unittest.TestCase):
             ("L['value'] == False", False),
             ("L['value'] == -7", -7),
             ("L['value'] == 1.5", 1.5),
+            ("L['value'] == torch.float32", torch.float32),
         )
         for text, expected in cases:
             with self.subTest(text=text):

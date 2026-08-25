@@ -35,7 +35,10 @@
 #include "tvm/ffi/container/array.h"
 #include "tvm/ffi/container/map.h"
 #include "tvm/ffi/container/tensor.h"
+#include "tvm/ffi/function.h"
 #include "tvm/ffi/type_traits.h"
+#include <optional>
+#include <stdexcept>
 #include <utility>
 
 namespace trident::runtime {
@@ -327,7 +330,20 @@ TRIDENT_RUNTIME_UNIMPL(QSchemeType);
 // --- ScalarTypeType ---
 template <> struct Value<c10::ScalarTypeType> {
   static inline c10::IValue build(const tvm::ffi::AnyView &any) {
-    return static_cast<c10::ScalarType>(any.cast<int64_t>());
+    if (std::optional<DLDataType> dtype = any.try_cast<DLDataType>()) {
+      if (dtype->lanes != 1) {
+        throw std::runtime_error("Aten dtype must have exactly one lane");
+      }
+      int32_t scalarType = tvm::ffi::Function::GetGlobalRequired(
+                               "trident.runtime.tvm_ffi_to_torch_type")(*dtype)
+                               .cast<int32_t>();
+      if (scalarType < 0) {
+        throw std::runtime_error("unsupported TVM FFI dtype");
+      }
+      return static_cast<c10::ScalarType>(scalarType);
+    } else {
+      return static_cast<c10::ScalarType>(any.cast<int64_t>());
+    }
   }
   static inline tvm::ffi::Any resolve(c10::IValue &&val) {
     return static_cast<int64_t>(val.toScalarType());

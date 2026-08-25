@@ -19,12 +19,14 @@ from trident.core.dialects import (
 from trident.core.dialects import (
     torch as torch_d,
 )
+from trident.core.extras import fx_importer
 from trident.core.extras.fx_importer import GraphNodeImporter
 
 
 class GraphNodeImporterTritonHopPatchState:
     refcount: int = 0
     original_attrs: ClassVar[dict[str, Any]] = {}
+    original_scalar_type_map: ClassVar[dict[type[Any], str] | None] = None
     _lock: Final[threading.RLock] = threading.RLock()
 
     @classmethod
@@ -43,6 +45,13 @@ class GraphNodeImporterTritonHopPatchState:
                 GraphNodeImporter._import_hop_triton_kernel_wrapper_mutation = (
                     _import_hop_triton_kernel_wrapper_mutation
                 )
+                cls.original_scalar_type_map = (
+                    fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE
+                )
+                fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE = {
+                    **cls.original_scalar_type_map,
+                    torch.dtype: "!torch.int",
+                }
                 cls.refcount = 1
 
     @classmethod
@@ -58,6 +67,9 @@ class GraphNodeImporterTritonHopPatchState:
                 delattr(GraphNodeImporter, attr_name)
             if attr_name in cls.original_attrs:
                 setattr(GraphNodeImporter, attr_name, cls.original_attrs.pop(attr_name))
+            assert cls.original_scalar_type_map is not None
+            fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE = cls.original_scalar_type_map
+            cls.original_scalar_type_map = None
 
     def __enter__(self) -> Self:
         self.apply()

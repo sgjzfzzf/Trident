@@ -18,8 +18,8 @@
 #include "trident/core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/Type.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
-#include "trident/core/Dialect/TorchExt/Transforms/BackendTypeConversion.h"
 #include "tvm/ffi/c_api.h"
 
 namespace trident::torchext {
@@ -41,9 +41,8 @@ public:
     mlir::MLIRContext *ctx = rewriter.getContext();
     mlir::Type resultType = op.getResult().getType();
 
-    // The type converter maps !torch.float / !torch.int to
-    // !llvm.struct<(i32, i32, i64)> (TVMFFIAny).  Extract the i64 payload
-    // from field[2], which holds the bitcast of the underlying value.
+    // The type converter maps TVM FFI scalar values to their LLVM Any ABI
+    // representation. Extract the i64 payload from field[2].
     mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
         rewriter, loc, adaptor.getOperand(), llvm::ArrayRef<int64_t>{2});
 
@@ -131,7 +130,7 @@ public:
     llvm::SmallVector<mlir::Value> operands;
     for (auto [orig, adapted] :
          llvm::zip(op.getKernelOperands(), adaptor.getKernelOperands())) {
-      if (mlir::isa<mlir::torch::Torch::BaseTensorType>(orig.getType())) {
+      if (mlir::isa<trident::tvm_ffi::TensorType>(orig.getType())) {
         // Extract pointer from TVMFFIAny field[2].
         mlir::Value handleInt = mlir::LLVM::ExtractValueOp::create(
             rewriter, loc, adapted, llvm::ArrayRef<int64_t>{2});
@@ -146,14 +145,14 @@ public:
             llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0});
         operands.push_back(
             mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, dataGep));
-      } else if (mlir::isa<mlir::torch::Torch::BoolType>(orig.getType())) {
+      } else if (mlir::isa<trident::tvm_ffi::BoolType>(orig.getType())) {
         // Bool: extract i64 payload and truncate to i1.
         mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
             rewriter, loc, adapted, llvm::ArrayRef<int64_t>{2});
         operands.push_back(
             mlir::LLVM::TruncOp::create(rewriter, loc, i1Ty, payload));
-      } else if (mlir::isa<mlir::torch::Torch::FloatType,
-                           mlir::torch::Torch::IntType>(orig.getType())) {
+      } else if (mlir::isa<trident::tvm_ffi::FloatType,
+                           trident::tvm_ffi::IntType>(orig.getType())) {
         // Torch scalar: extract i64 payload from TVMFFIAny field[2].
         mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
             rewriter, loc, adapted, llvm::ArrayRef<int64_t>{2});
@@ -231,11 +230,22 @@ public:
     mlir::TypeConverter typeConverter;
     mlir::RewritePatternSet patterns(&getContext());
 
-    // Identity fallback so that index and other unlisted types pass through.
-    typeConverter.addConversion([](mlir::Type type) { return type; });
-    // Reuse backend type conversion: tensors -> !llvm.ptr, int -> i64, etc.
-    // (registered after identity so specific conversions take priority).
-    torch::setupBackendTypeConversion(target, typeConverter);
+    typeConverter.addConversion([](mlir::Type type)
+                                    -> std::optional<mlir::Type> {
+      if (mlir::isa<trident::tvm_ffi::AnyType, trident::tvm_ffi::ArrayType,
+                    trident::tvm_ffi::BoolType, trident::tvm_ffi::DeviceType,
+                    trident::tvm_ffi::DTypeType,
+                    trident::tvm_ffi::ExceptionType,
+                    trident::tvm_ffi::FloatType, trident::tvm_ffi::IntType,
+                    trident::tvm_ffi::NoneType, trident::tvm_ffi::TensorType>(
+              type)) {
+        return trident::conversion::utils::getTVMFFIAnyType(type.getContext());
+      } else if (mlir::isa<mlir::IntegerType, mlir::FloatType>(type)) {
+        return type;
+      } else {
+        return std::nullopt;
+      }
+    });
 
     target.addIllegalOp<CastOp, TridentKernelLaunchOp>();
     target.addLegalDialect<mlir::gpu::GPUDialect, mlir::BuiltinDialect,

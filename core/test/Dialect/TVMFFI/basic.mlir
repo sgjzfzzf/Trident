@@ -31,6 +31,17 @@ tvm_ffi.func @with_torch_int(%arg0: !torch.int) -> !torch.int {
 
 // -----
 
+// DIALECT-LABEL: tvm_ffi.func @unordered_union(
+// DIALECT-SAME: [[VALUE:%[a-zA-Z0-9_]+]]: !tvm_ffi.union<!tvm_ffi.tensor, !tvm_ffi.int>) {
+// DIALECT-NEXT: tvm_ffi.return
+// DIALECT-NEXT: }
+tvm_ffi.func @unordered_union(
+    %value: !tvm_ffi.union<!tvm_ffi.tensor, !tvm_ffi.int>) {
+  tvm_ffi.return
+}
+
+// -----
+
 // DIALECT-LABEL: tvm_ffi.func @lifetime_types(
 // DIALECT-SAME: [[TENSOR_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.tensor,
 // DIALECT-SAME: [[ARRAY_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.array,

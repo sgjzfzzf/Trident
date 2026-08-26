@@ -75,6 +75,27 @@ func.func @constant_float() -> !torch.float {
   return %0 : !torch.float
 }
 
+// Torch strings may arrive through any of the three TVM FFI string ABI
+// representations. Literals themselves use the borrowed raw-string form.
+// CHECK-LABEL: func.func @string_identity(
+// CHECK-SAME: %[[STRING:.*]]: !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str>)
+// CHECK-SAME: -> !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str> {
+// CHECK: tvm_ffi.ObjectIncRef %[[STRING]] : !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str>
+// CHECK: return %[[STRING]] : !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str>
+func.func @string_identity(%arg0: !torch.str) -> !torch.str {
+  return %arg0 : !torch.str
+}
+
+// CHECK-LABEL: func.func @constant_string() -> !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str> {
+// CHECK: "tvm_ffi.constant"() <{value = "trident"}> : () -> !tvm_ffi.raw_str
+// CHECK: %[[STRING_FUNC:.*]] = tvm_ffi.FunctionGetGlobal "ffi.String"
+// CHECK: %[[STRING:.*]] = tvm_ffi.FunctionCall %[[STRING_FUNC]]({{.*}}) : (!tvm_ffi.raw_str) -> !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str>
+// CHECK: return %[[STRING]] : !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str>
+func.func @constant_string() -> !torch.str {
+  %0 = torch.constant.str "trident"
+  return %0 : !torch.str
+}
+
 // CHECK-LABEL: func.func @constant_bool() -> !tvm_ffi.bool {
 // CHECK: %[[BOOL:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = true}> : () -> !tvm_ffi.bool
 // CHECK: return %[[BOOL]] : !tvm_ffi.bool

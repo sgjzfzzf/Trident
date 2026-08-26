@@ -17,6 +17,8 @@
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/SmallVectorExtras.h>
+#include <llvm/ADT/TypeSwitch.h>
+#include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h> // NOLINT(misc-include-cleaner)
@@ -36,7 +38,6 @@
 #include <mlir/IR/Value.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/WalkResult.h>
-#include <optional>
 #include <string>
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
@@ -47,32 +48,62 @@ namespace trident::tvm_ffi {
 
 namespace {
 
-static std::optional<int32_t> getTVMFFITypeIndex(mlir::Type type) {
-  if (mlir::isa<BoolType, mlir::torch::Torch::BoolType>(type)) {
-    return BoolType::getTypeIndex();
-  } else if (mlir::isa<IntType, mlir::torch::Torch::IntType>(type)) {
-    return IntType::getTypeIndex();
-  } else if (mlir::isa<FloatType, mlir::torch::Torch::FloatType>(type)) {
-    return FloatType::getTypeIndex();
-  } else if (mlir::isa<NoneType, mlir::torch::Torch::NoneType>(type)) {
-    return NoneType::getTypeIndex();
-  } else if (mlir::isa<StringType, mlir::torch::Torch::StringType>(type)) {
-    return StringType::getTypeIndex();
-  } else if (mlir::isa<DeviceType, mlir::torch::Torch::DeviceType>(type)) {
-    return DeviceType::getTypeIndex();
-  } else if (mlir::isa<DTypeType, trident::torchext::DTypeType>(type)) {
-    return DTypeType::getTypeIndex();
-  } else if (mlir::isa<ArrayType, mlir::torch::Torch::ListType,
-                       mlir::torch::Torch::TupleType>(type)) {
-    return ArrayType::getTypeIndex();
-  } else if (mlir::isa<TensorType, mlir::torch::Torch::NonValueTensorType,
-                       mlir::torch::Torch::ValueTensorType>(type)) {
-    return TensorType::getTypeIndex();
-  } else if (mlir::isa<FunctionType>(type)) {
-    return FunctionType::getTypeIndex();
-  } else {
-    return std::nullopt;
+static int32_t getTVMFFITypeIndex(mlir::Type type) {
+  return llvm::TypeSwitch<mlir::Type, int32_t>(type)
+      .Case<ArrayType>([](ArrayType) { return ArrayType::getTypeIndex(); })
+      .Case<BoolType>([](BoolType) { return BoolType::getTypeIndex(); })
+      .Case<DeviceType>([](DeviceType) { return DeviceType::getTypeIndex(); })
+      .Case<DTypeType>([](DTypeType) { return DTypeType::getTypeIndex(); })
+      .Case<ExceptionType>(
+          [](ExceptionType) { return ExceptionType::getTypeIndex(); })
+      .Case<FloatType>([](FloatType) { return FloatType::getTypeIndex(); })
+      .Case<FunctionType>(
+          [](FunctionType) { return FunctionType::getTypeIndex(); })
+      .Case<IntType>([](IntType) { return IntType::getTypeIndex(); })
+      .Case<NoneType>([](NoneType) { return NoneType::getTypeIndex(); })
+      .Case<RawStrType>([](RawStrType) { return RawStrType::getTypeIndex(); })
+      .Case<SmallStrType>(
+          [](SmallStrType) { return SmallStrType::getTypeIndex(); })
+      .Case<StrType>([](StrType) { return StrType::getTypeIndex(); })
+      .Case<TensorType>([](TensorType) { return TensorType::getTypeIndex(); })
+      .Default([](mlir::Type) -> int32_t {
+        llvm_unreachable("expected a concrete TVM FFI ABI type");
+      });
+}
+
+static llvm::SmallVector<int32_t> getExpectedTypeIndices(mlir::Type type) {
+  if (const UnionType unionType = mlir::dyn_cast<UnionType>(type)) {
+    return llvm::map_to_vector(unionType.getTypes(), getTVMFFITypeIndex);
   }
+  if (mlir::isa<AnyType>(type)) {
+    return {};
+  }
+  if (type.hasTrait<mlir::TypeTrait::TVMFFIABI>()) {
+    return {getTVMFFITypeIndex(type)};
+  }
+  if (mlir::isa<mlir::torch::Torch::BoolType>(type)) {
+    return {BoolType::getTypeIndex()};
+  } else if (mlir::isa<mlir::torch::Torch::IntType>(type)) {
+    return {IntType::getTypeIndex()};
+  } else if (mlir::isa<mlir::torch::Torch::FloatType>(type)) {
+    return {FloatType::getTypeIndex()};
+  } else if (mlir::isa<mlir::torch::Torch::NoneType>(type)) {
+    return {NoneType::getTypeIndex()};
+  } else if (mlir::isa<mlir::torch::Torch::StringType>(type)) {
+    return {RawStrType::getTypeIndex(), SmallStrType::getTypeIndex(),
+            StrType::getTypeIndex()};
+  } else if (mlir::isa<mlir::torch::Torch::DeviceType>(type)) {
+    return {DeviceType::getTypeIndex()};
+  } else if (mlir::isa<trident::torchext::DTypeType>(type)) {
+    return {DTypeType::getTypeIndex()};
+  } else if (mlir::isa<mlir::torch::Torch::ListType,
+                       mlir::torch::Torch::TupleType>(type)) {
+    return {ArrayType::getTypeIndex()};
+  } else if (mlir::isa<mlir::torch::Torch::NonValueTensorType,
+                       mlir::torch::Torch::ValueTensorType>(type)) {
+    return {TensorType::getTypeIndex()};
+  }
+  return {};
 }
 
 class ConvertTVMFFIToFuncPass final
@@ -154,8 +185,9 @@ class ConvertTVMFFIToFuncPass final
             builder.getBoolAttr(true));
         for (auto [index, type] :
              llvm::enumerate(tvmffiFuncOp.getArgumentTypes())) {
-          std::optional<int32_t> expected = getTVMFFITypeIndex(type);
-          if (!expected) {
+          llvm::SmallVector<int32_t> const expected =
+              getExpectedTypeIndices(type);
+          if (expected.empty()) {
             signalPassFailure();
             return mlir::WalkResult::interrupt();
           }
@@ -171,25 +203,25 @@ class ConvertTVMFFIToFuncPass final
               builder, tvmffiFuncOp.getLoc(), i32Ty, value,
               llvm::ArrayRef<int64_t>{0});
           mlir::Value condition;
-          if (mlir::isa<StringType, mlir::torch::Torch::StringType>(type)) {
-            condition = mlir::arith::ConstantOp::create(
-                builder, tvmffiFuncOp.getLoc(), builder.getI1Type(),
-                builder.getBoolAttr(false));
-            for (int32_t stringTypeIndex : {8, 11, 65}) {
-              const mlir::Value isStringType = mlir::LLVM::ICmpOp::create(
-                  builder, tvmffiFuncOp.getLoc(), mlir::LLVM::ICmpPredicate::eq,
-                  actual,
-                  mlir::LLVM::ConstantOp::create(builder, tvmffiFuncOp.getLoc(),
-                                                 i32Ty, stringTypeIndex));
-              condition = mlir::arith::OrIOp::create(
-                  builder, tvmffiFuncOp.getLoc(), condition, isStringType);
-            }
-          } else {
+          if (expected.size() == 1) {
             condition = mlir::LLVM::ICmpOp::create(
                 builder, tvmffiFuncOp.getLoc(), mlir::LLVM::ICmpPredicate::eq,
                 actual,
                 mlir::LLVM::ConstantOp::create(builder, tvmffiFuncOp.getLoc(),
-                                               i32Ty, expected.value()));
+                                               i32Ty, expected.front()));
+          } else {
+            condition = mlir::arith::ConstantOp::create(
+                builder, tvmffiFuncOp.getLoc(), builder.getI1Type(),
+                builder.getBoolAttr(false));
+            for (const int32_t expectedIndex : expected) {
+              mlir::Value const matches = mlir::LLVM::ICmpOp::create(
+                  builder, tvmffiFuncOp.getLoc(), mlir::LLVM::ICmpPredicate::eq,
+                  actual,
+                  mlir::LLVM::ConstantOp::create(builder, tvmffiFuncOp.getLoc(),
+                                                 i32Ty, expectedIndex));
+              condition = mlir::arith::OrIOp::create(
+                  builder, tvmffiFuncOp.getLoc(), condition, matches);
+            }
           }
           allTypesMatch = mlir::arith::AndIOp::create(
               builder, tvmffiFuncOp.getLoc(), allTypesMatch, condition);

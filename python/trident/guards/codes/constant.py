@@ -103,7 +103,7 @@ class ConstantCode(GuardCode):
                 self.value,
             )
         elif isinstance(self.value, str):
-            expected_type = "!tvm_ffi.string"
+            expected_type = "!tvm_ffi.raw_str"
             expected_attr = ir.StringAttr.get(self.value, context)
 
         actual = source.resolve(tree)

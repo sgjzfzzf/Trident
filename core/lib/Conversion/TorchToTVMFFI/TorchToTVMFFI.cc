@@ -60,11 +60,20 @@ namespace {
 using OwnedValues =
     llvm::DenseMap<mlir::Region *, llvm::SmallSetVector<mlir::Value, 4>>;
 
+static tvm_ffi::UnionType getStringUnionType(mlir::MLIRContext *context) {
+  llvm::SmallVector<mlir::Type> const stringTypes = {
+      tvm_ffi::RawStrType::get(context), tvm_ffi::SmallStrType::get(context),
+      tvm_ffi::StrType::get(context)};
+  return tvm_ffi::UnionType::get(context, stringTypes);
+}
+
 static void recordOwnedObjectResults(mlir::Operation *operation,
                                      mlir::ValueRange results,
                                      OwnedValues &ownedValues) {
   for (mlir::Value const result : results) {
-    if (result.getType().hasTrait<mlir::TypeTrait::Object>()) {
+    if (mlir::Type type = result.getType();
+        mlir::isa<tvm_ffi::AnyType, tvm_ffi::UnionType>(type) ||
+        type.hasTrait<mlir::TypeTrait::Object>()) {
       ownedValues[operation->getParentRegion()].insert(result);
     }
   }
@@ -78,11 +87,7 @@ public:
   TorchFFITypeConverter() {
     addConversion([](mlir::Type type) -> std::optional<mlir::Type> {
       mlir::MLIRContext *ctx = type.getContext();
-      if (mlir::isa<tvm_ffi::AnyType, tvm_ffi::ExceptionType, tvm_ffi::BoolType,
-                    tvm_ffi::IntType, tvm_ffi::FloatType, tvm_ffi::NoneType,
-                    tvm_ffi::StringType, tvm_ffi::DeviceType,
-                    tvm_ffi::DTypeType, tvm_ffi::ArrayType,
-                    tvm_ffi::TensorType>(type)) {
+      if (type.hasTrait<mlir::TypeTrait::TVMFFIABI>()) {
         return type;
       } else if (mlir::isa<trident::torchext::DTypeType>(type)) {
         return tvm_ffi::DTypeType::get(ctx);
@@ -93,7 +98,7 @@ public:
       } else if (mlir::isa<mlir::torch::Torch::FloatType>(type)) {
         return tvm_ffi::FloatType::get(ctx);
       } else if (mlir::isa<mlir::torch::Torch::StringType>(type)) {
-        return tvm_ffi::StringType::get(ctx);
+        return getStringUnionType(ctx);
       } else if (mlir::isa<mlir::torch::Torch::NoneType>(type)) {
         return tvm_ffi::NoneType::get(ctx);
       } else if (mlir::isa<mlir::torch::Torch::DeviceType>(type)) {
@@ -105,9 +110,8 @@ public:
                            mlir::torch::Torch::TupleType,
                            mlir::torch::Torch::AnyType>(type)) {
         return tvm_ffi::ArrayType::get(ctx);
-      } else {
-        return std::nullopt;
       }
+      return std::nullopt;
     });
     addConversion([](mlir::IntegerType type) -> mlir::Type { return type; });
     addConversion([](mlir::FloatType type) -> mlir::Type { return type; });
@@ -144,7 +148,9 @@ static void populateTerminatorRefCounts(
       value = cast->getOperand(0);
     }
     mlir::Type convertedType = typeConverter.convertType(value.getType());
-    if (convertedType && convertedType.hasTrait<mlir::TypeTrait::Object>()) {
+    if (convertedType &&
+        (mlir::isa<tvm_ffi::AnyType, tvm_ffi::UnionType>(convertedType) ||
+         convertedType.hasTrait<mlir::TypeTrait::Object>())) {
       if (value.getType() != convertedType) {
         value = typeConverter.materializeTargetConversion(builder, loc,
                                                           convertedType, value);
@@ -345,8 +351,12 @@ public:
   mlir::LogicalResult
   matchAndRewrite(ConstantOp op, typename ConstantOp::Adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Type const targetType =
-        typeConverter.convertType(op.getResult().getType());
+    mlir::Type targetType;
+    if (mlir::isa<mlir::torch::Torch::StringType>(op.getResult().getType())) {
+      targetType = tvm_ffi::RawStrType::get(op.getContext());
+    } else {
+      targetType = typeConverter.convertType(op.getResult().getType());
+    }
     if (!targetType) {
       return mlir::failure();
     }
@@ -358,6 +368,23 @@ public:
     }
     if (!value) {
       return op->emitError("constant is missing value attribute");
+    }
+    if constexpr (std::is_same_v<ConstantOp,
+                                 mlir::torch::Torch::ConstantStrOp>) {
+      tvm_ffi::ConstantOp raw = tvm_ffi::ConstantOp::create(
+          rewriter, op.getLoc(), tvm_ffi::RawStrType::get(op.getContext()),
+          value);
+      tvm_ffi::FunctionGetGlobalOp getGlobal =
+          tvm_ffi::FunctionGetGlobalOp::create(
+              rewriter, op.getLoc(),
+              tvm_ffi::FunctionType::get(op.getContext()), "ffi.String");
+      tvm_ffi::FunctionCallOp string = tvm_ffi::FunctionCallOp::create(
+          rewriter, op.getLoc(),
+          mlir::TypeRange{getStringUnionType(op.getContext())},
+          getGlobal.getResult(), mlir::ValueRange{raw.getResult()});
+      recordOwnedObjectResults(string, string->getResults(), ownedValues);
+      rewriter.replaceOp(op, string.getResult(0));
+      return mlir::success();
     }
     tvm_ffi::ConstantOp const constant =
         rewriter.replaceOpWithNewOp<tvm_ffi::ConstantOp>(op, targetType, value);
@@ -730,7 +757,7 @@ public:
     }
     mlir::FunctionType const type = func.getFunctionType();
     if (type.getNumResults() == 1 &&
-        mlir::isa<tvm_ffi::AnyType>(type.getResult(0))) {
+        mlir::isa<tvm_ffi::AnyType, tvm_ffi::UnionType>(type.getResult(0))) {
       return mlir::failure();
     }
     bool changed = false;

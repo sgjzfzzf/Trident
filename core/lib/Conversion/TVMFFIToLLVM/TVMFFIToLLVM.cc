@@ -170,9 +170,9 @@ public:
   mlir::LogicalResult
   matchAndRewrite(CastOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    // All AnyABI semantic values are converted to the TVMFFIAny LLVM struct
-    // by the type converter.  The dialect-level cast therefore becomes an
-    // identity after conversion; the source conversion has already
+    // All TVM FFI ABI semantic values are converted to the TVMFFIAny LLVM
+    // struct by the type converter.  The dialect-level cast therefore becomes
+    // an identity after conversion; the source conversion has already
     // materialized the correct type tag and payload.
     rewriter.replaceOp(op, adaptor.getValue());
     return mlir::success();
@@ -248,14 +248,14 @@ public:
       payload = mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, deviceSlot);
     } else if (mlir::StringAttr const attr =
                    mlir::dyn_cast<mlir::StringAttr>(op.getValue());
-               attr && mlir::isa<StringType>(resultType)) {
+               attr && mlir::isa<RawStrType>(resultType)) {
       mlir::ModuleOp const module = op->getParentOfType<mlir::ModuleOp>();
       if (!module) {
         return op.emitError("failed to get parent ModuleOp");
       }
       mlir::Value const stringPtr = conversion::utils::getOrCreateGlobalString(
           rewriter, loc, module, "string", attr.getValue());
-      typeIndex = StringType::getTypeIndex();
+      typeIndex = RawStrType::getTypeIndex();
       payload = mlir::LLVM::PtrToIntOp::create(rewriter, loc, i64Ty, stringPtr);
     } else if (mlir::FloatAttr const attr =
                    mlir::dyn_cast<mlir::FloatAttr>(op.getValue())) {
@@ -309,12 +309,12 @@ public:
         mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
     mlir::LLVM::LLVMStructType const anyTy =
         trident::conversion::utils::getTVMFFIAnyType(rewriter.getContext());
-    mlir::Value const one = mlir::LLVM::ConstantOp::create(
-        rewriter, loc, i64Ty, 1);
-    mlir::Value const lhsStorage = mlir::LLVM::AllocaOp::create(
-        rewriter, loc, ptrTy, anyTy, one);
-    mlir::Value const rhsStorage = mlir::LLVM::AllocaOp::create(
-        rewriter, loc, ptrTy, anyTy, one);
+    mlir::Value const one =
+        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1);
+    mlir::Value const lhsStorage =
+        mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, anyTy, one);
+    mlir::Value const rhsStorage =
+        mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, anyTy, one);
     mlir::LLVM::StoreOp::create(rewriter, loc, adaptor.getLhs(), lhsStorage);
     mlir::LLVM::StoreOp::create(rewriter, loc, adaptor.getRhs(), rhsStorage);
     mlir::Value const mapFreeVars =
@@ -332,8 +332,8 @@ public:
         conversion::utils::loadIntFromAnySlot(rewriter, loc, result.value());
     rewriter.replaceOpWithNewOp<mlir::arith::CmpIOp>(
         op, mlir::arith::CmpIPredicate::ne, resultPayload,
-        mlir::arith::ConstantOp::create(
-            rewriter, loc, i32Ty, rewriter.getI32IntegerAttr(0)));
+        mlir::arith::ConstantOp::create(rewriter, loc, i32Ty,
+                                        rewriter.getI32IntegerAttr(0)));
     return mlir::success();
   }
 };
@@ -500,7 +500,7 @@ public:
     // An !tvm_ffi.any value can contain a scalar, so inspect its ABI
     // TypeIndex before passing the payload to ObjectIncRef/ObjectDecRef.
     // Statically typed TVM FFI objects retain the direct call path.
-    if (mlir::isa<AnyType>(op.getObject().getType())) {
+    if (mlir::isa<AnyType, UnionType>(op.getObject().getType())) {
       mlir::Value const typeIndex = mlir::LLVM::ExtractValueOp::create(
           rewriter, loc, rewriter.getI32Type(), adaptor.getObject(),
           llvm::ArrayRef<int64_t>{0});
@@ -768,12 +768,10 @@ void populateTVMFFIToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns) {
   typeConverter.addConversion([](mlir::Type type) -> std::optional<mlir::Type> {
-    if (mlir::isa<AnyType, ArrayType, BoolType, DeviceType, DTypeType,
-                  ExceptionType, FloatType, IntType, NoneType, StringType,
-                  TensorType>(type)) {
-      return trident::conversion::utils::getTVMFFIAnyType(type.getContext());
-    } else if (mlir::isa<FunctionType>(type)) {
+    if (mlir::isa<FunctionType>(type)) {
       return mlir::LLVM::LLVMPointerType::get(type.getContext());
+    } else if (type.hasTrait<mlir::TypeTrait::TVMFFIABI>()) {
+      return trident::conversion::utils::getTVMFFIAnyType(type.getContext());
     } else {
       return std::nullopt;
     }

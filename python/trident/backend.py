@@ -53,6 +53,32 @@ def _any_type(context: ir.Context) -> ir.Type:
     return ty
 
 
+def _semantic_result_type(type: ir.Type, context: ir.Context) -> ir.Type | None:
+    """Map a known Torch result type to its semantic TVM FFI type."""
+    spelling: Final[str] = str(type)
+    if spelling.startswith(("!torch.vtensor", "!torch.tensor")):
+        target = "!tvm_ffi.tensor"
+    elif spelling == "!torch.bool":
+        target = "!tvm_ffi.bool"
+    elif spelling == "!torch.device":
+        target = "!tvm_ffi.device"
+    elif spelling == "!torch.float":
+        target = "!tvm_ffi.float"
+    elif spelling == "!torch.int":
+        target = "!tvm_ffi.int"
+    elif spelling == "!torch.none":
+        target = "!tvm_ffi.none"
+    elif spelling == "!torch.str":
+        target = "!tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str>"
+    elif spelling.startswith(("!torch.list", "!torch.tuple")):
+        target = "!tvm_ffi.array"
+    elif spelling == "!torchext.dtype":
+        target = "!tvm_ffi.dtype"
+    else:
+        return None
+    return ir.Type.parse(target, context=context)
+
+
 class _InputTreeNode:
     """Static shape information for one exported input pytree node."""
 
@@ -441,7 +467,22 @@ class TridentGraphModule:
             # may still have multiple semantic results; those are packed into
             # a TVM FFI array in the guarded success branch below.
             any_type = ir.Type.parse("!tvm_ffi.any", context=ctx)
-            ffi_type: ir.FunctionType = ir.FunctionType.get(param_types, [any_type])
+            normal_result_type: ir.Type | None
+            if len(main_func.type.results) == 1:
+                [result] = main_func.type.results
+                normal_result_type = _semantic_result_type(result, ctx)
+            else:
+                normal_result_type = ir.Type.parse("!tvm_ffi.array", context=ctx)
+            if normal_result_type is None:
+                wrapper_result_type = any_type
+            else:
+                wrapper_result_type = ir.Type.parse(
+                    f"!tvm_ffi.union<{normal_result_type}, !tvm_ffi.exception>",
+                    context=ctx,
+                )
+            ffi_type: ir.FunctionType = ir.FunctionType.get(
+                param_types, [wrapper_result_type]
+            )
 
         tvm_ffi_name: Final[str] = f"{fn.__name__}_{index}"
         with ir.InsertionPoint(module.body), main_func.operation.location:
@@ -461,7 +502,9 @@ class TridentGraphModule:
                 # value.  This keeps both scf.yield operations type-identical
                 # while preserving the dispatcher convention that a
                 # GuardMatch exception is returned from the wrapper.
-                guard_if: scf.IfOp = scf.IfOp(guard_result, [any_type], has_else=True)
+                guard_if: scf.IfOp = scf.IfOp(
+                    guard_result, [wrapper_result_type], has_else=True
+                )
                 then_block: ir.Block = guard_if.then_block
                 with ir.InsertionPoint(then_block):
                     main_tree = _InputTreeMap(input_root, arguments)
@@ -489,7 +532,9 @@ class TridentGraphModule:
                         else call_result
                     )
                     if len(call_results) == 1:
-                        normal_value = tvm_ffi_d.cast(any_type, call_results[0])
+                        normal_value = tvm_ffi_d.cast(
+                            wrapper_result_type, call_results[0]
+                        )
                     else:
                         tuple_type = ir.Type.parse(
                             "!torch.tuple<{}>".format(
@@ -504,7 +549,7 @@ class TridentGraphModule:
                             tuple_type,
                             call_results,
                         )
-                        normal_value = tvm_ffi_d.cast(any_type, packed_value)
+                        normal_value = tvm_ffi_d.cast(wrapper_result_type, packed_value)
                     scf.yield_([normal_value])
 
                 else_block: ir.Block | None = guard_if.else_block
@@ -512,7 +557,7 @@ class TridentGraphModule:
                 with ir.InsertionPoint(else_block):
                     exception_type = ir.Type.parse("!tvm_ffi.exception", context=ctx)
                     exception = tvm_ffi_d.exception(exception_type, "GuardMatch")
-                    error_value = tvm_ffi_d.cast(any_type, exception)
+                    error_value = tvm_ffi_d.cast(wrapper_result_type, exception)
                     scf.yield_([error_value])
 
                 with ir.InsertionPoint.after(guard_if.operation):

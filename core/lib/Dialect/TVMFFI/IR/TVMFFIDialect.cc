@@ -18,11 +18,15 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h" // NOLINT(misc-include-cleaner)
+#include <cstdint>
 #include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/ADT/TypeSwitch.h> // NOLINT(misc-include-cleaner)
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/Builders.h>
+#include <mlir/IR/Diagnostics.h>
 #include <mlir/IR/DialectImplementation.h> // NOLINT(misc-include-cleaner)
 #include <mlir/IR/OpImplementation.h>
 #include <mlir/IR/OperationSupport.h>
@@ -35,6 +39,34 @@
 #include <string>
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
+namespace trident::tvm_ffi {
+
+namespace {
+
+static std::optional<int32_t> getConcreteTypeIndex(mlir::Type type) {
+  return llvm::TypeSwitch<mlir::Type, std::optional<int32_t>>(type)
+      .Case<ArrayType>([](ArrayType) { return ArrayType::getTypeIndex(); })
+      .Case<BoolType>([](BoolType) { return BoolType::getTypeIndex(); })
+      .Case<DeviceType>([](DeviceType) { return DeviceType::getTypeIndex(); })
+      .Case<DTypeType>([](DTypeType) { return DTypeType::getTypeIndex(); })
+      .Case<ExceptionType>(
+          [](ExceptionType) { return ExceptionType::getTypeIndex(); })
+      .Case<FloatType>([](FloatType) { return FloatType::getTypeIndex(); })
+      .Case<FunctionType>(
+          [](FunctionType) { return FunctionType::getTypeIndex(); })
+      .Case<IntType>([](IntType) { return IntType::getTypeIndex(); })
+      .Case<NoneType>([](NoneType) { return NoneType::getTypeIndex(); })
+      .Case<RawStrType>([](RawStrType) { return RawStrType::getTypeIndex(); })
+      .Case<SmallStrType>(
+          [](SmallStrType) { return SmallStrType::getTypeIndex(); })
+      .Case<StrType>([](StrType) { return StrType::getTypeIndex(); })
+      .Case<TensorType>([](TensorType) { return TensorType::getTypeIndex(); })
+      .Default([](mlir::Type) { return std::nullopt; });
+}
+
+} // namespace
+} // namespace trident::tvm_ffi
+
 #define GET_TYPEDEF_CLASSES
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.cpp.inc"
 
@@ -42,6 +74,37 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFI.cpp.inc"
 
 namespace trident::tvm_ffi {
+
+mlir::LogicalResult
+UnionType::verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+                  llvm::ArrayRef<mlir::Type> types) {
+  if (types.size() < 2) {
+    return emitError() << "union requires at least two member types";
+  }
+  llvm::SmallDenseSet<mlir::Type> uniqueTypes;
+  for (mlir::Type type : types) {
+    if (!type.hasTrait<mlir::TypeTrait::TVMFFIABI>() ||
+        mlir::isa<AnyType, UnionType>(type)) {
+      return emitError() << "invalid union member type " << type;
+    }
+    if (!getConcreteTypeIndex(type)) {
+      return emitError() << "invalid union member type " << type;
+    }
+    if (!uniqueTypes.insert(type).second) {
+      return emitError() << "union member types must be unique";
+    }
+  }
+  return mlir::success();
+}
+
+bool UnionType::contains(mlir::Type type) const {
+  if (const UnionType unionType = mlir::dyn_cast<UnionType>(type)) {
+    return llvm::all_of(unionType.getTypes(), [&](const mlir::Type member) {
+      return llvm::is_contained(getTypes(), member);
+    });
+  }
+  return llvm::is_contained(getTypes(), type);
+}
 
 void TVMFFIDialect::initialize() {
   addTypes<
@@ -57,14 +120,23 @@ void TVMFFIDialect::initialize() {
 
 bool CastOp::areCastCompatible(mlir::TypeRange inputs,
                                mlir::TypeRange outputs) {
-  if (inputs.size() != 1 || outputs.size() != 1 ||
-      !mlir::isa<AnyType>(outputs.front())) {
+  if (inputs.size() != 1 || outputs.size() != 1) {
     return false;
   }
 
   mlir::Type input = inputs.front();
-  return input.hasTrait<::mlir::TypeTrait::AnyABI>() ||
-         input.getDialect().getNamespace() == "torch";
+  mlir::Type output = outputs.front();
+  if (!mlir::isa<AnyType, UnionType>(output)) {
+    return false;
+  }
+  if (input.getDialect().getNamespace() == "torch") {
+    return mlir::isa<AnyType, UnionType>(output);
+  }
+  if (!input.hasTrait<mlir::TypeTrait::TVMFFIABI>()) {
+    return false;
+  }
+  return mlir::isa<AnyType>(output) ||
+         mlir::cast<UnionType>(output).contains(input);
 }
 
 // FuncOp custom assembly format.
@@ -128,18 +200,24 @@ mlir::LogicalResult ReturnOp::verify() {
 
   const mlir::FunctionType functionType = func.getFunctionType();
   if (functionType.getNumResults() != 1 ||
-      !mlir::isa<AnyType>(functionType.getResult(0))) {
+      !mlir::isa<AnyType, UnionType>(functionType.getResult(0))) {
     return mlir::success();
   }
 
   if (getNumOperands() == 0) {
     return emitOpError(
-        "a !tvm_ffi.any function must return at least one value");
+        "an any or union function must return at least one value");
   }
+  mlir::Type const resultType = functionType.getResult(0);
   for (const mlir::Value operand : getOperands()) {
-    if (!operand.getType().hasTrait<mlir::TypeTrait::AnyABI>()) {
+    if (!operand.getType().hasTrait<mlir::TypeTrait::TVMFFIABI>()) {
       return emitOpError("operand type must have a TVMFFIAny ABI: ")
              << operand.getType();
+    }
+    if (const UnionType resultUnion = mlir::dyn_cast<UnionType>(resultType);
+        resultUnion && !resultUnion.contains(operand.getType())) {
+      return emitOpError("operand type is not a member of the result type: ")
+             << operand.getType() << " vs " << resultType;
     }
   }
   return mlir::success();
@@ -168,7 +246,7 @@ mlir::LogicalResult ConstantOp::verify() {
   } else if (mlir::isa<NoneType>(type) &&
              !mlir::isa<mlir::UnitAttr>(getValue())) {
     return emitOpError("none result requires a UnitAttr");
-  } else if (mlir::isa<StringType>(type) &&
+  } else if (mlir::isa<RawStrType>(type) &&
              !mlir::isa<mlir::StringAttr>(getValue())) {
     return emitOpError("string result requires a StringAttr");
   } else if (type.hasTrait<mlir::TypeTrait::Object>()) {

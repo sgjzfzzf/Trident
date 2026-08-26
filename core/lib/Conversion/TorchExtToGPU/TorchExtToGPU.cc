@@ -245,22 +245,19 @@ public:
     mlir::TypeConverter typeConverter;
     mlir::RewritePatternSet patterns(&getContext());
 
-    typeConverter.addConversion([](mlir::Type type)
-                                    -> std::optional<mlir::Type> {
-      if (mlir::isa<trident::tvm_ffi::AnyType, trident::tvm_ffi::ArrayType,
-                    trident::tvm_ffi::BoolType, trident::tvm_ffi::DeviceType,
-                    trident::tvm_ffi::DTypeType,
-                    trident::tvm_ffi::ExceptionType,
-                    trident::tvm_ffi::FloatType, trident::tvm_ffi::IntType,
-                    trident::tvm_ffi::NoneType, trident::tvm_ffi::TensorType>(
-              type)) {
-        return trident::conversion::utils::getTVMFFIAnyType(type.getContext());
-      } else if (mlir::isa<mlir::IntegerType, mlir::FloatType>(type)) {
-        return type;
-      } else {
-        return std::nullopt;
-      }
-    });
+    typeConverter.addConversion(
+        [](mlir::Type type) -> std::optional<mlir::Type> {
+          if (mlir::isa<trident::tvm_ffi::FunctionType>(type)) {
+            return mlir::LLVM::LLVMPointerType::get(type.getContext());
+          } else if (type.hasTrait<mlir::TypeTrait::TVMFFIABI>()) {
+            return trident::conversion::utils::getTVMFFIAnyType(
+                type.getContext());
+          } else if (mlir::isa<mlir::IntegerType, mlir::FloatType>(type)) {
+            return type;
+          } else {
+            return std::nullopt;
+          }
+        });
 
     target.addIllegalOp<CastOp, TridentKernelLaunchOp>();
     target.addLegalDialect<mlir::gpu::GPUDialect, mlir::BuiltinDialect,

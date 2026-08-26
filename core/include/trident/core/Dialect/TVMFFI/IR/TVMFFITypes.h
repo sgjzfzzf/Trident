@@ -10,6 +10,7 @@
 #ifndef TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFITYPES_H_
 #define TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFITYPES_H_
 
+#include <llvm/ADT/ArrayRef.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/Types.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
@@ -17,7 +18,8 @@ namespace mlir::TypeTrait {
 template <typename ConcreteType>
 class Object : public ::mlir::TypeTrait::TraitBase<ConcreteType, Object> {};
 template <typename ConcreteType>
-class AnyABI : public ::mlir::TypeTrait::TraitBase<ConcreteType, AnyABI> {};
+class TVMFFIABI : public ::mlir::TypeTrait::TraitBase<ConcreteType, TVMFFIABI> {
+};
 } // namespace mlir::TypeTrait
 
 #define GET_TYPEDEF_CLASSES

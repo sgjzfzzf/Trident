@@ -65,12 +65,12 @@ def TVMFFI_CallOp : TVMFFI_Op<"call"> {
 def TVMFFI_CastOp : TVMFFI_Op<"cast", [
   Pure, DeclareOpInterfaceMethods<CastOpInterface>
 ]> {
-  let summary = "Pack a TVM FFI value into the !tvm_ffi.any ABI type";
+  let summary = "Widen a TVM FFI value into an any or union ABI type";
   // Torch types are accepted here as a transitional frontend boundary.  The
-  // Torch-toTVMFFI conversion establishes the AnyABI representation before
+  // Torch-toTVMFFI conversion establishes the TVM FFI ABI representation before
   // this operation reaches LLVM lowering.
   let arguments = (ins AnyTVMFFIAnyABIOrTorchType:$value);
-  let results = (outs TVMFFI_AnyType:$result);
+  let results = (outs AnyTVMFFIAnyABIType:$result);
   let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
 }
 

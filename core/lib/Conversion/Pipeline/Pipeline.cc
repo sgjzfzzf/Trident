@@ -12,7 +12,6 @@
 #include "trident/core/Conversion/GeneralizeAtenOps/GeneralizeAtenOps.h"
 #include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h"
 #include "trident/core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
-#include "trident/core/Conversion/TorchExtToTVMFFI/TorchExtToTVMFFI.h"
 #include "trident/core/Conversion/TorchToCf/TorchToCf.h"
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h" // NOLINT(misc-include-cleaner)
@@ -45,7 +44,6 @@ class TridentLoweringPipelinePass
     pm.addPass(trident::arithext::createConvertArithExtToScf());
     pm.addPass(trident::torch::createConvertTorchToCf());
     pm.addPass(trident::torch::createConvertTorchToTVMFFI());
-    pm.addPass(trident::torchext::createConvertTorchExtToTVMFFI());
     pm.addPass(trident::tvm_ffi::createDecomposeTVMFFI());
     pm.addPass(trident::tvm_ffi::createConvertTVMFFIToFunc());
     pm.addPass(mlir::createSCFToControlFlowPass());

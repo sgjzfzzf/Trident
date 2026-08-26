@@ -196,6 +196,29 @@ public:
   }
 };
 
+/// Convert a TorchExt dtype wrapper to the TVM FFI integer consumed by Torch
+/// operations after this pass.  This pattern intentionally lives in the same
+/// conversion as the Torch users so the producer and its users agree on the
+/// converted result type.
+class ConvertTorchExtConvert final
+    : public mlir::OpConversionPattern<trident::torchext::ConvertOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(trident::torchext::ConvertOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    tvm_ffi::FunctionGetGlobalOp getGlobal =
+        tvm_ffi::FunctionGetGlobalOp::create(
+            rewriter, op.getLoc(), tvm_ffi::FunctionType::get(getContext()),
+            "trident.runtime.tvm_ffi_to_torch_type");
+    rewriter.replaceOpWithNewOp<tvm_ffi::FunctionCallOp>(
+        op, mlir::TypeRange{tvm_ffi::IntType::get(getContext())},
+        getGlobal.getResult(), adaptor.getOperands());
+    return mlir::success();
+  }
+};
+
 template <typename TerminatorOp>
 class ConvertTerminatorOp final : public mlir::OpRewritePattern<TerminatorOp> {
 public:
@@ -758,16 +781,18 @@ class ConvertTorchToTVMFFIPass final
         ConvertTorchConstant<mlir::torch::Torch::ConstantFloatOp>,
         ConvertTorchConstant<mlir::torch::Torch::ConstantDeviceOp>,
         ConvertAtenCall>(typeConverter, ownedValues, &getContext());
-    conversionPatterns.add<ConvertGenericOp<tvm_ffi::EqOp>,
-                           ConvertGenericOp<tvm_ffi::TensorDimOp>,
-                           ConvertGenericOp<tvm_ffi::TensorSizeOp>,
-                           ConvertGenericOp<tvm_ffi::TensorStrideOp>,
-                           ConvertGenericOp<tvm_ffi::TensorStorageOffsetOp>,
-                           ConvertGenericOp<tvm_ffi::TensorDTypeOp>,
-                           ConvertGenericOp<tvm_ffi::TensorDeviceOp>,
-                           ConvertGenericOp<tvm_ffi::ArrayLengthOp>,
-                           ConvertTorchValueTensorLiteralOp>(typeConverter,
-                                                             &getContext());
+    conversionPatterns.add<ConvertTorchExtConvert>(typeConverter,
+                                                   &getContext());
+    conversionPatterns
+        .add<ConvertGenericOp<tvm_ffi::EqOp>, ConvertGenericOp<tvm_ffi::CastOp>,
+             ConvertGenericOp<tvm_ffi::TensorDimOp>,
+             ConvertGenericOp<tvm_ffi::TensorSizeOp>,
+             ConvertGenericOp<tvm_ffi::TensorStrideOp>,
+             ConvertGenericOp<tvm_ffi::TensorStorageOffsetOp>,
+             ConvertGenericOp<tvm_ffi::TensorDTypeOp>,
+             ConvertGenericOp<tvm_ffi::TensorDeviceOp>,
+             ConvertGenericOp<tvm_ffi::ArrayLengthOp>,
+             ConvertTorchValueTensorLiteralOp>(typeConverter, &getContext());
 
     mlir::ConversionTarget conversionTarget(getContext());
     conversionTarget.addLegalDialect<
@@ -776,8 +801,8 @@ class ConvertTorchToTVMFFIPass final
     conversionTarget.addLegalOp<
         tvm_ffi::ArrayCreateOp, tvm_ffi::ArrayGetItemOp, tvm_ffi::CallOp,
         tvm_ffi::FunctionGetGlobalOp, tvm_ffi::FunctionCallOp,
-        tvm_ffi::ConstantOp, tvm_ffi::CastOp, tvm_ffi::ObjectDecRefOp,
-        tvm_ffi::ObjectIncRefOp, tvm_ffi::ExceptionOp>();
+        tvm_ffi::ConstantOp, tvm_ffi::ObjectDecRefOp, tvm_ffi::ObjectIncRefOp,
+        tvm_ffi::ExceptionOp>();
     conversionTarget.addDynamicallyLegalOp<mlir::func::FuncOp>(
         [&](mlir::func::FuncOp func) {
           return typeConverter.isSignatureLegal(func.getFunctionType());
@@ -806,7 +831,7 @@ class ConvertTorchToTVMFFIPass final
     conversionTarget.addDynamicallyLegalOp<
         tvm_ffi::EqOp, tvm_ffi::TensorDimOp, tvm_ffi::TensorSizeOp,
         tvm_ffi::TensorStrideOp, tvm_ffi::TensorStorageOffsetOp,
-        tvm_ffi::TensorDTypeOp, tvm_ffi::TensorDeviceOp,
+        tvm_ffi::TensorDTypeOp, tvm_ffi::TensorDeviceOp, tvm_ffi::CastOp,
         tvm_ffi::ArrayLengthOp>([&](mlir::Operation *op) {
       return llvm::all_of(op->getOperandTypes(), [&](mlir::Type type) {
         mlir::Type convertedType = typeConverter.convertType(type);
@@ -815,8 +840,7 @@ class ConvertTorchToTVMFFIPass final
     });
     conversionTarget
         .addLegalOp<mlir::ModuleOp, mlir::torch::Torch::PrimIfOp,
-                    mlir::torch::Torch::PrimIfYieldOp, tvm_ffi::ReturnOp,
-                    trident::torchext::ConvertOp>();
+                    mlir::torch::Torch::PrimIfYieldOp, tvm_ffi::ReturnOp>();
     conversionTarget.addDynamicallyLegalOp<mlir::torch::Torch::OperatorOp>(
         [](mlir::torch::Torch::OperatorOp op) {
           return !op.getName().starts_with("torch.aten.");

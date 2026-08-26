@@ -22,27 +22,21 @@ include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.td"
 class TorchExt_Op<string mnemonic, list<Trait> traits = []>
     : Op<TorchExt_Dialect, mnemonic, traits>;
 
-def TorchExt_CastOperandType : AnyTypeOf<[
-  Torch_FloatType,
-  Torch_IntType,
-  TVMFFI_FloatType,
-  TVMFFI_IntType
-], "Torch scalar accepted by torchext.cast">;
+def TorchExt_CastOperandType
+    : AnyTypeOf<
+          [Torch_FloatType, Torch_IntType, TVMFFI_FloatType, TVMFFI_IntType],
+          "Torch scalar accepted by torchext.cast">;
 
-def TorchExt_CastResultType : AnyTypeOf<[
-  AnyFloat,
-  AnyInteger
-], "Native scalar produced by torchext.cast">;
+def TorchExt_CastResultType
+    : AnyTypeOf<[AnyFloat, AnyInteger],
+                "Native scalar produced by torchext.cast">;
 
-def TorchExt_KernelOperandType : AnyTypeOf<[
-  AnyFloat,
-  AnyInteger,
-  AnyTorchType,
-  TVMFFI_BoolType,
-  TVMFFI_FloatType,
-  TVMFFI_IntType,
-  TVMFFI_TensorType
-], "Operand accepted by a Trident kernel launch">;
+def TorchExt_KernelOperandType
+    : AnyTypeOf<[
+      AnyFloat, AnyInteger, AnyTorchType, TVMFFI_BoolType, TVMFFI_FloatType,
+      TVMFFI_IntType, TVMFFI_TensorType
+    ],
+                "Operand accepted by a Trident kernel launch">;
 
 def TorchExt_CastOp
     : TorchExt_Op<"cast", [Pure, DeclareOpInterfaceMethods<CastOpInterface>]> {
@@ -106,7 +100,6 @@ def TorchExt_TridentKernelLaunchOp
     `clusterSizeY`, and `clusterSizeZ` arguments. When present, the kernel
     is launched with the specified thread-block cluster size. This feature
     is exclusive to certain architectures (e.g. NVIDIA Hopper and later).
-
 }];
 
 let arguments = (ins SymbolRefAttr:$kernel,

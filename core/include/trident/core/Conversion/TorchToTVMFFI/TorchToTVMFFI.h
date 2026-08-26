@@ -9,9 +9,21 @@
 #define TRIDENT_CORE_CONVERSION_TORCHTOTVMFFI_TORCHTOTVMFFI_H_
 
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
+#include <mlir/IR/Types.h>
 #include <mlir/Pass/Pass.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace trident::torch {
+
+/// Return the semantic TVM FFI type corresponding to a Torch frontend type.
+/// Types without a specialized representation use !tvm_ffi.any.
+mlir::Type convertTorchTypeToTVMFFIType(mlir::Type type);
+
+/// Add the canonical Torch frontend to semantic TVM FFI mappings to a type
+/// converter. Identity conversions and materializations remain the caller's
+/// responsibility.
+void populateTorchToTVMFFITypeConversions(mlir::TypeConverter &typeConverter);
+
 #define GEN_PASS_DECL_CONVERTTORCHTOTVMFFI
 #include "trident/core/Conversion/Passes.h.inc"
 #define GEN_PASS_REGISTRATION_CONVERTTORCHTOTVMFFI

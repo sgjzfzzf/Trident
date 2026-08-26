@@ -24,15 +24,15 @@ class TVMFFI_Op<string mnemonic, list<Trait> traits = []>
 
 class TVMFFI_TensorIndexedMetadataOp<string mnemonic>
     : TVMFFI_Op<mnemonic, [Pure]> {
-  let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor, I64:$index);
-  let results = (outs I64:$result);
+  let arguments = (ins AnyTVMFFITensorOrTorchType : $tensor, I64 : $index);
+  let results = (outs I64 : $result);
   let assemblyFormat = "$tensor `[` $index `]` attr-dict `:` type($tensor)";
 }
 
 def TVMFFI_ArrayCreateOp : TVMFFI_Op<"array.create"> {
   let summary = "Create a TVM FFI Array from semantic values";
-  let arguments = (ins Variadic<AnyTVMFFISemanticType>:$elements);
-  let results = (outs TVMFFI_ArrayType:$result);
+  let arguments = (ins Variadic<AnyTVMFFISemanticType> : $elements);
+  let results = (outs TVMFFI_ArrayType : $result);
 }
 
 def TVMFFI_ArrayGetItemOp : TVMFFI_Op<"array.get_item"> {
@@ -40,15 +40,16 @@ def TVMFFI_ArrayGetItemOp : TVMFFI_Op<"array.get_item"> {
   let arguments = (ins AnyTVMFFIArrayOrTorchType:$array,
                        TVMFFI_IntType:$index,
                        OptionalAttr<TypeAttr>:$element_type);
-  let results = (outs AnyTVMFFISemanticType:$result);
-  let assemblyFormat = "$array `[` $index `]` (`as` $element_type^)? attr-dict `:` type($array) `,` type($index) `->` type($result)";
+  let results = (outs AnyTVMFFISemanticOrTorchType : $result);
+  let assemblyFormat = "$array `[` $index `]` (`as` $element_type^)? attr-dict "
+                       "`:` type($array) `,` type($index) `->` type($result)";
   let hasVerifier = 1;
 }
 
 def TVMFFI_ArrayLengthOp : TVMFFI_Op<"array.length", [Pure]> {
   let summary = "Read the length of a runtime TVM FFI array";
-  let arguments = (ins AnyTVMFFIArrayOrTorchType:$array);
-  let results = (outs I64:$result);
+  let arguments = (ins AnyTVMFFIArrayOrTorchType : $array);
+  let results = (outs I64 : $result);
   let assemblyFormat = "$array attr-dict `:` type($array)";
 }
 
@@ -58,41 +59,42 @@ def TVMFFI_CallOp : TVMFFI_Op<"call"> {
                        Variadic<AnyTVMFFIAnyABIOrTorchType>:$operands,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<DictArrayAttr>:$res_attrs);
-  let results = (outs Variadic<AnyTVMFFIAnyABIOrTorchType>:$results);
-  let assemblyFormat = "$callee `(` $operands `)` attr-dict `:` functional-type($operands, $results)";
+  let results = (outs Variadic<AnyTVMFFIAnyABIOrTorchType> : $results);
+  let assemblyFormat = "$callee `(` $operands `)` attr-dict `:` "
+                       "functional-type($operands, $results)";
 }
 
-def TVMFFI_CastOp : TVMFFI_Op<"cast", [
-  Pure, DeclareOpInterfaceMethods<CastOpInterface>
-]> {
+def TVMFFI_CastOp
+    : TVMFFI_Op<"cast", [Pure, DeclareOpInterfaceMethods<CastOpInterface>]> {
   let summary = "Widen a TVM FFI value into an any or union ABI type";
   // Torch types are accepted here as a transitional frontend boundary.  The
   // Torch-toTVMFFI conversion establishes the TVM FFI ABI representation before
   // this operation reaches LLVM lowering.
-  let arguments = (ins AnyTVMFFIAnyABIOrTorchType:$value);
-  let results = (outs AnyTVMFFIAnyABIType:$result);
+  let arguments = (ins AnyTVMFFIAnyABIOrTorchType : $value);
+  let results = (outs AnyTVMFFIAnyABIType : $result);
   let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
 }
 
 def TVMFFI_ConstantOp : TVMFFI_Op<"constant"> {
   let summary = "Create a TVM FFI scalar or owned tensor constant";
-  let arguments = (ins AnyAttr:$value);
-  let results = (outs AnyTVMFFISemanticType:$result);
+  let arguments = (ins AnyAttr : $value);
+  let results = (outs AnyTVMFFISemanticType : $result);
   let hasVerifier = 1;
 }
 
 def TVMFFI_EqOp : TVMFFI_Op<"eq", [Pure]> {
   let summary = "Compare the ABI representation of two TVM FFI values";
-  let arguments = (ins AnyTVMFFIAnyABIOrTorchType:$lhs,
-                       AnyTVMFFIAnyABIOrTorchType:$rhs);
-  let results = (outs I1:$result);
+  let arguments = (ins AnyTVMFFIAnyABIOrTorchType
+                   : $lhs, AnyTVMFFIAnyABIOrTorchType
+                   : $rhs);
+  let results = (outs I1 : $result);
   let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)";
 }
 
 def TVMFFI_ExceptionOp : TVMFFI_Op<"exception"> {
   let summary = "Create a Trident FFI exception object";
-  let arguments = (ins StrAttr:$kind);
-  let results = (outs TVMFFI_ExceptionType:$result);
+  let arguments = (ins StrAttr : $kind);
+  let results = (outs TVMFFI_ExceptionType : $result);
   let assemblyFormat = "$kind attr-dict `:` type($result)";
 }
 

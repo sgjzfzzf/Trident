@@ -24,8 +24,7 @@ class TVMFFI_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
-class TVMFFIABI_Type<string name, string typeMnemonic,
-                     list<Trait> traits = []>
+class TVMFFIABI_Type<string name, string typeMnemonic, list<Trait> traits = []>
     : TVMFFI_Type<name, typeMnemonic, !listconcat([TVMFFI_ABI], traits)>;
 
 class TVMFFIIndexed_Type<string name, string typeMnemonic, int typeIndex,
@@ -51,7 +50,6 @@ def TVMFFI_ExceptionType
                          [TVMFFI_Object]>;
 def TVMFFI_FloatType
     : TVMFFIIndexed_Type<"Float", "float", 3>;
-// An owned handle returned by TVMFFIFunctionGetGlobal.
 def TVMFFI_FunctionType
     : TVMFFIIndexed_Type<"Function", "function", 68,
                          [TVMFFI_Object]>;
@@ -100,6 +98,9 @@ def AnyTVMFFISemanticType : AnyTypeOf<[
   TVMFFI_IntType, TVMFFI_NoneType, TVMFFI_RawStrType, TVMFFI_SmallStrType,
   TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType, TorchExt_DTypeType
 ], "TVM FFI semantic value">;
+def AnyTVMFFISemanticOrTorchType : AnyTypeOf<[
+  AnyTVMFFISemanticType, AnyTorchType
+], "TVM FFI semantic value or a Torch frontend value">;
 def AnyTVMFFITensorOrTorchType : AnyTypeOf<[
   TVMFFI_TensorType, AnyTorchTensorType
 ], "TVM FFI tensor or a Torch frontend tensor value">;

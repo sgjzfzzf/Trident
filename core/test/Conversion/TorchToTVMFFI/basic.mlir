@@ -121,6 +121,36 @@ func.func @dtype_identity(%arg0: !torchext.dtype) -> !torchext.dtype {
   return %arg0 : !torchext.dtype
 }
 
+// Torch Any is a genuinely dynamic ABI value, not an alias for an array.
+// CHECK-LABEL: func.func @any_identity(
+// CHECK-SAME: %[[ANY:.*]]: !tvm_ffi.any) -> !tvm_ffi.any {
+// CHECK: return %[[ANY]] : !tvm_ffi.any
+func.func @any_identity(%arg0: !torch.any) -> !torch.any {
+  return %arg0 : !torch.any
+}
+
+// CHECK-LABEL: func.func @device_identity(
+// CHECK-SAME: %[[DEVICE:.*]]: !tvm_ffi.device) -> !tvm_ffi.device {
+// CHECK: return %[[DEVICE]] : !tvm_ffi.device
+func.func @device_identity(%arg0: !torch.Device) -> !torch.Device {
+  return %arg0 : !torch.Device
+}
+
+// Frontend array accesses may temporarily carry their Torch element type.
+// CHECK-LABEL: func.func @frontend_array_get_item(
+// CHECK-SAME: %[[ARRAY:.*]]: !tvm_ffi.array) -> !tvm_ffi.tensor {
+// CHECK: %[[INDEX:.*]] = "tvm_ffi.constant"() <{value = 0 : i64}> : () -> !tvm_ffi.int
+// CHECK: %[[ITEM:.*]] = tvm_ffi.array.get_item %[[ARRAY]][%[[INDEX]]] as !tvm_ffi.tensor
+// CHECK: return %[[ITEM]] : !tvm_ffi.tensor
+func.func @frontend_array_get_item(%arg0: !tvm_ffi.array)
+    -> !torch.vtensor<[2,3],f32> {
+  %index = "tvm_ffi.constant"() <{value = 0 : i64}> : () -> !tvm_ffi.int
+  %item = tvm_ffi.array.get_item %arg0[%index]
+      as !torch.vtensor<[2,3],f32>
+      : !tvm_ffi.array, !tvm_ffi.int -> !torch.vtensor<[2,3],f32>
+  return %item : !torch.vtensor<[2,3],f32>
+}
+
 // List and tuple containers share the TVM FFI array representation.
 // CHECK-LABEL: func.func @container_construct(
 // CHECK-SAME: -> !tvm_ffi.array {
@@ -130,6 +160,25 @@ func.func @container_construct(%arg0: !torch.int, %arg1: !torch.int)
   %0 = torch.prim.ListConstruct %arg0, %arg1
       : (!torch.int, !torch.int) -> !torch.list<int>
   return %0 : !torch.list<int>
+}
+
+// TorchExt operations remain in this IR stage, but all of their operand and
+// result types must be legal according to the shared type converter.
+// CHECK-LABEL: func.func @torchext_operand_conversion(
+// CHECK-SAME: %[[SCALAR:.*]]: !tvm_ffi.float,
+// CHECK-SAME: %[[TENSOR:.*]]: !tvm_ffi.tensor) -> f32 {
+// CHECK: %[[CAST:.*]] = torchext.cast %[[SCALAR]] : !tvm_ffi.float -> f32
+// CHECK: torchext.trident_kernel_launch @kernel::@entry
+// CHECK-SAME: {{.*}}args(%[[TENSOR]], %[[SCALAR]] : !tvm_ffi.tensor, !tvm_ffi.float)
+// CHECK: return %[[CAST]] : f32
+func.func @torchext_operand_conversion(
+    %scalar: !torch.float, %tensor: !torch.vtensor<[4],f32>) -> f32 {
+  %one = arith.constant 1 : i64
+  %cast = torchext.cast %scalar : !torch.float -> f32
+  torchext.trident_kernel_launch @kernel::@entry
+      blocks in (%one, %one, %one) threads in (%one, %one, %one)
+      args (%tensor, %scalar : !torch.vtensor<[4],f32>, !torch.float)
+  return %cast : f32
 }
 
 // Multiple ATen results are represented by an FFI array and extracted in

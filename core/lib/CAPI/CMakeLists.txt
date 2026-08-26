@@ -9,6 +9,7 @@ add_mlir_public_c_api_library(
   PUBLIC
   ArithExtDialect
   TorchExtDialect
+  TorchToTVMFFI
   TridentUtilsRegistration
   MLIRConvertToLLVMPass
   MLIRIR

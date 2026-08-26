@@ -14,6 +14,7 @@ import tvm_ffi.utils
 
 from trident import capi_utils
 from trident.core import (
+    _convert_torch_type_to_tvm_ffi_type,
     ir,
     passmanager,
     register_all_dialects,
@@ -38,45 +39,6 @@ from trident.ffi import Exception
 
 from .guards import parse_guards
 from .patch import apply_patch
-
-_ANY_TYPE_CACHE: dict[ir.Context, ir.Type] = {}
-
-
-def _any_type(context: ir.Context) -> ir.Type:
-    """The ``!torch.any`` type used for container parameters."""
-    cached = _ANY_TYPE_CACHE.get(context)
-    if cached is not None:
-        return cached
-    with context:
-        ty = ir.Type.parse("!torch.any", context=context)
-    _ANY_TYPE_CACHE[context] = ty
-    return ty
-
-
-def _semantic_result_type(type: ir.Type, context: ir.Context) -> ir.Type | None:
-    """Map a known Torch result type to its semantic TVM FFI type."""
-    spelling: Final[str] = str(type)
-    if spelling.startswith(("!torch.vtensor", "!torch.tensor")):
-        target = "!tvm_ffi.tensor"
-    elif spelling == "!torch.bool":
-        target = "!tvm_ffi.bool"
-    elif spelling == "!torch.device":
-        target = "!tvm_ffi.device"
-    elif spelling == "!torch.float":
-        target = "!tvm_ffi.float"
-    elif spelling == "!torch.int":
-        target = "!tvm_ffi.int"
-    elif spelling == "!torch.none":
-        target = "!tvm_ffi.none"
-    elif spelling == "!torch.str":
-        target = "!tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str>"
-    elif spelling.startswith(("!torch.list", "!torch.tuple")):
-        target = "!tvm_ffi.array"
-    elif spelling == "!torchext.dtype":
-        target = "!tvm_ffi.dtype"
-    else:
-        return None
-    return ir.Type.parse(target, context=context)
 
 
 class _InputTreeNode:
@@ -113,7 +75,7 @@ class _InputTreeMap:
     """Lazily materialized IR values indexed by pytree paths.
 
     Values are materialized on demand so structure guards can run before an
-    element access forces the corresponding ``prim_ListUnpack`` operation.
+    element access forces the corresponding TVM FFI array access.
     Each path lookup gets a fresh map, keeping values local to the current IR
     region.  ``flatten`` uses the persistent map to share unpacks while
     reconstructing the main function arguments.
@@ -146,16 +108,17 @@ class _InputTreeMap:
         if self._path_key([*path, key]) in values:
             return
         argument: ir.Value = values[self._path_key(path)]
-        unpacked = torch_d.prim_ListUnpack(
-            [child.type for child in node.children], operand=argument
-        )
-        results: list[ir.Value] = (
-            [unpacked]
-            if len(node.children) == 1
-            else unpacked
-            if len(node.children) > 1
-            else []
-        )
+        i64 = ir.IntegerType.get_signless(64, argument.context)
+        ffi_int = ir.Type.parse("!tvm_ffi.int", context=argument.context)
+        results: list[ir.Value] = [
+            tvm_ffi_d.array_get_item(
+                child.type,
+                argument,
+                tvm_ffi_d.constant(ffi_int, ir.IntegerAttr.get(i64, index)),
+                element_type=child.type,
+            )
+            for index, child in enumerate(node.children)
+        ]
         for key, result in zip(node.keys, results):
             values[self._path_key([*path, key])] = result
 
@@ -431,7 +394,9 @@ class TridentGraphModule:
                 assert not children or not all(
                     child.type == dtype_type for child in children
                 ), "containers of multiple torch.dtype values are not supported"
-                return _InputTreeNode(_any_type(ctx), children=children)
+                return _InputTreeNode(
+                    ir.Type.parse("!tvm_ffi.array", context=ctx), children=children
+                )
 
         provided_entries: dict[str, _InputTreeNode] = {
             name: build_tree(child, name)
@@ -445,7 +410,7 @@ class TridentGraphModule:
             provided_entries[name]
             if name in provided_entries
             else _InputTreeNode(
-                _any_type(ctx)
+                ir.Type.parse("!tvm_ffi.array", context=ctx)
                 if isinstance(bound.arguments[name], (list, tuple))
                 else (
                     dtype_type
@@ -457,7 +422,7 @@ class TridentGraphModule:
         ]
         param_types: list[ir.Type] = [node.type for node in entries]
         input_root = _InputTreeNode(
-            _any_type(ctx),
+            ir.Type.parse("!tvm_ffi.array", context=ctx),
             children=entries,
             keys=signature_names,
         )
@@ -466,20 +431,16 @@ class TridentGraphModule:
             # Guarded wrappers have one TVM FFI ABI result.  A main function
             # may still have multiple semantic results; those are packed into
             # a TVM FFI array in the guarded success branch below.
-            any_type = ir.Type.parse("!tvm_ffi.any", context=ctx)
-            normal_result_type: ir.Type | None
+            normal_result_type: ir.Type
             if len(main_func.type.results) == 1:
                 [result] = main_func.type.results
-                normal_result_type = _semantic_result_type(result, ctx)
+                normal_result_type = _convert_torch_type_to_tvm_ffi_type(result)
             else:
                 normal_result_type = ir.Type.parse("!tvm_ffi.array", context=ctx)
-            if normal_result_type is None:
-                wrapper_result_type = any_type
-            else:
-                wrapper_result_type = ir.Type.parse(
-                    f"!tvm_ffi.union<{normal_result_type}, !tvm_ffi.exception>",
-                    context=ctx,
-                )
+            wrapper_result_type = ir.Type.parse(
+                f"!tvm_ffi.union<{normal_result_type}, !tvm_ffi.exception>",
+                context=ctx,
+            )
             ffi_type: ir.FunctionType = ir.FunctionType.get(
                 param_types, [wrapper_result_type]
             )
@@ -526,30 +487,23 @@ class TridentGraphModule:
                         main_func_name,
                         main_args,
                     )
-                    call_results: Sequence[ir.Value] = (
-                        [call_result]
-                        if len(main_func.type.results) == 1
-                        else call_result
-                    )
-                    if len(call_results) == 1:
-                        normal_value = tvm_ffi_d.cast(
-                            wrapper_result_type, call_results[0]
-                        )
+                    result: ir.Value
+                    if isinstance(call_result, ir.Value):
+                        result = call_result
                     else:
+                        element_types = ", ".join(
+                            f"{element.type}".removeprefix("!torch.")
+                            for element in call_result
+                        )
                         tuple_type = ir.Type.parse(
-                            "!torch.tuple<{}>".format(
-                                ", ".join(
-                                    str(result.type).replace("!torch.", "")
-                                    for result in call_results
-                                )
-                            ),
+                            f"!torch.tuple<{element_types}>",
                             context=ctx,
                         )
-                        packed_value = torch_d.prim_TupleConstruct(
+                        result = torch_d.prim_TupleConstruct(
                             tuple_type,
-                            call_results,
+                            call_result,
                         )
-                        normal_value = tvm_ffi_d.cast(wrapper_result_type, packed_value)
+                    normal_value = tvm_ffi_d.cast(wrapper_result_type, result)
                     scf.yield_([normal_value])
 
                 else_block: ir.Block | None = guard_if.else_block

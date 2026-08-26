@@ -18,6 +18,11 @@ extern "C" {
 MLIR_CAPI_EXPORTED void tridentCoreRegisterAllDialects(MlirContext context);
 MLIR_CAPI_EXPORTED void tridentCoreRegisterAllPasses(void);
 
+/// Return the semantic TVM FFI type corresponding to a Torch frontend type.
+/// Types without a specialized representation use !tvm_ffi.any.
+MLIR_CAPI_EXPORTED MlirType
+tridentCoreConvertTorchTypeToTVMFFIType(MlirType type);
+
 #ifdef __cplusplus
 }
 #endif

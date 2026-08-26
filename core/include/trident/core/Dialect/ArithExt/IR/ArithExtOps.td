@@ -16,9 +16,7 @@ include "trident/core/Dialect/ArithExt/IR/ArithExtBase.td"
 class ArithExt_Op<string mnemonic, list<Trait> traits = []>
     : Op<ArithExt_Dialect, mnemonic, traits>;
 
-def ArithExt_AndThenOp : ArithExt_Op<"and_then", [
-  RegionBranchOpInterface
-]> {
+def ArithExt_AndThenOp : ArithExt_Op<"and_then", [RegionBranchOpInterface]> {
   let summary = "Execute regions sequentially until one yields false";
   let description = [{
     Executes each region in order. A region yields `true` to continue with the

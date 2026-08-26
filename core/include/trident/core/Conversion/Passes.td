@@ -7,8 +7,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertArithExtToScf
-    : Pass<"convert-arith-ext-to-scf", "mlir::ModuleOp"> {
+def ConvertArithExtToScf : Pass<"convert-arith-ext-to-scf", "mlir::ModuleOp"> {
   let summary = "Lower ArithExt operations to nested SCF operations";
   let description = [{
     Lower arithext.and_then to nested scf.if operations.

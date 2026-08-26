@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir-c/IR.h"
 #include "trident-c/core/Registration.h"
+#include <mlir-c/IR.h>
 #include <mlir/Bindings/Python/NanobindAdaptors.h> // NOLINT(misc-include-cleaner)
 #include <mlir/InitAllTranslations.h>
 #include <nanobind/nanobind.h>
@@ -22,6 +22,10 @@ void registerAllDialects(MlirContext context) {
 
 void registerAllPasses() { tridentCoreRegisterAllPasses(); }
 
+MlirType convertTorchTypeToTVMFFIType(MlirType type) {
+  return tridentCoreConvertTorchTypeToTVMFFIType(type);
+}
+
 } // namespace
 
 NB_MODULE(_trident, m) {
@@ -34,4 +38,6 @@ NB_MODULE(_trident, m) {
 
   m.def("register_all_dialects", &registerAllDialects, nb::arg("context"));
   m.def("register_all_passes", &registerAllPasses);
+  m.def("_convert_torch_type_to_tvm_ffi_type", &convertTorchTypeToTVMFFIType,
+        nb::arg("type"));
 }

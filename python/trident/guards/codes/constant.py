@@ -58,7 +58,7 @@ class ConstantCode(GuardCode):
                 value = ast.literal_eval(literal)
             except (SyntaxError, ValueError, TypeError):
                 return None
-        if not isinstance(value, (type(None), bool, int, float, torch.dtype)):
+        if not isinstance(value, (type(None), bool, int, float, str, torch.dtype)):
             return None
         return cls(text, source, value)
 
@@ -102,6 +102,9 @@ class ConstantCode(GuardCode):
                 ir.F64Type.get(context),
                 self.value,
             )
+        elif isinstance(self.value, str):
+            expected_type = "!tvm_ffi.string"
+            expected_attr = ir.StringAttr.get(self.value, context)
 
         actual = source.resolve(tree)
         if actual is None:

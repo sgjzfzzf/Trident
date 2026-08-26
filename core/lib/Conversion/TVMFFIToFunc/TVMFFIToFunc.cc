@@ -56,6 +56,8 @@ static std::optional<int32_t> getTVMFFITypeIndex(mlir::Type type) {
     return FloatType::getTypeIndex();
   } else if (mlir::isa<NoneType, mlir::torch::Torch::NoneType>(type)) {
     return NoneType::getTypeIndex();
+  } else if (mlir::isa<StringType, mlir::torch::Torch::StringType>(type)) {
+    return StringType::getTypeIndex();
   } else if (mlir::isa<DeviceType, mlir::torch::Torch::DeviceType>(type)) {
     return DeviceType::getTypeIndex();
   } else if (mlir::isa<DTypeType, trident::torchext::DTypeType>(type)) {
@@ -168,11 +170,27 @@ class ConvertTVMFFIToFuncPass final
           const mlir::Value actual = mlir::LLVM::ExtractValueOp::create(
               builder, tvmffiFuncOp.getLoc(), i32Ty, value,
               llvm::ArrayRef<int64_t>{0});
-          const mlir::Value condition = mlir::LLVM::ICmpOp::create(
-              builder, tvmffiFuncOp.getLoc(), mlir::LLVM::ICmpPredicate::eq,
-              actual,
-              mlir::LLVM::ConstantOp::create(builder, tvmffiFuncOp.getLoc(),
-                                             i32Ty, expected.value()));
+          mlir::Value condition;
+          if (mlir::isa<StringType, mlir::torch::Torch::StringType>(type)) {
+            condition = mlir::arith::ConstantOp::create(
+                builder, tvmffiFuncOp.getLoc(), builder.getI1Type(),
+                builder.getBoolAttr(false));
+            for (int32_t stringTypeIndex : {8, 11, 65}) {
+              const mlir::Value isStringType = mlir::LLVM::ICmpOp::create(
+                  builder, tvmffiFuncOp.getLoc(), mlir::LLVM::ICmpPredicate::eq,
+                  actual,
+                  mlir::LLVM::ConstantOp::create(builder, tvmffiFuncOp.getLoc(),
+                                                 i32Ty, stringTypeIndex));
+              condition = mlir::arith::OrIOp::create(
+                  builder, tvmffiFuncOp.getLoc(), condition, isStringType);
+            }
+          } else {
+            condition = mlir::LLVM::ICmpOp::create(
+                builder, tvmffiFuncOp.getLoc(), mlir::LLVM::ICmpPredicate::eq,
+                actual,
+                mlir::LLVM::ConstantOp::create(builder, tvmffiFuncOp.getLoc(),
+                                               i32Ty, expected.value()));
+          }
           allTypesMatch = mlir::arith::AndIOp::create(
               builder, tvmffiFuncOp.getLoc(), allTypesMatch, condition);
         }

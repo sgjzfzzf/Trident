@@ -82,7 +82,7 @@ class GuardParserTest(unittest.TestCase):
         return parsed
 
     def test_ignored_guards_accept_every_code_list_shape(self) -> None:
-        cases = (
+        cases = [
             (
                 "AUTOGRAD_SAVED_TENSORS_HOOKS",
                 ["top_saved_tensors_hooks ids == None"],
@@ -92,7 +92,7 @@ class GuardParserTest(unittest.TestCase):
             ("GLOBAL_STATE", []),
             ("GRAD_MODE", ["first", "second"]),
             ("TORCH_FUNCTION_STATE", None),
-        )
+        ]
         for create_fn_name, code_list in cases:
             with self.subTest(create_fn_name=create_fn_name, code_list=code_list):
                 parsed = self.assert_parsed(
@@ -103,14 +103,16 @@ class GuardParserTest(unittest.TestCase):
                 self.assertIsNone(parsed.source)
 
     def test_constant_match_parses_supported_literals(self) -> None:
-        cases: tuple[tuple[str, Any], ...] = (
+        cases: list[tuple[str, Any]] = [
             ("L['value'] is None", None),
             ("L['value'] == True", True),
             ("L['value'] == False", False),
             ("L['value'] == -7", -7),
             ("L['value'] == 1.5", 1.5),
+            ("L['value'] == 'constant'", "constant"),
+            ("L['value'] == ''", ""),
             ("L['value'] == torch.float32", torch.float32),
-        )
+        ]
         for text, expected in cases:
             with self.subTest(text=text):
                 parsed = self.assert_parsed(
@@ -148,7 +150,7 @@ class GuardParserTest(unittest.TestCase):
                 )
 
     def test_constant_match_rejects_unsupported_literals(self) -> None:
-        for literal in ("'constant'", "[1, 2]", "{'value': 1}", "not valid"):
+        for literal in ("b'constant'", "[1, 2]", "{'value': 1}", "not valid"):
             with self.subTest(literal=literal):
                 self.assertIsNone(
                     Guard.parse(
@@ -171,12 +173,13 @@ class GuardParserTest(unittest.TestCase):
                 )
 
     def test_constant_match_rejects_invalid_operations_and_sources(self) -> None:
-        cases = (
+        cases = [
             ("L['value'] is 1", "L['value']"),
+            ("L['value'] is 'constant'", "L['value']"),
             ("L['value'] != 1", "L['value']"),
             ("L['other'] == 1", "L['value']"),
             ("G['value'] == 1", "G['value']"),
-        )
+        ]
         for text, name in cases:
             with self.subTest(text=text, name=name):
                 self.assertIsNone(
@@ -184,7 +187,7 @@ class GuardParserTest(unittest.TestCase):
                 )
 
     def test_sequence_length_parses_type_length_and_empty_checks(self) -> None:
-        cases = (
+        cases = [
             (
                 "L['xs']",
                 [
@@ -202,7 +205,7 @@ class GuardParserTest(unittest.TestCase):
                 0,
                 1,
             ),
-        )
+        ]
         for name, code_list, code_types, expected_length, expected_depth in cases:
             with self.subTest(name=name):
                 parsed = self.assert_parsed(
@@ -219,12 +222,12 @@ class GuardParserTest(unittest.TestCase):
                 self.assertEqual(length_code.depth, expected_depth)
 
     def test_sequence_length_rejects_unsupported_code(self) -> None:
-        cases = (
+        cases = [
             "len(L['other']) == 2",
             "len(L['xs']) != 2",
             "len(L['xs']) == -1",
             "bool(L['xs']) == False",
-        )
+        ]
         for text in cases:
             with self.subTest(text=text):
                 self.assertIsNone(
@@ -232,7 +235,7 @@ class GuardParserTest(unittest.TestCase):
                 )
 
     def test_shape_env_accepts_none_empty_and_multiple_codes(self) -> None:
-        cases = (
+        cases = [
             (None, ()),
             ([], ()),
             (
@@ -245,7 +248,7 @@ class GuardParserTest(unittest.TestCase):
                 ],
                 (ExpressionCode,) * 5,
             ),
-        )
+        ]
         for code_list, code_types in cases:
             with self.subTest(code_list=code_list):
                 self.assert_parsed(
@@ -257,7 +260,7 @@ class GuardParserTest(unittest.TestCase):
     def test_shape_env_accepts_dynamic_shape_arithmetic_and_chained_comparisons(
         self,
     ) -> None:
-        cases = (
+        cases = [
             (
                 ["2 <= L['x'].size()[0] <= 8"],
                 (ExpressionCode,),
@@ -284,7 +287,7 @@ class GuardParserTest(unittest.TestCase):
                 ],
                 (ExpressionCode,) * 3,
             ),
-        )
+        ]
         for code_list, code_types in cases:
             with self.subTest(code_list=code_list):
                 self.assert_parsed(
@@ -353,7 +356,7 @@ class GuardParserTest(unittest.TestCase):
         )
 
     def test_tensor_match_supports_nested_sources_and_alternate_metadata(self) -> None:
-        cases = (
+        cases = [
             (
                 "str(L['xs'][0].dtype) == \"torch.int64\"",
                 TensorDTypeCode,
@@ -365,7 +368,7 @@ class GuardParserTest(unittest.TestCase):
                 "hasattr(L['xs'][0], '_dynamo_static_indices') == False",
                 DynamoAttributeAbsentCode,
             ),
-        )
+        ]
         for text, code_type in cases:
             with self.subTest(text=text):
                 parsed = self.assert_parsed(
@@ -401,11 +404,11 @@ class GuardParserTest(unittest.TestCase):
         self.assertEqual(str(result.type), "i1")
 
     def test_expression_with_base_is_skipped_with_warning(self) -> None:
-        cases = (
+        cases = [
             "L['x']._base.size()[0] == 1",
             "L['x']._base.stride()[0] == 1",
             "L['x']._base.storage_offset() == 0",
-        )
+        ]
         for text in cases:
             with self.subTest(text=text):
                 expression = ast.parse(text, mode="eval").body
@@ -469,7 +472,7 @@ class GuardParserTest(unittest.TestCase):
         self.assertEqual(str(result.type), "i1")
 
     def test_invalid_comparison_violates_guard_code_invariants(self) -> None:
-        cases = (
+        cases = [
             ("True == 1", "guard comparison operand cannot be lowered"),
             (
                 "L['x'] is L['y'] is L['z']",
@@ -480,7 +483,7 @@ class GuardParserTest(unittest.TestCase):
                 "identity guard comparison must be binary",
             ),
             ("1 in (1, 2)", "unsupported guard comparison operator"),
-        )
+        ]
         for text, message in cases:
             with self.subTest(text=text):
                 code = ExpressionCode(text, ast.parse(text, mode="eval").body)
@@ -493,13 +496,13 @@ class GuardParserTest(unittest.TestCase):
                     code.build(None, context)  # type: ignore[arg-type]
 
     def test_tensor_match_rejects_unsupported_codes(self) -> None:
-        cases = (
+        cases = [
             "str(L['x'].dtype) == 'torch.not_a_dtype'",
             "str(L['x'].device) == 'not-a-device'",
             "L['x'].ndimension() >= 2",
             "hasattr(L['x'], 'custom_attribute') == False",
             "hasattr(L['other'], '_dynamo_dynamic_indices') == False",
-        )
+        ]
         for text in cases:
             with self.subTest(text=text):
                 self.assertIsNone(
@@ -507,7 +510,7 @@ class GuardParserTest(unittest.TestCase):
                 )
 
     def test_type_match_parses_quote_and_source_variants(self) -> None:
-        cases = (
+        cases = [
             (
                 "L['x']",
                 "___check_type_id(L['x'], 123), type=<class 'torch.Tensor'>",
@@ -516,7 +519,7 @@ class GuardParserTest(unittest.TestCase):
                 "L['xs'][0]",
                 "___check_type_id(L['xs'][0], 456), type=<class \"list\">",
             ),
-        )
+        ]
         for name, text in cases:
             with self.subTest(text=text):
                 parsed = self.assert_parsed(
@@ -527,11 +530,11 @@ class GuardParserTest(unittest.TestCase):
                 self.assertEqual(parsed.source, Local.parse(name))
 
     def test_empty_code_lists_follow_non_constant_handler_contracts(self) -> None:
-        cases = (
+        cases = [
             ("SEQUENCE_LENGTH", SequenceLengthGuard),
             ("TENSOR_MATCH", TensorMatchGuard),
             ("TYPE_MATCH", TypeMatchGuard),
-        )
+        ]
         for create_fn_name, handler_type in cases:
             with self.subTest(create_fn_name=create_fn_name):
                 self.assert_parsed(
@@ -541,7 +544,7 @@ class GuardParserTest(unittest.TestCase):
                 )
 
     def test_rejects_unknown_ambiguous_and_unmatched_guards(self) -> None:
-        cases = (
+        cases = [
             FakeGuard("UNKNOWN", None),
             FakeGuard("TEST_AMBIGUOUS", ["L['x'] == 1"], "L['x']"),
             FakeGuard("TYPE_MATCH", ["___check_obj_id(L['x'], 1)"], "L['x']"),
@@ -550,7 +553,7 @@ class GuardParserTest(unittest.TestCase):
                 ["___check_type_id(L['other'], 1), type=<class 'int'>"],
                 "L['x']",
             ),
-        )
+        ]
         for guard in cases:
             with self.subTest(create_fn_name=guard.create_fn_name()):
                 self.assertIsNone(Guard.parse(guard))

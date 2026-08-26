@@ -80,7 +80,8 @@ public:
       mlir::MLIRContext *ctx = type.getContext();
       if (mlir::isa<tvm_ffi::AnyType, tvm_ffi::ExceptionType, tvm_ffi::BoolType,
                     tvm_ffi::IntType, tvm_ffi::FloatType, tvm_ffi::NoneType,
-                    tvm_ffi::DeviceType, tvm_ffi::DTypeType, tvm_ffi::ArrayType,
+                    tvm_ffi::StringType, tvm_ffi::DeviceType,
+                    tvm_ffi::DTypeType, tvm_ffi::ArrayType,
                     tvm_ffi::TensorType>(type)) {
         return type;
       } else if (mlir::isa<trident::torchext::DTypeType>(type)) {
@@ -91,6 +92,8 @@ public:
         return tvm_ffi::IntType::get(ctx);
       } else if (mlir::isa<mlir::torch::Torch::FloatType>(type)) {
         return tvm_ffi::FloatType::get(ctx);
+      } else if (mlir::isa<mlir::torch::Torch::StringType>(type)) {
+        return tvm_ffi::StringType::get(ctx);
       } else if (mlir::isa<mlir::torch::Torch::NoneType>(type)) {
         return tvm_ffi::NoneType::get(ctx);
       } else if (mlir::isa<mlir::torch::Torch::DeviceType>(type)) {
@@ -787,6 +790,7 @@ class ConvertTorchToTVMFFIPass final
         ConvertTorchConstant<mlir::torch::Torch::ConstantBoolOp>,
         ConvertTorchConstant<mlir::torch::Torch::ConstantIntOp>,
         ConvertTorchConstant<mlir::torch::Torch::ConstantFloatOp>,
+        ConvertTorchConstant<mlir::torch::Torch::ConstantStrOp>,
         ConvertTorchConstant<mlir::torch::Torch::ConstantDeviceOp>,
         ConvertAtenCall>(typeConverter, ownedValues, &getContext());
     conversionPatterns.add<ConvertTorchExtConvert>(typeConverter,

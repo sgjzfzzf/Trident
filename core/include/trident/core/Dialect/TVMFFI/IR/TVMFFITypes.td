@@ -53,6 +53,7 @@ def TVMFFI_FunctionType
                      [TVMFFI_Object]>;
 def TVMFFI_IntType : TVMFFIABI_Type<"Int", "int", 1>;
 def TVMFFI_NoneType : TVMFFIABI_Type<"None", "none", 0>;
+def TVMFFI_StringType : TVMFFIABI_Type<"String", "string", 8>;
 def TVMFFI_TensorType
     : TVMFFIABI_Type<"Tensor", "tensor", 70,
                      [TVMFFI_Object]>;
@@ -61,7 +62,7 @@ def AnyTVMFFIAnyABIType : AnyTypeOf<[
   TVMFFI_AnyType, TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_DeviceType,
   TVMFFI_DTypeType,
   TVMFFI_ExceptionType, TVMFFI_FloatType, TVMFFI_FunctionType, TVMFFI_IntType,
-  TVMFFI_NoneType, TVMFFI_TensorType
+  TVMFFI_NoneType, TVMFFI_StringType, TVMFFI_TensorType
 ], "TVM FFI value with a TVMFFIAny ABI representation">;
 def AnyTVMFFIAnyABIOrTorchType : AnyTypeOf<[
   AnyTVMFFIAnyABIType, AnyTorchType, TorchExt_DTypeType
@@ -76,7 +77,8 @@ def AnyTVMFFIObjectOrAnyType : AnyTypeOf<[
 def AnyTVMFFISemanticType : AnyTypeOf<[
   TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_DeviceType, TVMFFI_DTypeType,
   TVMFFI_FloatType,
-  TVMFFI_IntType, TVMFFI_NoneType, TVMFFI_TensorType, TorchExt_DTypeType
+  TVMFFI_IntType, TVMFFI_NoneType, TVMFFI_StringType, TVMFFI_TensorType,
+  TorchExt_DTypeType
 ], "TVM FFI semantic value">;
 def AnyTVMFFITensorOrTorchType : AnyTypeOf<[
   TVMFFI_TensorType, AnyTorchTensorType

@@ -246,6 +246,17 @@ public:
           mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1));
       mlir::LLVM::StoreOp::create(rewriter, loc, deviceValue, deviceSlot);
       payload = mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, deviceSlot);
+    } else if (mlir::StringAttr const attr =
+                   mlir::dyn_cast<mlir::StringAttr>(op.getValue());
+               attr && mlir::isa<StringType>(resultType)) {
+      mlir::ModuleOp const module = op->getParentOfType<mlir::ModuleOp>();
+      if (!module) {
+        return op.emitError("failed to get parent ModuleOp");
+      }
+      mlir::Value const stringPtr = conversion::utils::getOrCreateGlobalString(
+          rewriter, loc, module, "string", attr.getValue());
+      typeIndex = StringType::getTypeIndex();
+      payload = mlir::LLVM::PtrToIntOp::create(rewriter, loc, i64Ty, stringPtr);
     } else if (mlir::FloatAttr const attr =
                    mlir::dyn_cast<mlir::FloatAttr>(op.getValue())) {
       typeIndex = FloatType::getTypeIndex();
@@ -289,19 +300,40 @@ public:
     mlir::Location const loc = op.getLoc();
     mlir::IntegerType const i32Ty = rewriter.getI32Type();
     mlir::IntegerType const i64Ty = rewriter.getI64Type();
-    mlir::Value const lhsType = mlir::LLVM::ExtractValueOp::create(
-        rewriter, loc, i32Ty, adaptor.getLhs(), llvm::ArrayRef<int64_t>{0});
-    mlir::Value const rhsType = mlir::LLVM::ExtractValueOp::create(
-        rewriter, loc, i32Ty, adaptor.getRhs(), llvm::ArrayRef<int64_t>{0});
-    mlir::Value const sameType = mlir::LLVM::ICmpOp::create(
-        rewriter, loc, mlir::LLVM::ICmpPredicate::eq, lhsType, rhsType);
-    mlir::Value const lhsPayload = mlir::LLVM::ExtractValueOp::create(
-        rewriter, loc, i64Ty, adaptor.getLhs(), llvm::ArrayRef<int64_t>{2});
-    mlir::Value const rhsPayload = mlir::LLVM::ExtractValueOp::create(
-        rewriter, loc, i64Ty, adaptor.getRhs(), llvm::ArrayRef<int64_t>{2});
-    mlir::Value const samePayload = mlir::LLVM::ICmpOp::create(
-        rewriter, loc, mlir::LLVM::ICmpPredicate::eq, lhsPayload, rhsPayload);
-    rewriter.replaceOpWithNewOp<mlir::arith::AndIOp>(op, sameType, samePayload);
+    mlir::ModuleOp const module = op->getParentOfType<mlir::ModuleOp>();
+    if (!module) {
+      return op.emitError("failed to get parent ModuleOp");
+    }
+
+    mlir::LLVM::LLVMPointerType const ptrTy =
+        mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
+    mlir::LLVM::LLVMStructType const anyTy =
+        trident::conversion::utils::getTVMFFIAnyType(rewriter.getContext());
+    mlir::Value const one = mlir::LLVM::ConstantOp::create(
+        rewriter, loc, i64Ty, 1);
+    mlir::Value const lhsStorage = mlir::LLVM::AllocaOp::create(
+        rewriter, loc, ptrTy, anyTy, one);
+    mlir::Value const rhsStorage = mlir::LLVM::AllocaOp::create(
+        rewriter, loc, ptrTy, anyTy, one);
+    mlir::LLVM::StoreOp::create(rewriter, loc, adaptor.getLhs(), lhsStorage);
+    mlir::LLVM::StoreOp::create(rewriter, loc, adaptor.getRhs(), rhsStorage);
+    mlir::Value const mapFreeVars =
+        conversion::utils::buildIntAnySlot(rewriter, loc, 0);
+    mlir::Value const skipTensorContent =
+        conversion::utils::buildIntAnySlot(rewriter, loc, 0);
+    mlir::FailureOr<mlir::Value> result =
+        conversion::utils::callTVMFFIGlobalFunction(
+            rewriter, loc, module, "ffi.StructuralEqual",
+            {lhsStorage, rhsStorage, mapFreeVars, skipTensorContent});
+    if (mlir::failed(result)) {
+      return op.emitError("failed to call ffi.StructuralEqual");
+    }
+    mlir::Value const resultPayload =
+        conversion::utils::loadIntFromAnySlot(rewriter, loc, result.value());
+    rewriter.replaceOpWithNewOp<mlir::arith::CmpIOp>(
+        op, mlir::arith::CmpIPredicate::ne, resultPayload,
+        mlir::arith::ConstantOp::create(
+            rewriter, loc, i32Ty, rewriter.getI32IntegerAttr(0)));
     return mlir::success();
   }
 };
@@ -737,8 +769,8 @@ void populateTVMFFIToLLVMConversionPatterns(
     mlir::RewritePatternSet &patterns) {
   typeConverter.addConversion([](mlir::Type type) -> std::optional<mlir::Type> {
     if (mlir::isa<AnyType, ArrayType, BoolType, DeviceType, DTypeType,
-                  ExceptionType, FloatType, IntType, NoneType, TensorType>(
-            type)) {
+                  ExceptionType, FloatType, IntType, NoneType, StringType,
+                  TensorType>(type)) {
       return trident::conversion::utils::getTVMFFIAnyType(type.getContext());
     } else if (mlir::isa<FunctionType>(type)) {
       return mlir::LLVM::LLVMPointerType::get(type.getContext());

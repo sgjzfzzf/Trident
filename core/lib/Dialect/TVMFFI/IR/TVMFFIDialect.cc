@@ -100,9 +100,9 @@ void FuncOp::print(mlir::OpAsmPrinter &p) {
       getArgAttrsAttrName(), getResAttrsAttrName());
 }
 
-void FuncOp::build(
-    mlir::OpBuilder &builder, mlir::OperationState &state, llvm::StringRef name,
-    mlir::FunctionType type, llvm::ArrayRef<mlir::NamedAttribute> attrs) {
+void FuncOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
+                   llvm::StringRef name, mlir::FunctionType type,
+                   llvm::ArrayRef<mlir::NamedAttribute> attrs) {
   buildWithEntryBlock(builder, state, name, type, attrs, type.getInputs());
 }
 
@@ -168,6 +168,9 @@ mlir::LogicalResult ConstantOp::verify() {
   } else if (mlir::isa<NoneType>(type) &&
              !mlir::isa<mlir::UnitAttr>(getValue())) {
     return emitOpError("none result requires a UnitAttr");
+  } else if (mlir::isa<StringType>(type) &&
+             !mlir::isa<mlir::StringAttr>(getValue())) {
+    return emitOpError("string result requires a StringAttr");
   } else if (type.hasTrait<mlir::TypeTrait::Object>()) {
     return emitOpError("object constants are not supported");
   } else {

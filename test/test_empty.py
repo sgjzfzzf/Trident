@@ -15,7 +15,7 @@ class EmptyTest(AtenOpTest):
     @classmethod
     @override
     def op_name(cls) -> str:
-        return "empty"
+        return "empty-memory-format"
 
     def test_call_empty(self) -> None:
         """Call aten::empty with shape [3, 4], device=cuda, dtype=float32."""

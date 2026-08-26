@@ -11,12 +11,15 @@
 #include "trident/core/Conversion/DecomposeTVMFFI/DecomposeTVMFFI.h"
 #include "trident/core/Conversion/GeneralizeAtenOps/GeneralizeAtenOps.h"
 #include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h"
+#include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "trident/core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
 #include "trident/core/Conversion/TorchToCf/TorchToCf.h"
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h" // NOLINT(misc-include-cleaner)
-#include <mlir/Conversion/ConvertToLLVM/ToLLVMPass.h>
-#include <mlir/Conversion/Passes.h> // NOLINT(misc-include-cleaner)
+#include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
+#include <mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h>
+#include <mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h>
+#include <mlir/Conversion/Passes.h>
 #include <mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h>
 #include <mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>     // NOLINT(misc-include-cleaner)
@@ -47,8 +50,12 @@ class TridentLoweringPipelinePass
     pm.addPass(trident::tvm_ffi::createDecomposeTVMFFI());
     pm.addPass(trident::tvm_ffi::createConvertTVMFFIToFunc());
     pm.addPass(mlir::createSCFToControlFlowPass());
-    pm.addPass(mlir::createConvertToLLVMPass());
+    pm.addPass(trident::tvm_ffi::createConvertTVMFFIToLLVM());
     pm.addPass(trident::torchext::createConvertTorchExtToGPU());
+    pm.addPass(mlir::createArithToLLVMConversionPass());
+    pm.addPass(mlir::createConvertControlFlowToLLVMPass());
+    pm.addPass(mlir::createGpuToLLVMConversionPass());
+    pm.addPass(mlir::createConvertFuncToLLVMPass());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createReconcileUnrealizedCastsPass());
     if (mlir::failed(pm.run(getOperation()))) {

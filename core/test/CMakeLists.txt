@@ -16,7 +16,7 @@ configure_lit_site_cfg(
 set(TRIDENT_CORE_TEST_DEPENDS FileCheck trident-core-opt)
 
 add_lit_testsuite(
-  check-trident-core "Running the TVM FFI bindings regression tests"
+  check-trident-core "Running the Trident core regression tests"
   ${CMAKE_CURRENT_BINARY_DIR} DEPENDS ${TRIDENT_CORE_TEST_DEPENDS})
 
 set_target_properties(check-trident-core PROPERTIES FOLDER "Tests")

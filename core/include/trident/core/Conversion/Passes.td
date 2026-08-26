@@ -19,17 +19,6 @@ def ConvertArithExtToScf : Pass<"convert-arith-ext-to-scf", "mlir::ModuleOp"> {
   ];
 }
 
-def ConvertTorchConversionToLLVM
-    : Pass<"convert-torch-conversion-to-llvm", "mlir::ModuleOp"> {
-  let summary = "Lower TorchConversion dialect operations to LLVM dialect";
-  let description =
-      [{Lower TorchConversion dialect operations to LLVM dialect.}];
-  let dependentDialects = [
-    "mlir::LLVM::LLVMDialect",
-    "mlir::torch::TorchConversion::TorchConversionDialect"
-  ];
-}
-
 def ConvertTorchExtToGPU : Pass<"convert-torchext-to-gpu", "mlir::ModuleOp"> {
   let summary = "Lower Torch Ext dialect operations to GPU dialect ";
   let description = [{Lower TorchExt dialect operations to GPU dialect.}];

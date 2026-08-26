@@ -15,7 +15,7 @@ class VTensorLiteralTest(AtenOpTest):
     @classmethod
     @override
     def op_name(cls) -> str:
-        return "vtensor_literal"
+        return "value-tensor-literal"
 
     def test_call_vtensor_literal_splat(self) -> None:
         """Call vtensor_literal and verify it returns a TVM FFI tensor."""

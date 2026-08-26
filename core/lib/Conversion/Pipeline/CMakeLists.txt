@@ -8,10 +8,14 @@ add_mlir_conversion_library(
   ArithExtToScf
   DecomposeTVMFFI
   GeneralizeAtenOps
-  MLIRConvertToLLVMPass
+  MLIRArithToLLVM
+  MLIRControlFlowToLLVM
+  MLIRFuncToLLVM
+  MLIRGPUToGPURuntimeTransforms
   MLIRPass
   MLIRSCFToControlFlow
   TorchExtToGPU
   TorchToCf
   TorchToTVMFFI
-  TVMFFIToFunc)
+  TVMFFIToFunc
+  TVMFFIToLLVM)

@@ -11,7 +11,6 @@ add_mlir_public_c_api_library(
   TorchExtDialect
   TorchToTVMFFI
   TridentUtilsRegistration
-  MLIRConvertToLLVMPass
   MLIRIR
   MLIRSupport
   TVMFFIDialect

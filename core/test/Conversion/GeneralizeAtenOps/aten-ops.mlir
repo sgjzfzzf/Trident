@@ -11,8 +11,8 @@
 // RUN: trident-core-opt %s -generalize-aten-ops -canonicalize | FileCheck %s --check-prefix=CANONICALIZE
 
 // GENERALIZE-LABEL: func.func @single_result
-// GENERALIZE: %[[FORMAT:.*]] = torch.constant.int 0
-// GENERALIZE: %[[CLONE:.*]] = torch.operator "torch.aten.clone"(%arg0, %[[FORMAT]]) {trident.test = "kept"}
+// GENERALIZE: %[[FORMAT:[a-zA-Z0-9_]+]] = torch.constant.int 0
+// GENERALIZE: %[[CLONE:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.clone"(%arg0, %[[FORMAT]]) {trident.test = "kept"}
 // GENERALIZE-SAME: -> !torch.vtensor<[3,2],f32>
 // GENERALIZE: return %[[CLONE]]
 // LOCATION: torch.operator "torch.aten.clone"{{.*}}loc(#[[CLONE_LOC:loc[0-9]+]])
@@ -20,7 +20,7 @@
 // IDEMPOTENT-LABEL: func.func @single_result
 // IDEMPOTENT-COUNT-1: torch.operator "torch.aten.clone"
 // CANONICALIZE-LABEL: func.func @single_result
-// CANONICALIZE: %[[CLONE:.*]] = torch.operator "torch.aten.clone"(%arg0,
+// CANONICALIZE: %[[CLONE:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.clone"(%arg0,
 // CANONICALIZE: return %[[CLONE]]
 func.func @single_result(%arg0: !torch.vtensor<[3,2],f32>)
     -> !torch.vtensor<[3,2],f32> {
@@ -32,7 +32,7 @@ func.func @single_result(%arg0: !torch.vtensor<[3,2],f32>)
 }
 
 // CANONICALIZE-LABEL: func.func @other_dialect_folding
-// CANONICALIZE: %[[THREE:.*]] = arith.constant 3 : i64
+// CANONICALIZE: %[[THREE:[a-zA-Z0-9_]+]] = arith.constant 3 : i64
 // CANONICALIZE-NEXT: return %[[THREE]] : i64
 func.func @other_dialect_folding() -> i64 {
   %one = arith.constant 1 : i64
@@ -42,7 +42,7 @@ func.func @other_dialect_folding() -> i64 {
 }
 
 // GENERALIZE-LABEL: func.func @multiple_results
-// GENERALIZE: %[[PAIR:.*]]:2 = torch.operator "torch.aten.max.dim"
+// GENERALIZE: %[[PAIR:[a-zA-Z0-9_]+]]:2 = torch.operator "torch.aten.max.dim"
 // GENERALIZE: return %[[PAIR]]#0, %[[PAIR]]#1
 func.func @multiple_results(%arg0: !torch.vtensor<[4],f32>)
     -> (!torch.vtensor<[],f32>, !torch.vtensor<[],si64>) {
@@ -66,10 +66,10 @@ func.func @zero_results(%arg0: !torch.vtensor<[4],f32>) {
 }
 
 // GENERALIZE-LABEL: func.func @preserve_structural_ops
-// GENERALIZE: %[[INT:.*]] = torch.constant.int 0
-// GENERALIZE: %[[LIST:.*]] = torch.prim.ListConstruct %[[INT]]
+// GENERALIZE: %[[INT:[a-zA-Z0-9_]+]] = torch.constant.int 0
+// GENERALIZE: %[[LIST:[a-zA-Z0-9_]+]] = torch.prim.ListConstruct %[[INT]]
 // GENERALIZE: torch.runtime.assert %arg0, "condition"
-// GENERALIZE: %[[OPAQUE:.*]] = torch.operator "torch.aten.existing"
+// GENERALIZE: %[[OPAQUE:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.existing"
 // GENERALIZE: return %[[OPAQUE]]
 func.func @preserve_structural_ops(%arg0: !torch.bool)
     -> !torch.vtensor<[1],f32> {
@@ -84,7 +84,7 @@ func.func @preserve_structural_ops(%arg0: !torch.bool)
 
 // GENERALIZE-LABEL: func.func @nested_region
 // GENERALIZE: scf.if
-// GENERALIZE: %[[TRANSPOSED:.*]] = torch.operator "torch.aten.t"(%arg0)
+// GENERALIZE: %[[TRANSPOSED:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.t"(%arg0)
 // GENERALIZE: scf.yield %[[TRANSPOSED]]
 func.func @nested_region(%arg0: !torch.vtensor<[2,3],f32>, %cond: i1)
     -> !torch.vtensor<[3,2],f32> {

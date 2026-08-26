@@ -121,7 +121,7 @@ Suspect:
 Check:
 - `test/test_<op>.py` argument construction
 - Wrapper body in `<op>.mlir`
-- Existing examples: `empty.mlir`, `empty_like.mlir`
+- Existing examples: `empty-memory-format.mlir`, `empty-like.mlir`
 
 ### Runtime crash around FFI object conversion or ownership
 
@@ -186,11 +186,11 @@ Recommendation:
 3. Verify end-to-end unittest with `AtenOpTest`.
 4. Only then debug `@trident.jit` dynamic specialization behavior.
 5. If failure is unclear, compare your new op with known-good patterns:
-- `core/test/Conversion/Pipeline/empty.mlir`
-- `core/test/Conversion/Pipeline/empty_like.mlir`
-- `core/test/Conversion/Pipeline/mul_scalar.mlir`
+- `core/test/Conversion/Pipeline/empty-memory-format.mlir`
+- `core/test/Conversion/Pipeline/empty-like.mlir`
+- `core/test/Conversion/Pipeline/mul-scalar.mlir`
 - `core/test/Conversion/Pipeline/sub.mlir`
-- `core/test/Conversion/Pipeline/vtensor_literal.mlir`
+- `core/test/Conversion/Pipeline/value-tensor-literal.mlir`
 - `test/test_empty.py`
 - `test/test_empty_like.py`
 - `test/test_mul_scalar.py`

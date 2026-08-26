@@ -24,7 +24,7 @@ class TTest(AtenOpTest):
     @classmethod
     @override
     def op_name(cls) -> str:
-        return "t"
+        return "transpose"
 
     def test_call_t(self) -> None:
         """Call the t wrapper and compare with eager PyTorch."""

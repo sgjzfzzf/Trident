@@ -14,7 +14,7 @@ class MulScalarTest(AtenOpTest):
     @classmethod
     @override
     def op_name(cls) -> str:
-        return "mul_scalar"
+        return "mul-scalar"
 
     def test_call_mul_scalar(self) -> None:
         """Call mul.Scalar and verify the output matches eager PyTorch."""

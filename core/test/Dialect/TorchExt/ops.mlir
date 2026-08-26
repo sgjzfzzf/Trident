@@ -8,8 +8,8 @@
 // RUN: trident-core-opt %s -split-input-file | FileCheck %s
 
 // CHECK-LABEL: func.func @cast_float(
-// CHECK-SAME:    %[[ARG:.*]]: !torch.float) -> f32 {
-// CHECK:         %[[VAL:.*]] = torchext.cast %[[ARG]] : !torch.float -> f32
+// CHECK-SAME:    %[[ARG:[a-zA-Z0-9_]+]]: !torch.float) -> f32 {
+// CHECK:         %[[VAL:[a-zA-Z0-9_]+]] = torchext.cast %[[ARG]] : !torch.float -> f32
 // CHECK-NEXT:    return %[[VAL]] : f32
 // CHECK-NEXT:  }
 func.func @cast_float(%arg0: !torch.float) -> f32 {
@@ -20,8 +20,8 @@ func.func @cast_float(%arg0: !torch.float) -> f32 {
 // -----
 
 // CHECK-LABEL: func.func @cast_int(
-// CHECK-SAME:    %[[ARG:.*]]: !torch.int) -> i32 {
-// CHECK:         %[[VAL:.*]] = torchext.cast %[[ARG]] : !torch.int -> i32
+// CHECK-SAME:    %[[ARG:[a-zA-Z0-9_]+]]: !torch.int) -> i32 {
+// CHECK:         %[[VAL:[a-zA-Z0-9_]+]] = torchext.cast %[[ARG]] : !torch.int -> i32
 // CHECK-NEXT:    return %[[VAL]] : i32
 // CHECK-NEXT:  }
 func.func @cast_int(%arg0: !torch.int) -> i32 {
@@ -32,8 +32,8 @@ func.func @cast_int(%arg0: !torch.int) -> i32 {
 // -----
 
 // CHECK-LABEL: func.func @convert_dtype(
-// CHECK-SAME:    %[[DTYPE:.*]]: !torchext.dtype) -> !torch.int {
-// CHECK:         %[[SCALAR:.*]] = torchext.convert %[[DTYPE]] : !torchext.dtype -> !torch.int
+// CHECK-SAME:    %[[DTYPE:[a-zA-Z0-9_]+]]: !torchext.dtype) -> !torch.int {
+// CHECK:         %[[SCALAR:[a-zA-Z0-9_]+]] = torchext.convert %[[DTYPE]] : !torchext.dtype -> !torch.int
 // CHECK-NEXT:    return %[[SCALAR]] : !torch.int
 // CHECK-NEXT:  }
 func.func @convert_dtype(%arg0: !torchext.dtype) -> !torch.int {

@@ -14,8 +14,8 @@
 // CHECK-LABEL: llvm.func @torch.vtensor.literal.splat(
 // CHECK: llvm.call @TVMFFIFunctionGetGlobal
 // CHECK: llvm.call @TVMFFIFunctionCall
-// CHECK: %[[SHAPE_DATA:.*]] = llvm.alloca %[[SHAPE_COUNT:.*]] x i64
-// CHECK: %[[LITERAL_DATA:.*]] = llvm.alloca %[[LITERAL_COUNT:.*]] x f32
+// CHECK: %[[SHAPE_DATA:[a-zA-Z0-9_]+]] = llvm.alloca %[[SHAPE_COUNT:[a-zA-Z0-9_]+]] x i64
+// CHECK: %[[LITERAL_DATA:[a-zA-Z0-9_]+]] = llvm.alloca %[[LITERAL_COUNT:[a-zA-Z0-9_]+]] x f32
 // CHECK: llvm.call @aoti_torch_aten_full
 // CHECK: llvm.call @TVMFFIFunctionGetGlobal
 // CHECK: llvm.call @TVMFFIFunctionCall

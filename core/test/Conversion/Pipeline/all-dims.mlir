@@ -16,22 +16,22 @@
 // CHECK-DAG: llvm.func @TVMFFIFunctionCall(!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.all.dims_trident.aten.all.dims("trident.aten.all.dims\00")
 // CHECK-LABEL: llvm.func @torch.aten.all.dims(
-// CHECK-SAME: %[[ARG0:.*]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
+// CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // The first dispatch constructs the FFI Array for the list of dimensions.
 // CHECK: llvm.call @TVMFFIFunctionCall(%[[ARRAY_HANDLE:[0-9]+]], %[[ARRAY_ARGS:[0-9]+]], %[[ARRAY_ARG_COUNT:[0-9]+]], %[[ARRAY_RETURN_SLOT:[0-9]+]])
 // CHECK: llvm.call @TVMFFIObjectDecRef(%[[ARRAY_HANDLE]])
-// CHECK: %[[GETGLOBAL:.*]] = llvm.call @TVMFFIFunctionGetGlobal(%[[ATEN_NAME:[0-9]+]], %[[HANDLE_SLOT:[0-9]+]])
-// CHECK: %[[HANDLE:.*]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
-// CHECK: %[[ARGS:.*]] = llvm.alloca %[[ARGS_COUNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
+// CHECK: %[[GETGLOBAL:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionGetGlobal(%[[ATEN_NAME:[0-9]+]], %[[HANDLE_SLOT:[0-9]+]])
+// CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
+// CHECK: %[[ARGS:[a-zA-Z0-9_]+]] = llvm.alloca %[[ARGS_COUNT:[a-zA-Z0-9_]+]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
 // CHECK: llvm.store %[[ARG0]], %[[ARGS]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK: %[[DIMS_SLOT:.*]] = llvm.getelementptr %[[ARGS]][1]
-// CHECK: llvm.store %[[DIMS:.*]], %[[DIMS_SLOT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK: %[[KEEPDIM_SLOT:.*]] = llvm.getelementptr %[[ARGS]][2]
-// CHECK: llvm.store %[[KEEPDIM:.*]], %[[KEEPDIM_SLOT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK: %[[RET_SLOT:.*]] = llvm.alloca %[[RET_COUNT:.*]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
-// CHECK: %[[CALL:.*]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[ARGS_COPY:.*]], %[[NARGS:.*]], %[[RET_SLOT]])
+// CHECK: %[[DIMS_SLOT:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[ARGS]][1]
+// CHECK: llvm.store %[[DIMS:[a-zA-Z0-9_]+]], %[[DIMS_SLOT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK: %[[KEEPDIM_SLOT:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[ARGS]][2]
+// CHECK: llvm.store %[[KEEPDIM:[a-zA-Z0-9_]+]], %[[KEEPDIM_SLOT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// CHECK: %[[RET_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca %[[RET_COUNT:[a-zA-Z0-9_]+]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
+// CHECK: %[[CALL:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[ARGS_COPY:[a-zA-Z0-9_]+]], %[[NARGS:[a-zA-Z0-9_]+]], %[[RET_SLOT]])
 // CHECK: llvm.call @TVMFFIObjectDecRef(%[[HANDLE]])
-// CHECK: %[[RET:.*]] = llvm.load %[[RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: %[[RET:[a-zA-Z0-9_]+]] = llvm.load %[[RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.call @TVMFFIObjectIncRef(%[[RESULT_OBJECT:[0-9]+]])
 // CHECK: llvm.call @TVMFFIObjectDecRef(%[[DIMS_OBJECT:[0-9]+]])
 // CHECK: llvm.return %[[RET]] : !llvm.struct<(i32, i32, i64)>

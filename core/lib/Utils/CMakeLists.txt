@@ -12,7 +12,6 @@ add_mlir_library(
   MLIRRegisterAllPasses
   MLIRToLLVMIRTranslationRegistration
   MLIRSCFDialect
-  TorchConversionToLLVM
   TorchMLIRCAPI
   TorchMLIRTorchConversionDialect
   TorchMLIRTorchOnnxToTorch

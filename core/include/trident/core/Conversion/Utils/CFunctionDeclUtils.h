@@ -44,9 +44,8 @@ template <typename CType> struct CTypeToLLVM {
           {mlir::IntegerType::get(context, 32),
            mlir::IntegerType::get(context, 32)},
           /*isPacked=*/true);
-    } else if constexpr (std::is_integral_v<BaseType>) {
-      return mlir::IntegerType::get(context, sizeof(BaseType) * 8);
-    } else if constexpr (std::is_enum_v<BaseType>) {
+    } else if constexpr (std::is_integral_v<BaseType> ||
+                         std::is_enum_v<BaseType>) {
       return mlir::IntegerType::get(context, sizeof(BaseType) * 8);
     } else if constexpr (std::is_same_v<BaseType, float>) {
       return mlir::Float32Type::get(context);
@@ -70,12 +69,13 @@ template <typename Ret, typename... Args>
 struct CFunctionSignature<Ret(Args...)> {
   using RetType = Ret;
   static mlir::LLVM::LLVMFunctionType getLLVMType(mlir::MLIRContext *context) {
-    mlir::Type retTy = mlir::LLVM::LLVMVoidType::get(context);
+    mlir::Type retTy = // NOLINT(misc-const-correctness)
+        mlir::LLVM::LLVMVoidType::get(context);
     if constexpr (!std::is_void_v<Ret>) {
       retTy = CTypeToLLVM<Ret>::get(context);
     }
 
-    llvm::SmallVector<mlir::Type> argTypes = {
+    const llvm::SmallVector<mlir::Type> argTypes = {
         CTypeToLLVM<Args>::get(context)...};
     return mlir::LLVM::LLVMFunctionType::get(retTy, argTypes);
   }
@@ -98,7 +98,7 @@ template <typename FunctionType>
 mlir::FailureOr<mlir::LLVM::LLVMFuncOp>
 getOrCreateCAPI(mlir::ModuleOp moduleOp, llvm::StringRef symbol) {
   mlir::MLIRContext *context = moduleOp.getContext();
-  mlir::LLVM::LLVMFunctionType expectedType =
+  const mlir::LLVM::LLVMFunctionType expectedType =
       CFunctionTraits<FunctionType>::getLLVMType(context);
 
   return detail::getOrCreateCAPIImpl(moduleOp, symbol, expectedType);

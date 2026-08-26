@@ -52,7 +52,7 @@ void AndThenOp::getSuccessorRegions(
   } else if (point.isParent()) {
     successors.emplace_back(&getRegion(0));
   } else {
-    mlir::RegionBranchTerminatorOpInterface terminator =
+    const mlir::RegionBranchTerminatorOpInterface terminator =
         point.getTerminatorPredecessorOrNull();
     getSuccessorRegions(*terminator->getParentRegion(), successors);
   }
@@ -79,7 +79,7 @@ AndThenYieldOp::getMutableSuccessorOperands(mlir::RegionSuccessor successor) {
 }
 
 void AndThenYieldOp::getSuccessorRegions(
-    llvm::ArrayRef<mlir::Attribute> operands,
+    llvm::ArrayRef<mlir::Attribute>,
     llvm::SmallVectorImpl<mlir::RegionSuccessor> &successors) {
   mlir::cast<AndThenOp>(getOperation()->getParentOp())
       .getSuccessorRegions(mlir::RegionBranchPoint(*this), successors);

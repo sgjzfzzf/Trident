@@ -32,7 +32,7 @@ public:
   mlir::LogicalResult
   matchAndRewrite(mlir::Operation *op,
                   mlir::PatternRewriter &rewriter) const final {
-    if (llvm::StringRef name = op->getName().getStringRef();
+    if (const llvm::StringRef name = op->getName().getStringRef();
         name.starts_with("torch.aten.")) {
       mlir::NamedAttrList attributes(op->getAttrs());
       attributes.set("name", rewriter.getStringAttr(name));

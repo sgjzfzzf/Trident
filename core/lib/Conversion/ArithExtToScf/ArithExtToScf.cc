@@ -31,13 +31,15 @@ namespace trident::arithext {
 
 namespace {
 
+// The recursive shape mirrors the nested scf.if structure being built.
+// NOLINTNEXTLINE(misc-no-recursion)
 mlir::Value buildAndThenChain(mlir::RewriterBase &rewriter, mlir::Location loc,
                               llvm::ArrayRef<mlir::Region *> regions,
                               mlir::Value condition) {
   if (regions.empty()) {
     return condition;
   } else {
-    mlir::OpBuilder::InsertionGuard guard(rewriter);
+    const mlir::OpBuilder::InsertionGuard guard(rewriter);
     mlir::scf::IfOp ifOp = mlir::scf::IfOp::create(
         rewriter, loc, mlir::TypeRange{rewriter.getI1Type()}, condition,
         /*addThenBlock=*/true, /*addElseBlock=*/true);
@@ -54,7 +56,7 @@ mlir::Value buildAndThenChain(mlir::RewriterBase &rewriter, mlir::Location loc,
       }
     }
     rewriter.setInsertionPointToStart(ifOp.elseBlock());
-    mlir::Value falseValue =
+    const mlir::Value falseValue =
         mlir::arith::ConstantIntOp::create(rewriter, loc, false, 1);
     mlir::scf::YieldOp::create(rewriter, loc, falseValue);
     return ifOp.getResult(0);
@@ -68,11 +70,11 @@ public:
   mlir::LogicalResult
   matchAndRewrite(AndThenOp op,
                   mlir::PatternRewriter &rewriter) const override {
-    mlir::Value trueValue =
+    const mlir::Value trueValue =
         mlir::arith::ConstantIntOp::create(rewriter, op.getLoc(), true, 1);
-    llvm::SmallVector<mlir::Region *> regions = llvm::map_to_vector(
+    const llvm::SmallVector<mlir::Region *> regions = llvm::map_to_vector(
         op.getRegions(), [](mlir::Region &region) { return &region; });
-    mlir::Value result =
+    const mlir::Value result =
         buildAndThenChain(rewriter, op.getLoc(), regions, trueValue);
     rewriter.replaceOp(op, result);
     return mlir::success();

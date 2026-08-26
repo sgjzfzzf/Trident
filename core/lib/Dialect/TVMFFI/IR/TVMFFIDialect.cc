@@ -100,17 +100,14 @@ void FuncOp::print(mlir::OpAsmPrinter &p) {
       getArgAttrsAttrName(), getResAttrsAttrName());
 }
 
-void FuncOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
-                   llvm::StringRef name, mlir::FunctionType type,
-                   llvm::ArrayRef<mlir::NamedAttribute> attrs,
-                   mlir::ArrayAttr argAttrs, mlir::ArrayAttr resAttrs) {
+void FuncOp::build(
+    mlir::OpBuilder &builder, mlir::OperationState &state, llvm::StringRef name,
+    mlir::FunctionType type, llvm::ArrayRef<mlir::NamedAttribute> attrs) {
   buildWithEntryBlock(builder, state, name, type, attrs, type.getInputs());
-  state.addAttribute(getArgAttrsAttrName(state.name), argAttrs);
-  state.addAttribute(getResAttrsAttrName(state.name), resAttrs);
 }
 
 mlir::LogicalResult FuncOp::verify() {
-  mlir::FunctionType functionType = getFunctionType();
+  const mlir::FunctionType functionType = getFunctionType();
   // Existing frontends initially construct this wrapper with Torch types.
   // They are a supported input form; conversion makes the ownership-bearing
   // TVM FFI types explicit before runtime operations are lowered.
@@ -129,7 +126,7 @@ mlir::LogicalResult ReturnOp::verify() {
     return emitOpError("must be nested directly in a tvm_ffi.func");
   }
 
-  mlir::FunctionType functionType = func.getFunctionType();
+  const mlir::FunctionType functionType = func.getFunctionType();
   if (functionType.getNumResults() != 1 ||
       !mlir::isa<AnyType>(functionType.getResult(0))) {
     return mlir::success();
@@ -139,7 +136,7 @@ mlir::LogicalResult ReturnOp::verify() {
     return emitOpError(
         "a !tvm_ffi.any function must return at least one value");
   }
-  for (mlir::Value operand : getOperands()) {
+  for (const mlir::Value operand : getOperands()) {
     if (!operand.getType().hasTrait<mlir::TypeTrait::AnyABI>()) {
       return emitOpError("operand type must have a TVMFFIAny ABI: ")
              << operand.getType();
@@ -179,19 +176,20 @@ mlir::LogicalResult ConstantOp::verify() {
 }
 
 mlir::LogicalResult ArrayGetItemOp::verify() {
-  mlir::Type base = getArray().getType();
+  const mlir::Type base = getArray().getType();
   if (!mlir::isa<ArrayType, mlir::torch::Torch::AnyType,
                  mlir::torch::Torch::ListType, mlir::torch::Torch::TupleType>(
           base)) {
     return emitOpError("array operand must be !tvm_ffi.array");
-  } else if (!getElementType()) {
-    return emitOpError("array element type must be specified");
-  } else if (mlir::Type element = *getElementType();
-             getResult().getType() != element) {
-    return emitOpError("result type must be ") << element;
-  } else {
-    return mlir::success();
   }
+  const std::optional<mlir::Type> element = getElementType();
+  if (!element) {
+    return emitOpError("array element type must be specified");
+  }
+  if (getResult().getType() != *element) {
+    return emitOpError("result type must be ") << *element;
+  }
+  return mlir::success();
 }
 
 } // namespace trident::tvm_ffi

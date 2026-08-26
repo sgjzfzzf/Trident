@@ -63,7 +63,7 @@ using OwnedValues =
 static void recordOwnedObjectResults(mlir::Operation *operation,
                                      mlir::ValueRange results,
                                      OwnedValues &ownedValues) {
-  for (mlir::Value result : results) {
+  for (mlir::Value const result : results) {
     if (result.getType().hasTrait<mlir::TypeTrait::Object>()) {
       ownedValues[operation->getParentRegion()].insert(result);
     }
@@ -99,9 +99,8 @@ public:
                            mlir::torch::Torch::ValueTensorType>(type)) {
         return tvm_ffi::TensorType::get(ctx);
       } else if (mlir::isa<mlir::torch::Torch::ListType,
-                           mlir::torch::Torch::TupleType>(type)) {
-        return tvm_ffi::ArrayType::get(ctx);
-      } else if (mlir::isa<mlir::torch::Torch::AnyType>(type)) {
+                           mlir::torch::Torch::TupleType,
+                           mlir::torch::Torch::AnyType>(type)) {
         return tvm_ffi::ArrayType::get(ctx);
       } else {
         return std::nullopt;
@@ -131,10 +130,10 @@ static void populateTerminatorRefCounts(
     const llvm::SmallSetVector<mlir::Value, 4> &ownedValues,
     const TorchFFITypeConverter &typeConverter) {
   mlir::OpBuilder builder(terminator);
-  mlir::Location loc = terminator->getLoc();
+  mlir::Location const loc = terminator->getLoc();
   llvm::SmallSetVector<mlir::Value, 4> valuesToRelease(ownedValues);
 
-  for (mlir::Value operand : terminator->getOperands()) {
+  for (mlir::Value const operand : terminator->getOperands()) {
     mlir::Value value = operand;
     mlir::UnrealizedConversionCastOp cast;
     while ((cast = value.getDefiningOp<mlir::UnrealizedConversionCastOp>()) &&
@@ -165,13 +164,14 @@ static void populateTerminatorRefCounts(
     }
   }
 
-  for (mlir::Value value : valuesToRelease) {
-    mlir::Type convertedType = typeConverter.convertType(value.getType());
+  for (mlir::Value const value : valuesToRelease) {
+    mlir::Type const convertedType = typeConverter.convertType(value.getType());
     if (!convertedType || value.getType() == convertedType) {
       tvm_ffi::ObjectDecRefOp::create(builder, loc, value);
     } else {
-      mlir::Value convertedValue = typeConverter.materializeTargetConversion(
-          builder, loc, convertedType, value);
+      mlir::Value const convertedValue =
+          typeConverter.materializeTargetConversion(builder, loc, convertedType,
+                                                    value);
       if (convertedValue) {
         tvm_ffi::ObjectDecRefOp::create(builder, loc, convertedValue);
       }
@@ -263,7 +263,7 @@ public:
   mlir::LogicalResult
   matchAndRewrite(ConstructOp op, typename ConstructOp::Adaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    tvm_ffi::ArrayCreateOp array =
+    tvm_ffi::ArrayCreateOp const array =
         rewriter.replaceOpWithNewOp<tvm_ffi::ArrayCreateOp>(
             op, tvm_ffi::ArrayType::get(this->getContext()),
             adaptor.getElements());
@@ -288,17 +288,17 @@ public:
   mlir::LogicalResult
   matchAndRewrite(mlir::torch::Torch::PrimListUnpackOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Value array = adaptor.getOperand();
+    mlir::Value const array = adaptor.getOperand();
     llvm::SmallVector<mlir::Value> replacements;
     replacements.reserve(op.getNumResults());
     for (auto [index, result] : llvm::enumerate(op.getResults())) {
-      mlir::Type resultType = typeConverter.convertType(result.getType());
+      mlir::Type const resultType = typeConverter.convertType(result.getType());
       if (!resultType) {
         return op.emitError("cannot convert ListUnpack result type");
       }
       tvm_ffi::ConstantOp idx = tvm_ffi::ConstantOp::create(
           rewriter, op.getLoc(), tvm_ffi::IntType::get(getContext()),
-          rewriter.getI64IntegerAttr(index));
+          rewriter.getI64IntegerAttr(static_cast<int64_t>(index)));
       tvm_ffi::ArrayGetItemOp item = tvm_ffi::ArrayGetItemOp::create(
           rewriter, op.getLoc(), resultType, array, idx.getResult(),
           mlir::TypeAttr::get(resultType));
@@ -342,18 +342,21 @@ public:
   mlir::LogicalResult
   matchAndRewrite(ConstantOp op, typename ConstantOp::Adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Type targetType = typeConverter.convertType(op.getResult().getType());
+    mlir::Type const targetType =
+        typeConverter.convertType(op.getResult().getType());
     if (!targetType) {
       return mlir::failure();
     }
-    mlir::Attribute value = op->getAttr("value");
+    mlir::Attribute value = // NOLINT(misc-const-correctness)
+        op->getAttr("value");
     if constexpr (std::is_same_v<ConstantOp,
-                                 mlir::torch::Torch::ConstantNoneOp>)
+                                 mlir::torch::Torch::ConstantNoneOp>) {
       value = rewriter.getUnitAttr();
+    }
     if (!value) {
       return op->emitError("constant is missing value attribute");
     }
-    tvm_ffi::ConstantOp constant =
+    tvm_ffi::ConstantOp const constant =
         rewriter.replaceOpWithNewOp<tvm_ffi::ConstantOp>(op, targetType, value);
     recordOwnedObjectResults(constant, constant->getResults(), ownedValues);
     return mlir::success();
@@ -377,18 +380,18 @@ public:
   mlir::LogicalResult
   matchAndRewrite(mlir::torch::Torch::OperatorOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    llvm::StringRef name = op.getName();
+    llvm::StringRef const name = op.getName();
     if (!name.starts_with("torch.aten.")) {
       return mlir::failure();
     }
-    std::string callee =
+    std::string const callee =
         ("trident." + name.drop_front(sizeof("torch.") - 1)).str();
-    mlir::ValueRange operands = adaptor.getOperands();
+    mlir::ValueRange const operands = adaptor.getOperands();
     llvm::SmallVector<mlir::Value> replacements;
     if (op->getNumResults() <= 1) {
       llvm::SmallVector<mlir::Type> resultTypes;
       if (op->getNumResults()) {
-        mlir::Type resultType =
+        mlir::Type const resultType =
             typeConverter.convertType(op->getResult(0).getType());
         if (!resultType) {
           return mlir::failure();
@@ -407,7 +410,7 @@ public:
         replacements.push_back(call.getResult(0));
       }
     } else {
-      mlir::Type arrayType = tvm_ffi::ArrayType::get(getContext());
+      mlir::Type const arrayType = tvm_ffi::ArrayType::get(getContext());
       tvm_ffi::FunctionGetGlobalOp getGlobal =
           tvm_ffi::FunctionGetGlobalOp::create(
               rewriter, op->getLoc(), tvm_ffi::FunctionType::get(getContext()),
@@ -420,12 +423,12 @@ public:
       for (auto [index, result] : llvm::enumerate(op->getResults())) {
         tvm_ffi::ConstantOp idx = tvm_ffi::ConstantOp::create(
             rewriter, op->getLoc(), tvm_ffi::IntType::get(getContext()),
-            rewriter.getI64IntegerAttr(index));
-        mlir::Type base = typeConverter.convertType(result.getType());
+            rewriter.getI64IntegerAttr(static_cast<int64_t>(index)));
+        mlir::Type const base = typeConverter.convertType(result.getType());
         if (!base) {
           return mlir::failure();
         }
-        mlir::Type semantic = base;
+        mlir::Type const semantic = base;
 
         tvm_ffi::ArrayGetItemOp item = tvm_ffi::ArrayGetItemOp::create(
             rewriter, op->getLoc(), base, call.getResult(0), idx.getResult(),
@@ -455,15 +458,15 @@ public:
   mlir::LogicalResult
   matchAndRewrite(mlir::torch::Torch::ValueTensorLiteralOp op, OpAdaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::DenseElementsAttr dense =
+    mlir::DenseElementsAttr const dense =
         mlir::dyn_cast<mlir::DenseElementsAttr>(op.getValue());
-    mlir::torch::Torch::BaseTensorType tensorType =
+    mlir::torch::Torch::BaseTensorType const tensorType =
         mlir::dyn_cast<mlir::torch::Torch::BaseTensorType>(op.getType());
     if (!dense || !tensorType || !tensorType.hasSizes()) {
       return op.emitError("literal requires a dense tensor and static shape");
     }
-    llvm::ArrayRef<int64_t> shape = tensorType.getSizes();
-    mlir::RankedTensorType denseType =
+    llvm::ArrayRef<int64_t> const shape = tensorType.getSizes();
+    mlir::RankedTensorType const denseType =
         mlir::dyn_cast<mlir::RankedTensorType>(dense.getType());
     if (!denseType || denseType.getShape() != shape) {
       return op.emitError("literal shape does not match result type");
@@ -472,19 +475,20 @@ public:
     mlir::MLIRContext *ctx = rewriter.getContext();
     mlir::ModuleOp module = op->template getParentOfType<mlir::ModuleOp>();
     mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
-    mlir::IntegerType i8Ty = mlir::IntegerType::get(ctx, 8);
-    mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
-    mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
-    mlir::LLVM::LLVMStructType anyTy = conversion::utils::getTVMFFIAnyType(ctx);
+    mlir::IntegerType const i8Ty = mlir::IntegerType::get(ctx, 8);
+    mlir::IntegerType const i32Ty = mlir::IntegerType::get(ctx, 32);
+    mlir::IntegerType const i64Ty = mlir::IntegerType::get(ctx, 64);
+    mlir::LLVM::LLVMStructType const anyTy =
+        conversion::utils::getTVMFFIAnyType(ctx);
 
-    int64_t elementCount = dense.getNumElements();
+    int64_t const elementCount = dense.getNumElements();
     int64_t elementBits = 0;
     int32_t dtypeCode = 0;
     if (mlir::FloatType floatType =
             mlir::dyn_cast<mlir::FloatType>(denseType.getElementType())) {
       elementBits = floatType.getWidth();
       dtypeCode = kDLFloat;
-    } else if (mlir::IntegerType integerType =
+    } else if (mlir::IntegerType const integerType =
                    mlir::dyn_cast<mlir::IntegerType>(
                        denseType.getElementType())) {
       elementBits =
@@ -495,7 +499,7 @@ public:
     } else {
       return op.emitError("unsupported literal element type");
     }
-    mlir::Value dtypeArg = conversion::utils::buildDTypeAnySlot(
+    mlir::Value const dtypeArg = conversion::utils::buildDTypeAnySlot(
         rewriter, op.getLoc(), dtypeCode, elementBits);
     mlir::FailureOr<mlir::Value> dtypeResult =
         conversion::utils::callTVMFFIGlobalFunction(
@@ -504,30 +508,31 @@ public:
     if (mlir::failed(dtypeResult)) {
       return op.emitError("failed to call TVM FFI dtype conversion helper");
     }
-    mlir::Value dtype = conversion::utils::loadIntFromAnySlot(
-        rewriter, op.getLoc(), *dtypeResult);
-    mlir::Value rank = mlir::LLVM::ConstantOp::create(
+    mlir::Value const dtype = conversion::utils::loadIntFromAnySlot(
+        rewriter, op.getLoc(), dtypeResult.value());
+    mlir::Value const rank = mlir::LLVM::ConstantOp::create(
         rewriter, op.getLoc(), i64Ty, static_cast<int64_t>(shape.size()));
-    mlir::Value sizes = mlir::LLVM::AllocaOp::create(
+    mlir::Value const sizes = mlir::LLVM::AllocaOp::create(
         rewriter, op.getLoc(), ptrTy, i64Ty,
         mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i64Ty,
-                                       shape.size()));
-    mlir::Value strides = mlir::LLVM::AllocaOp::create(
+                                       static_cast<int64_t>(shape.size())));
+    mlir::Value const strides = mlir::LLVM::AllocaOp::create(
         rewriter, op.getLoc(), ptrTy, i64Ty,
         mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i64Ty,
-                                       shape.size()));
+                                       static_cast<int64_t>(shape.size())));
     int64_t stride = 1;
-    for (int64_t index = shape.size() - 1; index >= 0; --index) {
-      mlir::Value sizeSlot =
-          mlir::LLVM::GEPOp::create(rewriter, op.getLoc(), ptrTy, i64Ty, sizes,
-                                    llvm::ArrayRef<mlir::LLVM::GEPArg>{index});
-      mlir::Value strideSlot = mlir::LLVM::GEPOp::create(
+    for (int64_t index = static_cast<int64_t>(shape.size()) - 1; index >= 0;
+         --index) {
+      mlir::Value const sizeSlot = mlir::LLVM::GEPOp::create(
+          rewriter, op.getLoc(), ptrTy, i64Ty, sizes,
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(index)});
+      mlir::Value const strideSlot = mlir::LLVM::GEPOp::create(
           rewriter, op.getLoc(), ptrTy, i64Ty, strides,
-          llvm::ArrayRef<mlir::LLVM::GEPArg>{index});
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(index)});
       mlir::LLVM::StoreOp::create(
           rewriter, op.getLoc(),
           mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i64Ty,
-                                         shape[index]),
+                                         static_cast<int64_t>(shape[index])),
           sizeSlot);
       mlir::LLVM::StoreOp::create(
           rewriter, op.getLoc(),
@@ -537,7 +542,7 @@ public:
     }
 
     mlir::Type storageType = denseType.getElementType();
-    if (mlir::IntegerType integerType =
+    if (mlir::IntegerType const integerType =
             mlir::dyn_cast<mlir::IntegerType>(storageType);
         integerType && integerType.isSignlessInteger(1)) {
       storageType = i8Ty;
@@ -547,17 +552,18 @@ public:
         mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i64Ty,
                                        elementCount));
     auto storeElement = [&](int64_t index, mlir::Value value) {
-      mlir::Value slot = mlir::LLVM::GEPOp::create(
+      mlir::Value const slot = mlir::LLVM::GEPOp::create(
           rewriter, op.getLoc(), ptrTy, storageType, data,
-          llvm::ArrayRef<mlir::LLVM::GEPArg>{index});
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(index)});
       mlir::LLVM::StoreOp::create(rewriter, op.getLoc(), value, slot);
     };
     if (mlir::isa<mlir::FloatType>(storageType)) {
       auto values = dense.getValues<llvm::APFloat>();
       for (auto [index, value] : llvm::enumerate(values)) {
-        storeElement(index, mlir::LLVM::ConstantOp::create(
-                                rewriter, op.getLoc(), storageType,
-                                mlir::FloatAttr::get(storageType, value)));
+        storeElement(static_cast<int64_t>(index),
+                     mlir::LLVM::ConstantOp::create(
+                         rewriter, op.getLoc(), storageType,
+                         mlir::FloatAttr::get(storageType, value)));
       }
     } else {
       auto values = dense.getValues<llvm::APInt>();
@@ -566,20 +572,21 @@ public:
                 .isSignlessInteger(1)) {
           value = llvm::APInt(8, value.getBoolValue());
         }
-        storeElement(index, mlir::LLVM::ConstantOp::create(
-                                rewriter, op.getLoc(), storageType,
-                                mlir::IntegerAttr::get(storageType, value)));
+        storeElement(static_cast<int64_t>(index),
+                     mlir::LLVM::ConstantOp::create(
+                         rewriter, op.getLoc(), storageType,
+                         mlir::IntegerAttr::get(storageType, value)));
       }
     }
 
     mlir::Value tensorHandle;
-    mlir::Value zeroI32 =
+    mlir::Value const zeroI32 =
         mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i32Ty, 0);
-    mlir::Value oneI64 =
+    mlir::Value const oneI64 =
         mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i64Ty, 1);
     auto callDeviceType =
         [&](mlir::Value deviceType) -> mlir::FailureOr<mlir::Value> {
-      mlir::Value argument =
+      mlir::Value const argument =
           conversion::utils::buildIntAnySlot(rewriter, op.getLoc(), deviceType);
       mlir::FailureOr<mlir::Value> result =
           conversion::utils::callTVMFFIGlobalFunction(
@@ -590,7 +597,7 @@ public:
         return mlir::failure();
       }
       return conversion::utils::loadIntFromAnySlot(rewriter, op.getLoc(),
-                                                   *result);
+                                                   result.value());
     };
 
     if (dense.isSplat()) {
@@ -598,39 +605,39 @@ public:
       if (mlir::isa<mlir::FloatType>(storageType)) {
         fillValue = dense.getSplatValue<llvm::APFloat>().convertToDouble();
       } else {
-        llvm::APInt value = dense.getSplatValue<llvm::APInt>();
-        mlir::IntegerType integerType =
+        llvm::APInt const value = dense.getSplatValue<llvm::APInt>();
+        mlir::IntegerType const integerType =
             mlir::cast<mlir::IntegerType>(storageType);
-        fillValue =
-            integerType.isSignlessInteger(1)
-                ? value.getBoolValue()
-                : (integerType.isUnsignedInteger() ? value.getZExtValue()
-                                                   : value.getSExtValue());
+        fillValue = integerType.isSignlessInteger(1)
+                        ? static_cast<double>(value.getBoolValue())
+                        : (integerType.isUnsignedInteger()
+                               ? static_cast<double>(value.getZExtValue())
+                               : static_cast<double>(value.getSExtValue()));
       }
-      mlir::LLVM::LLVMFuncOp fullFn = TRIDENT_CHECK_FAILURE(
+      mlir::LLVM::LLVMFuncOp const fullFn = TRIDENT_CHECK_FAILURE(
           conversion::utils::getOrCreateAOTITorchAtenFull(module));
-      mlir::LLVM::LLVMFuncOp getDeviceIndexFn = TRIDENT_CHECK_FAILURE(
+      mlir::LLVM::LLVMFuncOp const getDeviceIndexFn = TRIDENT_CHECK_FAILURE(
           conversion::utils::getOrCreateAOTITorchGetCurrentDeviceIndex(module));
-      mlir::Value cudaDLDeviceType =
+      mlir::Value const cudaDLDeviceType =
           mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i32Ty, kDLCUDA);
-      mlir::Value cudaDeviceType =
+      mlir::Value const cudaDeviceType =
           TRIDENT_CHECK_FAILURE(callDeviceType(cudaDLDeviceType));
-      mlir::Value dtypeSlot = mlir::LLVM::AllocaOp::create(
+      mlir::Value const dtypeSlot = mlir::LLVM::AllocaOp::create(
           rewriter, op.getLoc(), ptrTy, i32Ty, oneI64);
       mlir::LLVM::StoreOp::create(rewriter, op.getLoc(), dtype, dtypeSlot);
-      mlir::Value deviceSlot = mlir::LLVM::AllocaOp::create(
+      mlir::Value const deviceSlot = mlir::LLVM::AllocaOp::create(
           rewriter, op.getLoc(), ptrTy, i32Ty, oneI64);
       mlir::LLVM::StoreOp::create(rewriter, op.getLoc(), cudaDeviceType,
                                   deviceSlot);
-      mlir::Value deviceIndexSlot = mlir::LLVM::AllocaOp::create(
+      mlir::Value const deviceIndexSlot = mlir::LLVM::AllocaOp::create(
           rewriter, op.getLoc(), ptrTy, i32Ty, oneI64);
       mlir::LLVM::CallOp::create(rewriter, op.getLoc(), getDeviceIndexFn,
                                  deviceIndexSlot);
-      mlir::Value deviceIndex = mlir::LLVM::LoadOp::create(
+      mlir::Value const deviceIndex = mlir::LLVM::LoadOp::create(
           rewriter, op.getLoc(), i32Ty, deviceIndexSlot);
-      mlir::Value output = mlir::LLVM::AllocaOp::create(rewriter, op.getLoc(),
-                                                        ptrTy, ptrTy, oneI64);
-      mlir::Value fill = mlir::LLVM::ConstantOp::create(
+      mlir::Value const output = mlir::LLVM::AllocaOp::create(
+          rewriter, op.getLoc(), ptrTy, ptrTy, oneI64);
+      mlir::Value const fill = mlir::LLVM::ConstantOp::create(
           rewriter, op.getLoc(), mlir::Float64Type::get(ctx),
           mlir::FloatAttr::get(mlir::Float64Type::get(ctx), fillValue));
       mlir::LLVM::CallOp::create(
@@ -642,40 +649,40 @@ public:
       tensorHandle =
           mlir::LLVM::LoadOp::create(rewriter, op.getLoc(), ptrTy, output);
     } else {
-      mlir::LLVM::LLVMFuncOp createFromBlobFn = TRIDENT_CHECK_FAILURE(
+      mlir::LLVM::LLVMFuncOp const createFromBlobFn = TRIDENT_CHECK_FAILURE(
           conversion::utils::getOrCreateAOTITorchCreateTensorFromBlob(module));
-      mlir::LLVM::LLVMFuncOp emptyStridedFn = TRIDENT_CHECK_FAILURE(
+      mlir::LLVM::LLVMFuncOp const emptyStridedFn = TRIDENT_CHECK_FAILURE(
           conversion::utils::getOrCreateAOTITorchEmptyStrided(module));
-      mlir::LLVM::LLVMFuncOp copyFn = TRIDENT_CHECK_FAILURE(
+      mlir::LLVM::LLVMFuncOp const copyFn = TRIDENT_CHECK_FAILURE(
           conversion::utils::getOrCreateAOTITorchCopy_(module));
-      mlir::LLVM::LLVMFuncOp deleteTensorFn = TRIDENT_CHECK_FAILURE(
+      mlir::LLVM::LLVMFuncOp const deleteTensorFn = TRIDENT_CHECK_FAILURE(
           conversion::utils::getOrCreateAOTITorchDeleteTensorObject(module));
-      mlir::LLVM::LLVMFuncOp getDeviceIndexFn = TRIDENT_CHECK_FAILURE(
+      mlir::LLVM::LLVMFuncOp const getDeviceIndexFn = TRIDENT_CHECK_FAILURE(
           conversion::utils::getOrCreateAOTITorchGetCurrentDeviceIndex(module));
-      mlir::Value cpuDLDeviceType =
+      mlir::Value const cpuDLDeviceType =
           mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i32Ty, kDLCPU);
-      mlir::Value cudaDLDeviceType =
+      mlir::Value const cudaDLDeviceType =
           mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i32Ty, kDLCUDA);
-      mlir::Value cpuDeviceType =
+      mlir::Value const cpuDeviceType =
           TRIDENT_CHECK_FAILURE(callDeviceType(cpuDLDeviceType));
-      mlir::Value cudaDeviceType =
+      mlir::Value const cudaDeviceType =
           TRIDENT_CHECK_FAILURE(callDeviceType(cudaDLDeviceType));
-      mlir::Value deviceIndexSlot = mlir::LLVM::AllocaOp::create(
+      mlir::Value const deviceIndexSlot = mlir::LLVM::AllocaOp::create(
           rewriter, op.getLoc(), ptrTy, i32Ty, oneI64);
       mlir::LLVM::CallOp::create(rewriter, op.getLoc(), getDeviceIndexFn,
                                  deviceIndexSlot);
-      mlir::Value deviceIndex = mlir::LLVM::LoadOp::create(
+      mlir::Value const deviceIndex = mlir::LLVM::LoadOp::create(
           rewriter, op.getLoc(), i32Ty, deviceIndexSlot);
-      mlir::Value cpuOutput = mlir::LLVM::AllocaOp::create(
+      mlir::Value const cpuOutput = mlir::LLVM::AllocaOp::create(
           rewriter, op.getLoc(), ptrTy, ptrTy, oneI64);
       mlir::LLVM::CallOp::create(
           rewriter, op.getLoc(), createFromBlobFn,
           {data, rank, sizes, strides,
            mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i64Ty, 0),
            dtype, cpuDeviceType, zeroI32, cpuOutput});
-      mlir::Value cpuTensor =
+      mlir::Value const cpuTensor =
           mlir::LLVM::LoadOp::create(rewriter, op.getLoc(), ptrTy, cpuOutput);
-      mlir::Value cudaOutput = mlir::LLVM::AllocaOp::create(
+      mlir::Value const cudaOutput = mlir::LLVM::AllocaOp::create(
           rewriter, op.getLoc(), ptrTy, ptrTy, oneI64);
       mlir::LLVM::CallOp::create(rewriter, op.getLoc(), emptyStridedFn,
                                  {rank, sizes, strides, dtype, cudaDeviceType,
@@ -688,7 +695,7 @@ public:
                                  cpuTensor);
     }
 
-    mlir::Value tensorArg = conversion::utils::buildOpaquePtrAnySlot(
+    mlir::Value const tensorArg = conversion::utils::buildOpaquePtrAnySlot(
         rewriter, op.getLoc(), tensorHandle);
     mlir::FailureOr<mlir::Value> resultSlot =
         conversion::utils::callTVMFFIGlobalFunction(
@@ -697,7 +704,8 @@ public:
     if (mlir::failed(resultSlot)) {
       return op.emitError("failed to call TVM FFI tensor conversion helper");
     }
-    rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(op, anyTy, *resultSlot);
+    rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(op, anyTy,
+                                                    resultSlot.value());
     return mlir::success();
   }
 };
@@ -717,7 +725,7 @@ public:
     if (!func) {
       return mlir::failure();
     }
-    mlir::FunctionType type = func.getFunctionType();
+    mlir::FunctionType const type = func.getFunctionType();
     if (type.getNumResults() == 1 &&
         mlir::isa<tvm_ffi::AnyType>(type.getResult(0))) {
       return mlir::failure();
@@ -834,7 +842,7 @@ class ConvertTorchToTVMFFIPass final
         tvm_ffi::TensorDTypeOp, tvm_ffi::TensorDeviceOp, tvm_ffi::CastOp,
         tvm_ffi::ArrayLengthOp>([&](mlir::Operation *op) {
       return llvm::all_of(op->getOperandTypes(), [&](mlir::Type type) {
-        mlir::Type convertedType = typeConverter.convertType(type);
+        mlir::Type const convertedType = typeConverter.convertType(type);
         return !convertedType || convertedType == type;
       });
     });
@@ -850,7 +858,7 @@ class ConvertTorchToTVMFFIPass final
         trident::torchext::CastOp, trident::torchext::TridentKernelLaunchOp>(
         [&](mlir::Operation *op) {
           return llvm::all_of(op->getOperandTypes(), [&](mlir::Type type) {
-            mlir::Type convertedType = typeConverter.convertType(type);
+            mlir::Type const convertedType = typeConverter.convertType(type);
             return !convertedType || convertedType == type;
           });
         });
@@ -878,7 +886,7 @@ class ConvertTorchToTVMFFIPass final
              ConvertTerminatorOp<tvm_ffi::ReturnOp>,
              ConvertTerminatorOp<mlir::torch::Torch::PrimIfYieldOp>>(
             &getContext(), ownedValues, typeConverter);
-    mlir::FrozenRewritePatternSet frozenRefCountPatterns(
+    mlir::FrozenRewritePatternSet const frozenRefCountPatterns(
         std::move(refCountPatterns));
     mlir::walkAndApplyPatterns(getOperation(), frozenRefCountPatterns);
   }

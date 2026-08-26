@@ -14,7 +14,7 @@
     if (mlir::failed(trident_check_or)) {                                      \
       OnFailure;                                                               \
     }                                                                          \
-    *trident_check_or;                                                         \
+    trident_check_or.value();                                                  \
   })
 
 #define TRIDENT_CHECK_FAILURE(Expr) TRIDENT_CHECK(Expr, return mlir::failure())

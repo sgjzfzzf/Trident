@@ -49,7 +49,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def("trident.runtime.tvm_ffi_to_torch_type",
            [](DLDataType dtype) -> int32_t {
 #define X(dlpack_code, dlpack_bits, torch_fn)                                  \
-  if (dtype.code == dlpack_code && dtype.bits == dlpack_bits) {                \
+  if (dtype.code == (dlpack_code) && dtype.bits == (dlpack_bits)) {            \
     return torch_fn();                                                         \
   }
              TRIDENT_TVMFFI_DTYPE_PAIR(X)
@@ -59,7 +59,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
       .def("trident.runtime.tvm_ffi_device_to_torch_device_type",
            [](int32_t dl_device_type) -> int32_t {
 #define X(dlpack_device, torch_fn)                                             \
-  if (dl_device_type == dlpack_device) {                                       \
+  if (dl_device_type == (dlpack_device)) {                                     \
     return torch_fn();                                                         \
   }
              TRIDENT_TVMFFI_DEVICE_PAIR(X)
@@ -77,7 +77,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
              int32_t torch_device_type;
              int32_t device_index;
              int64_t storage_offset;
-             int status =
+             const int status =
                  aoti_torch_get_dim(input, &ndim) |
                  aoti_torch_get_sizes(input, &sizes) |
                  aoti_torch_get_strides(input, &strides) |
@@ -120,7 +120,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
              }
              managed->dl_tensor.data = data;
              managed->dl_tensor.device = DLDevice{dl_device, device_index};
-             managed->dl_tensor.ndim = ndim;
+             managed->dl_tensor.ndim = static_cast<int32_t>(ndim);
              managed->dl_tensor.dtype = dl_dtype;
              managed->dl_tensor.shape = sizes;
              managed->dl_tensor.strides = strides;

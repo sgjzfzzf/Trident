@@ -112,7 +112,7 @@ void populateTorchConversionToLLVMConversionPatterns(
 void registerConvertTorchConversionToLLVMInterface(
     mlir::DialectRegistry &registry) {
   registry.addExtension(
-      +[](mlir::MLIRContext *ctx,
+      +[](mlir::MLIRContext *,
           mlir::torch::TorchConversion::TorchConversionDialect *dialect) {
         dialect->addInterfaces<TorchConversionToLLVMDialectInterface>();
       });

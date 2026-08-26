@@ -31,14 +31,14 @@ mlir::Value getOrCreateGlobalString(mlir::OpBuilder &builder,
   mlir::MLIRContext *context = moduleOp.getContext();
   const mlir::Type ptrTy = mlir::LLVM::LLVMPointerType::get(context);
   const mlir::Type i8Ty = mlir::IntegerType::get(context, 8);
-  std::string globalSymName =
+  const std::string globalSymName =
       llvm::formatv("__trident_constant_{0}_{1}", name, content);
   if (!moduleOp.lookupSymbol<mlir::LLVM::GlobalOp>(globalSymName)) {
     llvm::SmallString<16> nullTerminatedContent = content;
     nullTerminatedContent.push_back(0);
     const mlir::LLVM::LLVMArrayType arrayType =
         mlir::LLVM::LLVMArrayType::get(i8Ty, nullTerminatedContent.size());
-    mlir::OpBuilder::InsertionGuard guard(builder);
+    const mlir::OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(moduleOp.getBody());
     mlir::LLVM::GlobalOp::create(
         builder, loc, arrayType, /*isConstant=*/true,

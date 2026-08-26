@@ -35,7 +35,7 @@ public:
         "ffi.Array");
     rewriter.replaceOpWithNewOp<FunctionCallOp>(
         op, op.getResult().getType(), getGlobal.getResult(), op.getElements());
-    for (mlir::Value element : op.getElements()) {
+    for (const mlir::Value element : op.getElements()) {
       if (element.getType().hasTrait<mlir::TypeTrait::Object>()) {
         ObjectDecRefOp::create(rewriter, op.getLoc(), element);
       }
@@ -54,7 +54,8 @@ public:
     FunctionGetGlobalOp getGlobal = FunctionGetGlobalOp::create(
         rewriter, op.getLoc(), FunctionType::get(rewriter.getContext()),
         "ffi.ArrayGetItem");
-    llvm::SmallVector<mlir::Value> arguments{op.getArray(), op.getIndex()};
+    const llvm::SmallVector<mlir::Value> arguments{op.getArray(),
+                                                   op.getIndex()};
     rewriter.replaceOpWithNewOp<FunctionCallOp>(
         op, op.getResult().getType(), getGlobal.getResult(), arguments);
     return mlir::success();

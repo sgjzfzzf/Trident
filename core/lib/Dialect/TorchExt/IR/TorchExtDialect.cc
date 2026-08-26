@@ -67,8 +67,8 @@ bool CastOp::areCastCompatible(mlir::TypeRange inputs,
   if (inputs.size() != 1 || outputs.size() != 1) {
     return false;
   }
-  mlir::Type input = inputs[0];
-  mlir::Type output = outputs[0];
+  const mlir::Type input = inputs[0];
+  const mlir::Type output = outputs[0];
 
   return ((llvm::isa<mlir::torch::Torch::IntType, trident::tvm_ffi::IntType>(
               input)) &&

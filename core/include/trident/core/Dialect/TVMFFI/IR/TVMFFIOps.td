@@ -123,9 +123,7 @@ def TVMFFI_FuncOp : TVMFFI_Op<"func", [
 
   let builders = [OpBuilder<(ins
     "::llvm::StringRef":$name, "::mlir::FunctionType":$type,
-    CArg<"::llvm::ArrayRef<::mlir::NamedAttribute>", "{}">:$attrs,
-    CArg<"::mlir::ArrayAttr", "{}">:$argAttrs,
-    CArg<"::mlir::ArrayAttr", "{}">:$resAttrs)
+    CArg<"::llvm::ArrayRef<::mlir::NamedAttribute>", "{}">:$attrs)
   >];
 
   let extraClassDeclaration = [{

@@ -41,10 +41,10 @@ public:
   mlir::LogicalResult
   matchAndRewrite(mlir::torch::Torch::RuntimeAssertOp op,
                   mlir::PatternRewriter &rewriter) const override {
-    mlir::Location loc = op.getLoc();
+    mlir::Location const loc = op.getLoc();
     mlir::MLIRContext *ctx = rewriter.getContext();
     mlir::Value cond = op.getCondition();
-    mlir::IntegerType i1Ty = mlir::IntegerType::get(ctx, 1);
+    mlir::IntegerType const i1Ty = mlir::IntegerType::get(ctx, 1);
 
     cond = llvm::isa<mlir::LLVM::LLVMStructType>(cond.getType())
                ? mlir::LLVM::TruncOp::create(
@@ -80,7 +80,7 @@ public:
 } // namespace
 
 void populateTorchToCfConversionPatterns(mlir::ConversionTarget &target,
-                                         mlir::TypeConverter &typeConverter,
+                                         mlir::TypeConverter &,
                                          mlir::RewritePatternSet &patterns) {
   patterns.add<ConvertRuntimeAssertOp>(patterns.getContext());
   target.addLegalDialect<mlir::cf::ControlFlowDialect>();

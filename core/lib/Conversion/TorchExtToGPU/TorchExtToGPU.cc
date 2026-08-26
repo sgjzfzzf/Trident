@@ -49,18 +49,18 @@ public:
   mlir::LogicalResult
   matchAndRewrite(CastOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Location loc = op.getLoc();
+    mlir::Location const loc = op.getLoc();
     mlir::MLIRContext *ctx = rewriter.getContext();
-    mlir::Type resultType = op.getResult().getType();
+    mlir::Type const resultType = op.getResult().getType();
 
     // The type converter maps TVM FFI scalar values to their LLVM Any ABI
     // representation. Extract the i64 payload from field[2].
-    mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
+    mlir::Value const payload = mlir::LLVM::ExtractValueOp::create(
         rewriter, loc, adaptor.getOperand(), llvm::ArrayRef<int64_t>{2});
 
     if (mlir::isa<mlir::FloatType>(resultType)) {
       // payload is f64 bitcast to i64 — bitcast back to f64 first.
-      mlir::Value f64Val = mlir::LLVM::BitcastOp::create(
+      mlir::Value const f64Val = mlir::LLVM::BitcastOp::create(
           rewriter, loc, mlir::Float64Type::get(ctx), payload);
       if (resultType.isF64()) {
         // f64: no conversion needed.
@@ -73,9 +73,9 @@ public:
     } else {
       // payload is i64 — truncate to signless, then cast to
       // target signedness if needed (llvm.trunc accepts only signless types).
-      uint32_t targetWidth = resultType.getIntOrFloatBitWidth();
-      mlir::Type signlessType = mlir::IntegerType::get(ctx, targetWidth);
-      mlir::Value converted =
+      uint32_t const targetWidth = resultType.getIntOrFloatBitWidth();
+      mlir::Type const signlessType = mlir::IntegerType::get(ctx, targetWidth);
+      mlir::Value const converted =
           targetWidth < 64 ? mlir::LLVM::TruncOp::create(rewriter, loc,
                                                          signlessType, payload)
                            : payload;
@@ -102,14 +102,15 @@ public:
   mlir::LogicalResult
   matchAndRewrite(TridentKernelLaunchOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Location loc = op.getLoc();
+    mlir::Location const loc = op.getLoc();
     mlir::MLIRContext *ctx = rewriter.getContext();
-    mlir::IntegerType i1Ty = mlir::IntegerType::get(ctx, 1);
-    mlir::IntegerType i8Ty = mlir::IntegerType::get(ctx, 8);
-    mlir::IntegerType i32Ty = mlir::IntegerType::get(ctx, 32);
-    mlir::IntegerType i64Ty = mlir::IntegerType::get(ctx, 64);
-    mlir::LLVM::LLVMPointerType ptrTy = mlir::LLVM::LLVMPointerType::get(ctx);
-    mlir::LLVM::LLVMStructType dlTensorTy =
+    mlir::IntegerType const i1Ty = mlir::IntegerType::get(ctx, 1);
+    mlir::IntegerType const i8Ty = mlir::IntegerType::get(ctx, 8);
+    mlir::IntegerType const i32Ty = mlir::IntegerType::get(ctx, 32);
+    mlir::IntegerType const i64Ty = mlir::IntegerType::get(ctx, 64);
+    mlir::LLVM::LLVMPointerType const ptrTy =
+        mlir::LLVM::LLVMPointerType::get(ctx);
+    mlir::LLVM::LLVMStructType const dlTensorTy =
         trident::conversion::utils::getDLTensorType(ctx);
 
     // Build grid and block dimensions from individual values.
@@ -118,11 +119,11 @@ public:
     // legal LLVM types the GpuToLLVMConversionPass marks the op dynamically
     // legal and LegalizeLaunchFuncOpPattern never matches — this preserves
     // the asyncObject (current CUDA stream) through the lowering pipeline.
-    mlir::gpu::KernelDim3 gridSize{
+    mlir::gpu::KernelDim3 const gridSize{
         adaptor.getGridSizeX(), adaptor.getGridSizeY(), adaptor.getGridSizeZ()};
-    mlir::gpu::KernelDim3 blockSize{adaptor.getBlockSizeX(),
-                                    adaptor.getBlockSizeY(),
-                                    adaptor.getBlockSizeZ()};
+    mlir::gpu::KernelDim3 const blockSize{adaptor.getBlockSizeX(),
+                                          adaptor.getBlockSizeY(),
+                                          adaptor.getBlockSizeZ()};
 
     // Build optional cluster dimensions.
     std::optional<mlir::gpu::KernelDim3> clusterSize = std::nullopt;
@@ -134,7 +135,8 @@ public:
     }
 
     // Dynamic shared memory size (may be null) — use adapted value for i32.
-    mlir::Value dynamicSharedMemorySize = adaptor.getDynamicSharedMemorySize();
+    mlir::Value const dynamicSharedMemorySize =
+        adaptor.getDynamicSharedMemorySize();
 
     // Type-convert kernel operands.  For tensor operands, the adapted value is
     // a TVMFFIObjectHandle (!llvm.ptr); extract the DLTensor data pointer.
@@ -144,29 +146,29 @@ public:
          llvm::zip(op.getKernelOperands(), adaptor.getKernelOperands())) {
       if (mlir::isa<trident::tvm_ffi::TensorType>(orig.getType())) {
         // Extract pointer from TVMFFIAny field[2].
-        mlir::Value handleInt = mlir::LLVM::ExtractValueOp::create(
+        mlir::Value const handleInt = mlir::LLVM::ExtractValueOp::create(
             rewriter, loc, adapted, llvm::ArrayRef<int64_t>{2});
-        mlir::Value handle =
+        mlir::Value const handle =
             mlir::LLVM::IntToPtrOp::create(rewriter, loc, ptrTy, handleInt);
         // Skip 24-byte TVMFFIObject header to reach DLTensor.
-        mlir::Value dlTensorPtr = mlir::LLVM::GEPOp::create(
+        mlir::Value const dlTensorPtr = mlir::LLVM::GEPOp::create(
             rewriter, loc, ptrTy, i8Ty, handle,
             llvm::ArrayRef<mlir::LLVM::GEPArg>{sizeof(TVMFFIObject)});
-        mlir::Value dataGep = mlir::LLVM::GEPOp::create(
+        mlir::Value const dataGep = mlir::LLVM::GEPOp::create(
             rewriter, loc, ptrTy, dlTensorTy, dlTensorPtr,
             llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0});
         operands.push_back(
             mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, dataGep));
       } else if (mlir::isa<trident::tvm_ffi::BoolType>(orig.getType())) {
         // Bool: extract i64 payload and truncate to i1.
-        mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
+        mlir::Value const payload = mlir::LLVM::ExtractValueOp::create(
             rewriter, loc, adapted, llvm::ArrayRef<int64_t>{2});
         operands.push_back(
             mlir::LLVM::TruncOp::create(rewriter, loc, i1Ty, payload));
       } else if (mlir::isa<trident::tvm_ffi::FloatType,
                            trident::tvm_ffi::IntType>(orig.getType())) {
         // Torch scalar: extract i64 payload from TVMFFIAny field[2].
-        mlir::Value payload = mlir::LLVM::ExtractValueOp::create(
+        mlir::Value const payload = mlir::LLVM::ExtractValueOp::create(
             rewriter, loc, adapted, llvm::ArrayRef<int64_t>{2});
         operands.push_back(payload);
       } else {
@@ -191,12 +193,12 @@ public:
           "failed to create aoti_torch_get_current_device_index");
     }
 
-    mlir::Value devIdxSlot = mlir::LLVM::AllocaOp::create(
+    mlir::Value const devIdxSlot = mlir::LLVM::AllocaOp::create(
         rewriter, loc, ptrTy, i32Ty,
         mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1));
-    mlir::LLVM::CallOp::create(rewriter, loc, *getDevIdxFn,
+    mlir::LLVM::CallOp::create(rewriter, loc, getDevIdxFn.value(),
                                mlir::ValueRange{devIdxSlot});
-    mlir::Value deviceIndex =
+    mlir::Value const deviceIndex =
         mlir::LLVM::LoadOp::create(rewriter, loc, i32Ty, devIdxSlot);
 
     // Step 2: call TVMFFIEnvGetStream(kDLCUDA, deviceIndex) to get the
@@ -207,12 +209,13 @@ public:
       return op->emitOpError("failed to create TVMFFIEnvGetStream");
     }
 
-    mlir::Value cudaDeviceType = mlir::LLVM::ConstantOp::create(
+    mlir::Value const cudaDeviceType = mlir::LLVM::ConstantOp::create(
         rewriter, loc, i32Ty, DLDeviceType::kDLCUDA);
-    mlir::Value asyncObject = mlir::LLVM::CallOp::create(
-                                  rewriter, loc, *getStreamFn,
-                                  mlir::ValueRange{cudaDeviceType, deviceIndex})
-                                  .getResult();
+    mlir::Value const asyncObject =
+        mlir::LLVM::CallOp::create(
+            rewriter, loc, getStreamFn.value(),
+            mlir::ValueRange{cudaDeviceType, deviceIndex})
+            .getResult();
 
     // Triton kernels always include 2 extra u64 pointer parameters in the
     // PTX parameter list beyond the user-visible runtime parameters.
@@ -220,7 +223,7 @@ public:
     // reads them from the params array.  Pad with null (zero) values to
     // match the kernel's actual parameter count and avoid out-of-bounds
     // reads that cause a segfault.
-    mlir::Value nullPtr =
+    mlir::Value const nullPtr =
         mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 0);
     operands.push_back(nullPtr);
     operands.push_back(nullPtr);
@@ -275,7 +278,7 @@ public:
 } // namespace
 
 void populateTorchExtToGPUConversionPatterns(
-    mlir::ConversionTarget &target, mlir::RewritePatternSet &patterns,
+    mlir::ConversionTarget &, mlir::RewritePatternSet &patterns,
     mlir::TypeConverter &typeConverter) {
   patterns.add<ConvertCastOp, ConvertTridentKernelLaunchOp>(
       typeConverter, patterns.getContext());

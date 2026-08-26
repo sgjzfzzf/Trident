@@ -1,0 +1,11 @@
+# Part of the Trident project, under the MIT License.
+# SPDX-License-Identifier: MIT
+
+Checks: >-
+  -*,
+  bugprone-*,
+  misc-*,
+  performance-*
+HeaderFilterRegex: '^(.*[/\\])(core|ffi)/(include|lib|python|tools)/.*'
+FormatStyle: file
+SystemHeaders: false

@@ -8,8 +8,8 @@
 #ifndef TRIDENT_CORE_CONVERSION_TVMFFITOFUNC_TVMFFITOFUNC_H_
 #define TRIDENT_CORE_CONVERSION_TVMFFITOFUNC_TVMFFITOFUNC_H_
 
-#include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassRegistry.h"
+#include <mlir/Pass/Pass.h>
+#include <mlir/Pass/PassRegistry.h>
 
 namespace trident::tvm_ffi {
 

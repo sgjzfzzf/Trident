@@ -7,12 +7,15 @@
 
 #include "dlpack/dlpack.h"
 #include "torch/csrc/inductor/aoti_torch/c/shim.h"
-#include "tvm/ffi/container/tensor.h"
-#include "tvm/ffi/reflection/registry.h"
 #include <cassert>
+#include <cstdint>
 #include <cstdlib>
 #include <new>
 #include <stdexcept>
+#include <torch/csrc/inductor/aoti_torch/c/macros.h>
+#include <tvm/ffi/base_details.h>
+#include <tvm/ffi/container/tensor.h>
+#include <tvm/ffi/reflection/registry.h>
 
 // X-Macro: (DLDataTypeCode, bits, aoti_torch_dtype_* function name)
 #define TRIDENT_TVMFFI_DTYPE_PAIR(X)                                           \

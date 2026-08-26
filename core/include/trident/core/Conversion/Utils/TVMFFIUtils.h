@@ -9,9 +9,9 @@
 #ifndef TRIDENT_CORE_CONVERSION_UTILS_TVMFFIUTILS_H_
 #define TRIDENT_CORE_CONVERSION_UTILS_TVMFFIUTILS_H_
 
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Value.h"
-#include "mlir/Support/LogicalResult.h"
+#include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/Value.h>
+#include <mlir/Support/LogicalResult.h>
 
 namespace trident::conversion::utils {
 

@@ -8,7 +8,7 @@
 #ifndef TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTDIALECT_H_
 #define TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTDIALECT_H_
 
-#include "mlir/IR/Dialect.h"
+#include <mlir/IR/Dialect.h>
 
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 

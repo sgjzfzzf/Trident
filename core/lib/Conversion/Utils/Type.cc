@@ -7,8 +7,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/Utils/Type.h"
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
-#include "mlir/IR/BuiltinTypes.h"
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/MLIRContext.h>
 
 // ---------------------------------------------------------------------------
 // DLPack LLVM struct type helpers

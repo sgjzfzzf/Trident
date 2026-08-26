@@ -13,8 +13,8 @@
 // trident-core-opt can parse and transform `.mlir` files exercising these
 // dialects.
 
-#include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "trident/core/Utils/Registration.h"
+#include <mlir/Tools/mlir-opt/MlirOptMain.h>
 
 int main(int argc, char **argv) {
   trident::conversion::registerAllPasses();

@@ -26,8 +26,8 @@
 #include "ATen/core/dispatch/Dispatcher.h"
 #include "ATen/core/stack.h"
 #include "Value.h"
-#include "tvm/ffi/container/tuple.h"
-#include "tvm/ffi/function.h"
+#include <tvm/ffi/container/tuple.h>
+#include <tvm/ffi/function.h>
 
 #include <utility>
 

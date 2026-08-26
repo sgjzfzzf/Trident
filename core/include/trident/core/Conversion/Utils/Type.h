@@ -9,8 +9,8 @@
 #ifndef TRIDENT_CORE_CONVERSION_UTILS_TYPE_H_
 #define TRIDENT_CORE_CONVERSION_UTILS_TYPE_H_
 
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
-#include "mlir/IR/MLIRContext.h"
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/IR/MLIRContext.h>
 
 namespace trident::conversion::utils {
 

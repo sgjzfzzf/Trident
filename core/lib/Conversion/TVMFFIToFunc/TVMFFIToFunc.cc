@@ -5,23 +5,40 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/IRMapping.h"
-#include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
+#include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Conversion/Utils/GlobalString.h"
 #include "trident/core/Conversion/Utils/TVMFFIUtils.h"
 #include "trident/core/Conversion/Utils/Type.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/FormatVariadic.h"
+#include <cstdint>
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/SmallVectorExtras.h>
+#include <llvm/Support/FormatVariadic.h>
+#include <mlir/Dialect/Arith/IR/Arith.h>
+#include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h> // NOLINT(misc-include-cleaner)
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Dialect/LLVMIR/LLVMAttrs.h>
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/Dialect/SCF/IR/SCF.h>
+#include <mlir/IR/Block.h>
+#include <mlir/IR/Builders.h>
+#include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/IRMapping.h>
+#include <mlir/IR/Location.h>
+#include <mlir/IR/MLIRContext.h>
+#include <mlir/IR/Operation.h>
+#include <mlir/IR/Types.h>
+#include <mlir/IR/Value.h>
+#include <mlir/Support/LLVM.h>
+#include <mlir/Support/WalkResult.h>
 #include <optional>
+#include <string>
+#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 namespace trident::tvm_ffi {
 

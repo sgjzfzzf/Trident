@@ -9,9 +9,9 @@
 #ifndef TRIDENT_CORE_CONVERSION_TORCHEXTTOGPU_TORCHEXTTOGPU_H_
 #define TRIDENT_CORE_CONVERSION_TORCHEXTTOGPU_TORCHEXTTOGPU_H_
 
-#include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassRegistry.h"
-#include "mlir/Transforms/DialectConversion.h"
+#include <mlir/Pass/Pass.h>
+#include <mlir/Pass/PassRegistry.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace trident::torchext {
 

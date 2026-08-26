@@ -1,6 +1,8 @@
 # Part of the Trident project, under the MIT License.
 # SPDX-License-Identifier: MIT
 
+from typing import Any
+
 import torch
 import trident
 import triton
@@ -11,12 +13,12 @@ DEVICE = triton.runtime.driver.active.get_active_torch_device()
 
 @triton.jit
 def add_kernel(
-    x_ptr,
-    y_ptr,
-    output_ptr,
-    n_elements,
+    x_ptr: Any,
+    y_ptr: Any,
+    output_ptr: Any,
+    n_elements: Any,
     BLOCK_SIZE: tl.constexpr,
-):
+) -> None:
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
@@ -47,7 +49,7 @@ def add_impl(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return output
 
 
-def main():
+def main() -> None:
     torch.manual_seed(0)
 
     for ex in range(12, 15):

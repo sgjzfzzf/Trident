@@ -7,12 +7,26 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/Utils/TVMFFIUtils.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "trident/core/Conversion/Utils/GlobalString.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/Type.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
-#include "tvm/ffi/c_api.h"
+#include <cstddef>
+#include <cstdint>
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/StringRef.h>
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/IR/Builders.h>
+#include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/Location.h>
+#include <mlir/IR/MLIRContext.h>
+#include <mlir/IR/Value.h>
+#include <mlir/Support/LLVM.h>
+#include <mlir/Support/LogicalResult.h>
+#include <tvm/ffi/c_api.h>
 
 namespace trident::conversion::utils {
 

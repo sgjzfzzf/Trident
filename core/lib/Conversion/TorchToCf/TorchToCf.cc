@@ -6,16 +6,25 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/TorchToCf/TorchToCf.h"
-#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
-#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/Rewrite/FrozenRewritePatternSet.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "torch-mlir/Dialect/Torch/IR/TorchOps.h"
+#include <cstdint>
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/Support/Casting.h>
+#include <mlir/Conversion/LLVMCommon/TypeConverter.h>
+#include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
+#include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h>
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/Location.h>
+#include <mlir/IR/PatternMatch.h>
+#include <mlir/Rewrite/FrozenRewritePatternSet.h>
+#include <mlir/Support/LLVM.h>
+#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
+#include <utility>
 
 namespace trident::torch {
 

@@ -8,11 +8,11 @@
 #ifndef TRIDENT_CORE_CONVERSION_TORCHCONVERSIONTOLLVM_TORCHCONVERSIONTOLLVM_H_
 #define TRIDENT_CORE_CONVERSION_TORCHCONVERSIONTOLLVM_TORCHCONVERSIONTOLLVM_H_
 
-#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
-#include "mlir/IR/DialectRegistry.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassRegistry.h"
-#include "mlir/Transforms/DialectConversion.h"
+#include <mlir/Conversion/LLVMCommon/TypeConverter.h>
+#include <mlir/IR/DialectRegistry.h>
+#include <mlir/Pass/Pass.h>
+#include <mlir/Pass/PassRegistry.h>
+#include <mlir/Transforms/DialectConversion.h>
 
 namespace trident::torch {
 

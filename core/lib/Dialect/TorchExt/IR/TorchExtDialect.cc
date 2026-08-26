@@ -12,13 +12,16 @@
 // ODS-generated .cpp.inc files.
 
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/DialectImplementation.h"
-#include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
-#include "llvm/ADT/TypeSwitch.h"
+#include <llvm/ADT/TypeSwitch.h> // NOLINT(misc-include-cleaner)
+#include <llvm/Support/Casting.h>
+#include <mlir/IR/Builders.h>
+#include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/DialectImplementation.h> // NOLINT(misc-include-cleaner)
+#include <mlir/Support/LLVM.h>
+#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.cpp.inc"
 #define GET_OP_CLASSES

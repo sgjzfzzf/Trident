@@ -10,8 +10,8 @@
 #define TRIDENT_CORE_CONVERSION_UTILS_TVMFFICAPIDESCRIPTORS_H_
 
 #include "trident/core/Conversion/Utils/CFunctionDeclUtils.h"
-#include "tvm/ffi/c_api.h"
-#include "tvm/ffi/extra/c_env_api.h"
+#include <tvm/ffi/c_api.h>
+#include <tvm/ffi/extra/c_env_api.h>
 
 // TVM FFI C API function descriptors.
 namespace trident::conversion::utils {

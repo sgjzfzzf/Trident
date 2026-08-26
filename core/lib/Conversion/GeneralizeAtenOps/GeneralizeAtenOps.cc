@@ -5,10 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "trident/core/Conversion/GeneralizeAtenOps/GeneralizeAtenOps.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Transforms/WalkPatternRewriteDriver.h"
-#include "torch-mlir/Dialect/Torch/IR/TorchOps.h"
+#include "trident/core/Conversion/GeneralizeAtenOps/GeneralizeAtenOps.h" // NOLINT(misc-include-cleaner)
+#include <llvm/ADT/StringRef.h>
+#include <mlir/IR/MLIRContext.h>
+#include <mlir/IR/Operation.h>
+#include <mlir/IR/OperationSupport.h>
+#include <mlir/IR/PatternMatch.h>
+#include <mlir/Support/LLVM.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
+#include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
 #include <utility>
 
 namespace trident::torch {

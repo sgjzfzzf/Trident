@@ -9,8 +9,8 @@
 #ifndef TRIDENT_CORE_CONVERSION_UTILS_GLOBALSTRING_H_
 #define TRIDENT_CORE_CONVERSION_UTILS_GLOBALSTRING_H_
 
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Value.h"
+#include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/Value.h>
 
 namespace trident::conversion::utils {
 

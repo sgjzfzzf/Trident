@@ -10,6 +10,7 @@ add_custom_command(
   COMMENT "Generating ${ATENGEN_CC}")
 
 add_library(TridentCoreRuntime SHARED Runtime.cc ${ATENGEN_CC})
+set_source_files_properties(${ATENGEN_CC} PROPERTIES SKIP_LINTING TRUE)
 target_include_directories(TridentCoreRuntime
                            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(

@@ -6,14 +6,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/TorchConversionToLLVM/TorchConversionToLLVM.h"
-#include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
-#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/IR/BuiltinDialect.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
-#include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.h"
+#include <mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h>
+#include <mlir/Conversion/LLVMCommon/TypeConverter.h>
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
+#include <mlir/IR/BuiltinDialect.h>
+#include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/DialectRegistry.h>
+#include <mlir/Support/LLVM.h>
+#include <mlir/Transforms/DialectConversion.h>
+#include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h>
+#include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.h>
+#include <utility>
 
 namespace trident::torch {
 

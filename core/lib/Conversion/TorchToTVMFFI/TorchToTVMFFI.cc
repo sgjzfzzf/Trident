@@ -5,21 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/ControlFlow/Transforms/StructuralTypeConversions.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinDialect.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Transforms/WalkPatternRewriteDriver.h"
-#include "torch-mlir/Dialect/Torch/IR/TorchOps.h"
+#include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h" // NOLINT(misc-include-cleaner)
+#include "dlpack/dlpack.h"
 #include "trident/core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/Check.h"
 #include "trident/core/Conversion/Utils/TVMFFIUtils.h"
@@ -29,10 +16,40 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SetVector.h"
-#include "llvm/ADT/SmallVector.h"
+#include <cstdint>
+#include <llvm/ADT/APFloat.h>
+#include <llvm/ADT/APInt.h>
+#include <llvm/ADT/DenseMap.h>
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/SetVector.h>
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/StringRef.h>
+#include <mlir/Dialect/Arith/IR/Arith.h>
+#include <mlir/Dialect/ControlFlow/Transforms/StructuralTypeConversions.h>
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Dialect/Func/Transforms/FuncConversions.h>
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/IR/Builders.h>
+#include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/IR/BuiltinDialect.h>
+#include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/BuiltinTypeInterfaces.h>
+#include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/PatternMatch.h>
+#include <mlir/IR/Region.h>
+#include <mlir/IR/ValueRange.h>
+#include <mlir/Support/LLVM.h>
+#include <mlir/Support/LogicalResult.h>
+#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
+#include <optional>
+#include <string>
+#include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
+#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 #include <type_traits>
+#include <utility>
 
 namespace trident::torch {
 #define GEN_PASS_DEF_CONVERTTORCHTOTVMFFI
@@ -196,8 +213,7 @@ public:
     if (!region || !region->hasOneBlock()) {
       return mlir::failure();
     }
-    auto it = ownedValues.find(region);
-    if (it != ownedValues.end()) {
+    if (auto it = ownedValues.find(region); it != ownedValues.end()) {
       populateTerminatorRefCounts(op, it->second, typeConverter);
     } else {
       populateTerminatorRefCounts(op, {}, typeConverter);
@@ -418,7 +434,7 @@ public:
                   mlir::ConversionPatternRewriter &rewriter) const override {
     mlir::DenseElementsAttr dense =
         mlir::dyn_cast<mlir::DenseElementsAttr>(op.getValue());
-    auto tensorType =
+    mlir::torch::Torch::BaseTensorType tensorType =
         mlir::dyn_cast<mlir::torch::Torch::BaseTensorType>(op.getType());
     if (!dense || !tensorType || !tensorType.hasSizes()) {
       return op.emitError("literal requires a dense tensor and static shape");
@@ -560,7 +576,8 @@ public:
         fillValue = dense.getSplatValue<llvm::APFloat>().convertToDouble();
       } else {
         llvm::APInt value = dense.getSplatValue<llvm::APInt>();
-        auto integerType = mlir::cast<mlir::IntegerType>(storageType);
+        mlir::IntegerType integerType =
+            mlir::cast<mlir::IntegerType>(storageType);
         fillValue =
             integerType.isSignlessInteger(1)
                 ? value.getBoolValue()

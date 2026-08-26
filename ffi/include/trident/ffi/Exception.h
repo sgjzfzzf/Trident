@@ -13,9 +13,9 @@
 #ifndef TRIDENT_FFI_EXCEPTION_H_
 #define TRIDENT_FFI_EXCEPTION_H_
 
-#include "tvm/ffi/object.h"
-#include "tvm/ffi/string.h"
-#include "tvm/ffi/type_traits.h"
+#include <tvm/ffi/object.h>
+#include <tvm/ffi/string.h>
+#include <tvm/ffi/type_traits.h>
 
 namespace trident::runtime {
 

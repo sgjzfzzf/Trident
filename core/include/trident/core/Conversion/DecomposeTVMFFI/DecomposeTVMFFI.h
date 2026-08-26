@@ -9,9 +9,9 @@
 #ifndef TRIDENT_CORE_CONVERSION_DECOMPOSETVMFFI_DECOMPOSETVMFFI_H_
 #define TRIDENT_CORE_CONVERSION_DECOMPOSETVMFFI_DECOMPOSETVMFFI_H_
 
-#include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassRegistry.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
+#include <mlir/Pass/Pass.h>
+#include <mlir/Pass/PassRegistry.h>
 
 namespace trident::tvm_ffi {
 

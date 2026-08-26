@@ -8,9 +8,9 @@
 #ifndef TRIDENT_CORE_CONVERSION_ARITHEXT_TO_SCF_ARITHEXT_TO_SCF_H_
 #define TRIDENT_CORE_CONVERSION_ARITHEXT_TO_SCF_ARITHEXT_TO_SCF_H_
 
-#include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassRegistry.h"
 #include "trident/core/Dialect/ArithExt/IR/ArithExtDialect.h"
+#include <mlir/Pass/Pass.h>
+#include <mlir/Pass/PassRegistry.h>
 
 namespace trident::arithext {
 

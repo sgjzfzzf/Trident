@@ -6,10 +6,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "trident/core/Conversion/DecomposeTVMFFI/DecomposeTVMFFI.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "trident/core/Conversion/DecomposeTVMFFI/DecomposeTVMFFI.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include <llvm/ADT/SmallVector.h>
+#include <mlir/IR/PatternMatch.h>
+#include <mlir/IR/Value.h>
+#include <mlir/Support/LLVM.h>
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include <utility>
 
 namespace trident::tvm_ffi {
 

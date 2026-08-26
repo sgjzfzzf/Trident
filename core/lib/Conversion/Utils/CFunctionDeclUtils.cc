@@ -6,7 +6,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/Utils/CFunctionDeclUtils.h"
-#include "mlir/IR/Builders.h"
+#include <llvm/ADT/StringRef.h>
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/IR/Builders.h>
+#include <mlir/IR/BuiltinOps.h>
+#include <mlir/Support/LLVM.h>
 
 namespace trident::conversion::utils {
 

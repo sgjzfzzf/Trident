@@ -9,12 +9,12 @@
 #define TRIDENT_CORE_CONVERSION_UTILS_CFUNCTIONDECLUTILS_H_
 
 #include "dlpack/dlpack.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/Support/LogicalResult.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/StringRef.h>
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/IR/BuiltinOps.h>
+#include <mlir/Support/LogicalResult.h>
 #include <type_traits>
 
 namespace trident::conversion::utils {

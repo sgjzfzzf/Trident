@@ -16,5 +16,5 @@ def compile(fn: Callable[..., Any]) -> Callable[..., Callable[..., Any]]:
     return f
 
 
-def jit(fn: Callable[..., Any]) -> Callable[..., Callable[..., Any]]:
+def jit(fn: Callable[..., Any]) -> TridentGraphModule:
     return TridentGraphModule(fn)

@@ -1,6 +1,8 @@
 # Part of the Trident project, under the MIT License.
 # SPDX-License-Identifier: MIT
 
+from typing import Any
+
 import torch
 import trident
 import triton
@@ -9,14 +11,14 @@ import triton.language as tl
 
 @triton.jit
 def softmax_kernel(
-    output_ptr,
-    input_ptr,
-    input_row_stride,
-    output_row_stride,
-    n_rows,
-    n_cols,
+    output_ptr: Any,
+    input_ptr: Any,
+    input_row_stride: Any,
+    output_row_stride: Any,
+    n_rows: Any,
+    n_cols: Any,
     BLOCK_SIZE: tl.constexpr,
-):
+) -> None:
     row_start = tl.program_id(0)
     row_step = tl.num_programs(0)
     for row_idx in tl.range(row_start, n_rows, row_step):
@@ -43,7 +45,7 @@ def softmax_jit(x: torch.Tensor) -> torch.Tensor:
     return softmax_triton_impl(x)
 
 
-def softmax_triton_impl(x):
+def softmax_triton_impl(x: torch.Tensor) -> torch.Tensor:
     n_rows, n_cols = x.shape
     BLOCK_SIZE: int = triton.next_power_of_2(n_cols)
     num_warps: int = 8
@@ -63,7 +65,7 @@ def softmax_triton_impl(x):
     return y
 
 
-def main():
+def main() -> None:
     torch.manual_seed(0)
     x: torch.Tensor = torch.randn(1823, 781, device="cuda")
     y_torch: torch.Tensor = torch.softmax(x, axis=1)

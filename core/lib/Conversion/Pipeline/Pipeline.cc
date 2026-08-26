@@ -6,18 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "trident/core/Conversion/Pipeline/Pipeline.h"
-#include "mlir/Conversion/Passes.h"
-#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/Passes.h"
-#include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h"
+#include "trident/core/Conversion/Pipeline/Pipeline.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Conversion/ArithExtToScf/ArithExtToScf.h"
 #include "trident/core/Conversion/DecomposeTVMFFI/DecomposeTVMFFI.h"
 #include "trident/core/Conversion/GeneralizeAtenOps/GeneralizeAtenOps.h"
@@ -26,7 +15,20 @@
 #include "trident/core/Conversion/TorchExtToTVMFFI/TorchExtToTVMFFI.h"
 #include "trident/core/Conversion/TorchToCf/TorchToCf.h"
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h" // NOLINT(misc-include-cleaner)
+#include <mlir/Conversion/ConvertToLLVM/ToLLVMPass.h>
+#include <mlir/Conversion/Passes.h> // NOLINT(misc-include-cleaner)
+#include <mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h>
+#include <mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h>
+#include <mlir/Dialect/Arith/IR/Arith.h>     // NOLINT(misc-include-cleaner)
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h> // NOLINT(misc-include-cleaner)
+#include <mlir/Dialect/SCF/IR/SCF.h>         // NOLINT(misc-include-cleaner)
+#include <mlir/IR/BuiltinOps.h>
+#include <mlir/Pass/Pass.h> // NOLINT(misc-include-cleaner)
+#include <mlir/Pass/PassManager.h>
+#include <mlir/Support/LLVM.h>
+#include <mlir/Transforms/Passes.h>
+#include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h> // NOLINT(misc-include-cleaner)
 
 namespace trident::torch {
 

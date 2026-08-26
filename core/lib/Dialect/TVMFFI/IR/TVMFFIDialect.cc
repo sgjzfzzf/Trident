@@ -14,15 +14,26 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/DialectImplementation.h"
-#include "mlir/Interfaces/FunctionImplementation.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.cpp.inc"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/TypeSwitch.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h" // NOLINT(misc-include-cleaner)
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/TypeSwitch.h> // NOLINT(misc-include-cleaner)
+#include <mlir/IR/Attributes.h>
+#include <mlir/IR/Builders.h>
+#include <mlir/IR/DialectImplementation.h> // NOLINT(misc-include-cleaner)
+#include <mlir/IR/OpImplementation.h>
+#include <mlir/IR/OperationSupport.h>
+#include <mlir/IR/Region.h>
+#include <mlir/IR/TypeRange.h>
+#include <mlir/IR/Value.h>
+#include <mlir/Interfaces/FunctionImplementation.h>
+#include <mlir/Support/LLVM.h>
+#include <optional>
+#include <string>
+#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 #define GET_TYPEDEF_CLASSES
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.cpp.inc"

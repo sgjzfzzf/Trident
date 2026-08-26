@@ -1,6 +1,8 @@
 # Part of the Trident project, under the MIT License.
 # SPDX-License-Identifier: MIT
 
+from typing import Any
+
 import torch
 import trident
 import triton
@@ -9,7 +11,7 @@ import triton.language as tl
 DEVICE = triton.runtime.driver.active.get_active_torch_device()
 
 
-def get_autotune_config():
+def get_autotune_config() -> list[triton.Config]:
     return [
         triton.Config(
             {
@@ -180,24 +182,24 @@ def get_autotune_config():
 )
 @triton.jit
 def matmul_kernel(
-    a_ptr,
-    b_ptr,
-    c_ptr,
-    M,
-    N,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_cm,
-    stride_cn,
+    a_ptr: Any,
+    b_ptr: Any,
+    c_ptr: Any,
+    M: Any,
+    N: Any,
+    K: Any,
+    stride_am: Any,
+    stride_ak: Any,
+    stride_bk: Any,
+    stride_bn: Any,
+    stride_cm: Any,
+    stride_cn: Any,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
     ACTIVATION: tl.constexpr,
-):
+) -> None:
     pid = tl.program_id(axis=0)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
@@ -221,7 +223,7 @@ def matmul_kernel(
     a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
     b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+    for k in range(tl.cdiv(K, BLOCK_SIZE_K)):
         a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
         b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
         accumulator = tl.dot(a, b, accumulator)
@@ -239,11 +241,13 @@ def matmul_kernel(
 
 
 @triton.jit
-def leaky_relu(x):
+def leaky_relu(x: Any) -> Any:
     return tl.where(x >= 0, x, 0.01 * x)
 
 
-def matmul_triton(a, b, activation=""):
+def matmul_triton(
+    a: torch.Tensor, b: torch.Tensor, activation: str = ""
+) -> torch.Tensor:
     """Direct Triton path."""
     return matmul_impl(a, b, activation)
 
@@ -253,7 +257,7 @@ def matmul_jit(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return matmul_impl(a, b, "")
 
 
-def matmul_impl(a: torch.Tensor, b: torch.Tensor, activation=""):
+def matmul_impl(a: torch.Tensor, b: torch.Tensor, activation: str = "") -> torch.Tensor:
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
     assert a.is_contiguous(), "Matrix A must be contiguous"
     M, K = a.shape
@@ -283,7 +287,7 @@ def matmul_impl(a: torch.Tensor, b: torch.Tensor, activation=""):
     return c
 
 
-def main():
+def main() -> None:
     torch.manual_seed(0)
     a: torch.Tensor = torch.randn((512, 512), device=DEVICE, dtype=torch.float16)
     b: torch.Tensor = torch.randn((512, 512), device=DEVICE, dtype=torch.float16)

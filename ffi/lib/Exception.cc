@@ -10,7 +10,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/ffi/Exception.h"
-#include "tvm/ffi/reflection/registry.h"
+#include <cstdint>
+#include <string>
+#include <tvm/ffi/base_details.h>
+#include <tvm/ffi/memory.h>
+#include <tvm/ffi/object.h>
+#include <tvm/ffi/reflection/registry.h>
+#include <tvm/ffi/string.h>
+#include <utility>
 
 namespace trident::runtime {
 

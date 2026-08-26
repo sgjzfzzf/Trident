@@ -7,9 +7,20 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/Utils/GlobalString.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/Support/FormatVariadic.h"
+#include <llvm/ADT/SmallString.h>
+#include <llvm/ADT/StringRef.h>
+#include <llvm/Support/FormatVariadic.h>
+#include <mlir/Dialect/LLVMIR/LLVMAttrs.h>
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/IR/Builders.h>
+#include <mlir/IR/BuiltinOps.h>
+#include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/Location.h>
+#include <mlir/IR/MLIRContext.h>
+#include <mlir/IR/Types.h>
+#include <mlir/IR/Value.h>
+#include <string>
 
 namespace trident::conversion::utils {
 

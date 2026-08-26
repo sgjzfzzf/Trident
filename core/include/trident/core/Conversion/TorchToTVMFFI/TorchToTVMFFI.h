@@ -8,8 +8,8 @@
 #ifndef TRIDENT_CORE_CONVERSION_TORCHTOTVMFFI_TORCHTOTVMFFI_H_
 #define TRIDENT_CORE_CONVERSION_TORCHTOTVMFFI_TORCHTOTVMFFI_H_
 
-#include "mlir/Pass/Pass.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
+#include <mlir/Pass/Pass.h>
 
 namespace trident::torch {
 #define GEN_PASS_DECL_CONVERTTORCHTOTVMFFI

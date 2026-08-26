@@ -8,9 +8,9 @@
 #ifndef TRIDENT_CORE_CONVERSION_GENERALIZE_ATEN_OPS_GENERALIZE_ATEN_OPS_H_
 #define TRIDENT_CORE_CONVERSION_GENERALIZE_ATEN_OPS_GENERALIZE_ATEN_OPS_H_
 
-#include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassRegistry.h"
-#include "torch-mlir/Dialect/Torch/IR/TorchDialect.h"
+#include <mlir/Pass/Pass.h>
+#include <mlir/Pass/PassRegistry.h>
+#include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
 
 namespace trident::torch {
 

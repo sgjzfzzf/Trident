@@ -9,7 +9,7 @@
 #ifndef TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIDIALECT_H_
 #define TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIDIALECT_H_
 
-#include "mlir/IR/Dialect.h"
+#include <mlir/IR/Dialect.h>
 
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h.inc"
 

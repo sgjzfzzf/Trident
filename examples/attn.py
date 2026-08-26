@@ -10,6 +10,7 @@ the triton-tvm-ffi attention example, but wired to Trident's usage style.
 
 import math
 import os
+from typing import Any
 
 import torch
 import trident
@@ -21,16 +22,16 @@ DEVICE = triton.runtime.driver.active.get_active_torch_device()
 
 @triton.jit
 def _attn_fwd_inner(
-    acc,
-    l_i,
-    m_i,
-    q,
-    desc_k,
-    desc_v,
-    offset_y,
+    acc: Any,
+    l_i: Any,
+    m_i: Any,
+    q: Any,
+    desc_k: Any,
+    desc_v: Any,
+    offset_y: Any,
     dtype: tl.constexpr,
-    start_m,
-    qk_scale,
+    start_m: Any,
+    qk_scale: Any,
     BLOCK_M: tl.constexpr,
     HEAD_DIM: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -38,7 +39,7 @@ def _attn_fwd_inner(
     offs_m: tl.constexpr,
     offs_n: tl.constexpr,
     N_CTX: tl.constexpr,
-):
+) -> tuple[Any, Any, Any]:
     if STAGE == 1:
         lo, hi = 0, start_m * BLOCK_M
     elif STAGE == 2:
@@ -102,14 +103,14 @@ configs: list[triton.Config] = [
 if "PYTEST_VERSION" in os.environ:
     configs: list[triton.Config] = [
         triton.Config(
-            dict(BLOCK_M=128, BLOCK_N=64),
+            {"BLOCK_M": 128, "BLOCK_N": 64},
             num_stages=2,
             num_warps=4,
         ),
     ]
 
 
-def keep(conf):
+def keep(conf: triton.Config) -> bool:
     block_m: int = conf.kwargs["BLOCK_M"]
     block_n: int = conf.kwargs["BLOCK_N"]
     return not (
@@ -119,14 +120,21 @@ def keep(conf):
     )
 
 
-def prune_invalid_configs(configs, named_args, **kwargs):
+def prune_invalid_configs(
+    configs: list[triton.Config], named_args: dict[str, Any], **kwargs: Any
+) -> list[triton.Config]:
     del named_args
     n_ctx = kwargs["N_CTX"]
     return [conf for conf in configs if conf.kwargs.get("BLOCK_M", 0) <= n_ctx]
 
 
 @triton.jit
-def _maybe_make_tensor_desc(desc_or_ptr, shape, strides, block_shape):
+def _maybe_make_tensor_desc(
+    desc_or_ptr: Any,
+    shape: list[int],
+    strides: list[int],
+    block_shape: list[int],
+) -> Any:
     if isinstance(desc_or_ptr, tl.tensor_descriptor):
         return desc_or_ptr
     return tl.make_tensor_descriptor(desc_or_ptr, shape, strides, block_shape)
@@ -139,20 +147,20 @@ def _maybe_make_tensor_desc(desc_or_ptr, shape, strides, block_shape):
 )
 @triton.jit
 def _attn_fwd(
-    sm_scale,
-    M,
-    Z,
-    H,
-    desc_q,
-    desc_k,
-    desc_v,
-    desc_o,
-    N_CTX,
+    sm_scale: Any,
+    M: Any,
+    Z: Any,
+    H: Any,
+    desc_q: Any,
+    desc_k: Any,
+    desc_v: Any,
+    desc_o: Any,
+    N_CTX: Any,
     HEAD_DIM: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     STAGE: tl.constexpr,
-):
+) -> None:
     dtype = tl.float16
     tl.static_assert(BLOCK_N <= HEAD_DIM)
     start_m = tl.program_id(0)
@@ -269,7 +277,7 @@ def attn_fwd(
     )
     stage: int = 3 if causal else 1
 
-    def grid(meta):
+    def grid(meta: dict[str, Any]) -> tuple[int, int, int]:
         return (triton.cdiv(q.shape[2], meta["BLOCK_M"]), q.shape[0] * q.shape[1], 1)
 
     _attn_fwd[grid](
@@ -329,7 +337,7 @@ def attn_jit(
     return attn_fwd(q, k, v, causal=causal, sm_scale=sm_scale)
 
 
-def main():
+def main() -> None:
     torch.manual_seed(0)
 
     b, h, n_ctx, head_dim = 1, 2, 128, 64

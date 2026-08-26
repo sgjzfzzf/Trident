@@ -42,8 +42,6 @@
 
 namespace trident::tvm_ffi {
 
-namespace {
-
 static std::optional<int32_t> getConcreteTypeIndex(mlir::Type type) {
   return llvm::TypeSwitch<mlir::Type, std::optional<int32_t>>(type)
       .Case<ArrayType>([](ArrayType) { return ArrayType::getTypeIndex(); })
@@ -65,7 +63,6 @@ static std::optional<int32_t> getConcreteTypeIndex(mlir::Type type) {
       .Default([](mlir::Type) { return std::nullopt; });
 }
 
-} // namespace
 } // namespace trident::tvm_ffi
 
 #define GET_TYPEDEF_CLASSES

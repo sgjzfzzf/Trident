@@ -46,8 +46,6 @@ namespace trident::tvm_ffi {
 #define GEN_PASS_DEF_CONVERTTVMFFITOFUNC
 #include "trident/core/Conversion/Passes.h.inc"
 
-namespace {
-
 static int32_t getTVMFFITypeIndex(mlir::Type type) {
   return llvm::TypeSwitch<mlir::Type, int32_t>(type)
       .Case<ArrayType>([](ArrayType) { return ArrayType::getTypeIndex(); })
@@ -329,5 +327,4 @@ class ConvertTVMFFIToFuncPass final
   }
 };
 
-} // namespace
 } // namespace trident::tvm_ffi

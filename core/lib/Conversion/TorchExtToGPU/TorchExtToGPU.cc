@@ -39,8 +39,6 @@ namespace trident::torchext {
 #define GEN_PASS_DEF_CONVERTTORCHEXTTOGPU
 #include "trident/core/Conversion/Passes.h.inc"
 
-namespace {
-
 /// Converts torchext.cast to the appropriate LLVM truncation/extension.
 class ConvertCastOp : public mlir::OpConversionPattern<CastOp> {
 public:
@@ -271,8 +269,6 @@ public:
     }
   }
 };
-
-} // namespace
 
 void populateTorchExtToGPUConversionPatterns(
     mlir::ConversionTarget &, mlir::RewritePatternSet &patterns,

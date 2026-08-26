@@ -29,8 +29,6 @@ namespace trident::arithext {
 #define GEN_PASS_DEF_CONVERTARITHEXTTOSCF
 #include "trident/core/Conversion/Passes.h.inc"
 
-namespace {
-
 // The recursive shape mirrors the nested scf.if structure being built.
 // NOLINTNEXTLINE(misc-no-recursion)
 mlir::Value buildAndThenChain(mlir::RewriterBase &rewriter, mlir::Location loc,
@@ -93,7 +91,5 @@ public:
     }
   }
 };
-
-} // namespace
 
 } // namespace trident::arithext

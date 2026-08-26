@@ -8,13 +8,13 @@
 
 #include "trident/core/Conversion/Pipeline/Pipeline.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Conversion/ArithExtToScf/ArithExtToScf.h"
-#include "trident/core/Conversion/DecomposeTVMFFI/DecomposeTVMFFI.h"
-#include "trident/core/Conversion/GeneralizeAtenOps/GeneralizeAtenOps.h"
 #include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h"
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "trident/core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
 #include "trident/core/Conversion/TorchToCf/TorchToCf.h"
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
+#include "trident/core/Dialect/TVMFFI/Transforms/DecomposeTVMFFI.h"
+#include "trident/core/Dialect/Torch/Transforms/GeneralizeAtenOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h" // NOLINT(misc-include-cleaner)
 #include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
 #include <mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h>
@@ -36,8 +36,6 @@ namespace trident::torch {
 
 #define GEN_PASS_DEF_TRIDENTLOWERINGPIPELINE
 #include "trident/core/Conversion/Passes.h.inc"
-
-namespace {
 
 class TridentLoweringPipelinePass
     : public impl::TridentLoweringPipelineBase<TridentLoweringPipelinePass> {
@@ -63,7 +61,5 @@ class TridentLoweringPipelinePass
     }
   }
 };
-
-} // namespace
 
 } // namespace trident::torch

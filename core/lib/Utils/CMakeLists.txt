@@ -5,7 +5,6 @@ add_mlir_library(
   PUBLIC
   ArithExtDialect
   ArithExtToScf
-  GeneralizeAtenOps
   TorchExtToGPU
   MLIRRegisterAllDialects
   MLIRRegisterAllExtensions
@@ -20,4 +19,6 @@ add_mlir_library(
   TorchToCf
   TorchToTVMFFI
   TVMFFIDialect
+  DecomposeTVMFFI
+  GeneralizeAtenOps
   TVMFFIToLLVM)

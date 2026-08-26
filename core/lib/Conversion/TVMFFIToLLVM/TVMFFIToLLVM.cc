@@ -62,8 +62,6 @@ namespace trident::tvm_ffi {
 #define GEN_PASS_DEF_CONVERTTVMFFITOLLVM
 #include "trident/core/Conversion/Passes.h.inc"
 
-namespace {
-
 class ConvertArrayLengthOp : public mlir::OpConversionPattern<ArrayLengthOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -761,8 +759,6 @@ struct TVMFFIToLLVMDialectInterface
     populateTVMFFIToLLVMConversionPatterns(target, typeConverter, patterns);
   }
 };
-
-} // namespace
 
 void populateTVMFFIToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,

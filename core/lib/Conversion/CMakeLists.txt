@@ -1,6 +1,4 @@
 add_subdirectory(ArithExtToScf)
-add_subdirectory(DecomposeTVMFFI)
-add_subdirectory(GeneralizeAtenOps)
 add_subdirectory(Pipeline)
 add_subdirectory(TorchExtToGPU)
 add_subdirectory(TorchToCf)

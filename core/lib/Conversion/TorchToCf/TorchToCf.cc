@@ -31,8 +31,6 @@ namespace trident::torch {
 #define GEN_PASS_DEF_CONVERTTORCHTOCF
 #include "trident/core/Conversion/Passes.h.inc"
 
-namespace {
-
 class ConvertRuntimeAssertOp
     : public mlir::OpRewritePattern<mlir::torch::Torch::RuntimeAssertOp> {
 public:
@@ -76,8 +74,6 @@ public:
     }
   }
 };
-
-} // namespace
 
 void populateTorchToCfConversionPatterns(mlir::ConversionTarget &target,
                                          mlir::TypeConverter &,

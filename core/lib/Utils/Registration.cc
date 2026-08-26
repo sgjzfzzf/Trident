@@ -7,8 +7,6 @@
 
 #include "trident/core/Utils/Registration.h"
 #include "trident/core/Conversion/ArithExtToScf/ArithExtToScf.h"
-#include "trident/core/Conversion/DecomposeTVMFFI/DecomposeTVMFFI.h"
-#include "trident/core/Conversion/GeneralizeAtenOps/GeneralizeAtenOps.h"
 #include "trident/core/Conversion/Pipeline/Pipeline.h"
 #include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h"
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
@@ -17,6 +15,8 @@
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
 #include "trident/core/Dialect/ArithExt/IR/ArithExtDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
+#include "trident/core/Dialect/TVMFFI/Transforms/DecomposeTVMFFI.h"
+#include "trident/core/Dialect/Torch/Transforms/GeneralizeAtenOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
 #include <mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h>

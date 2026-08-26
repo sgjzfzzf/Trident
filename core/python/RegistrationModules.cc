@@ -14,8 +14,6 @@
 
 namespace nb = nanobind;
 
-namespace {
-
 void registerAllDialects(MlirContext context) {
   tridentCoreRegisterAllDialects(context);
 }
@@ -25,8 +23,6 @@ void registerAllPasses() { tridentCoreRegisterAllPasses(); }
 MlirType convertTorchTypeToTVMFFIType(MlirType type) {
   return tridentCoreConvertTorchTypeToTVMFFIType(type);
 }
-
-} // namespace
 
 NB_MODULE(_trident, m) {
   m.doc() = "trident-core python extension";

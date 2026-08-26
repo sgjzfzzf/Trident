@@ -52,7 +52,7 @@ func.func @opaque_operator() {
 
 // Multiple ATen results are represented by an FFI array and extracted in
 // result order.  This is the semantic counterpart of the single-result ABI
-// packing performed by the later DecomposeTVMFFI/TVMFFIToLLVM passes.
+// packing performed by the later TVMFFI transforms and TVMFFIToLLVM passes.
 // CHECK-LABEL: func.func @multi_result(
 // CHECK: %[[DIM:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = 0 : i64}> : () -> !tvm_ffi.int
 // CHECK: %[[KEEPDIM:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = false}> : () -> !tvm_ffi.bool

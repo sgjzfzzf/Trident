@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "trident/core/Conversion/GeneralizeAtenOps/GeneralizeAtenOps.h" // NOLINT(misc-include-cleaner)
+#include "trident/core/Dialect/Torch/Transforms/GeneralizeAtenOps.h" // NOLINT(misc-include-cleaner)
 #include <llvm/ADT/StringRef.h>
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/Operation.h>
@@ -19,9 +19,7 @@
 namespace trident::torch {
 
 #define GEN_PASS_DEF_GENERALIZEATENOPS
-#include "trident/core/Conversion/Passes.h.inc"
-
-namespace {
+#include "trident/core/Dialect/Torch/Transforms/Passes.h.inc"
 
 class GeneralizeAtenOpPattern final : public mlir::RewritePattern {
 public:
@@ -61,7 +59,5 @@ public:
     mlir::walkAndApplyPatterns(getOperation(), std::move(patterns));
   }
 };
-
-} // namespace
 
 } // namespace trident::torch

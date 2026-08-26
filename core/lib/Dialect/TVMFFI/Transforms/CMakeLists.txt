@@ -1,8 +1,8 @@
-add_mlir_conversion_library(
+add_mlir_library(
   DecomposeTVMFFI
   DecomposeTVMFFI.cc
   DEPENDS
-  MLIRConversionPassIncGen
+  MLIRTVMFFITransformsPassIncGen
   LINK_LIBS
   PUBLIC
   MLIRIR

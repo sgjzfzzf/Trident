@@ -60,21 +60,6 @@ def ConvertTVMFFIToFunc : Pass<"convert-tvm-ffi-to-func", "mlir::ModuleOp"> {
   ];
 }
 
-def DecomposeTVMFFI : Pass<"decompose-tvm-ffi", "mlir::ModuleOp"> {
-  let summary = "Decompose composite TVMFFI operations";
-  let description = [{Decompose TVMFFI array operations into function calls.}];
-  let dependentDialects = ["trident::tvm_ffi::TVMFFIDialect"];
-}
-
-def GeneralizeAtenOps : Pass<"generalize-aten-ops", "mlir::ModuleOp"> {
-  let summary = "Represent concrete ATen operations as opaque Torch operators";
-  let description = [{
-    Rewrites concrete torch.aten operations to equivalent torch.operator
-    operations so backend lowering does not invoke value-semantic ATen folders.
-  }];
-  let dependentDialects = ["mlir::torch::Torch::TorchDialect"];
-}
-
 def TridentLoweringPipeline
     : Pass<"trident-lowering-pipeline", "mlir::ModuleOp"> {
   let summary = "Lower Torch dialect operations to LLVM dialect";

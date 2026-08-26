@@ -56,8 +56,6 @@ namespace trident::torch {
 #define GEN_PASS_DEF_CONVERTTORCHTOTVMFFI
 #include "trident/core/Conversion/Passes.h.inc"
 
-namespace {
-
 using OwnedValues =
     llvm::DenseMap<mlir::Region *, llvm::SmallSetVector<mlir::Value, 4>>;
 
@@ -67,8 +65,6 @@ static tvm_ffi::UnionType getStringUnionType(mlir::MLIRContext *context) {
       tvm_ffi::StrType::get(context)};
   return tvm_ffi::UnionType::get(context, stringTypes);
 }
-
-} // namespace
 
 mlir::Type convertTorchTypeToTVMFFIType(mlir::Type type) {
   mlir::MLIRContext *context = type.getContext();
@@ -106,8 +102,6 @@ void populateTorchToTVMFFITypeConversions(mlir::TypeConverter &typeConverter) {
     return convertTorchTypeToTVMFFIType(type);
   });
 }
-
-namespace {
 
 static void recordOwnedObjectResults(mlir::Operation *operation,
                                      mlir::ValueRange results,
@@ -964,5 +958,4 @@ class ConvertTorchToTVMFFIPass final
   }
 };
 
-} // namespace
 } // namespace trident::torch

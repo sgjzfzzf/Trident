@@ -1,8 +1,8 @@
-add_mlir_conversion_library(
+add_mlir_library(
   GeneralizeAtenOps
   GeneralizeAtenOps.cc
   DEPENDS
-  MLIRConversionPassIncGen
+  MLIRTorchTransformsPassIncGen
   LINK_LIBS
   PUBLIC
   MLIRIR

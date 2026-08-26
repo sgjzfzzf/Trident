@@ -1,12 +1,11 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Trident project, under the MIT License.
-
 // SPDX-License-Identifier: MIT
 //
 //===----------------------------------------------------------------------===//
 
-#include "trident/core/Conversion/DecomposeTVMFFI/DecomposeTVMFFI.h" // NOLINT(misc-include-cleaner)
+#include "trident/core/Dialect/TVMFFI/Transforms/DecomposeTVMFFI.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include <llvm/ADT/SmallVector.h>
@@ -19,9 +18,7 @@
 namespace trident::tvm_ffi {
 
 #define GEN_PASS_DEF_DECOMPOSETVMFFI
-#include "trident/core/Conversion/Passes.h.inc"
-
-namespace {
+#include "trident/core/Dialect/TVMFFI/Transforms/Passes.h.inc"
 
 class DecomposeArrayCreateOp : public mlir::OpRewritePattern<ArrayCreateOp> {
 public:
@@ -75,7 +72,5 @@ public:
     }
   }
 };
-
-} // namespace
 
 } // namespace trident::tvm_ffi

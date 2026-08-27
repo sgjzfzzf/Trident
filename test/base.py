@@ -15,6 +15,7 @@ from abc import abstractmethod
 from typing import Final
 
 import tvm_ffi
+import torch
 from trident import capi_utils
 from trident.core import (
     execution_engine,
@@ -27,7 +28,16 @@ from trident.core._mlir_libs._trident import (
 )
 
 
-class AtenOpTest(unittest.TestCase):
+class TridentTestCase(unittest.TestCase):
+    """Add a per-test check for live CUDA allocations."""
+
+    def tearDown(self) -> None:
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            self.assertEqual(torch.cuda.memory_allocated(), 0)
+
+
+class AtenOpTest(TridentTestCase):
     """Base class for ATen op end-to-end tests.
 
     Subclasses must implement the ``op_name`` classmethod::

@@ -306,11 +306,12 @@ class ExpressionCode(GuardCode):
             if not (
                 isinstance(expression, ast.Compare)
                 and len(expression.ops) == 1
-                and isinstance(expression.ops[0], ast.Is)
+                and all(isinstance(op, ast.Is) for op in expression.ops)
             ):
                 return None
+            [comparator] = expression.comparators
             lhs = Local.from_expression(expression.left)
-            rhs = Local.from_expression(expression.comparators[0])
+            rhs = Local.from_expression(comparator)
             if lhs is None or rhs is None or lhs == rhs or source not in (lhs, rhs):
                 return None
         return cls(text, expression)

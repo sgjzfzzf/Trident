@@ -1,6 +1,8 @@
 # Part of the Trident project, under the MIT License.
 # SPDX-License-Identifier: MIT
 
+# ruff: noqa: ANN001, ANN202, RUF100
+
 """
 Fused Attention (forward-only example).
 
@@ -22,16 +24,16 @@ DEVICE = triton.runtime.driver.active.get_active_torch_device()
 
 @triton.jit
 def _attn_fwd_inner(
-    acc: Any,
-    l_i: Any,
-    m_i: Any,
-    q: Any,
-    desc_k: Any,
-    desc_v: Any,
-    offset_y: Any,
+    acc,
+    l_i,
+    m_i,
+    q,
+    desc_k,
+    desc_v,
+    offset_y,
     dtype: tl.constexpr,
-    start_m: Any,
-    qk_scale: Any,
+    start_m,
+    qk_scale,
     BLOCK_M: tl.constexpr,
     HEAD_DIM: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -39,7 +41,7 @@ def _attn_fwd_inner(
     offs_m: tl.constexpr,
     offs_n: tl.constexpr,
     N_CTX: tl.constexpr,
-) -> tuple[Any, Any, Any]:
+):
     if STAGE == 1:
         lo, hi = 0, start_m * BLOCK_M
     elif STAGE == 2:
@@ -130,11 +132,11 @@ def prune_invalid_configs(
 
 @triton.jit
 def _maybe_make_tensor_desc(
-    desc_or_ptr: Any,
-    shape: list[int],
-    strides: list[int],
-    block_shape: list[int],
-) -> Any:
+    desc_or_ptr,
+    shape,
+    strides,
+    block_shape,
+):
     if isinstance(desc_or_ptr, tl.tensor_descriptor):
         return desc_or_ptr
     return tl.make_tensor_descriptor(desc_or_ptr, shape, strides, block_shape)
@@ -147,20 +149,20 @@ def _maybe_make_tensor_desc(
 )
 @triton.jit
 def _attn_fwd(
-    sm_scale: Any,
-    M: Any,
-    Z: Any,
-    H: Any,
-    desc_q: Any,
-    desc_k: Any,
-    desc_v: Any,
-    desc_o: Any,
-    N_CTX: Any,
+    sm_scale,
+    M,
+    Z,
+    H,
+    desc_q,
+    desc_k,
+    desc_v,
+    desc_o,
+    N_CTX,
     HEAD_DIM: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     STAGE: tl.constexpr,
-) -> None:
+):
     dtype = tl.float16
     tl.static_assert(BLOCK_N <= HEAD_DIM)
     start_m = tl.program_id(0)
@@ -311,7 +313,7 @@ def attn_torch(
     )
     p: torch.Tensor = torch.matmul(q, k.transpose(2, 3)) * sm_scale
     if causal:
-        p = torch.where(mask, p, torch.full_like(p, float("-inf")))
+        p[:, :, ~mask] = float("-inf")
     p = torch.softmax(p.float(), dim=-1).to(q.dtype)
     return torch.matmul(p, v)
 

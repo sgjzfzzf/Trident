@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import threading
+from collections.abc import Callable
 from types import TracebackType
 from typing import Any, ClassVar, Final, Self
 
@@ -36,16 +37,17 @@ class GraphNodeImporterTritonHopPatchState:
             if cls.refcount > 0:
                 cls.refcount += 1
             else:
-                attr_name: Final[str] = (
-                    _import_hop_triton_kernel_wrapper_mutation.__name__
+                importer_patches: tuple[Callable[..., None], ...] = (
+                    _import_hop_triton_kernel_wrapper_functional,
+                    _import_hop_triton_kernel_wrapper_mutation,
                 )
-                if hasattr(GraphNodeImporter, attr_name):
-                    cls.original_attrs[attr_name] = getattr(
-                        GraphNodeImporter, attr_name
-                    )
-                GraphNodeImporter._import_hop_triton_kernel_wrapper_mutation = (
-                    _import_hop_triton_kernel_wrapper_mutation
-                )
+                for importer_patch in importer_patches:
+                    attr_name: str = importer_patch.__name__
+                    if hasattr(GraphNodeImporter, attr_name):
+                        cls.original_attrs[attr_name] = getattr(
+                            GraphNodeImporter, attr_name
+                        )
+                    setattr(GraphNodeImporter, attr_name, importer_patch)
                 cls.original_scalar_type_map = (
                     fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE
                 )
@@ -63,11 +65,20 @@ class GraphNodeImporterTritonHopPatchState:
             cls.refcount -= 1
             if cls.refcount > 0:
                 return
-            attr_name: Final[str] = _import_hop_triton_kernel_wrapper_mutation.__name__
-            if hasattr(GraphNodeImporter, attr_name):
-                delattr(GraphNodeImporter, attr_name)
-            if attr_name in cls.original_attrs:
-                setattr(GraphNodeImporter, attr_name, cls.original_attrs.pop(attr_name))
+            importer_patches: tuple[Callable[..., None], ...] = (
+                _import_hop_triton_kernel_wrapper_functional,
+                _import_hop_triton_kernel_wrapper_mutation,
+            )
+            for importer_patch in importer_patches:
+                attr_name: str = importer_patch.__name__
+                if hasattr(GraphNodeImporter, attr_name):
+                    delattr(GraphNodeImporter, attr_name)
+                if attr_name in cls.original_attrs:
+                    setattr(
+                        GraphNodeImporter,
+                        attr_name,
+                        cls.original_attrs.pop(attr_name),
+                    )
             assert cls.original_scalar_type_map is not None
             fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE = cls.original_scalar_type_map
             cls.original_scalar_type_map = None
@@ -85,7 +96,7 @@ class GraphNodeImporterTritonHopPatchState:
         self.restore()
 
 
-def _import_hop_triton_kernel_wrapper_mutation(
+def _import_hop_triton_kernel_wrapper(
     self: GraphNodeImporter,
     loc: Any,
     node: torch.fx.Node,
@@ -231,6 +242,24 @@ def _import_hop_triton_kernel_wrapper_mutation(
     for output_name in output_names:
         if output_name in call_arguments:
             self.bind_node_value(node, call_arguments[output_name], output_name)
+
+
+def _import_hop_triton_kernel_wrapper_functional(
+    self: GraphNodeImporter,
+    loc: Any,
+    node: torch.fx.Node,
+    hop: Any,
+) -> None:
+    _import_hop_triton_kernel_wrapper(self, loc, node, hop)
+
+
+def _import_hop_triton_kernel_wrapper_mutation(
+    self: GraphNodeImporter,
+    loc: Any,
+    node: torch.fx.Node,
+    hop: Any,
+) -> None:
+    _import_hop_triton_kernel_wrapper(self, loc, node, hop)
 
 
 def apply_patch() -> GraphNodeImporterTritonHopPatchState:

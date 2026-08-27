@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import torch
+from base import TridentTestCase
 from torch._guards import GuardSource
 from trident.core import ir, register_all_dialects
 from trident.core.dialects import func
@@ -68,7 +69,7 @@ class AmbiguousTestGuard(Guard):
     code_types = (FirstMatchingCode, SecondMatchingCode)
 
 
-class GuardParserTest(unittest.TestCase):
+class GuardParserTest(TridentTestCase):
     def assert_parsed(
         self,
         guard: FakeGuard,

@@ -1,7 +1,7 @@
 # Part of the Trident project, under the MIT License.
 # SPDX-License-Identifier: MIT
 
-from typing import Any
+# ruff: noqa: ANN001, ANN201, RUF100
 
 import torch
 import trident
@@ -182,24 +182,24 @@ def get_autotune_config() -> list[triton.Config]:
 )
 @triton.jit
 def matmul_kernel(
-    a_ptr: Any,
-    b_ptr: Any,
-    c_ptr: Any,
-    M: Any,
-    N: Any,
-    K: Any,
-    stride_am: Any,
-    stride_ak: Any,
-    stride_bk: Any,
-    stride_bn: Any,
-    stride_cm: Any,
-    stride_cn: Any,
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
     ACTIVATION: tl.constexpr,
-) -> None:
+):
     pid = tl.program_id(axis=0)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
@@ -241,7 +241,7 @@ def matmul_kernel(
 
 
 @triton.jit
-def leaky_relu(x: Any) -> Any:
+def leaky_relu(x):
     return tl.where(x >= 0, x, 0.01 * x)
 
 

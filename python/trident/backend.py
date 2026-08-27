@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import inspect
 from collections.abc import Callable, Iterator, Sequence
 from typing import Any, Final
@@ -11,6 +12,7 @@ import torch
 import torch.utils._pytree as pytree
 import tvm_ffi
 import tvm_ffi.utils
+from torch.fx.experimental.proxy_tensor import make_fx
 
 from trident import capi_utils
 from trident.core import (
@@ -304,19 +306,32 @@ class TridentGraphModule:
         """
 
         # Step 1: Export  ---------------------------------------------------
-        gm: torch.fx.GraphModule
+        exported_gm: torch.fx.GraphModule
         gs: torch._guards.GuardsSet
-        gm, gs = torch._dynamo.export(
+        exported_gm, gs = torch._dynamo.export(
             fn, aten_graph=True, assume_static_by_default=True
         )(*args, **kwargs)
-        gm(*args, **kwargs)  # Warm-up
+        call_signature: inspect.Signature = inspect.signature(exported_gm.forward)
+        call_bound: inspect.BoundArguments = call_signature.bind(*args, **kwargs)
+        call_bound.apply_defaults()
+        call_args: list[Any] = [*call_bound.arguments.values()]
+        trace_gm, trace_args = copy.deepcopy((exported_gm, call_args))
+        functional_gm: torch.fx.GraphModule = make_fx(
+            torch.func.functionalize(trace_gm)
+        )(*trace_args)
+        for exported_node, functional_node in zip(
+            filter(lambda node: node.op == "placeholder", exported_gm.graph.nodes),
+            filter(lambda node: node.op == "placeholder", functional_gm.graph.nodes),
+            strict=True,
+        ):
+            functional_node.meta.update(exported_node.meta)
 
         # Step 2: Import FX -> MLIR  ----------------------------------------
         with apply_patch():
             importer: FxImporter = FxImporter(context=ctx)
             main_func_name: Final[str] = f"main_{index}"
             main_func: func.FuncOp = importer.import_stateless_graph(
-                gm.graph, func_name=main_func_name
+                functional_gm.graph, func_name=main_func_name
             )
             module: ir.Module = importer.module
 
@@ -336,7 +351,7 @@ class TridentGraphModule:
         with ctx:
             dtype_type = ir.Type.parse("!torchext.dtype", context=ctx)
 
-        in_spec: pytree.TreeSpec | None = getattr(gm, "_in_spec", None)
+        in_spec: pytree.TreeSpec | None = getattr(exported_gm, "_in_spec", None)
         assert isinstance(in_spec, pytree.TreeSpec), (
             "trident.jit requires a pytree TreeSpec for exported inputs; "
             f"got {in_spec!r}"

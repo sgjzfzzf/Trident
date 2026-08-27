@@ -17,6 +17,7 @@
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 #include <cstdint>
+#include <functional>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/DenseMap.h>
@@ -31,6 +32,7 @@
 #include <mlir/Dialect/Func/Transforms/FuncConversions.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinDialect.h>
@@ -39,7 +41,9 @@
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/IR/Region.h>
+#include <mlir/IR/Value.h>
 #include <mlir/IR/ValueRange.h>
+#include <mlir/Interfaces/CastInterfaces.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -105,14 +109,27 @@ void populateTorchToTVMFFITypeConversions(mlir::TypeConverter &typeConverter) {
 
 static void recordOwnedObjectResults(mlir::Operation *operation,
                                      mlir::ValueRange results,
-                                     OwnedValues &ownedValues) {
+                                     OwnedValues &ownedValues,
+                                     const mlir::TypeConverter &typeConverter) {
   for (mlir::Value const result : results) {
-    if (mlir::Type type = result.getType();
-        mlir::isa<tvm_ffi::AnyType, tvm_ffi::UnionType>(type) ||
-        type.hasTrait<mlir::TypeTrait::Object>()) {
+    mlir::Type type = typeConverter.convertType(result.getType());
+    if (type && (mlir::isa<tvm_ffi::AnyType, tvm_ffi::UnionType>(type) ||
+                 type.hasTrait<mlir::TypeTrait::Object>())) {
       ownedValues[operation->getParentRegion()].insert(result);
     }
   }
+}
+
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)
+static bool isOwnedResultProducer(mlir::Operation *operation) {
+  return mlir::isa<mlir::func::CallOp>(operation) ||
+         mlir::isa<mlir::scf::IfOp>(operation) ||
+         mlir::isa<mlir::torch::Torch::PrimIfOp>(operation) ||
+         mlir::isa<tvm_ffi::ArrayCreateOp>(operation) ||
+         mlir::isa<tvm_ffi::CallOp>(operation) ||
+         mlir::isa<tvm_ffi::ConstantOp>(operation) ||
+         mlir::isa<tvm_ffi::ExceptionOp>(operation) ||
+         mlir::isa<tvm_ffi::FunctionCallOp>(operation);
 }
 
 /// TypeConverter used by this bridge.  Keeping the Torch-to-semantic mapping
@@ -152,14 +169,14 @@ static void populateTerminatorRefCounts(
     const TorchFFITypeConverter &typeConverter) {
   mlir::OpBuilder builder(terminator);
   mlir::Location const loc = terminator->getLoc();
-  llvm::SmallSetVector<mlir::Value, 4> valuesToRelease(ownedValues);
 
   for (mlir::Value const operand : terminator->getOperands()) {
     mlir::Value value = operand;
-    mlir::UnrealizedConversionCastOp cast;
-    while ((cast = value.getDefiningOp<mlir::UnrealizedConversionCastOp>()) &&
-           cast->getNumOperands() == 1) {
-      value = cast->getOperand(0);
+    mlir::Operation *definingOp = value.getDefiningOp();
+    while (definingOp && definingOp->getNumOperands() == 1 &&
+           mlir::isa<mlir::CastOpInterface>(definingOp)) {
+      value = definingOp->getOperand(0);
+      definingOp = value.getDefiningOp();
     }
     mlir::Type convertedType = typeConverter.convertType(value.getType());
     if (convertedType &&
@@ -172,22 +189,11 @@ static void populateTerminatorRefCounts(
           continue;
         }
       }
-      // A normal func.call returns an owned semantic value. Returning it from
-      // another normal func.func transfers that ownership to the caller; an
-      // additional IncRef here would leak one reference at every ABI wrapper
-      // boundary. TVMFFI calls still require the existing retain/release pair
-      // below because their result ownership is handled by the FFI bridge.
-      if (value.getDefiningOp<mlir::func::CallOp>()) {
-        continue;
-      }
       tvm_ffi::ObjectIncRefOp::create(builder, loc, value);
-      if (value.getDefiningOp<tvm_ffi::CallOp>()) {
-        valuesToRelease.insert(value);
-      }
     }
   }
 
-  for (mlir::Value const value : valuesToRelease) {
+  for (mlir::Value const value : ownedValues) {
     mlir::Type const convertedType = typeConverter.convertType(value.getType());
     if (!convertedType || value.getType() == convertedType) {
       tvm_ffi::ObjectDecRefOp::create(builder, loc, value);
@@ -266,7 +272,7 @@ public:
       tvm_ffi::FunctionCallOp call = tvm_ffi::FunctionCallOp::create(
           rewriter, op->getLoc(), resultTypes, getGlobal.getResult(), operands);
       recordOwnedObjectResults(op.getOperation(), call->getResults(),
-                               ownedValues);
+                               ownedValues, typeConverter);
       if (op->getNumResults()) {
         replacements.push_back(call.getResult(0));
       }
@@ -280,7 +286,7 @@ public:
           rewriter, op->getLoc(), mlir::TypeRange{arrayType},
           getGlobal.getResult(), operands);
       recordOwnedObjectResults(op.getOperation(), call->getResults(),
-                               ownedValues);
+                               ownedValues, typeConverter);
       for (auto [index, result] : llvm::enumerate(op->getResults())) {
         tvm_ffi::ConstantOp idx = tvm_ffi::ConstantOp::create(
             rewriter, op->getLoc(), tvm_ffi::IntType::get(getContext()),
@@ -312,26 +318,60 @@ template <typename Op>
 class ConvertGenericOp final : public mlir::OpConversionPattern<Op> {
 public:
   ConvertGenericOp(const TorchFFITypeConverter &typeConverter,
-                   mlir::MLIRContext *context)
-      : mlir::OpConversionPattern<Op>(typeConverter, context) {}
+                   mlir::MLIRContext *context,
+                   std::optional<std::reference_wrapper<OwnedValues>>
+                       ownedValues = std::nullopt)
+      : mlir::OpConversionPattern<Op>(typeConverter, context),
+        typeConverter(typeConverter), ownedValues(ownedValues) {}
 
   mlir::LogicalResult
   matchAndRewrite(Op op, typename Op::Adaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
     rewriter.modifyOpInPlace(op,
                              [&] { op->setOperands(adaptor.getOperands()); });
+    if (ownedValues) {
+      recordOwnedObjectResults(op, op->getResults(), ownedValues->get(),
+                               typeConverter);
+    }
     return mlir::success();
   }
+
+private:
+  const TorchFFITypeConverter &typeConverter;
+  std::optional<std::reference_wrapper<OwnedValues>> ownedValues;
+};
+
+class RecordOwnedObjectResultsPattern final : public mlir::RewritePattern {
+public:
+  RecordOwnedObjectResultsPattern(const TorchFFITypeConverter &typeConverter,
+                                  OwnedValues &ownedValues,
+                                  mlir::MLIRContext *context)
+      : mlir::RewritePattern(mlir::Pattern::MatchAnyOpTypeTag(),
+                             /*benefit=*/1, context),
+        typeConverter(typeConverter), ownedValues(ownedValues) {}
+
+  mlir::LogicalResult
+  matchAndRewrite(mlir::Operation *op,
+                  mlir::PatternRewriter &rewriter) const override {
+    if (!isOwnedResultProducer(op)) {
+      return mlir::failure();
+    }
+    rewriter.modifyOpInPlace(op, [&] { op->setOperands(op->getOperands()); });
+    recordOwnedObjectResults(op, op->getResults(), ownedValues, typeConverter);
+    return mlir::success();
+  }
+
+private:
+  const TorchFFITypeConverter &typeConverter;
+  OwnedValues &ownedValues;
 };
 
 template <typename TerminatorOp>
 class ConvertTerminatorOp final : public mlir::OpRewritePattern<TerminatorOp> {
 public:
-  ConvertTerminatorOp(
-      mlir::MLIRContext *context,
-      const llvm::DenseMap<mlir::Region *, llvm::SmallSetVector<mlir::Value, 4>>
-          &ownedValues,
-      const TorchFFITypeConverter &typeConverter)
+  ConvertTerminatorOp(mlir::MLIRContext *context,
+                      const OwnedValues &ownedValues,
+                      const TorchFFITypeConverter &typeConverter)
       : mlir::OpRewritePattern<TerminatorOp>(context), ownedValues(ownedValues),
         typeConverter(typeConverter) {}
 
@@ -350,8 +390,7 @@ public:
   }
 
 private:
-  const llvm::DenseMap<mlir::Region *, llvm::SmallSetVector<mlir::Value, 4>>
-      &ownedValues;
+  const OwnedValues &ownedValues;
   const TorchFFITypeConverter &typeConverter;
 };
 
@@ -363,7 +402,7 @@ public:
       const TorchFFITypeConverter &typeConverter, OwnedValues &ownedValues,
       mlir::MLIRContext *ctx)
       : mlir::OpConversionPattern<ConstructOp>(typeConverter, ctx, 1),
-        ownedValues(ownedValues) {}
+        typeConverter(typeConverter), ownedValues(ownedValues) {}
 
   mlir::LogicalResult
   matchAndRewrite(ConstructOp op, typename ConstructOp::Adaptor adaptor,
@@ -372,11 +411,13 @@ public:
         rewriter.replaceOpWithNewOp<tvm_ffi::ArrayCreateOp>(
             op, tvm_ffi::ArrayType::get(this->getContext()),
             adaptor.getElements());
-    recordOwnedObjectResults(array, array->getResults(), ownedValues);
+    recordOwnedObjectResults(array, array->getResults(), ownedValues,
+                             typeConverter);
     return mlir::success();
   }
 
 private:
+  const TorchFFITypeConverter &typeConverter;
   llvm::DenseMap<mlir::Region *, llvm::SmallSetVector<mlir::Value, 4>>
       &ownedValues;
 };
@@ -461,13 +502,15 @@ public:
           rewriter, op.getLoc(),
           mlir::TypeRange{getStringUnionType(op.getContext())},
           getGlobal.getResult(), mlir::ValueRange{raw.getResult()});
-      recordOwnedObjectResults(string, string->getResults(), ownedValues);
+      recordOwnedObjectResults(string, string->getResults(), ownedValues,
+                               typeConverter);
       rewriter.replaceOp(op, string.getResult(0));
       return mlir::success();
     }
     tvm_ffi::ConstantOp const constant =
         rewriter.replaceOpWithNewOp<tvm_ffi::ConstantOp>(op, targetType, value);
-    recordOwnedObjectResults(constant, constant->getResults(), ownedValues);
+    recordOwnedObjectResults(constant, constant->getResults(), ownedValues,
+                             typeConverter);
     return mlir::success();
   }
 
@@ -877,6 +920,15 @@ class ConvertTorchToTVMFFIPass final
              ConvertGenericOp<tvm_ffi::TensorStorageOffsetOp>,
              ConvertGenericOp<tvm_ffi::TensorStrideOp>>(typeConverter,
                                                         &getContext());
+    conversionPatterns.add<ConvertGenericOp<mlir::func::CallOp>,
+                           ConvertGenericOp<mlir::scf::IfOp>,
+                           ConvertGenericOp<mlir::torch::Torch::PrimIfOp>,
+                           ConvertGenericOp<tvm_ffi::ArrayCreateOp>,
+                           ConvertGenericOp<tvm_ffi::CallOp>,
+                           ConvertGenericOp<tvm_ffi::ConstantOp>,
+                           ConvertGenericOp<tvm_ffi::ExceptionOp>,
+                           ConvertGenericOp<tvm_ffi::FunctionCallOp>>(
+        typeConverter, &getContext(), std::ref(ownedValues));
 
     mlir::ConversionTarget conversionTarget(getContext());
     conversionTarget.addLegalDialect<
@@ -939,6 +991,11 @@ class ConvertTorchToTVMFFIPass final
       return;
     }
 
+    mlir::RewritePatternSet ownershipPatterns(&getContext());
+    ownershipPatterns.add<RecordOwnedObjectResultsPattern>(
+        typeConverter, ownedValues, &getContext());
+    mlir::walkAndApplyPatterns(getOperation(), std::move(ownershipPatterns));
+
     mlir::RewritePatternSet terminatorPatterns(&getContext());
     terminatorPatterns.add<ConvertTVMFFIReturn>(typeConverter, &getContext());
     if (mlir::failed(mlir::applyPatternsGreedily(
@@ -949,6 +1006,7 @@ class ConvertTorchToTVMFFIPass final
 
     mlir::RewritePatternSet refCountPatterns(&getContext());
     refCountPatterns.add<ConvertTerminatorOp<mlir::func::ReturnOp>,
+                         ConvertTerminatorOp<mlir::scf::YieldOp>,
                          ConvertTerminatorOp<mlir::torch::Torch::PrimIfYieldOp>,
                          ConvertTerminatorOp<tvm_ffi::ReturnOp>>(
         &getContext(), ownedValues, typeConverter);

@@ -1,7 +1,7 @@
 # Part of the Trident project, under the MIT License.
 # SPDX-License-Identifier: MIT
 
-"""Frontend tests for container unpacking."""
+"""Frontend compilation tests."""
 
 from __future__ import annotations
 
@@ -10,9 +10,18 @@ from collections.abc import Sequence
 
 import torch
 import trident
+from base import TridentTestCase
 
 
-class FrontendTest(unittest.TestCase):
+class FrontendTest(TridentTestCase):
+    def test_local_mutation(self) -> None:
+        @trident.jit
+        def zero_empty_like(x: torch.Tensor) -> torch.Tensor:
+            return torch.empty_like(x).zero_()
+
+        x = torch.randn(4, device="cuda")
+        torch.testing.assert_close(zero_empty_like(x), torch.zeros_like(x))
+
     def test_tuple_unpack(self) -> None:
         @trident.jit
         def tuple_add(

@@ -9,6 +9,7 @@ import unittest
 
 import torch
 import trident
+from base import TridentTestCase
 
 
 @trident.jit
@@ -16,7 +17,7 @@ def all_over_list_dims(x: torch.Tensor) -> torch.Tensor:
     return torch.all(x, dim=[1, 0], keepdim=False)
 
 
-class AllListDimsTest(unittest.TestCase):
+class AllListDimsTest(TridentTestCase):
     def test_all_with_list_dims(self) -> None:
         x = torch.ones((7, 4, 11, 1), dtype=torch.float32)
         result = all_over_list_dims(x)

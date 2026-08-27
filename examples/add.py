@@ -1,7 +1,7 @@
 # Part of the Trident project, under the MIT License.
 # SPDX-License-Identifier: MIT
 
-from typing import Any
+# ruff: noqa: ANN001, ANN201, RUF100
 
 import torch
 import trident
@@ -13,12 +13,12 @@ DEVICE = triton.runtime.driver.active.get_active_torch_device()
 
 @triton.jit
 def add_kernel(
-    x_ptr: Any,
-    y_ptr: Any,
-    output_ptr: Any,
-    n_elements: Any,
+    x_ptr,
+    y_ptr,
+    output_ptr,
+    n_elements,
     BLOCK_SIZE: tl.constexpr,
-) -> None:
+):
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)

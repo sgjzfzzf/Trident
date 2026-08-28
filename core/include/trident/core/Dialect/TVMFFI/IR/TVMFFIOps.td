@@ -45,7 +45,9 @@ def TVMFFI_ArrayGetItemOp : TVMFFI_Op<"array.get_item", [
   let arguments = (ins AnyTVMFFIArrayOrTorchType:$array,
                        TVMFFI_IntType:$index,
                        OptionalAttr<TypeAttr>:$element_type);
-  let results = (outs AnyTVMFFISemanticOrTorchType : $result);
+  let results = (outs AnyTypeOf<[AnyTVMFFISemanticType, AnyTorchType],
+                                "TVM FFI semantic value or a Torch frontend value">
+                 : $result);
   let assemblyFormat = "$array `[` $index `]` (`as` $element_type^)? attr-dict "
                        "`:` type($array) `,` type($index) `->` type($result)";
   let hasVerifier = 1;

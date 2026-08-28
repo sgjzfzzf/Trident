@@ -17,7 +17,7 @@
 #include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
 #include <utility>
 
-namespace trident::torch {
+namespace trident::conversion {
 
 #define GEN_PASS_DEF_CONVERTTORCHTOSCF
 #include "trident/core/Conversion/Passes.h.inc"
@@ -43,7 +43,7 @@ public:
   mlir::LogicalResult
   matchAndRewrite(mlir::torch::Torch::PrimIfOp op,
                   mlir::PatternRewriter &rewriter) const override {
-    trident::torchext::GetOp condition = trident::torchext::GetOp::create(
+    torchext::GetOp condition = torchext::GetOp::create(
         rewriter, op.getLoc(), rewriter.getI1Type(), op.getCondition());
     mlir::scf::IfOp replacement = mlir::scf::IfOp::create(
         rewriter, op.getLoc(), op.getResultTypes(), condition.getResult(),
@@ -66,7 +66,7 @@ class ConvertTorchToScfPass final
     mlir::ConversionTarget target(getContext());
     target.addLegalDialect<mlir::scf::SCFDialect,
                            mlir::torch::Torch::TorchDialect,
-                           trident::torchext::TorchExtDialect>();
+                           torchext::TorchExtDialect>();
     target.addIllegalOp<mlir::torch::Torch::PrimIfOp,
                         mlir::torch::Torch::PrimIfYieldOp>();
     mlir::RewritePatternSet patterns(&getContext());
@@ -78,4 +78,4 @@ class ConvertTorchToScfPass final
   }
 };
 
-} // namespace trident::torch
+} // namespace trident::conversion

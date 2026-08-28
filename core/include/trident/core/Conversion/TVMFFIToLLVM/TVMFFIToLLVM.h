@@ -15,7 +15,7 @@
 #include <mlir/Pass/PassRegistry.h>
 #include <mlir/Transforms/DialectConversion.h>
 
-namespace trident::tvm_ffi {
+namespace trident::conversion {
 
 #define GEN_PASS_DECL_CONVERTTVMFFITOLLVM
 #include "trident/core/Conversion/Passes.h.inc"
@@ -30,6 +30,6 @@ void populateTVMFFIToLLVMConversionPatterns(
 void registerConvertTVMFFIToLLVMPass();
 void registerConvertTVMFFIToLLVMInterface(mlir::DialectRegistry &registry);
 
-} // namespace trident::tvm_ffi
+} // namespace trident::conversion
 
 #endif // TRIDENT_CORE_CONVERSION_TVMFFITOLLVM_TVMFFITOLLVM_H_

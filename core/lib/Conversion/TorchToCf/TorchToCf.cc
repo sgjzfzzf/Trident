@@ -26,7 +26,7 @@
 #include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
 #include <utility>
 
-namespace trident::torch {
+namespace trident::conversion {
 
 #define GEN_PASS_DEF_CONVERTTORCHTOCF
 #include "trident/core/Conversion/Passes.h.inc"
@@ -83,4 +83,4 @@ void populateTorchToCfConversionPatterns(mlir::ConversionTarget &target,
   target.addIllegalOp<mlir::torch::Torch::RuntimeAssertOp>();
 }
 
-} // namespace trident::torch
+} // namespace trident::conversion

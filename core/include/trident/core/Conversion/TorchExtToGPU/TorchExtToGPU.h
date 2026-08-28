@@ -13,7 +13,7 @@
 #include <mlir/Pass/PassRegistry.h>
 #include <mlir/Transforms/DialectConversion.h>
 
-namespace trident::torchext {
+namespace trident::conversion {
 
 #define GEN_PASS_DECL_CONVERTTORCHEXTTOGPU
 #include "trident/core/Conversion/Passes.h.inc"
@@ -26,6 +26,6 @@ void populateTorchExtToGPUConversionPatterns(
     mlir::TypeConverter &typeConverter);
 
 void registerConvertTorchExtToGPUPass();
-} // namespace trident::torchext
+} // namespace trident::conversion
 
 #endif // TRIDENT_CORE_CONVERSION_TORCHEXTTOGPU_TORCHEXTTOGPU_H_

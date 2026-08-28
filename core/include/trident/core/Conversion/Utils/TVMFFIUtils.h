@@ -15,26 +15,6 @@
 
 namespace trident::conversion::utils {
 
-/// Allocate a TVMFFIAny slot containing an integer scalar.
-mlir::Value buildIntAnySlot(mlir::OpBuilder &builder, mlir::Location loc,
-                            int64_t value);
-
-/// Allocate a TVMFFIAny slot containing a runtime i32 integer.
-mlir::Value buildIntAnySlot(mlir::OpBuilder &builder, mlir::Location loc,
-                            mlir::Value value);
-
-/// Allocate a TVMFFIAny slot containing a DLPack dtype value.
-mlir::Value buildDTypeAnySlot(mlir::OpBuilder &builder, mlir::Location loc,
-                              int64_t code, int64_t bits, int64_t lanes = 1);
-
-/// Allocate a TVMFFIAny slot containing an opaque pointer.
-mlir::Value buildOpaquePtrAnySlot(mlir::OpBuilder &builder, mlir::Location loc,
-                                  mlir::Value pointer);
-
-/// Load an integer value from a TVMFFIAny result slot.
-mlir::Value loadIntFromAnySlot(mlir::OpBuilder &builder, mlir::Location loc,
-                               mlir::Value slot);
-
 /// Get an owned TVM FFI global function handle by name.
 mlir::FailureOr<mlir::Value> getTVMFFIGlobalFunction(mlir::OpBuilder &builder,
                                                      mlir::Location loc,

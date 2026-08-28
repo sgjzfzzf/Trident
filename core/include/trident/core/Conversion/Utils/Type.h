@@ -33,9 +33,6 @@ mlir::LLVM::LLVMStructType getDLDataType(mlir::MLIRContext *context);
 ///   5: strides     : ptr                               (offset 32)
 ///   6: byte_offset : i64                               (offset 40)
 mlir::LLVM::LLVMStructType getDLTensorType(mlir::MLIRContext *context);
-/// Returns the LLVM struct type for TVMFFIAny:
-///   { i32 type_index, i32 zero_padding, i64 payload }  (16 bytes)
-mlir::LLVM::LLVMStructType getTVMFFIAnyType(mlir::MLIRContext *context);
 } // namespace trident::conversion::utils
 
 #endif // TRIDENT_CORE_CONVERSION_UTILS_TYPE_H_

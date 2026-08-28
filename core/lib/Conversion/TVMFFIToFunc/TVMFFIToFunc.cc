@@ -17,8 +17,6 @@
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/SmallVectorExtras.h>
-#include <llvm/ADT/TypeSwitch.h>
-#include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h> // NOLINT(misc-include-cleaner)
@@ -41,65 +39,47 @@
 #include <string>
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
-namespace trident::tvm_ffi {
+namespace trident::conversion {
 
 #define GEN_PASS_DEF_CONVERTTVMFFITOFUNC
 #include "trident/core/Conversion/Passes.h.inc"
 
-static int32_t getTVMFFITypeIndex(mlir::Type type) {
-  return llvm::TypeSwitch<mlir::Type, int32_t>(type)
-      .Case<ArrayType>([](ArrayType) { return ArrayType::getTypeIndex(); })
-      .Case<BoolType>([](BoolType) { return BoolType::getTypeIndex(); })
-      .Case<DeviceType>([](DeviceType) { return DeviceType::getTypeIndex(); })
-      .Case<DTypeType>([](DTypeType) { return DTypeType::getTypeIndex(); })
-      .Case<ExceptionType>(
-          [](ExceptionType) { return ExceptionType::getTypeIndex(); })
-      .Case<FloatType>([](FloatType) { return FloatType::getTypeIndex(); })
-      .Case<FunctionType>(
-          [](FunctionType) { return FunctionType::getTypeIndex(); })
-      .Case<IntType>([](IntType) { return IntType::getTypeIndex(); })
-      .Case<NoneType>([](NoneType) { return NoneType::getTypeIndex(); })
-      .Case<RawStrType>([](RawStrType) { return RawStrType::getTypeIndex(); })
-      .Case<SmallStrType>(
-          [](SmallStrType) { return SmallStrType::getTypeIndex(); })
-      .Case<StrType>([](StrType) { return StrType::getTypeIndex(); })
-      .Case<TensorType>([](TensorType) { return TensorType::getTypeIndex(); })
-      .Default([](mlir::Type) -> int32_t {
-        llvm_unreachable("expected a concrete TVM FFI ABI type");
-      });
-}
-
 static llvm::SmallVector<int32_t> getExpectedTypeIndices(mlir::Type type) {
-  if (const UnionType unionType = mlir::dyn_cast<UnionType>(type)) {
-    return llvm::map_to_vector(unionType.getTypes(), getTVMFFITypeIndex);
+  if (const tvm_ffi::UnionType unionType =
+          mlir::dyn_cast<tvm_ffi::UnionType>(type)) {
+    return llvm::map_to_vector(unionType.getTypes(), [](mlir::Type member) {
+      return mlir::cast<tvm_ffi::TVMFFITypeIndexInterface>(member)
+          .getTypeIndex();
+    });
   }
-  if (mlir::isa<AnyType>(type)) {
+  if (mlir::isa<tvm_ffi::AnyType>(type)) {
     return {};
   }
-  if (type.hasTrait<mlir::TypeTrait::TVMFFIABI>()) {
-    return {getTVMFFITypeIndex(type)};
+  if (mlir::isa<tvm_ffi::TVMFFIABIType>(type)) {
+    return {mlir::cast<tvm_ffi::TVMFFITypeIndexInterface>(type).getTypeIndex()};
   }
   if (mlir::isa<mlir::torch::Torch::BoolType>(type)) {
-    return {BoolType::getTypeIndex()};
+    return {tvm_ffi::BoolType::getTypeIndex()};
   } else if (mlir::isa<mlir::torch::Torch::IntType>(type)) {
-    return {IntType::getTypeIndex()};
+    return {tvm_ffi::IntType::getTypeIndex()};
   } else if (mlir::isa<mlir::torch::Torch::FloatType>(type)) {
-    return {FloatType::getTypeIndex()};
+    return {tvm_ffi::FloatType::getTypeIndex()};
   } else if (mlir::isa<mlir::torch::Torch::NoneType>(type)) {
-    return {NoneType::getTypeIndex()};
+    return {tvm_ffi::NoneType::getTypeIndex()};
   } else if (mlir::isa<mlir::torch::Torch::StringType>(type)) {
-    return {RawStrType::getTypeIndex(), SmallStrType::getTypeIndex(),
-            StrType::getTypeIndex()};
+    return {tvm_ffi::RawStrType::getTypeIndex(),
+            tvm_ffi::SmallStrType::getTypeIndex(),
+            tvm_ffi::StrType::getTypeIndex()};
   } else if (mlir::isa<mlir::torch::Torch::DeviceType>(type)) {
-    return {DeviceType::getTypeIndex()};
-  } else if (mlir::isa<trident::torchext::DTypeType>(type)) {
-    return {DTypeType::getTypeIndex()};
+    return {tvm_ffi::DeviceType::getTypeIndex()};
+  } else if (mlir::isa<torchext::DTypeType>(type)) {
+    return {tvm_ffi::DTypeType::getTypeIndex()};
   } else if (mlir::isa<mlir::torch::Torch::ListType,
                        mlir::torch::Torch::TupleType>(type)) {
-    return {ArrayType::getTypeIndex()};
+    return {tvm_ffi::ArrayType::getTypeIndex()};
   } else if (mlir::isa<mlir::torch::Torch::NonValueTensorType,
                        mlir::torch::Torch::ValueTensorType>(type)) {
-    return {TensorType::getTypeIndex()};
+    return {tvm_ffi::TensorType::getTypeIndex()};
   }
   return {};
 }
@@ -107,7 +87,7 @@ static llvm::SmallVector<int32_t> getExpectedTypeIndices(mlir::Type type) {
 class ConvertTVMFFIToFuncPass final
     : public impl::ConvertTVMFFIToFuncBase<ConvertTVMFFIToFuncPass> {
   void runOnOperation() final {
-    getOperation().walk([&](FuncOp tvmffiFuncOp) -> mlir::WalkResult {
+    getOperation().walk([&](tvm_ffi::FuncOp tvmffiFuncOp) -> mlir::WalkResult {
       mlir::OpBuilder builder(tvmffiFuncOp);
       const mlir::FunctionType targetType = tvmffiFuncOp.getFunctionType();
       mlir::func::FuncOp funcOp =
@@ -132,7 +112,8 @@ class ConvertTVMFFIToFuncPass final
         mlir::Block *targetBlock = mapping.lookup(&sourceBlock);
         builder.setInsertionPointToEnd(targetBlock);
         for (mlir::Operation &sourceOperation : sourceBlock) {
-          if (ReturnOp returnOp = mlir::dyn_cast<ReturnOp>(&sourceOperation)) {
+          if (tvm_ffi::ReturnOp returnOp =
+                  mlir::dyn_cast<tvm_ffi::ReturnOp>(&sourceOperation)) {
             if (returnOp.getNumOperands() != targetType.getNumResults()) {
               returnOp.emitError("return value count does not match the "
                                  "converted function signature");
@@ -172,7 +153,7 @@ class ConvertTVMFFIToFuncPass final
         const mlir::IntegerType i32Ty = builder.getI32Type();
         const mlir::IntegerType i64Ty = builder.getI64Type();
         mlir::LLVM::LLVMStructType llvmAnyTy =
-            conversion::utils::getTVMFFIAnyType(context);
+            tvm_ffi::TVMFFIABIType::getLLVMType(context);
         mlir::LLVM::LLVMPointerType llvmPtrTy =
             mlir::LLVM::LLVMPointerType::get(context);
 
@@ -327,4 +308,4 @@ class ConvertTVMFFIToFuncPass final
   }
 };
 
-} // namespace trident::tvm_ffi
+} // namespace trident::conversion

@@ -24,7 +24,7 @@
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include <utility>
 
-namespace trident::arithext {
+namespace trident::conversion {
 
 #define GEN_PASS_DEF_CONVERTARITHEXTTOSCF
 #include "trident/core/Conversion/Passes.h.inc"
@@ -44,7 +44,8 @@ mlir::Value buildAndThenChain(mlir::RewriterBase &rewriter, mlir::Location loc,
     rewriter.setInsertionPointToStart(ifOp.thenBlock());
     mlir::IRMapping mapping;
     for (mlir::Operation &operation : regions.front()->front()) {
-      if (AndThenYieldOp yield = llvm::dyn_cast<AndThenYieldOp>(&operation)) {
+      if (arithext::AndThenYieldOp yield =
+              llvm::dyn_cast<arithext::AndThenYieldOp>(&operation)) {
         mlir::Value thenValue = mapping.lookupOrDefault(yield.getValue());
         thenValue =
             buildAndThenChain(rewriter, loc, regions.drop_front(), thenValue);
@@ -61,12 +62,13 @@ mlir::Value buildAndThenChain(mlir::RewriterBase &rewriter, mlir::Location loc,
   }
 }
 
-class ConvertAndThenOp final : public mlir::OpRewritePattern<AndThenOp> {
+class ConvertAndThenOp final
+    : public mlir::OpRewritePattern<arithext::AndThenOp> {
 public:
   using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult
-  matchAndRewrite(AndThenOp op,
+  matchAndRewrite(arithext::AndThenOp op,
                   mlir::PatternRewriter &rewriter) const override {
     const mlir::Value trueValue =
         mlir::arith::ConstantIntOp::create(rewriter, op.getLoc(), true, 1);
@@ -92,4 +94,4 @@ public:
   }
 };
 
-} // namespace trident::arithext
+} // namespace trident::conversion

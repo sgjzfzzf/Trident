@@ -43,23 +43,23 @@ void trident::conversion::registerAllDialects(mlir::DialectRegistry &registry) {
   mlir::arith::registerConvertArithToLLVMInterface(registry);
   mlir::registerConvertFuncToLLVMInterface(registry);
   mlir::gpu::registerConvertGpuToLLVMInterface(registry);
-  trident::tvm_ffi::registerConvertTVMFFIToLLVMInterface(registry);
+  trident::conversion::registerConvertTVMFFIToLLVMInterface(registry);
   trident::tvm_ffi::registerTVMFFIObjectOwnershipExternalModels(registry);
 }
 
 void trident::conversion::registerAllPasses() {
   mlir::registerAllPasses();
-  trident::arithext::registerConvertArithExtToScfPass();
-  trident::torchext::registerConvertTorchExtToGPUPass();
-  trident::torch::registerConvertTorchToCfPass();
-  trident::torch::registerConvertTorchToScfPass();
-  trident::torch::registerConvertTorchToTVMFFIPass();
-  trident::tvm_ffi::registerConvertTVMFFIToFuncPass();
-  trident::tvm_ffi::registerConvertTVMFFIToLLVMPass();
+  trident::conversion::registerConvertArithExtToScfPass();
+  trident::conversion::registerConvertTorchExtToGPUPass();
+  trident::conversion::registerConvertTorchToCfPass();
+  trident::conversion::registerConvertTorchToScfPass();
+  trident::conversion::registerConvertTorchToTVMFFIPass();
+  trident::conversion::registerConvertTVMFFIToFuncPass();
+  trident::conversion::registerConvertTVMFFIToLLVMPass();
   trident::tvm_ffi::registerDecomposeTVMFFIPass();
   trident::tvm_ffi::registerApplyObjectOwnershipPass();
   trident::torch::registerGeneralizeAtenOpsPass();
   mlir::registerReconcileUnrealizedCastsPass();
   mlir::torch::registerTorchPasses();
-  trident::torch::registerTridentLoweringPipelinePass();
+  trident::conversion::registerTridentLoweringPipelinePass();
 }

@@ -34,18 +34,19 @@
 #include <tvm/ffi/c_api.h>
 #include <utility>
 
-namespace trident::torchext {
+namespace trident::conversion {
 
 #define GEN_PASS_DEF_CONVERTTORCHEXTTOGPU
 #include "trident/core/Conversion/Passes.h.inc"
 
 /// Converts torchext.cast to the appropriate LLVM truncation/extension.
-class ConvertCastOp : public mlir::OpConversionPattern<CastOp> {
+class ConvertTorchExtCastOp
+    : public mlir::OpConversionPattern<torchext::CastOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
 
   mlir::LogicalResult
-  matchAndRewrite(CastOp op, OpAdaptor adaptor,
+  matchAndRewrite(torchext::CastOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
     mlir::Location const loc = op.getLoc();
     mlir::MLIRContext *ctx = rewriter.getContext();
@@ -90,15 +91,15 @@ public:
 
 /// Converts torch_ext.trident_kernel_launch to gpu.launch_func.
 class ConvertTridentKernelLaunchOp
-    : public mlir::OpConversionPattern<TridentKernelLaunchOp> {
+    : public mlir::OpConversionPattern<torchext::TridentKernelLaunchOp> {
 public:
   ConvertTridentKernelLaunchOp(mlir::TypeConverter &typeConverter,
                                mlir::MLIRContext *context)
-      : mlir::OpConversionPattern<TridentKernelLaunchOp>(typeConverter,
-                                                         context) {}
+      : mlir::OpConversionPattern<torchext::TridentKernelLaunchOp>(
+            typeConverter, context) {}
 
   mlir::LogicalResult
-  matchAndRewrite(TridentKernelLaunchOp op, OpAdaptor adaptor,
+  matchAndRewrite(torchext::TridentKernelLaunchOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
     mlir::Location const loc = op.getLoc();
     mlir::MLIRContext *ctx = rewriter.getContext();
@@ -108,8 +109,7 @@ public:
     mlir::IntegerType const i64Ty = mlir::IntegerType::get(ctx, 64);
     mlir::LLVM::LLVMPointerType const ptrTy =
         mlir::LLVM::LLVMPointerType::get(ctx);
-    mlir::LLVM::LLVMStructType const dlTensorTy =
-        trident::conversion::utils::getDLTensorType(ctx);
+    mlir::LLVM::LLVMStructType const dlTensorTy = utils::getDLTensorType(ctx);
 
     // Build grid and block dimensions from individual values.
     // Since TridentKernelLaunchOp uses I64 for grid/block/cluster (not Index),
@@ -142,7 +142,7 @@ public:
     llvm::SmallVector<mlir::Value> operands;
     for (auto [orig, adapted] :
          llvm::zip(op.getKernelOperands(), adaptor.getKernelOperands())) {
-      if (mlir::isa<trident::tvm_ffi::TensorType>(orig.getType())) {
+      if (mlir::isa<tvm_ffi::TensorType>(orig.getType())) {
         // Extract pointer from TVMFFIAny field[2].
         mlir::Value const handleInt = mlir::LLVM::ExtractValueOp::create(
             rewriter, loc, adapted, llvm::ArrayRef<int64_t>{2});
@@ -157,14 +157,14 @@ public:
             llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0});
         operands.push_back(
             mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, dataGep));
-      } else if (mlir::isa<trident::tvm_ffi::BoolType>(orig.getType())) {
+      } else if (mlir::isa<tvm_ffi::BoolType>(orig.getType())) {
         // Bool: extract i64 payload and truncate to i1.
         mlir::Value const payload = mlir::LLVM::ExtractValueOp::create(
             rewriter, loc, adapted, llvm::ArrayRef<int64_t>{2});
         operands.push_back(
             mlir::LLVM::TruncOp::create(rewriter, loc, i1Ty, payload));
-      } else if (mlir::isa<trident::tvm_ffi::FloatType,
-                           trident::tvm_ffi::IntType>(orig.getType())) {
+      } else if (mlir::isa<tvm_ffi::FloatType, tvm_ffi::IntType>(
+                     orig.getType())) {
         // Torch scalar: extract i64 payload from TVMFFIAny field[2].
         mlir::Value const payload = mlir::LLVM::ExtractValueOp::create(
             rewriter, loc, adapted, llvm::ArrayRef<int64_t>{2});
@@ -184,8 +184,7 @@ public:
 
     // Step 1: call aoti_torch_get_current_device_index(&slot).
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getDevIdxFn =
-        trident::conversion::utils::getOrCreateAOTITorchGetCurrentDeviceIndex(
-            moduleOp);
+        utils::getOrCreateAOTITorchGetCurrentDeviceIndex(moduleOp);
     if (mlir::failed(getDevIdxFn)) {
       return op->emitOpError(
           "failed to create aoti_torch_get_current_device_index");
@@ -202,7 +201,7 @@ public:
     // Step 2: call TVMFFIEnvGetStream(kDLCUDA, deviceIndex) to get the
     // current CUDA stream handle directly (returns void*).
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getStreamFn =
-        trident::conversion::utils::getOrCreateTVMFFIEnvGetStream(moduleOp);
+        utils::getOrCreateTVMFFIEnvGetStream(moduleOp);
     if (mlir::failed(getStreamFn)) {
       return op->emitOpError("failed to create TVMFFIEnvGetStream");
     }
@@ -245,11 +244,10 @@ public:
 
     typeConverter.addConversion(
         [](mlir::Type type) -> std::optional<mlir::Type> {
-          if (mlir::isa<trident::tvm_ffi::FunctionType>(type)) {
+          if (mlir::isa<tvm_ffi::FunctionType>(type)) {
             return mlir::LLVM::LLVMPointerType::get(type.getContext());
-          } else if (type.hasTrait<mlir::TypeTrait::TVMFFIABI>()) {
-            return trident::conversion::utils::getTVMFFIAnyType(
-                type.getContext());
+          } else if (mlir::isa<tvm_ffi::TVMFFIABIType>(type)) {
+            return tvm_ffi::TVMFFIABIType::getLLVMType(type.getContext());
           } else if (mlir::isa<mlir::IntegerType, mlir::FloatType>(type)) {
             return type;
           } else {
@@ -257,7 +255,7 @@ public:
           }
         });
 
-    target.addIllegalOp<CastOp, TridentKernelLaunchOp>();
+    target.addIllegalOp<torchext::CastOp, torchext::TridentKernelLaunchOp>();
     target.addLegalDialect<mlir::gpu::GPUDialect, mlir::BuiltinDialect,
                            mlir::LLVM::LLVMDialect>();
 
@@ -273,8 +271,8 @@ public:
 void populateTorchExtToGPUConversionPatterns(
     mlir::ConversionTarget &, mlir::RewritePatternSet &patterns,
     mlir::TypeConverter &typeConverter) {
-  patterns.add<ConvertCastOp, ConvertTridentKernelLaunchOp>(
+  patterns.add<ConvertTorchExtCastOp, ConvertTridentKernelLaunchOp>(
       typeConverter, patterns.getContext());
 }
 
-} // namespace trident::torchext
+} // namespace trident::conversion

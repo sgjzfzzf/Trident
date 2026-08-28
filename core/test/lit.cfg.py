@@ -5,8 +5,11 @@ import os
 
 import lit.formats
 from lit.llvm import llvm_config
+from lit.llvm.subst import ToolSubst
 
 config.name = "TRIDENT_CORE"
+# Keep the shell behavior selected by LLVM's lit configuration. This makes the
+# suite behave consistently when invoked through either `lit` or `llvm-lit`.
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
 config.suffixes = [".mlir"]
 config.test_source_root = os.path.dirname(__file__)
@@ -30,6 +33,9 @@ config.excludes = [
 ]
 
 tool_dirs = [config.trident_core_tools_dir, config.llvm_tools_dir]
-tools = ["trident-core-opt", "FileCheck"]
+tools = [
+    ToolSubst("trident-core-opt"),
+    ToolSubst("FileCheck"),
+]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)

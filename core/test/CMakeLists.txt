@@ -1,12 +1,9 @@
 if(NOT LLVM_EXTERNAL_LIT)
-  execute_process(
-    COMMAND which lit
-    OUTPUT_VARIABLE LLVM_EXTERNAL_LIT
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  find_program(LLVM_EXTERNAL_LIT NAMES llvm-lit lit REQUIRED)
 endif()
 set(LLVM_EXTERNAL_LIT
     "${LLVM_EXTERNAL_LIT}"
-    CACHE STRING "Command used to spawn lit" FORCE)
+    CACHE STRING "Command used to spawn lit")
 
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in

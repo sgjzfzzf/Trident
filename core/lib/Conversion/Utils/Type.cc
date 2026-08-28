@@ -40,10 +40,3 @@ trident::conversion::utils::getDLTensorType(mlir::MLIRContext *context) {
       context, {ptrTy, getDLDeviceType(context), i32Ty, getDLDataType(context),
                 ptrTy, ptrTy, i64Ty});
 }
-
-mlir::LLVM::LLVMStructType
-trident::conversion::utils::getTVMFFIAnyType(mlir::MLIRContext *context) {
-  mlir::IntegerType const i32Ty = mlir::IntegerType::get(context, 32);
-  mlir::IntegerType const i64Ty = mlir::IntegerType::get(context, 64);
-  return mlir::LLVM::LLVMStructType::getLiteral(context, {i32Ty, i32Ty, i64Ty});
-}

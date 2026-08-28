@@ -11,7 +11,7 @@
 #include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassRegistry.h>
 
-namespace trident::torch {
+namespace trident::conversion {
 
 #define GEN_PASS_DECL_CONVERTTORCHTOSCF
 #include "trident/core/Conversion/Passes.h.inc"
@@ -19,6 +19,6 @@ namespace trident::torch {
 #define GEN_PASS_REGISTRATION_CONVERTTORCHTOSCF
 #include "trident/core/Conversion/Passes.h.inc"
 
-} // namespace trident::torch
+} // namespace trident::conversion
 
 #endif // TRIDENT_CORE_CONVERSION_TORCH_TO_SCF_TORCH_TO_SCF_H_

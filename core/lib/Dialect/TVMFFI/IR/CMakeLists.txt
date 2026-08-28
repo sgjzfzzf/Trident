@@ -3,9 +3,11 @@ add_mlir_dialect_library(
   TVMFFIDialect.cc
   TVMFFIInterfaces.cc
   TVMFFIOps.cc
+  TVMFFITypes.cc
   DEPENDS
   MLIRTVMFFIIncGen
   MLIRTVMFFIInterfacesIncGen
+  MLIRTVMFFITypeInterfacesIncGen
   MLIRTVMFFITypeDefsIncGen
   LINK_LIBS
   PUBLIC
@@ -13,4 +15,8 @@ add_mlir_dialect_library(
   MLIRFuncDialect
   MLIRIR
   MLIRSCFDialect
-  MLIRSideEffectInterfaces)
+  MLIRSideEffectInterfaces
+  tvm_ffi::shared)
+
+target_include_directories(TVMFFIDialect
+                           PRIVATE ${CMAKE_SOURCE_DIR}/../ffi/include)

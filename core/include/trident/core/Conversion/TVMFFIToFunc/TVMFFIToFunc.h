@@ -11,7 +11,7 @@
 #include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassRegistry.h>
 
-namespace trident::tvm_ffi {
+namespace trident::conversion {
 
 #define GEN_PASS_DECL_CONVERTTVMFFITOFUNC
 #include "trident/core/Conversion/Passes.h.inc"
@@ -19,6 +19,6 @@ namespace trident::tvm_ffi {
 #define GEN_PASS_REGISTRATION_CONVERTTVMFFITOFUNC
 #include "trident/core/Conversion/Passes.h.inc"
 
-} // namespace trident::tvm_ffi
+} // namespace trident::conversion
 
 #endif // TRIDENT_CORE_CONVERSION_TVMFFITOFUNC_TVMFFITOFUNC_H_

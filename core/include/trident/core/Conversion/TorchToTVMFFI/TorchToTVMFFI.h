@@ -13,7 +13,7 @@
 #include <mlir/Pass/Pass.h>
 #include <mlir/Transforms/DialectConversion.h>
 
-namespace trident::torch {
+namespace trident::conversion {
 
 /// Return the semantic TVM FFI type corresponding to a Torch frontend type.
 /// Types without a specialized representation use !tvm_ffi.any.
@@ -28,6 +28,6 @@ void populateTorchToTVMFFITypeConversions(mlir::TypeConverter &typeConverter);
 #include "trident/core/Conversion/Passes.h.inc"
 #define GEN_PASS_REGISTRATION_CONVERTTORCHTOTVMFFI
 #include "trident/core/Conversion/Passes.h.inc"
-} // namespace trident::torch
+} // namespace trident::conversion
 
 #endif

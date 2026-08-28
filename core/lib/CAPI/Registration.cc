@@ -26,5 +26,5 @@ void tridentCoreRegisterAllPasses(void) {
 }
 
 MlirType tridentCoreConvertTorchTypeToTVMFFIType(MlirType type) {
-  return wrap(trident::torch::convertTorchTypeToTVMFFIType(unwrap(type)));
+  return wrap(trident::conversion::convertTorchTypeToTVMFFIType(unwrap(type)));
 }

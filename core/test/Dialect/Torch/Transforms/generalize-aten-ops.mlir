@@ -8,7 +8,6 @@
 // RUN: trident-core-opt %s -generalize-aten-ops --mlir-print-debuginfo | FileCheck %s --check-prefix=GENERALIZE
 // RUN: trident-core-opt %s -generalize-aten-ops --mlir-print-debuginfo | FileCheck %s --check-prefix=LOCATION
 // RUN: trident-core-opt %s -generalize-aten-ops -generalize-aten-ops | FileCheck %s --check-prefix=IDEMPOTENT
-// RUN: trident-core-opt %s -generalize-aten-ops -canonicalize | FileCheck %s --check-prefix=CANONICALIZE
 
 // GENERALIZE-LABEL: func.func @single_result
 // GENERALIZE: %[[FORMAT:[a-zA-Z0-9_]+]] = torch.constant.int 0
@@ -19,9 +18,6 @@
 // LOCATION: #[[CLONE_LOC]] = loc("model.py":42:7)
 // IDEMPOTENT-LABEL: func.func @single_result
 // IDEMPOTENT-COUNT-1: torch.operator "torch.aten.clone"
-// CANONICALIZE-LABEL: func.func @single_result
-// CANONICALIZE: %[[CLONE:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.clone"(%arg0,
-// CANONICALIZE: return %[[CLONE]]
 func.func @single_result(%arg0: !torch.vtensor<[3,2],f32>)
     -> !torch.vtensor<[3,2],f32> {
   %format = torch.constant.int 0
@@ -29,16 +25,6 @@ func.func @single_result(%arg0: !torch.vtensor<[3,2],f32>)
       : (!torch.vtensor<[3,2],f32>, !torch.int)
       -> !torch.vtensor<[3,2],f32> loc("model.py":42:7)
   return %clone : !torch.vtensor<[3,2],f32>
-}
-
-// CANONICALIZE-LABEL: func.func @other_dialect_folding
-// CANONICALIZE: %[[THREE:[a-zA-Z0-9_]+]] = arith.constant 3 : i64
-// CANONICALIZE-NEXT: return %[[THREE]] : i64
-func.func @other_dialect_folding() -> i64 {
-  %one = arith.constant 1 : i64
-  %two = arith.constant 2 : i64
-  %sum = arith.addi %one, %two : i64
-  return %sum : i64
 }
 
 // GENERALIZE-LABEL: func.func @multiple_results

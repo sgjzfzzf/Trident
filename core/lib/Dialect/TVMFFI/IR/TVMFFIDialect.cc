@@ -35,35 +35,9 @@
 #include <mlir/IR/Value.h>
 #include <mlir/Interfaces/FunctionImplementation.h>
 #include <mlir/Support/LLVM.h>
-#include <optional>
 #include <string>
 #include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
-
-namespace trident::tvm_ffi {
-
-static std::optional<int32_t> getConcreteTypeIndex(mlir::Type type) {
-  return llvm::TypeSwitch<mlir::Type, std::optional<int32_t>>(type)
-      .Case<ArrayType>([](ArrayType) { return ArrayType::getTypeIndex(); })
-      .Case<BoolType>([](BoolType) { return BoolType::getTypeIndex(); })
-      .Case<DeviceType>([](DeviceType) { return DeviceType::getTypeIndex(); })
-      .Case<DTypeType>([](DTypeType) { return DTypeType::getTypeIndex(); })
-      .Case<ExceptionType>(
-          [](ExceptionType) { return ExceptionType::getTypeIndex(); })
-      .Case<FloatType>([](FloatType) { return FloatType::getTypeIndex(); })
-      .Case<FunctionType>(
-          [](FunctionType) { return FunctionType::getTypeIndex(); })
-      .Case<IntType>([](IntType) { return IntType::getTypeIndex(); })
-      .Case<NoneType>([](NoneType) { return NoneType::getTypeIndex(); })
-      .Case<RawStrType>([](RawStrType) { return RawStrType::getTypeIndex(); })
-      .Case<SmallStrType>(
-          [](SmallStrType) { return SmallStrType::getTypeIndex(); })
-      .Case<StrType>([](StrType) { return StrType::getTypeIndex(); })
-      .Case<TensorType>([](TensorType) { return TensorType::getTypeIndex(); })
-      .Default([](mlir::Type) { return std::nullopt; });
-}
-
-} // namespace trident::tvm_ffi
 
 #define GET_TYPEDEF_CLASSES
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.cpp.inc"
@@ -81,11 +55,11 @@ UnionType::verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
   }
   llvm::SmallDenseSet<mlir::Type> uniqueTypes;
   for (mlir::Type type : types) {
-    if (!type.hasTrait<mlir::TypeTrait::TVMFFIABI>() ||
+    if (!mlir::isa<TVMFFIABIType>(type) ||
         mlir::isa<AnyType, UnionType>(type)) {
       return emitError() << "invalid union member type " << type;
     }
-    if (!getConcreteTypeIndex(type)) {
+    if (!mlir::isa<TVMFFITypeIndexInterface>(type)) {
       return emitError() << "invalid union member type " << type;
     }
     if (!uniqueTypes.insert(type).second) {
@@ -125,7 +99,7 @@ bool CastOp::areCastCompatible(mlir::TypeRange inputs,
   mlir::Type output = outputs[0];
   return mlir::isa<AnyType, UnionType>(output) &&
          (mlir::isa<mlir::torch::Torch::TorchDialect>(input.getDialect()) ||
-          (input.hasTrait<mlir::TypeTrait::TVMFFIABI>() &&
+          (mlir::isa<TVMFFIABIType>(input) &&
            (mlir::isa<AnyType>(output) ||
             mlir::cast<UnionType>(output).contains(input))));
 }

@@ -43,7 +43,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace trident::torch {
+namespace trident::conversion {
 #define GEN_PASS_DEF_CONVERTTORCHTOTVMFFI
 #include "trident/core/Conversion/Passes.h.inc"
 
@@ -63,7 +63,7 @@ mlir::Type convertTorchTypeToTVMFFIType(mlir::Type type) {
           [&](mlir::Type) { return tvm_ffi::BoolType::get(context); })
       .Case<mlir::torch::Torch::DeviceType>(
           [&](mlir::Type) { return tvm_ffi::DeviceType::get(context); })
-      .Case<trident::torchext::DTypeType>(
+      .Case<torchext::DTypeType>(
           [&](mlir::Type) { return tvm_ffi::DTypeType::get(context); })
       .Case<mlir::torch::Torch::FloatType>(
           [&](mlir::Type) { return tvm_ffi::FloatType::get(context); })
@@ -84,7 +84,7 @@ mlir::Type convertTorchTypeToTVMFFIType(mlir::Type type) {
 void populateTorchToTVMFFITypeConversions(mlir::TypeConverter &typeConverter) {
   typeConverter.addConversion([](mlir::Type type) -> std::optional<mlir::Type> {
     if (type.getDialect().getNamespace() != "torch" &&
-        !mlir::isa<trident::torchext::DTypeType>(type)) {
+        !mlir::isa<torchext::DTypeType>(type)) {
       return std::nullopt;
     }
     return convertTorchTypeToTVMFFIType(type);
@@ -98,7 +98,7 @@ class TorchFFITypeConverter : public mlir::TypeConverter {
 public:
   TorchFFITypeConverter() {
     addConversion([](mlir::Type type) -> std::optional<mlir::Type> {
-      return type.hasTrait<mlir::TypeTrait::TVMFFIABI>()
+      return mlir::isa<tvm_ffi::TVMFFIABIType>(type)
                  ? std::optional<mlir::Type>(type)
                  : std::nullopt;
     });
@@ -350,12 +350,12 @@ private:
 /// conversion as the Torch users so the producer and its users agree on the
 /// converted result type.
 class ConvertTorchExtConvert final
-    : public mlir::OpConversionPattern<trident::torchext::ConvertOp> {
+    : public mlir::OpConversionPattern<torchext::ConvertOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
 
   mlir::LogicalResult
-  matchAndRewrite(trident::torchext::ConvertOp op, OpAdaptor adaptor,
+  matchAndRewrite(torchext::ConvertOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
     tvm_ffi::FunctionGetGlobalOp getGlobal =
         tvm_ffi::FunctionGetGlobalOp::create(
@@ -369,12 +369,12 @@ public:
 };
 
 class ConvertTorchExtGet final
-    : public mlir::OpConversionPattern<trident::torchext::GetOp> {
+    : public mlir::OpConversionPattern<torchext::GetOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
 
   mlir::LogicalResult
-  matchAndRewrite(trident::torchext::GetOp op, OpAdaptor adaptor,
+  matchAndRewrite(torchext::GetOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<tvm_ffi::GetOp>(op, rewriter.getI1Type(),
                                                 adaptor.getOperand());
@@ -532,7 +532,7 @@ class ConvertTorchToTVMFFIPass final
     mlir::ConversionTarget conversionTarget(getContext());
     conversionTarget
         .addLegalDialect<mlir::arith::ArithDialect, mlir::BuiltinDialect,
-                         trident::arithext::ArithExtDialect>();
+                         arithext::ArithExtDialect>();
     conversionTarget.addLegalOp<
         tvm_ffi::ArrayCreateOp, tvm_ffi::CallOp, tvm_ffi::ConstantOp,
         tvm_ffi::ExceptionOp, tvm_ffi::FunctionCallOp,
@@ -577,13 +577,13 @@ class ConvertTorchToTVMFFIPass final
           return !op.getName().starts_with("torch.aten.");
         });
     conversionTarget.addIllegalOp<mlir::torch::Torch::ValueTensorLiteralOp>();
-    conversionTarget.addDynamicallyLegalOp<
-        trident::torchext::CastOp, trident::torchext::TridentKernelLaunchOp>(
+    conversionTarget.addDynamicallyLegalOp<torchext::CastOp,
+                                           torchext::TridentKernelLaunchOp>(
         [&](mlir::Operation *op) { return typeConverter.isLegal(op); });
-    conversionPatterns.add<
-        MaterializeTorchExtOperands<trident::torchext::CastOp>,
-        MaterializeTorchExtOperands<trident::torchext::TridentKernelLaunchOp>>(
-        typeConverter, &getContext());
+    conversionPatterns
+        .add<MaterializeTorchExtOperands<torchext::CastOp>,
+             MaterializeTorchExtOperands<torchext::TridentKernelLaunchOp>>(
+            typeConverter, &getContext());
     if (mlir::failed(mlir::applyPartialConversion(
             getOperation(), conversionTarget, std::move(conversionPatterns)))) {
       signalPassFailure();
@@ -600,4 +600,4 @@ class ConvertTorchToTVMFFIPass final
   }
 };
 
-} // namespace trident::torch
+} // namespace trident::conversion

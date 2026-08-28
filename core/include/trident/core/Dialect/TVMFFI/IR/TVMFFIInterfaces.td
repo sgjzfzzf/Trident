@@ -10,6 +10,20 @@
 
 include "mlir/IR/OpBase.td"
 
+def TVMFFI_TypeIndexInterface
+    : TypeInterface<"TVMFFITypeIndexInterface"> {
+  let cppNamespace = "::trident::tvm_ffi";
+  let description = [{
+    Provides the concrete TVM FFI runtime type index for a semantic type.
+  }];
+  let methods = [
+    StaticInterfaceMethod<
+      "Returns the concrete TVM FFI runtime type index.",
+      "int", "getTypeIndex", (ins)
+    >
+  ];
+}
+
 def TVMFFI_ObjectOwnershipOpInterface
     : OpInterface<"ObjectOwnershipOpInterface"> {
   let cppNamespace = "::trident::tvm_ffi";

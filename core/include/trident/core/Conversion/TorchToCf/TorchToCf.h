@@ -12,7 +12,7 @@
 #include <mlir/Pass/PassRegistry.h>
 #include <mlir/Transforms/DialectConversion.h>
 
-namespace trident::torch {
+namespace trident::conversion {
 
 #define GEN_PASS_DECL_CONVERTTORCHTOCF
 #include "trident/core/Conversion/Passes.h.inc"
@@ -26,6 +26,6 @@ void populateTorchToCfConversionPatterns(mlir::ConversionTarget &target,
 
 void registerConvertTorchToCfPass();
 
-} // namespace trident::torch
+} // namespace trident::conversion
 
 #endif // TRIDENT_CORE_CONVERSION_TORCHTOCF_TORCHTOCF_H_

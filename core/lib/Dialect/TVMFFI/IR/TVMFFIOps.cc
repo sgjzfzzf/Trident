@@ -41,7 +41,7 @@ mlir::LogicalResult ReturnOp::verify() {
   }
   mlir::Type const resultType = functionType.getResult(0);
   for (const mlir::Value operand : getOperands()) {
-    if (!operand.getType().hasTrait<mlir::TypeTrait::TVMFFIABI>()) {
+    if (!mlir::isa<TVMFFIABIType>(operand.getType())) {
       return emitOpError("operand type must have a TVMFFIAny ABI: ")
              << operand.getType();
     }

@@ -1,4 +1,6 @@
 add_mlir_dialect(TVMFFI tvm_ffi)
+add_mlir_interface(TVMFFIInterfaces)
+add_dependencies(MLIRTVMFFIIncGen MLIRTVMFFIInterfacesIncGen)
 
 set(LLVM_TARGET_DEFINITIONS TVMFFI.td)
 mlir_tablegen(TVMFFITypes.h.inc -gen-typedef-decls -typedefs-dialect=tvm_ffi)

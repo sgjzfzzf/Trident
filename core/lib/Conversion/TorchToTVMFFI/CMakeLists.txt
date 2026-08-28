@@ -6,10 +6,11 @@ add_mlir_conversion_library(
   LINK_LIBS
   PUBLIC
   ArithExtDialect
+  MLIRAnalysis
   MLIRArithDialect
   MLIRIR
   MLIRPass
   MLIRTransformUtils
-  TorchMLIRTorchDialect
   TorchExtDialect
+  TorchMLIRTorchDialect
   TVMFFIDialect)

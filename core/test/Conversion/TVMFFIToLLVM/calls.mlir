@@ -72,7 +72,7 @@ func.func @local_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
 // CHECK: llvm.store %[[ARG]], %[[SOURCE:[a-zA-Z0-9_]+]]
 // CHECK: %[[COPY:[a-zA-Z0-9_]+]] = llvm.load %[[SOURCE]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.store %[[COPY]], %[[CALL_ARG:[a-zA-Z0-9_]+]]
-// CHECK: llvm.call @TVMFFIFunctionCall(%{{[a-zA-Z0-9_]+}}, %{{[a-zA-Z0-9_]+}}, %{{[a-zA-Z0-9_]+}}, %[[RESULT_SLOT:[a-zA-Z0-9_]+]])
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[EXCEPTION_HANDLE:[a-zA-Z0-9_]+]], %[[EXCEPTION_ARGS:[a-zA-Z0-9_]+]], %[[EXCEPTION_NARGS:[a-zA-Z0-9_]+]], %[[RESULT_SLOT:[a-zA-Z0-9_]+]])
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.load %[[RESULT_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: return %[[RESULT]] : !llvm.struct<(i32, i32, i64)>
 func.func @exception() -> !tvm_ffi.exception {

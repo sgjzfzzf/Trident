@@ -5,19 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s -generalize-aten-ops -convert-torch-to-tvm-ffi | FileCheck %s
+// RUN: trident-core-opt %s -generalize-aten-ops -trident-convert-torch-to-scf -convert-torch-to-tvm-ffi -apply-object-ownership | FileCheck %s
 
 // Each branch of torch.prim.If is processed with its own Region-local Set.
 // The tensor produced by torch.aten.t is IncRef'd for the branch yield and
 // DecRef'd for the branch-local ownership.
 // CHECK-LABEL: func.func @nested_if
-// CHECK: torch.prim.If
-// CHECK: tvm_ffi.ObjectIncRef
-// CHECK: tvm_ffi.ObjectDecRef
-// CHECK: torch.prim.If.yield
-// CHECK: tvm_ffi.ObjectIncRef
-// CHECK: tvm_ffi.ObjectDecRef
-// CHECK: torch.prim.If.yield
+// CHECK-NOT: torch.prim.If
+// CHECK-NOT: !torch.vtensor
+// CHECK: tvm_ffi.get
+// CHECK: scf.if
+// CHECK: scf.yield
+// CHECK: scf.yield
 func.func @nested_if(%arg0: !torch.vtensor<[2,3],f32>, %cond: !torch.bool)
     -> !torch.vtensor<[3,2],f32> {
   %0 = torch.prim.If %cond -> (!torch.vtensor<[3,2],f32>) {
@@ -36,8 +35,6 @@ func.func @nested_if(%arg0: !torch.vtensor<[2,3],f32>, %cond: !torch.bool)
 // by the same terminator pattern.
 // CHECK-LABEL: tvm_ffi.func @ffi_return
 // CHECK-SAME: %arg0: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
-// CHECK: tvm_ffi.ObjectIncRef
-// CHECK: tvm_ffi.ObjectDecRef
 // CHECK: tvm_ffi.return
 tvm_ffi.func @ffi_return(%arg0: !torch.vtensor<[2,3],f32>)
     -> !torch.vtensor<[3,2],f32> {
@@ -46,24 +43,22 @@ tvm_ffi.func @ffi_return(%arg0: !torch.vtensor<[2,3],f32>)
   tvm_ffi.return %0 : !torch.vtensor<[3,2],f32>
 }
 
-// An scf.if that forwards owned call results must not add a net reference at
-// the outer return. The balancing DecRef prevents the returned tensor from
-// leaking while preserving a live reference for the caller.
+// An scf.if that forwards owned call results into an ABI container releases
+// the static tensor ownership; the dynamic container is outside this static
+// Object ownership analysis.
 // CHECK-LABEL: func.func @control_flow_return
-// CHECK: %[[RESULT:.*]] = scf.if
-// CHECK: %[[THEN_CALL:.*]] = func.call @make_tensor
-// CHECK-NEXT: %[[THEN_CAST:.*]] = tvm_ffi.cast %[[THEN_CALL]]
-// CHECK-NEXT: tvm_ffi.ObjectIncRef %[[THEN_CALL]] : !tvm_ffi.tensor
+// CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = scf.if
+// CHECK: %[[THEN_CALL:[a-zA-Z0-9_]+]] = func.call @make_tensor
+// CHECK-NEXT: %[[THEN_CAST:[a-zA-Z0-9_]+]] = tvm_ffi.cast %[[THEN_CALL]]
+// CHECK-NEXT: tvm_ffi.ObjectIncRef %[[THEN_CAST]] : !tvm_ffi.any
 // CHECK-NEXT: tvm_ffi.ObjectDecRef %[[THEN_CALL]] : !tvm_ffi.tensor
 // CHECK-NEXT: scf.yield %[[THEN_CAST]] : !tvm_ffi.any
-// CHECK: %[[ELSE_CALL:.*]] = func.call @make_tensor
-// CHECK-NEXT: %[[ELSE_CAST:.*]] = tvm_ffi.cast %[[ELSE_CALL]]
-// CHECK-NEXT: tvm_ffi.ObjectIncRef %[[ELSE_CALL]] : !tvm_ffi.tensor
+// CHECK: %[[ELSE_CALL:[a-zA-Z0-9_]+]] = func.call @make_tensor
+// CHECK-NEXT: %[[ELSE_CAST:[a-zA-Z0-9_]+]] = tvm_ffi.cast %[[ELSE_CALL]]
+// CHECK-NEXT: tvm_ffi.ObjectIncRef %[[ELSE_CAST]] : !tvm_ffi.any
 // CHECK-NEXT: tvm_ffi.ObjectDecRef %[[ELSE_CALL]] : !tvm_ffi.tensor
 // CHECK-NEXT: scf.yield %[[ELSE_CAST]] : !tvm_ffi.any
-// CHECK: tvm_ffi.ObjectIncRef %[[RESULT]] : !tvm_ffi.any
-// CHECK-NEXT: tvm_ffi.ObjectDecRef %[[RESULT]] : !tvm_ffi.any
-// CHECK-NEXT: return %[[RESULT]] : !tvm_ffi.any
+// CHECK: return %[[RESULT]] : !tvm_ffi.any
 func.func private @make_tensor() -> !tvm_ffi.tensor
 
 func.func @control_flow_return(%cond: i1) -> !tvm_ffi.any {
@@ -82,14 +77,10 @@ func.func @control_flow_return(%cond: i1) -> !tvm_ffi.any {
 // A borrowed branch input gains one reference at the yield. It must not be
 // released as branch-local ownership.
 // CHECK-LABEL: func.func @borrowed_control_flow
-// CHECK: %[[BORROWED_RESULT:.*]] = scf.if
-// CHECK: tvm_ffi.ObjectIncRef %[[BORROWED:.*]] : !tvm_ffi.tensor
-// CHECK-NEXT: scf.yield %[[BORROWED]] : !tvm_ffi.tensor
-// CHECK: tvm_ffi.ObjectIncRef %[[BORROWED]] : !tvm_ffi.tensor
-// CHECK-NEXT: scf.yield %[[BORROWED]] : !tvm_ffi.tensor
-// CHECK: tvm_ffi.ObjectIncRef %[[BORROWED_RESULT]] : !tvm_ffi.tensor
-// CHECK-NEXT: tvm_ffi.ObjectDecRef %[[BORROWED_RESULT]] : !tvm_ffi.tensor
-// CHECK-NEXT: return %[[BORROWED_RESULT]] : !tvm_ffi.tensor
+// CHECK: %[[BORROWED_RESULT:[a-zA-Z0-9_]+]] = scf.if
+// CHECK: scf.yield %[[BORROWED:[a-zA-Z0-9_]+]] : !tvm_ffi.tensor
+// CHECK: scf.yield %[[BORROWED]] : !tvm_ffi.tensor
+// CHECK: return %[[BORROWED_RESULT]] : !tvm_ffi.tensor
 func.func @borrowed_control_flow(%cond: i1, %value: !tvm_ffi.tensor)
     -> !tvm_ffi.tensor {
   %0 = scf.if %cond -> (!tvm_ffi.tensor) {
@@ -98,4 +89,47 @@ func.func @borrowed_control_flow(%cond: i1, %value: !tvm_ffi.tensor)
     scf.yield %value : !tvm_ffi.tensor
   }
   return %0 : !tvm_ffi.tensor
+}
+
+// Existing explicit reference operations participate in the same ledger. A
+// balanced owned result must not receive another terminator cleanup.
+// CHECK-LABEL: func.func @explicit_balance
+// CHECK: %[[BALANCED:[a-zA-Z0-9_]+]] = call @make_tensor() : () -> !tvm_ffi.tensor
+// CHECK-NEXT: tvm_ffi.ObjectDecRef %[[BALANCED]]
+// CHECK-NEXT: return
+func.func @explicit_balance() {
+  %value = func.call @make_tensor() : () -> !tvm_ffi.tensor
+  tvm_ffi.ObjectDecRef %value : !tvm_ffi.tensor
+  return
+}
+
+// An explicit increment adds another credit to the same ownership ledger, so
+// both the original and retained references are released at the terminator.
+// CHECK-LABEL: func.func @explicit_increment
+// CHECK: %[[RETAINED:[a-zA-Z0-9_]+]] = call @make_tensor() : () -> !tvm_ffi.tensor
+// CHECK-NEXT: tvm_ffi.ObjectIncRef %[[RETAINED]]
+// CHECK-NEXT: tvm_ffi.ObjectDecRef %[[RETAINED]]
+// CHECK-NEXT: tvm_ffi.ObjectDecRef %[[RETAINED]]
+// CHECK-NEXT: return
+func.func @explicit_increment() {
+  %value = func.call @make_tensor() : () -> !tvm_ffi.tensor
+  tvm_ffi.ObjectIncRef %value : !tvm_ffi.tensor
+  return
+}
+
+// FunctionCall consumes the owned global-function handle. The ownership
+// analysis must not schedule a second semantic DecRef for it.
+// CHECK-LABEL: func.func @consumed_function_handle
+// CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "test.make_tensor"
+// CHECK-NEXT: %[[VALUE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[HANDLE]]
+// CHECK-NOT: tvm_ffi.ObjectDecRef %[[HANDLE]]
+// CHECK: tvm_ffi.ObjectIncRef %[[VALUE]]
+// CHECK-NEXT: tvm_ffi.ObjectDecRef %[[VALUE]]
+// CHECK-NEXT: return %[[VALUE]]
+func.func @consumed_function_handle() -> !tvm_ffi.tensor {
+  %function = tvm_ffi.FunctionGetGlobal "test.make_tensor"
+      : !tvm_ffi.function
+  %value = tvm_ffi.FunctionCall %function()
+      : () -> !tvm_ffi.tensor
+  return %value : !tvm_ffi.tensor
 }

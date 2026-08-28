@@ -1,10 +1,16 @@
 add_mlir_dialect_library(
   TVMFFIDialect
   TVMFFIDialect.cc
+  TVMFFIInterfaces.cc
+  TVMFFIOps.cc
   DEPENDS
   MLIRTVMFFIIncGen
+  MLIRTVMFFIInterfacesIncGen
   MLIRTVMFFITypeDefsIncGen
   LINK_LIBS
   PUBLIC
+  MLIRControlFlowInterfaces
+  MLIRFuncDialect
   MLIRIR
+  MLIRSCFDialect
   MLIRSideEffectInterfaces)

@@ -15,7 +15,7 @@
 // GENERALIZE: %[[CLONE:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.clone"(%arg0, %[[FORMAT]]) {trident.test = "kept"}
 // GENERALIZE-SAME: -> !torch.vtensor<[3,2],f32>
 // GENERALIZE: return %[[CLONE]]
-// LOCATION: torch.operator "torch.aten.clone"{{.*}}loc(#[[CLONE_LOC:loc[0-9]+]])
+// LOCATION: %[[CLONE_RESULT:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.clone"(%arg0, %[[CLONE_FORMAT:[a-zA-Z0-9_]+]]) {trident.test = "kept"} : (!torch.vtensor<[3,2],f32>, !torch.int) -> !torch.vtensor<[3,2],f32> loc(#[[CLONE_LOC:loc[0-9]+]])
 // LOCATION: #[[CLONE_LOC]] = loc("model.py":42:7)
 // IDEMPOTENT-LABEL: func.func @single_result
 // IDEMPOTENT-COUNT-1: torch.operator "torch.aten.clone"

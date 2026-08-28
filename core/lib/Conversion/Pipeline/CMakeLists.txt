@@ -5,7 +5,10 @@ add_mlir_conversion_library(
   MLIRConversionPassIncGen
   LINK_LIBS
   PUBLIC
+  ApplyObjectOwnership
   ArithExtToScf
+  DecomposeTVMFFI
+  GeneralizeAtenOps
   MLIRArithToLLVM
   MLIRControlFlowToLLVM
   MLIRFuncToLLVM
@@ -14,8 +17,7 @@ add_mlir_conversion_library(
   MLIRSCFToControlFlow
   TorchExtToGPU
   TorchToCf
+  TorchToScf
   TorchToTVMFFI
-  DecomposeTVMFFI
-  GeneralizeAtenOps
   TVMFFIToFunc
   TVMFFIToLLVM)

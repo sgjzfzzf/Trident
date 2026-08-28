@@ -12,8 +12,6 @@
 // CHECK: %[[FUNC:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.t"
 // CHECK: %[[CALL:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%[[ARG]])
 // CHECK-SAME: -> !tvm_ffi.tensor
-// CHECK: tvm_ffi.ObjectIncRef %[[CALL]]
-// CHECK: tvm_ffi.ObjectDecRef %[[CALL]]
 // CHECK: return %[[CALL]] : !tvm_ffi.tensor
 func.func @transpose(%arg0: !torch.vtensor<[2,3],f32>)
     -> !torch.vtensor<[3,2],f32> {

@@ -20,3 +20,10 @@ func.func @convert_dtype_to_float(%arg: !torchext.dtype) -> !torch.float {
   %result = torchext.convert %arg : !torchext.dtype -> !torch.float
   return %result : !torch.float
 }
+// -----
+
+func.func @get_requires_bool(%arg: !torch.int) {
+  // expected-error@+1 {{'torchext.get' op operand #0 must be Torch BoolType}}
+  %value = "torchext.get"(%arg) : (!torch.int) -> i1
+  return
+}

@@ -31,6 +31,16 @@ def ConvertTorchToCf : Pass<"convert-torch-to-cf", "mlir::ModuleOp"> {
   let dependentDialects = ["mlir::cf::ControlFlowDialect"];
 }
 
+def ConvertTorchToScf : Pass<"trident-convert-torch-to-scf", "mlir::ModuleOp"> {
+  let summary = "Lower Torch conditional control flow to SCF";
+  let description = [{
+    Lowers torch.prim.If and torch.prim.If.yield while preserving result types.
+  }];
+  let dependentDialects = [
+    "mlir::scf::SCFDialect", "trident::torchext::TorchExtDialect"
+  ];
+}
+
 def ConvertTorchToTVMFFI : Pass<"convert-torch-to-tvm-ffi", "mlir::ModuleOp"> {
   let summary = "Expose Torch runtime calls and ownership in TVM FFI IR";
   let description = [{

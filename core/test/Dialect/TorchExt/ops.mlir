@@ -40,3 +40,14 @@ func.func @convert_dtype(%arg0: !torchext.dtype) -> !torch.int {
   %0 = torchext.convert %arg0 : !torchext.dtype -> !torch.int
   return %0 : !torch.int
 }
+
+// -----
+
+// CHECK-LABEL: func.func @get_bool(
+// CHECK-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !torch.bool) -> i1 {
+// CHECK: %[[VALUE:[a-zA-Z0-9_]+]] = torchext.get %[[ARG]] : !torch.bool -> i1
+// CHECK-NEXT: return %[[VALUE]] : i1
+func.func @get_bool(%arg: !torch.bool) -> i1 {
+  %value = torchext.get %arg : !torch.bool -> i1
+  return %value : i1
+}

@@ -1,4 +1,16 @@
 add_mlir_library(
+  ApplyObjectOwnership
+  ApplyObjectOwnership.cc
+  DEPENDS
+  MLIRTVMFFITransformsPassIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRAnalysis
+  MLIRIR
+  MLIRPass
+  TVMFFIDialect)
+
+add_mlir_library(
   DecomposeTVMFFI
   DecomposeTVMFFI.cc
   DEPENDS

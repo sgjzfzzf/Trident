@@ -9,6 +9,7 @@
 #ifndef TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIOPS_H_
 #define TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIOPS_H_
 
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include <mlir/Bytecode/BytecodeOpInterface.h>
 #include <mlir/IR/Builders.h>

@@ -28,8 +28,6 @@
 // CHECK: llvm.call @TVMFFIFunctionCall(%[[HANDLE:[0-9]+]], %[[ARGS_COPY:[0-9]+]], %[[NARGS:[0-9]+]], %[[RET_SLOT:[0-9]+]])
 // CHECK: llvm.call @TVMFFIObjectDecRef(%[[HANDLE]])
 // CHECK: %[[RET:[a-zA-Z0-9_]+]] = llvm.load %[[RET_SLOT:[a-zA-Z0-9_]+]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.call @TVMFFIObjectIncRef(%[[RESULT_OBJECT:[0-9]+]])
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[INPUT_OBJECT:[0-9]+]])
 // CHECK: llvm.return %[[RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_empty(
 // CHECK: llvm.call @empty

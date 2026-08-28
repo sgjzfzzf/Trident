@@ -244,13 +244,14 @@ launches. Its lowering is split across two passes in `trident-lowering-pipeline`
 | `torchext.trident_kernel_launch` | `ConvertTorchExtToGPU` | Launches Triton kernels with explicit grid/block dimensions (I64); unpacks tensor/scalar args from TVMFFIAny into kernel parameters and emits `gpu.launch_func`. Uses TVMFFI stream API for CUDA stream management. |
 
 Reference counting for Torch objects (tensors, lists, tuples, optionals)
-backed by manually-managed resources is handled inside `ConvertTorchToTVMFFI`
-itself: the conversion records every object it produces in a counter table and,
-after conversion, emits `TVMFFIObjectIncRef` for values that escape a scope
-(terminator operands, e.g. returns) and `TVMFFIObjectDecRef` for values whose
-last use is inside the scope. Inc/Dec of the same object emitted back-to-back
-cancel out at runtime, handing the caller a reference-count-1 object. No
-separate RAAI / pair-elimination pass is needed.
+backed by manually-managed resources is handled inside `ConvertTorchToTVMFFI`.
+TVMFFI operations expose owned, borrowed, forwarded, and consumed values
+through an ownership interface. After conversion, a region-local ownership
+analysis tracks a separate reference-credit balance for every SSA value. It emits
+`TVMFFIObjectIncRef` for terminator operands and releases the remaining local
+credits with `TVMFFIObjectDecRef`. Escaping increments are emitted before local
+decrements so a returned owned object remains live while ownership transfers to
+the caller.
 
 ## LLVM Dispatcher Semantics
 

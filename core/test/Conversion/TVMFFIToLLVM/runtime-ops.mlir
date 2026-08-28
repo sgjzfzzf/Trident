@@ -52,14 +52,26 @@ func.func @object_refs(%object: !tvm_ffi.tensor) {
 
 // -----
 
+// CHECK-LABEL: func.func @get_bool(
+// CHECK-SAME: %[[BOOL:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> i1 {
+// CHECK: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[BOOL]][2]
+// CHECK-NEXT: %[[VALUE:[a-zA-Z0-9_]+]] = llvm.trunc %[[PAYLOAD]] : i64 to i1
+// CHECK-NEXT: return %[[VALUE]] : i1
+func.func @get_bool(%value: !tvm_ffi.bool) -> i1 {
+  %result = tvm_ffi.get %value : !tvm_ffi.bool -> i1
+  return %result : i1
+}
+
+// -----
+
 // CHECK-LABEL: func.func @equal(
 // CHECK-SAME: %[[LHS:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[RHS:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> i1 {
 // CHECK: %[[LHS_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca
 // CHECK: %[[RHS_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca
 // CHECK: llvm.store %[[LHS]], %[[LHS_SLOT]]
 // CHECK: llvm.store %[[RHS]], %[[RHS_SLOT]]
-// CHECK: llvm.call @TVMFFIFunctionCall
-// CHECK: %[[RESULT_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %{{[a-zA-Z0-9_]+}}[0, 2]
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[HANDLE:[a-zA-Z0-9_]+]], %[[ARGS:[a-zA-Z0-9_]+]], %[[NARGS:[a-zA-Z0-9_]+]], %[[RESULT_SLOT:[a-zA-Z0-9_]+]])
+// CHECK: %[[RESULT_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[RESULT_SLOT]][0, 2]
 // CHECK: %[[RESULT_I64:[a-zA-Z0-9_]+]] = llvm.load %[[RESULT_PTR]] : !llvm.ptr -> i64
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.trunc %[[RESULT_I64]] : i64 to i32
 // CHECK: %[[ZERO:[a-zA-Z0-9_]+]] = arith.constant 0 : i32

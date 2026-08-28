@@ -3,14 +3,17 @@ add_mlir_library(
   Registration.cc
   LINK_LIBS
   PUBLIC
+  ApplyObjectOwnership
   ArithExtDialect
   ArithExtToScf
-  TorchExtToGPU
+  DecomposeTVMFFI
+  GeneralizeAtenOps
   MLIRRegisterAllDialects
   MLIRRegisterAllExtensions
   MLIRRegisterAllPasses
   MLIRToLLVMIRTranslationRegistration
   MLIRSCFDialect
+  TorchExtToGPU
   TorchMLIRCAPI
   TorchMLIRTorchConversionDialect
   TorchMLIRTorchOnnxToTorch
@@ -19,6 +22,4 @@ add_mlir_library(
   TorchToCf
   TorchToTVMFFI
   TVMFFIDialect
-  DecomposeTVMFFI
-  GeneralizeAtenOps
   TVMFFIToLLVM)

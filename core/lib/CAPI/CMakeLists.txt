@@ -8,14 +8,14 @@ add_mlir_public_c_api_library(
   LINK_LIBS
   PUBLIC
   ArithExtDialect
-  TorchExtDialect
-  TorchToTVMFFI
-  TridentUtilsRegistration
   MLIRIR
   MLIRSupport
-  TVMFFIDialect
+  TorchExtDialect
   TorchMLIRCAPI
-  TorchMLIRTorchConversionDialect)
+  TorchMLIRTorchConversionDialect
+  TorchToTVMFFI
+  TridentUtilsRegistration
+  TVMFFIDialect)
 
 install(
   TARGETS TridentCoreCAPI

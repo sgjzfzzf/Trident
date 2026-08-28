@@ -10,6 +10,7 @@
 #define TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIOPS_TD_
 
 include "mlir/IR/OpAsmInterface.td"
+include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/CommonTypeConstraints.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
@@ -17,6 +18,7 @@ include "mlir/Interfaces/CastInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIBase.td"
+include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.td"
 
 class TVMFFI_Op<string mnemonic, list<Trait> traits = []>
@@ -29,13 +31,16 @@ class TVMFFI_TensorIndexedMetadataOp<string mnemonic>
   let assemblyFormat = "$tensor `[` $index `]` attr-dict `:` type($tensor)";
 }
 
-def TVMFFI_ArrayCreateOp : TVMFFI_Op<"array.create"> {
+def TVMFFI_ArrayCreateOp
+    : TVMFFI_Op<"array.create", [TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Create a TVM FFI Array from semantic values";
   let arguments = (ins Variadic<AnyTVMFFISemanticType> : $elements);
   let results = (outs TVMFFI_ArrayType : $result);
 }
 
-def TVMFFI_ArrayGetItemOp : TVMFFI_Op<"array.get_item"> {
+def TVMFFI_ArrayGetItemOp : TVMFFI_Op<"array.get_item", [
+    DeclareOpInterfaceMethods<TVMFFI_ObjectOwnershipOpInterface,
+                              ["getObjectResultOwnership"]>]> {
   let summary = "Borrow an element from a TVM FFI Array";
   let arguments = (ins AnyTVMFFIArrayOrTorchType:$array,
                        TVMFFI_IntType:$index,
@@ -53,7 +58,7 @@ def TVMFFI_ArrayLengthOp : TVMFFI_Op<"array.length", [Pure]> {
   let assemblyFormat = "$array attr-dict `:` type($array)";
 }
 
-def TVMFFI_CallOp : TVMFFI_Op<"call"> {
+def TVMFFI_CallOp : TVMFFI_Op<"call", [TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Call a TVM FFI function defined in the current module";
   let arguments = (ins FlatSymbolRefAttr:$callee,
                        Variadic<AnyTVMFFIAnyABIOrTorchType>:$operands,
@@ -65,7 +70,9 @@ def TVMFFI_CallOp : TVMFFI_Op<"call"> {
 }
 
 def TVMFFI_CastOp
-    : TVMFFI_Op<"cast", [Pure, DeclareOpInterfaceMethods<CastOpInterface>]> {
+    : TVMFFI_Op<"cast", [Pure, DeclareOpInterfaceMethods<CastOpInterface>,
+        DeclareOpInterfaceMethods<TVMFFI_ObjectOwnershipOpInterface,
+                                  ["getObjectResultOwnership"]>]> {
   let summary = "Widen a TVM FFI value into an any or union ABI type";
   // Torch types are accepted here as a transitional frontend boundary.  The
   // Torch-toTVMFFI conversion establishes the TVM FFI ABI representation before
@@ -75,7 +82,8 @@ def TVMFFI_CastOp
   let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
 }
 
-def TVMFFI_ConstantOp : TVMFFI_Op<"constant"> {
+def TVMFFI_ConstantOp
+    : TVMFFI_Op<"constant", [TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Create a TVM FFI scalar or owned tensor constant";
   let arguments = (ins AnyAttr : $value);
   let results = (outs AnyTVMFFISemanticType : $result);
@@ -91,7 +99,8 @@ def TVMFFI_EqOp : TVMFFI_Op<"eq", [Pure]> {
   let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)";
 }
 
-def TVMFFI_ExceptionOp : TVMFFI_Op<"exception"> {
+def TVMFFI_ExceptionOp
+    : TVMFFI_Op<"exception", [TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Create a Trident FFI exception object";
   let arguments = (ins StrAttr : $kind);
   let results = (outs TVMFFI_ExceptionType : $result);
@@ -139,7 +148,9 @@ def TVMFFI_FuncOp : TVMFFI_Op<"func", [
   let skipDefaultBuilders = 1;
 }
 
-def TVMFFI_FunctionCallOp : TVMFFI_Op<"FunctionCall"> {
+def TVMFFI_FunctionCallOp : TVMFFI_Op<"FunctionCall", [
+    DeclareOpInterfaceMethods<TVMFFI_ObjectOwnershipOpInterface,
+                              ["getObjectOperandOwnership"]>]> {
   let summary = "Call a TVM FFI function handle";
   let arguments = (ins TVMFFI_FunctionType:$callee,
                        Variadic<AnyTVMFFISemanticType>:$arguments);
@@ -147,20 +158,32 @@ def TVMFFI_FunctionCallOp : TVMFFI_Op<"FunctionCall"> {
   let assemblyFormat = "$callee `(` $arguments `)` attr-dict `:` functional-type($arguments, $results)";
 }
 
-def TVMFFI_FunctionGetGlobalOp : TVMFFI_Op<"FunctionGetGlobal"> {
+def TVMFFI_FunctionGetGlobalOp
+    : TVMFFI_Op<"FunctionGetGlobal", [TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Get a TVM FFI global function by name";
   let arguments = (ins StrAttr:$name);
   let results = (outs TVMFFI_FunctionType:$result);
   let assemblyFormat = "$name attr-dict `:` type($result)";
 }
 
-def TVMFFI_ObjectDecRefOp : TVMFFI_Op<"ObjectDecRef"> {
+def TVMFFI_GetOp : TVMFFI_Op<"get", [Pure]> {
+  let summary = "Extract a native boolean from a TVM FFI boolean";
+  let arguments = (ins TVMFFI_BoolType:$operand);
+  let results = (outs I1:$result);
+  let assemblyFormat = "$operand attr-dict `:` type($operand) `->` type($result)";
+}
+
+def TVMFFI_ObjectDecRefOp : TVMFFI_Op<"ObjectDecRef", [
+    DeclareOpInterfaceMethods<TVMFFI_ObjectOwnershipOpInterface,
+                              ["getObjectOperandOwnership"]>]> {
   let summary = "Decrement a TVM FFI object reference";
   let arguments = (ins AnyTVMFFIObjectOrAnyType:$object);
   let assemblyFormat = "$object attr-dict `:` type($object)";
 }
 
-def TVMFFI_ObjectIncRefOp : TVMFFI_Op<"ObjectIncRef"> {
+def TVMFFI_ObjectIncRefOp : TVMFFI_Op<"ObjectIncRef", [
+    DeclareOpInterfaceMethods<TVMFFI_ObjectOwnershipOpInterface,
+                              ["getObjectOperandOwnership"]>]> {
   let summary = "Increment a TVM FFI object reference";
   let arguments = (ins AnyTVMFFIObjectOrAnyType:$object);
   let assemblyFormat = "$object attr-dict `:` type($object)";
@@ -193,6 +216,15 @@ def TVMFFI_TensorDeviceOp : TVMFFI_Op<"tensor.device", [Pure]> {
   let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);
   let results = (outs I32:$device_type, I32:$device_index);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
+def TVMFFI_TensorLiteralOp
+    : TVMFFI_Op<"tensor.literal", [TVMFFI_ObjectOwnershipOpInterface]> {
+  let summary = "Create an owned TVM FFI tensor from a dense literal";
+  let arguments = (ins ElementsAttr:$value);
+  let results = (outs TVMFFI_TensorType:$result);
+  let assemblyFormat = "$value attr-dict `:` type($result)";
+  let hasVerifier = 1;
 }
 
 def TVMFFI_TensorDimOp : TVMFFI_Op<"tensor.dim", [Pure]> {

@@ -1,6 +1,7 @@
 add_mlir_dialect_library(
   ArithExtDialect
   ArithExtDialect.cc
+  ArithExtOps.cc
   DEPENDS
   MLIRArithExtIncGen
   LINK_LIBS

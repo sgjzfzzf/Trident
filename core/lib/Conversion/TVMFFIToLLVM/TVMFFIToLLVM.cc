@@ -1,7 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Trident project, under the MIT License.
-
 // SPDX-License-Identifier: MIT
 //
 //===----------------------------------------------------------------------===//
@@ -10,6 +9,7 @@
 #include "ATen/dlpack.h"
 #include "c10/core/Device.h"
 #include "torch/headeronly/macros/Export.h"
+#include "trident/core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/Check.h"
 #include "trident/core/Conversion/Utils/GlobalString.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
@@ -94,6 +94,203 @@ public:
                                   llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2});
     rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(op, rewriter.getI64Type(),
                                                     payloadPtr);
+    return mlir::success();
+  }
+};
+
+class ConvertTensorLiteralOp
+    : public mlir::OpConversionPattern<TensorLiteralOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(TensorLiteralOp op, OpAdaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::DenseElementsAttr const dense =
+        mlir::cast<mlir::DenseElementsAttr>(op.getValue());
+    mlir::RankedTensorType const denseType =
+        mlir::cast<mlir::RankedTensorType>(dense.getType());
+    mlir::Location loc = op.getLoc();
+    mlir::ModuleOp module = op->getParentOfType<mlir::ModuleOp>();
+    mlir::MLIRContext *context = rewriter.getContext();
+    mlir::LLVM::LLVMPointerType ptrType =
+        mlir::LLVM::LLVMPointerType::get(context);
+    mlir::IntegerType const i8Type = rewriter.getI8Type();
+    mlir::IntegerType i32Type = rewriter.getI32Type();
+    mlir::IntegerType const i64Type = rewriter.getI64Type();
+
+    int64_t elementBits;
+    int32_t dtypeCode;
+    if (mlir::FloatType floatType =
+            mlir::dyn_cast<mlir::FloatType>(denseType.getElementType())) {
+      elementBits = floatType.getWidth();
+      dtypeCode = kDLFloat;
+    } else if (mlir::IntegerType const integerType =
+                   mlir::dyn_cast<mlir::IntegerType>(
+                       denseType.getElementType())) {
+      elementBits =
+          integerType.isSignlessInteger(1) ? 8 : integerType.getWidth();
+      dtypeCode = integerType.isSignlessInteger(1)
+                      ? kDLBool
+                      : (integerType.isUnsignedInteger() ? kDLUInt : kDLInt);
+    } else {
+      return op.emitError("unsupported literal element type");
+    }
+
+    mlir::Value const dtypeArgument = conversion::utils::buildDTypeAnySlot(
+        rewriter, loc, dtypeCode, elementBits);
+    mlir::FailureOr<mlir::Value> dtypeResult =
+        conversion::utils::callTVMFFIGlobalFunction(
+            rewriter, loc, module, "trident.runtime.tvm_ffi_to_torch_type",
+            {dtypeArgument});
+    if (mlir::failed(dtypeResult)) {
+      return op.emitError("failed to call TVM FFI dtype conversion helper");
+    }
+    mlir::Value const dtype = conversion::utils::loadIntFromAnySlot(
+        rewriter, loc, dtypeResult.value());
+    llvm::ArrayRef<int64_t> const shape = denseType.getShape();
+    mlir::Value const rank = mlir::LLVM::ConstantOp::create(
+        rewriter, loc, i64Type, static_cast<int64_t>(shape.size()));
+    mlir::Value const shapeCount = mlir::LLVM::ConstantOp::create(
+        rewriter, loc, i64Type, static_cast<int64_t>(shape.size()));
+    mlir::Value const sizes = mlir::LLVM::AllocaOp::create(
+        rewriter, loc, ptrType, i64Type, shapeCount);
+    mlir::Value const strides = mlir::LLVM::AllocaOp::create(
+        rewriter, loc, ptrType, i64Type, shapeCount);
+    int64_t stride = 1;
+    for (int64_t index = static_cast<int64_t>(shape.size()) - 1; index >= 0;
+         --index) {
+      mlir::Value const sizeSlot = mlir::LLVM::GEPOp::create(
+          rewriter, loc, ptrType, i64Type, sizes,
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(index)});
+      mlir::Value const strideSlot = mlir::LLVM::GEPOp::create(
+          rewriter, loc, ptrType, i64Type, strides,
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(index)});
+      mlir::LLVM::StoreOp::create(
+          rewriter, loc,
+          mlir::LLVM::ConstantOp::create(rewriter, loc, i64Type, shape[index]),
+          sizeSlot);
+      mlir::LLVM::StoreOp::create(
+          rewriter, loc,
+          mlir::LLVM::ConstantOp::create(rewriter, loc, i64Type, stride),
+          strideSlot);
+      stride *= shape[index];
+    }
+
+    mlir::Type storageType = denseType.getElementType();
+    if (mlir::IntegerType const integerType =
+            mlir::dyn_cast<mlir::IntegerType>(storageType);
+        integerType && integerType.isSignlessInteger(1)) {
+      storageType = i8Type;
+    }
+    mlir::Value const elementCount = mlir::LLVM::ConstantOp::create(
+        rewriter, loc, i64Type, dense.getNumElements());
+    mlir::Value data = mlir::LLVM::AllocaOp::create(rewriter, loc, ptrType,
+                                                    storageType, elementCount);
+    auto storeElement = [&](int64_t index, mlir::Attribute value) {
+      mlir::Value const slot = mlir::LLVM::GEPOp::create(
+          rewriter, loc, ptrType, storageType, data,
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(index)});
+      mlir::LLVM::StoreOp::create(
+          rewriter, loc,
+          mlir::LLVM::ConstantOp::create(rewriter, loc, storageType, value),
+          slot);
+    };
+    if (mlir::isa<mlir::FloatType>(storageType)) {
+      for (auto [index, value] :
+           llvm::enumerate(dense.getValues<llvm::APFloat>())) {
+        storeElement(static_cast<int64_t>(index),
+                     mlir::FloatAttr::get(storageType, value));
+      }
+    } else {
+      for (auto [index, value] :
+           llvm::enumerate(dense.getValues<llvm::APInt>())) {
+        if (mlir::cast<mlir::IntegerType>(denseType.getElementType())
+                .isSignlessInteger(1)) {
+          value = llvm::APInt(8, value.getBoolValue());
+        }
+        storeElement(static_cast<int64_t>(index),
+                     mlir::IntegerAttr::get(storageType, value));
+      }
+    }
+
+    auto convertDevice =
+        [&](int32_t deviceType) -> mlir::FailureOr<mlir::Value> {
+      mlir::Value const argument = conversion::utils::buildIntAnySlot(
+          rewriter, loc,
+          mlir::LLVM::ConstantOp::create(rewriter, loc, i32Type, deviceType));
+      mlir::FailureOr<mlir::Value> result =
+          conversion::utils::callTVMFFIGlobalFunction(
+              rewriter, loc, module,
+              "trident.runtime.tvm_ffi_device_to_torch_device_type",
+              {argument});
+      if (mlir::failed(result)) {
+        return mlir::failure();
+      }
+      return conversion::utils::loadIntFromAnySlot(rewriter, loc,
+                                                   result.value());
+    };
+    mlir::Value const one =
+        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Type, 1);
+    mlir::Value const zeroI32 =
+        mlir::LLVM::ConstantOp::create(rewriter, loc, i32Type, 0);
+    mlir::Value const zeroI64 =
+        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Type, 0);
+    mlir::Value const deviceIndexSlot =
+        mlir::LLVM::AllocaOp::create(rewriter, loc, ptrType, i32Type, one);
+    mlir::LLVM::CallOp::create(
+        rewriter, loc,
+        TRIDENT_CHECK_FAILURE(
+            conversion::utils::getOrCreateAOTITorchGetCurrentDeviceIndex(
+                module)),
+        deviceIndexSlot);
+    mlir::Value const deviceIndex =
+        mlir::LLVM::LoadOp::create(rewriter, loc, i32Type, deviceIndexSlot);
+    mlir::Value const cpuOutput =
+        mlir::LLVM::AllocaOp::create(rewriter, loc, ptrType, ptrType, one);
+    mlir::LLVM::CallOp::create(
+        rewriter, loc,
+        TRIDENT_CHECK_FAILURE(
+            conversion::utils::getOrCreateAOTITorchCreateTensorFromBlob(
+                module)),
+        mlir::ValueRange{data, rank, sizes, strides, zeroI64, dtype,
+                         TRIDENT_CHECK_FAILURE(convertDevice(kDLCPU)), zeroI32,
+                         cpuOutput});
+    mlir::Value const cpuTensor =
+        mlir::LLVM::LoadOp::create(rewriter, loc, ptrType, cpuOutput);
+    mlir::Value const cudaOutput =
+        mlir::LLVM::AllocaOp::create(rewriter, loc, ptrType, ptrType, one);
+    mlir::LLVM::CallOp::create(
+        rewriter, loc,
+        TRIDENT_CHECK_FAILURE(
+            conversion::utils::getOrCreateAOTITorchEmptyStrided(module)),
+        mlir::ValueRange{rank, sizes, strides, dtype,
+                         TRIDENT_CHECK_FAILURE(convertDevice(kDLCUDA)),
+                         deviceIndex, cudaOutput});
+    mlir::Value const tensor =
+        mlir::LLVM::LoadOp::create(rewriter, loc, ptrType, cudaOutput);
+    mlir::LLVM::CallOp::create(
+        rewriter, loc,
+        TRIDENT_CHECK_FAILURE(
+            conversion::utils::getOrCreateAOTITorchCopy_(module)),
+        mlir::ValueRange{tensor, cpuTensor, zeroI32});
+    mlir::LLVM::CallOp::create(
+        rewriter, loc,
+        TRIDENT_CHECK_FAILURE(
+            conversion::utils::getOrCreateAOTITorchDeleteTensorObject(module)),
+        cpuTensor);
+
+    mlir::Value const tensorArgument =
+        conversion::utils::buildOpaquePtrAnySlot(rewriter, loc, tensor);
+    mlir::FailureOr<mlir::Value> result =
+        conversion::utils::callTVMFFIGlobalFunction(
+            rewriter, loc, module, "trident.runtime.tensor_to_tvm_ffi_object",
+            {tensorArgument});
+    if (mlir::failed(result)) {
+      return op.emitError("failed to call TVM FFI tensor conversion helper");
+    }
+    rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(
+        op, conversion::utils::getTVMFFIAnyType(context), result.value());
     return mlir::success();
   }
 };
@@ -284,6 +481,22 @@ public:
     result = mlir::LLVM::InsertValueOp::create(rewriter, loc, result, payload,
                                                llvm::ArrayRef<int64_t>{2});
     rewriter.replaceOp(op, result);
+    return mlir::success();
+  }
+};
+
+class ConvertGetOp : public mlir::OpConversionPattern<GetOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(GetOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::Value const payload = mlir::LLVM::ExtractValueOp::create(
+        rewriter, op.getLoc(), adaptor.getOperand(),
+        llvm::ArrayRef<int64_t>{2});
+    rewriter.replaceOpWithNewOp<mlir::LLVM::TruncOp>(op, rewriter.getI1Type(),
+                                                     payload);
     return mlir::success();
   }
 };
@@ -774,8 +987,9 @@ void populateTVMFFIToLLVMConversionPatterns(
   });
   patterns.add<ConvertArrayLengthOp, ConvertCallOp, ConvertCastOp,
                ConvertConstantOp, ConvertEqOp, ConvertExceptionOp,
-               ConvertFunctionCallOp, ConvertFunctionGetGlobalOp,
+               ConvertFunctionCallOp, ConvertFunctionGetGlobalOp, ConvertGetOp,
                ConvertTensorDeviceOp, ConvertTensorDimOp, ConvertTensorDTypeOp,
+               ConvertTensorLiteralOp,
                ConvertTensorIndexedMetadataOp<TensorSizeOp, 4>,
                ConvertTensorIndexedMetadataOp<TensorStrideOp, 5>,
                ConvertTensorStorageOffsetOp>(typeConverter,

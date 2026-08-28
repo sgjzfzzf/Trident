@@ -15,7 +15,7 @@ target_include_directories(TridentCoreRuntime
                            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(
   TridentCoreRuntime
-  PUBLIC ${TORCH_LIBRARIES} CUDA::cudart CUDA::cuda_driver tvm_ffi::header
+  PUBLIC CUDA::cudart CUDA::cuda_driver ${TORCH_LIBRARIES} tvm_ffi::header
   PRIVATE tvm_ffi::shared)
 
 install(

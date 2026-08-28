@@ -28,7 +28,8 @@ func.func @bool_constant() -> !tvm_ffi.bool {
 // CHECK: %[[VALUE:[a-zA-Z0-9_]+]] = llvm.mlir.undef
 // CHECK: %[[KIND:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i32) : i32
 // CHECK: %[[WITH_KIND:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[KIND]], %[[VALUE]][0]
-// CHECK: %[[WITH_AUX:[a-zA-Z0-9_]+]] = llvm.insertvalue %{{[a-zA-Z0-9_]+}}, %[[WITH_KIND]][1]
+// CHECK: %[[AUX:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[WITH_AUX:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[AUX]], %[[WITH_KIND]][1]
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[PAYLOAD]], %[[WITH_AUX]][2]
 // CHECK: return %[[RESULT]] : !llvm.struct<(i32, i32, i64)>
 func.func @int_constant() -> !tvm_ffi.int {
@@ -44,7 +45,8 @@ func.func @int_constant() -> !tvm_ffi.int {
 // CHECK: %[[UNDEF:[a-zA-Z0-9_]+]] = llvm.mlir.undef
 // CHECK: %[[KIND:[a-zA-Z0-9_]+]] = llvm.mlir.constant(3 : i32) : i32
 // CHECK: %[[WITH_KIND:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[KIND]], %[[UNDEF]][0]
-// CHECK: %[[WITH_AUX:[a-zA-Z0-9_]+]] = llvm.insertvalue %{{[a-zA-Z0-9_]+}}, %[[WITH_KIND]][1]
+// CHECK: %[[AUX:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[WITH_AUX:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[AUX]], %[[WITH_KIND]][1]
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[PAYLOAD]], %[[WITH_AUX]][2]
 // CHECK: return %[[RESULT]] : !llvm.struct<(i32, i32, i64)>
 func.func @float_constant() -> !tvm_ffi.float {
@@ -59,7 +61,8 @@ func.func @float_constant() -> !tvm_ffi.float {
 // CHECK: %[[VALUE:[a-zA-Z0-9_]+]] = llvm.mlir.undef
 // CHECK: %[[KIND:[a-zA-Z0-9_]+]] = llvm.mlir.constant(5 : i32) : i32
 // CHECK: %[[WITH_KIND:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[KIND]], %[[VALUE]][0]
-// CHECK: %[[WITH_AUX:[a-zA-Z0-9_]+]] = llvm.insertvalue %{{[a-zA-Z0-9_]+}}, %[[WITH_KIND]][1]
+// CHECK: %[[AUX:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[WITH_AUX:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[AUX]], %[[WITH_KIND]][1]
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[PACKED]], %[[WITH_AUX]][2]
 // CHECK: return %[[RESULT]] : !llvm.struct<(i32, i32, i64)>
 func.func @dtype_constant() -> !tvm_ffi.dtype {
@@ -75,7 +78,8 @@ func.func @dtype_constant() -> !tvm_ffi.dtype {
 // CHECK: %[[VALUE:[a-zA-Z0-9_]+]] = llvm.mlir.undef
 // CHECK: %[[KIND:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK: %[[WITH_KIND:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[KIND]], %[[VALUE]][0]
-// CHECK: %[[WITH_AUX:[a-zA-Z0-9_]+]] = llvm.insertvalue %{{[a-zA-Z0-9_]+}}, %[[WITH_KIND]][1]
+// CHECK: %[[AUX:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[WITH_AUX:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[AUX]], %[[WITH_KIND]][1]
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[PAYLOAD]], %[[WITH_AUX]][2]
 // CHECK: return %[[RESULT]] : !llvm.struct<(i32, i32, i64)>
 func.func @none_constant() -> !tvm_ffi.none {

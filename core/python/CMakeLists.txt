@@ -176,7 +176,7 @@ install(
 
 add_custom_target(
   TridentCorePythonModules ALL
-  DEPENDS TridentCoreRuntime TridentCoreMLIRPythonModules
-          TridentCorePythonSourcesTarget ${NB_LIBRARY_TARGET_NAME})
+  DEPENDS ${NB_LIBRARY_TARGET_NAME} TridentCoreMLIRPythonModules
+          TridentCorePythonSourcesTarget TridentCoreRuntime)
 
 add_dependencies(TridentCorePythonModules TorchMLIRCAPI)

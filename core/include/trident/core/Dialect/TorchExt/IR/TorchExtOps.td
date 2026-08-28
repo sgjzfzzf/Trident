@@ -83,6 +83,13 @@ def TorchExt_ConvertOp
   }];
 }
 
+def TorchExt_GetOp : TorchExt_Op<"get", [Pure]> {
+  let summary = "Extract a native boolean from a Torch boolean";
+  let arguments = (ins Torch_BoolType:$operand);
+  let results = (outs I1:$result);
+  let assemblyFormat = "$operand attr-dict `:` type($operand) `->` type($result)";
+}
+
 def TorchExt_TridentKernelLaunchOp
     : TorchExt_Op<"trident_kernel_launch", [
   AttrSizedOperandSegments, AllTypesMatch<[

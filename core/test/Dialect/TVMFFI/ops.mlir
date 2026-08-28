@@ -14,6 +14,17 @@ tvm_ffi.func @test() {
   tvm_ffi.return
 }
 
+// -----
+
+// DIALECT-LABEL: func.func @get_bool(
+// DIALECT-SAME: [[ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.bool) -> i1 {
+// DIALECT: [[VALUE:%[a-zA-Z0-9_]+]] = tvm_ffi.get [[ARG]] : !tvm_ffi.bool -> i1
+// DIALECT-NEXT: return [[VALUE]] : i1
+func.func @get_bool(%arg: !tvm_ffi.bool) -> i1 {
+  %value = tvm_ffi.get %arg : !tvm_ffi.bool -> i1
+  return %value : i1
+}
+
 // DIALECT-LABEL: tvm_ffi.func @with_torch_int(
 // DIALECT-SAME:    [[INT_ARG:%[a-zA-Z0-9_]+]]: !torch.int) -> !torch.int {
 // DIALECT-NEXT:    tvm_ffi.return [[INT_ARG]] : !torch.int

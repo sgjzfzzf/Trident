@@ -7,16 +7,18 @@
 
 // RUN: trident-core-opt %s --trident-lowering-pipeline | FileCheck %s
 //
-// This test verifies that lowering dispatches solely by dense.isSplat():
-// - splat literal: aoti_torch_aten_full path
-// - non-splat literal: CPU staging + aoti_torch_copy_ path
+// Tensor literals use one stable CPU-staging path for both splat and
+// non-splat attributes before copying the tensor to the current CUDA device.
 
 // CHECK-LABEL: llvm.func @torch.vtensor.literal.splat(
 // CHECK: llvm.call @TVMFFIFunctionGetGlobal
 // CHECK: llvm.call @TVMFFIFunctionCall
 // CHECK: %[[SHAPE_DATA:[a-zA-Z0-9_]+]] = llvm.alloca %[[SHAPE_COUNT:[a-zA-Z0-9_]+]] x i64
 // CHECK: %[[LITERAL_DATA:[a-zA-Z0-9_]+]] = llvm.alloca %[[LITERAL_COUNT:[a-zA-Z0-9_]+]] x f32
-// CHECK: llvm.call @aoti_torch_aten_full
+// CHECK: llvm.call @aoti_torch_create_tensor_from_blob
+// CHECK: llvm.call @aoti_torch_empty_strided
+// CHECK: llvm.call @aoti_torch_copy_
+// CHECK: llvm.call @aoti_torch_delete_tensor_object
 // CHECK: llvm.call @TVMFFIFunctionGetGlobal
 // CHECK: llvm.call @TVMFFIFunctionCall
 // CHECK-LABEL: llvm.func @torch.vtensor.literal.nonsplat(

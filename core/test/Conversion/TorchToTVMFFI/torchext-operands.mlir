@@ -14,7 +14,7 @@
 // CHECK-SAME: %[[TENSOR:[a-zA-Z0-9_]+]]: !tvm_ffi.tensor) -> f32 {
 // CHECK: %[[CAST:[a-zA-Z0-9_]+]] = torchext.cast %[[SCALAR]] : !tvm_ffi.float -> f32
 // CHECK: torchext.trident_kernel_launch @kernel::@entry
-// CHECK-SAME: {{.*}}args(%[[TENSOR]], %[[SCALAR]] : !tvm_ffi.tensor, !tvm_ffi.float)
+// CHECK-SAME: args(%[[TENSOR]], %[[SCALAR]] : !tvm_ffi.tensor, !tvm_ffi.float)
 // CHECK: return %[[CAST]] : f32
 func.func @torchext_operand_conversion(
     %scalar: !torch.float, %tensor: !torch.vtensor<[4],f32>) -> f32 {

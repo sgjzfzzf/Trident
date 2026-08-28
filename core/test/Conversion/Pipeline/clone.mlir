@@ -13,8 +13,6 @@
 // the Python regression test passes a transposed tensor here and checks that a
 // distinct, contiguous allocation is returned.
 
-// CHECK-DAG: llvm.func @TVMFFIObjectIncRef(!llvm.ptr) -> i32
-// CHECK-DAG: llvm.func @TVMFFIObjectDecRef(!llvm.ptr) -> i32
 // CHECK-DAG: llvm.func @TVMFFIFunctionGetGlobal(!llvm.ptr, !llvm.ptr) -> i32
 // CHECK-DAG: llvm.func @TVMFFIFunctionCall(!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.clone_trident.aten.clone("trident.aten.clone\00")
@@ -39,12 +37,6 @@
 // CHECK: %[[CALL:[0-9]+]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[CALL_ARGS:[0-9]+]], %[[NARGS]], %[[RET_SLOT]])
 // CHECK: llvm.call @TVMFFIObjectDecRef(%[[HANDLE]])
 // CHECK: %[[RET:[0-9]+]] = llvm.load %[[RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[INC_OBJECT_BITS:[0-9]+]] = llvm.extractvalue %[[RET]][2]
-// CHECK: %[[INC_OBJECT:[0-9]+]] = llvm.inttoptr %[[INC_OBJECT_BITS]]
-// CHECK: llvm.call @TVMFFIObjectIncRef(%[[INC_OBJECT]])
-// CHECK: %[[DEC_OBJECT_BITS:[0-9]+]] = llvm.extractvalue %[[RET]][2]
-// CHECK: %[[DEC_OBJECT:[0-9]+]] = llvm.inttoptr %[[DEC_OBJECT_BITS]]
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[DEC_OBJECT]])
 // CHECK: llvm.return %[[RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_clone(
 // CHECK: %[[WRAP_ARG:[0-9]+]] = llvm.load %arg1 : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>

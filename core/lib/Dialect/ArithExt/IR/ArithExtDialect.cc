@@ -32,19 +32,6 @@ void ArithExtDialect::initialize() {
       >();
 }
 
-mlir::LogicalResult AndThenOp::verify() {
-  for (mlir::Region &region : getRegions()) {
-    if (region.empty() || !llvm::hasSingleElement(region)) {
-      return emitOpError("expects each region to contain exactly one block");
-    } else if (region.front().empty() ||
-               !llvm::isa<AndThenYieldOp>(region.front().back())) {
-      return emitOpError(
-          "expects each region to terminate with arithext.and_then.yield");
-    }
-  }
-  return mlir::success();
-}
-
 void AndThenOp::getSuccessorRegions(
     mlir::RegionBranchPoint point,
     llvm::SmallVectorImpl<mlir::RegionSuccessor> &successors) {

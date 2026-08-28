@@ -14,8 +14,6 @@
 // CHECK: %[[I0:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = 7 : i64}> : () -> !tvm_ffi.int
 // CHECK: %[[I1:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = 9 : i64}> : () -> !tvm_ffi.int
 // CHECK: %[[ARRAY:[a-zA-Z0-9_]+]] = "tvm_ffi.array.create"(%[[I0]], %[[I1]])
-// CHECK: tvm_ffi.ObjectIncRef %[[ARRAY]] : !tvm_ffi.array
-// CHECK: tvm_ffi.ObjectDecRef %[[ARRAY]] : !tvm_ffi.array
 // CHECK: return %[[ARRAY]] : !tvm_ffi.array
 func.func @constants() -> !torch.list<int> {
   %i = torch.constant.int 7
@@ -38,7 +36,6 @@ func.func @constant_float() -> !torch.float {
 // CHECK-LABEL: func.func @string_identity(
 // CHECK-SAME: %[[STRING:[a-zA-Z0-9_]+]]: !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str>)
 // CHECK-SAME: -> !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str> {
-// CHECK: tvm_ffi.ObjectIncRef %[[STRING]] : !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str>
 // CHECK: return %[[STRING]] : !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str>
 func.func @string_identity(%arg0: !torch.str) -> !torch.str {
   return %arg0 : !torch.str

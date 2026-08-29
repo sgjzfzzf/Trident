@@ -127,7 +127,7 @@ def AnyTVMFFISemanticType : AnyTypeOf<[
   TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_DeviceType, TVMFFI_DTypeType,
   TVMFFI_FloatType,
   TVMFFI_IntType, TVMFFI_NoneType, TVMFFI_RawStrType, TVMFFI_SmallStrType,
-  TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType, TorchExt_DTypeType
+  TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType
 ], "TVM FFI semantic value">;
 def AnyTVMFFITensorOrTorchType : AnyTypeOf<[
   TVMFFI_TensorType, AnyTorchTensorType

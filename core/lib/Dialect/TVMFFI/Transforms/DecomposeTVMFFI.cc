@@ -10,7 +10,6 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include <llvm/ADT/SmallVector.h>
 #include <mlir/IR/PatternMatch.h>
-#include <mlir/IR/Value.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include <utility>
@@ -32,11 +31,6 @@ public:
         "ffi.Array");
     rewriter.replaceOpWithNewOp<FunctionCallOp>(
         op, op.getResult().getType(), getGlobal.getResult(), op.getElements());
-    for (const mlir::Value element : op.getElements()) {
-      if (element.getType().hasTrait<mlir::TypeTrait::Object>()) {
-        ObjectDecRefOp::create(rewriter, op.getLoc(), element);
-      }
-    }
     return mlir::success();
   }
 };

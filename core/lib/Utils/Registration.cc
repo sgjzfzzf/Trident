@@ -19,6 +19,7 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.h"
 #include "trident/core/Dialect/TVMFFI/Transforms/ApplyObjectOwnership.h"
 #include "trident/core/Dialect/TVMFFI/Transforms/DecomposeTVMFFI.h"
+#include "trident/core/Dialect/Torch/IR/TorchInterfaces.h"
 #include "trident/core/Dialect/Torch/Transforms/GeneralizeAtenOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
@@ -44,6 +45,7 @@ void trident::conversion::registerAllDialects(mlir::DialectRegistry &registry) {
   mlir::registerConvertFuncToLLVMInterface(registry);
   mlir::gpu::registerConvertGpuToLLVMInterface(registry);
   trident::conversion::registerConvertTVMFFIToLLVMInterface(registry);
+  trident::torch::registerTorchToTVMFFITypeInterfaces(registry);
   trident::tvm_ffi::registerTVMFFIObjectOwnershipExternalModels(registry);
 }
 

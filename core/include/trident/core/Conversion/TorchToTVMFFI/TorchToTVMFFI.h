@@ -15,10 +15,6 @@
 
 namespace trident::conversion {
 
-/// Return the semantic TVM FFI type corresponding to a Torch frontend type.
-/// Types without a specialized representation use !tvm_ffi.any.
-mlir::Type convertTorchTypeToTVMFFIType(mlir::Type type);
-
 /// Add the canonical Torch frontend to semantic TVM FFI mappings to a type
 /// converter. Identity conversions and materializations remain the caller's
 /// responsibility.

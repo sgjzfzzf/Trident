@@ -9,13 +9,13 @@
 #include "trident/core/Dialect/ArithExt/IR/ArithExtDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include "trident/core/Dialect/Torch/IR/TorchInterfaces.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 #include <cstdint>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringRef.h>
-#include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/ControlFlow/Transforms/StructuralTypeConversions.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
@@ -47,51 +47,17 @@ namespace trident::conversion {
 #define GEN_PASS_DEF_CONVERTTORCHTOTVMFFI
 #include "trident/core/Conversion/Passes.h.inc"
 
-namespace {
-
-tvm_ffi::UnionType getStringUnionType(mlir::MLIRContext *context) {
-  llvm::SmallVector<mlir::Type> const stringTypes = {
-      tvm_ffi::RawStrType::get(context), tvm_ffi::SmallStrType::get(context),
-      tvm_ffi::StrType::get(context)};
-  return tvm_ffi::UnionType::get(context, stringTypes);
-}
-
-} // namespace
-
-mlir::Type convertTorchTypeToTVMFFIType(mlir::Type type) {
-  mlir::MLIRContext *context = type.getContext();
-  return llvm::TypeSwitch<mlir::Type, mlir::Type>(type)
-      .Case<mlir::torch::Torch::AnyType>(
-          [&](mlir::Type) { return tvm_ffi::AnyType::get(context); })
-      .Case<mlir::torch::Torch::BoolType>(
-          [&](mlir::Type) { return tvm_ffi::BoolType::get(context); })
-      .Case<mlir::torch::Torch::DeviceType>(
-          [&](mlir::Type) { return tvm_ffi::DeviceType::get(context); })
-      .Case<torchext::DTypeType>(
-          [&](mlir::Type) { return tvm_ffi::DTypeType::get(context); })
-      .Case<mlir::torch::Torch::FloatType>(
-          [&](mlir::Type) { return tvm_ffi::FloatType::get(context); })
-      .Case<mlir::torch::Torch::IntType>(
-          [&](mlir::Type) { return tvm_ffi::IntType::get(context); })
-      .Case<mlir::torch::Torch::ListType, mlir::torch::Torch::TupleType>(
-          [&](mlir::Type) { return tvm_ffi::ArrayType::get(context); })
-      .Case<mlir::torch::Torch::NoneType>(
-          [&](mlir::Type) { return tvm_ffi::NoneType::get(context); })
-      .Case<mlir::torch::Torch::NonValueTensorType,
-            mlir::torch::Torch::ValueTensorType>(
-          [&](mlir::Type) { return tvm_ffi::TensorType::get(context); })
-      .Case<mlir::torch::Torch::StringType>(
-          [&](mlir::Type) { return getStringUnionType(context); })
-      .Default([&](mlir::Type) { return tvm_ffi::AnyType::get(context); });
-}
-
 void populateTorchToTVMFFITypeConversions(mlir::TypeConverter &typeConverter) {
   typeConverter.addConversion([](mlir::Type type) -> std::optional<mlir::Type> {
     if (type.getDialect().getNamespace() != "torch" &&
         !mlir::isa<torchext::DTypeType>(type)) {
       return std::nullopt;
     }
-    return convertTorchTypeToTVMFFIType(type);
+    if (mlir::isa<trident::torch::TorchToTVMFFITypeInterface>(type)) {
+      return mlir::cast<trident::torch::TorchToTVMFFITypeInterface>(type)
+          .convertToTVMFFIType();
+    }
+    return tvm_ffi::AnyType::get(type.getContext());
   });
 }
 
@@ -336,7 +302,10 @@ public:
               tvm_ffi::FunctionType::get(op.getContext()), "ffi.String");
       tvm_ffi::FunctionCallOp string = tvm_ffi::FunctionCallOp::create(
           rewriter, op.getLoc(),
-          mlir::TypeRange{getStringUnionType(op.getContext())},
+          mlir::TypeRange{
+              mlir::cast<trident::torch::TorchToTVMFFITypeInterface>(
+                  op.getResult().getType())
+                  .convertToTVMFFIType()},
           getGlobal.getResult(), mlir::ValueRange{raw.getResult()});
       rewriter.replaceOp(op, string.getResult(0));
       return mlir::success();

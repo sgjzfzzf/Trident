@@ -3,6 +3,7 @@ add_mlir_conversion_library(
   TorchToTVMFFI.cc
   DEPENDS
   MLIRConversionPassIncGen
+  MLIRTridentTorchTypeInterfacesIncGen
   LINK_LIBS
   PUBLIC
   ArithExtDialect
@@ -13,4 +14,5 @@ add_mlir_conversion_library(
   MLIRTransformUtils
   TorchExtDialect
   TorchMLIRTorchDialect
+  TridentTorchInterfaces
   TVMFFIDialect)

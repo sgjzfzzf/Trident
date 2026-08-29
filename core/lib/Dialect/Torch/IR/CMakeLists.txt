@@ -1,0 +1,11 @@
+add_mlir_library(
+  TridentTorchInterfaces
+  TorchInterfaces.cc
+  DEPENDS
+  MLIRTridentTorchTypeInterfacesIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  TorchExtDialect
+  TorchMLIRTorchDialect
+  TVMFFIDialect)

@@ -12,9 +12,7 @@
 #include "trident/core/Dialect/ArithExt/IR/ArithExtDialect.cpp.inc"
 #include "trident/core/Dialect/ArithExt/IR/ArithExtOps.h"
 #include <llvm/ADT/ArrayRef.h>
-#include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
-#include <llvm/Support/Casting.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/Region.h>
 #include <mlir/IR/ValueRange.h>

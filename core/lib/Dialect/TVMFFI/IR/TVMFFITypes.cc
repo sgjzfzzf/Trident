@@ -8,6 +8,7 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypeInterfaces.cpp.inc"
 #include "trident/ffi/Exception.h"
+#include <cstdint>
 #include <llvm/ADT/ArrayRef.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
@@ -16,6 +17,7 @@
 #include <mlir/IR/Location.h>
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/Value.h>
+#include <tvm/ffi/object.h>
 
 namespace trident::tvm_ffi {
 

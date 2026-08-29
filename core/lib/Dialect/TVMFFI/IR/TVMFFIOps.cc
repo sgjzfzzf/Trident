@@ -6,11 +6,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 
 #include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/StringRef.h>
 #include <mlir/IR/Attributes.h>
+#include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/IR/BuiltinTypeInterfaces.h>
 #include <mlir/IR/BuiltinTypes.h>
-#include <mlir/Interfaces/FunctionInterfaces.h>
+#include <mlir/IR/Types.h>
+#include <mlir/IR/Value.h>
+#include <mlir/Support/LLVM.h>
+#include <optional>
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 namespace trident::tvm_ffi {
@@ -89,7 +96,7 @@ mlir::LogicalResult TensorLiteralOp::verify() {
   if (!mlir::isa<mlir::DenseElementsAttr>(getValue())) {
     return emitOpError("requires a dense elements attribute");
   }
-  mlir::RankedTensorType type =
+  mlir::RankedTensorType const type =
       mlir::dyn_cast<mlir::RankedTensorType>(getValue().getType());
   if (!type || !type.hasStaticShape()) {
     return emitOpError("requires a statically shaped ranked tensor literal");

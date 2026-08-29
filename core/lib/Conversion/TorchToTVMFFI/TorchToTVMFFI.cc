@@ -47,12 +47,16 @@ namespace trident::conversion {
 #define GEN_PASS_DEF_CONVERTTORCHTOTVMFFI
 #include "trident/core/Conversion/Passes.h.inc"
 
-static tvm_ffi::UnionType getStringUnionType(mlir::MLIRContext *context) {
+namespace {
+
+tvm_ffi::UnionType getStringUnionType(mlir::MLIRContext *context) {
   llvm::SmallVector<mlir::Type> const stringTypes = {
       tvm_ffi::RawStrType::get(context), tvm_ffi::SmallStrType::get(context),
       tvm_ffi::StrType::get(context)};
   return tvm_ffi::UnionType::get(context, stringTypes);
 }
+
+} // namespace
 
 mlir::Type convertTorchTypeToTVMFFIType(mlir::Type type) {
   mlir::MLIRContext *context = type.getContext();

@@ -8,7 +8,6 @@
 #include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Conversion/Utils/GlobalString.h"
 #include "trident/core/Conversion/Utils/TVMFFIUtils.h"
-#include "trident/core/Conversion/Utils/Type.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
@@ -44,7 +43,9 @@ namespace trident::conversion {
 #define GEN_PASS_DEF_CONVERTTVMFFITOFUNC
 #include "trident/core/Conversion/Passes.h.inc"
 
-static llvm::SmallVector<int32_t> getExpectedTypeIndices(mlir::Type type) {
+namespace {
+
+llvm::SmallVector<int32_t> getExpectedTypeIndices(mlir::Type type) {
   if (const tvm_ffi::UnionType unionType =
           mlir::dyn_cast<tvm_ffi::UnionType>(type)) {
     return llvm::map_to_vector(unionType.getTypes(), [](mlir::Type member) {
@@ -83,6 +84,8 @@ static llvm::SmallVector<int32_t> getExpectedTypeIndices(mlir::Type type) {
   }
   return {};
 }
+
+} // namespace
 
 class ConvertTVMFFIToFuncPass final
     : public impl::ConvertTVMFFIToFuncBase<ConvertTVMFFIToFuncPass> {

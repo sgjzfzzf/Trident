@@ -9,6 +9,7 @@
 
 #include <llvm/ADT/STLExtras.h>
 #include <mlir/IR/Region.h>
+#include <mlir/Support/LLVM.h>
 
 namespace trident::arithext {
 

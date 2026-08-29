@@ -18,7 +18,6 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h" // NOLINT(misc-include-cleaner)
-#include <cstdint>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/STLExtras.h>
@@ -37,7 +36,6 @@
 #include <mlir/Support/LLVM.h>
 #include <string>
 #include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
-#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 #define GET_TYPEDEF_CLASSES
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.cpp.inc"
@@ -54,7 +52,7 @@ UnionType::verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
     return emitError() << "union requires at least two member types";
   }
   llvm::SmallDenseSet<mlir::Type> uniqueTypes;
-  for (mlir::Type type : types) {
+  for (mlir::Type const type : types) {
     if (!mlir::isa<TVMFFIABIType>(type) ||
         mlir::isa<AnyType, UnionType>(type)) {
       return emitError() << "invalid union member type " << type;
@@ -95,7 +93,7 @@ bool CastOp::areCastCompatible(mlir::TypeRange inputs,
   if (inputs.size() != 1 || outputs.size() != 1) {
     return false;
   }
-  mlir::Type input = inputs[0];
+  mlir::Type const input = inputs[0];
   mlir::Type output = outputs[0];
   return mlir::isa<AnyType, UnionType>(output) &&
          (mlir::isa<mlir::torch::Torch::TorchDialect>(input.getDialect()) ||

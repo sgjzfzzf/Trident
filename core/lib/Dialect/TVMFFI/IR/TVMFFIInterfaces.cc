@@ -8,6 +8,7 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.cpp.inc"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h" // NOLINT(misc-include-cleaner)
+#include <cstdint>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/IR/DialectRegistry.h>

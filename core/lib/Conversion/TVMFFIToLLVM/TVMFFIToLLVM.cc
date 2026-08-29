@@ -17,6 +17,7 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include <ATen/dlpack.h>
 #include <c10/core/Device.h>
+#include <dlpack/dlpack.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/Sequence.h>
 #include <llvm/ADT/SmallVectorExtras.h>
@@ -287,7 +288,8 @@ public:
             conversion::utils::getOrCreateAOTITorchDeleteTensorObject(module)),
         cpuTensor);
 
-    mlir::Value tensorArgument = tvm_ffi::IntType::build(rewriter, loc, 0);
+    mlir::Value const tensorArgument =
+        tvm_ffi::IntType::build(rewriter, loc, 0);
     mlir::Value const opaquePtrTypeIndex = mlir::LLVM::ConstantOp::create(
         rewriter, loc, i32Type, kTVMFFIOpaquePtr);
     mlir::LLVM::StoreOp::create(
@@ -773,9 +775,10 @@ public:
 
 /// Extract a DLTensor pointer from an SSA TVMFFIAny value.
 
-static mlir::Value getDLTensorPtrFromAny(mlir::OpBuilder &builder,
-                                         mlir::Location loc,
-                                         mlir::Value value) {
+namespace {
+
+mlir::Value getDLTensorPtrFromAny(mlir::OpBuilder &builder, mlir::Location loc,
+                                  mlir::Value value) {
   mlir::MLIRContext *ctx = builder.getContext();
   mlir::IntegerType const i8Ty = mlir::IntegerType::get(ctx, 8);
   mlir::IntegerType const i64Ty = mlir::IntegerType::get(ctx, 64);
@@ -789,6 +792,8 @@ static mlir::Value getDLTensorPtrFromAny(mlir::OpBuilder &builder,
       builder, loc, ptrTy, i8Ty, handle,
       llvm::ArrayRef<mlir::LLVM::GEPArg>{sizeof(TVMFFIObject)});
 }
+
+} // namespace
 
 class ConvertTensorDeviceOp
     : public mlir::OpConversionPattern<tvm_ffi::TensorDeviceOp> {

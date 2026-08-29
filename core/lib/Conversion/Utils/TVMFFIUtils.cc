@@ -9,7 +9,6 @@
 #include "trident/core/Conversion/Utils/TVMFFIUtils.h"
 #include "trident/core/Conversion/Utils/GlobalString.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
-#include "trident/core/Conversion/Utils/Type.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include <cstddef>
 #include <cstdint>
@@ -26,7 +25,6 @@
 #include <mlir/IR/Value.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
-#include <tvm/ffi/c_api.h>
 
 namespace trident::conversion::utils {
 

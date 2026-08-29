@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "trident/core/Dialect/TVMFFI/Transforms/ApplyObjectOwnership.h"
-#include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
+#include "trident/core/Dialect/TVMFFI/Transforms/ApplyObjectOwnership.h" // NOLINT(misc-include-cleaner)
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
@@ -15,6 +15,7 @@
 #include <llvm/ADT/STLExtras.h>
 #include <mlir/IR/Block.h>
 #include <mlir/IR/Builders.h>
+#include <mlir/IR/Location.h>
 #include <mlir/IR/OpDefinition.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/Region.h>
@@ -29,12 +30,14 @@
 #include <mlir/Support/WalkResult.h>
 
 namespace trident::tvm_ffi {
-static bool isObjectCapableType(mlir::Type type) {
+namespace {
+
+bool isObjectCapableType(mlir::Type type) {
   return type.hasTrait<mlir::TypeTrait::Object>() ||
          mlir::isa<tvm_ffi::AnyType, tvm_ffi::UnionType>(type);
 }
 
-static mlir::LogicalResult applyObjectOwnership(mlir::Operation *operation) {
+mlir::LogicalResult applyObjectOwnership(mlir::Operation *operation) {
   mlir::WalkResult const result = operation->walk([&](mlir::Region *region) {
     // Analyze only regions with ref-count operations or object-valued returns.
     if (region->empty() ||
@@ -135,6 +138,8 @@ static mlir::LogicalResult applyObjectOwnership(mlir::Operation *operation) {
   });
   return result.wasInterrupted() ? mlir::failure() : mlir::success();
 }
+
+} // namespace
 
 #define GEN_PASS_DEF_APPLYOBJECTOWNERSHIP
 #include "trident/core/Dialect/TVMFFI/Transforms/Passes.h.inc"

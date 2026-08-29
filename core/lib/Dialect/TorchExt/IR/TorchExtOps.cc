@@ -6,8 +6,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 
+#include <llvm/Support/Casting.h>
+#include <mlir/IR/BuiltinTypeInterfaces.h>
+#include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/TypeRange.h>
+#include <mlir/IR/Types.h>
+#include <mlir/Support/LLVM.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 namespace trident::torchext {

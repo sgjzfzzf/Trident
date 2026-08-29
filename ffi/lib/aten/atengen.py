@@ -33,7 +33,7 @@ from typing import Final
 import jinja2
 import torch
 
-_TEMPLATE_DIR: Final[Path] = Path(__file__).parent.parent / "templates"
+_TEMPLATE_DIR: Final[Path] = Path(__file__).parent
 
 
 # ===========================================================================

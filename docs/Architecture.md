@@ -200,11 +200,12 @@ torch-mlir source.
 
 ## ATen Operator Dispatch (atengen)
 
-Trident uses an auto-generated wrapper layer for ATen operator dispatch via TVM FFI:
+Trident uses an auto-generated wrapper layer for ATen operator dispatch via TVM FFI.
+The wrappers are built as `libTridentAtenFFI.so` in the `ffi` subproject:
 
-1. **Build-time codegen** (`core/lib/Runtime/python/atengen.py`):
+1. **Build-time codegen** (`ffi/lib/aten/atengen.py`):
    - Queries all registered ATen operator schemas via `torch._C._jit_get_all_schemas()`.
-   - Generates `aten.gen.cc` from the Jinja2 template `aten.cc.j2`.
+   - Generates `aten.gen.cc` from the Jinja2 template `ffi/lib/aten/aten.cc.j2`.
    - Each wrapper registers a TVM FFI global function named `trident.aten.<op>.<overload>`
      and internally uses `c10::Dispatcher::findSchemaOrThrow()` + `callBoxed()`.
 

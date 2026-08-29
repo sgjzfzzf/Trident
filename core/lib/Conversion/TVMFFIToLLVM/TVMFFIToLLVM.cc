@@ -6,9 +6,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
-#include "ATen/dlpack.h"
-#include "c10/core/Device.h"
-#include "torch/headeronly/macros/Export.h"
 #include "trident/core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/Check.h"
 #include "trident/core/Conversion/Utils/GlobalString.h"
@@ -18,6 +15,8 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include <ATen/dlpack.h>
+#include <c10/core/Device.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/Sequence.h>
 #include <llvm/ADT/SmallVectorExtras.h>
@@ -46,6 +45,7 @@
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
+#include <torch/headeronly/macros/Export.h>
 #include <tvm/ffi/c_api.h>
 
 #include <cstdint>

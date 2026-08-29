@@ -15,6 +15,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
 find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+find_package(
+  Torch CONFIG REQUIRED PATHS ${Python3_SITELIB}/torch/share/cmake/Torch
+  ${Python3_SITEARCH}/torch/share/cmake/Torch)
 
 find_package(
   tvm_ffi CONFIG REQUIRED PATHS ${Python3_SITELIB}/tvm_ffi/share/cmake/tvm_ffi
@@ -23,6 +26,7 @@ find_package(
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${tvm_ffi_INCLUDE_DIR})
 include_directories(${tvm_ffi_DLPACK_INCLUDE_DIR})
+include_directories(SYSTEM ${TORCH_INCLUDE_DIRS})
 
 add_subdirectory(include)
 add_subdirectory(lib)

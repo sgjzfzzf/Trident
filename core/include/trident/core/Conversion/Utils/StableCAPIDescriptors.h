@@ -9,8 +9,8 @@
 #ifndef TRIDENT_CORE_CONVERSION_UTILS_STABLECAPIDESCRIPTORS_H_
 #define TRIDENT_CORE_CONVERSION_UTILS_STABLECAPIDESCRIPTORS_H_
 
-#include "torch/csrc/stable/c/shim.h"
 #include "trident/core/Conversion/Utils/CFunctionDeclUtils.h"
+#include <torch/csrc/stable/c/shim.h>
 
 // Stable C API function descriptors.
 //

@@ -43,7 +43,8 @@ static mlir::LogicalResult applyObjectOwnership(mlir::Operation *operation) {
                      operation) ||
                  (operation.hasTrait<mlir::OpTrait::IsTerminator>() &&
                   llvm::any_of(operation.getOperandTypes(),
-                               isObjectCapableType));
+                               isObjectCapableType)) ||
+                 llvm::any_of(operation.getResultTypes(), isObjectCapableType);
         })) {
       return mlir::WalkResult::advance();
     }

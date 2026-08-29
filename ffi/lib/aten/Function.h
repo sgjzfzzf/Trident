@@ -20,12 +20,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TRIDENT_CORE_RUNTIME_FUNCTION_H_
-#define TRIDENT_CORE_RUNTIME_FUNCTION_H_
+#ifndef TRIDENT_FFI_ATEN_FUNCTION_H_
+#define TRIDENT_FFI_ATEN_FUNCTION_H_
 
-#include "ATen/core/dispatch/Dispatcher.h"
-#include "ATen/core/stack.h"
 #include "Value.h"
+#include <ATen/core/dispatch/Dispatcher.h>
+#include <ATen/core/stack.h>
 #include <tvm/ffi/container/tuple.h>
 #include <tvm/ffi/function.h>
 
@@ -86,4 +86,4 @@ private:
 
 } // namespace trident::runtime
 
-#endif // TRIDENT_CORE_RUNTIME_FUNCTION_H_
+#endif // TRIDENT_FFI_ATEN_FUNCTION_H_

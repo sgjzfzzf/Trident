@@ -6,12 +6,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident-c/core/Registration.h"
-#include "mlir-c/IR.h"
-#include "torch-mlir-c/Registration.h"
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
 #include "trident/core/Utils/Registration.h"
+#include <mlir-c/IR.h>
 #include <mlir/CAPI/IR.h>
 #include <mlir/IR/DialectRegistry.h>
+#include <torch-mlir-c/Registration.h>
 
 void tridentCoreRegisterAllDialects(MlirContext context) {
   mlir::DialectRegistry registry;

@@ -9,9 +9,9 @@
 #ifndef TRIDENT_CORE_CONVERSION_UTILS_AOTICAPIDESCRIPTORS_H_
 #define TRIDENT_CORE_CONVERSION_UTILS_AOTICAPIDESCRIPTORS_H_
 
-#include "torch/csrc/inductor/aoti_torch/c/shim.h"
-#include "torch/csrc/inductor/aoti_torch/generated/c_shim_aten.h"
 #include "trident/core/Conversion/Utils/CFunctionDeclUtils.h"
+#include <torch/csrc/inductor/aoti_torch/c/shim.h>
+#include <torch/csrc/inductor/aoti_torch/generated/c_shim_aten.h>
 
 // AOTI (PyTorch Inductor) C API function descriptors.
 namespace trident::conversion::utils {

@@ -25,7 +25,7 @@ For a new operator bring-up, start with path 1, then validate path 2 if needed.
 ## atengen Auto-Wrapping
 
 Most ATen operators are automatically wrapped by the atengen codegen tool at build
-time (`core/lib/Runtime/python/atengen.py`). atengen queries PyTorch's JIT
+time (`ffi/lib/aten/atengen.py`). atengen queries PyTorch's JIT
 type system via `torch._C._jit_get_all_schemas()` and generates C++ wrappers that
 register `trident.aten.*` TVM FFI global functions with proper IValue ↔ TVMFFIAny
 conversion.
@@ -109,7 +109,7 @@ Suspect:
 Check:
 - `core/test/Conversion/Pipeline/<op>.mlir`
 - `core/lib/Conversion/AtenToTVMFFI/Aten.cc` (`ConvertAtenDispatcherOp`) — the generic lowering that rewires all `torch.aten.*` ops to `trident.aten.*` FFI calls
-- `core/lib/Runtime/python/atengen.py` — the codegen tool that generates FFI wrappers for ATen ops
+- `ffi/lib/aten/atengen.py` — the codegen tool that generates FFI wrappers for ATen ops
 
 ### Wrapper call succeeds but output shape/dtype is wrong
 

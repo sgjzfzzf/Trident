@@ -165,9 +165,6 @@ build_nanobind_lib(
   MLIR_BINDINGS_PYTHON_NB_DOMAIN
   trident_core)
 
-install(TARGETS TridentCoreRuntime LIBRARY DESTINATION lib
-                                           COMPONENT TridentCorePythonModules)
-
 file(GLOB _mlir_runtime_libs "${MLIR_DIR}/../../*_runtime.so*")
 install(
   FILES ${_mlir_runtime_libs}
@@ -177,6 +174,6 @@ install(
 add_custom_target(
   TridentCorePythonModules ALL
   DEPENDS ${NB_LIBRARY_TARGET_NAME} TridentCoreMLIRPythonModules
-          TridentCorePythonSourcesTarget TridentCoreRuntime)
+          TridentCorePythonSourcesTarget)
 
 add_dependencies(TridentCorePythonModules TorchMLIRCAPI)

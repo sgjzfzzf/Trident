@@ -4,6 +4,7 @@
 Checks: >-
   -*,
   bugprone-*,
+  -bugprone-unchecked-optional-access,
   misc-*,
   performance-*
 HeaderFilterRegex: '^(.*[/\\])(core|ffi)/(include|lib|python|tools)/.*'

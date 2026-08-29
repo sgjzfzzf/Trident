@@ -26,11 +26,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TRIDENT_CORE_RUNTIME_VALUE_H_
-#define TRIDENT_CORE_RUNTIME_VALUE_H_
+#ifndef TRIDENT_FFI_ATEN_VALUE_H_
+#define TRIDENT_FFI_ATEN_VALUE_H_
 
-#include "ATen/DLConvertor.h"
-#include "ATen/core/ivalue.h"
+#include <ATen/DLConvertor.h>
+#include <ATen/core/ivalue.h>
 #include <optional>
 #include <stdexcept>
 #include <tvm/ffi/any.h>
@@ -403,4 +403,4 @@ template <typename T> inline tvm::ffi::Any resolveValue(c10::IValue &&val) {
 
 } // namespace trident::runtime
 
-#endif // TRIDENT_CORE_RUNTIME_VALUE_H_
+#endif // TRIDENT_FFI_ATEN_VALUE_H_

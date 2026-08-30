@@ -9,8 +9,9 @@ from typing import Final, Self, override
 
 from trident.core import ir
 from trident.core.dialects import arith, tvm_ffi
+from trident.input import InputTable
 
-from ..local import Local, SourceTree
+from ..local import Local
 from .base import GuardCode
 
 
@@ -61,7 +62,7 @@ class SequenceLengthCode(GuardCode):
     @override
     def build(
         self,
-        tree: SourceTree,
+        tree: InputTable,
         context: ir.Context,
     ) -> ir.Value:
         source = self.source

@@ -14,6 +14,19 @@ from base import TridentTestCase
 
 
 class FrontendTest(TridentTestCase):
+    def test_writeback_runs_once_on_initial_compile(self) -> None:
+        @trident.jit
+        def increment_in_place(x: torch.Tensor) -> torch.Tensor:
+            x.add_(1)
+            return x
+
+        x = torch.randn(4, device="cuda")
+        expected = x + 1
+        result = increment_in_place(x)
+
+        torch.testing.assert_close(x, expected)
+        torch.testing.assert_close(result, expected)
+
     def test_local_mutation(self) -> None:
         @trident.jit
         def zero_empty_like(x: torch.Tensor) -> torch.Tensor:
@@ -41,6 +54,24 @@ class FrontendTest(TridentTestCase):
         x = torch.randn(4, device="cuda")
         s = [torch.randn(4, device="cuda"), torch.randn(4, device="cuda")]
         torch.testing.assert_close(list_add(x, s), x + s[0] + s[1])
+
+    def test_nested_input_unpack(self) -> None:
+        @trident.jit
+        def nested_add(
+            x: torch.Tensor,
+            values: list[tuple[torch.Tensor, torch.Tensor]],
+        ) -> torch.Tensor:
+            return x + values[0][0] + values[1][1]
+
+        x = torch.randn(4, device="cuda")
+        values = [
+            (torch.randn(4, device="cuda"), torch.randn(4, device="cuda")),
+            (torch.randn(4, device="cuda"), torch.randn(4, device="cuda")),
+        ]
+        torch.testing.assert_close(
+            nested_add(x, values),
+            x + values[0][0] + values[1][1],
+        )
 
 
 if __name__ == "__main__":

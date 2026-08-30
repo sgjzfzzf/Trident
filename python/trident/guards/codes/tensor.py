@@ -12,8 +12,9 @@ import tvm_ffi as runtime_ffi
 
 from trident.core import ir
 from trident.core.dialects import arith, tvm_ffi
+from trident.input import InputTable
 
-from ..local import Local, SourceTree
+from ..local import Local
 from .base import GuardCode
 
 
@@ -59,7 +60,7 @@ class TensorDTypeCode(GuardCode):
     @override
     def build(
         self,
-        tree: SourceTree,
+        tree: InputTable,
         context: ir.Context,
     ) -> ir.Value:
         source = self.source
@@ -137,7 +138,7 @@ class TensorDeviceCode(GuardCode):
     @override
     def build(
         self,
-        tree: SourceTree,
+        tree: InputTable,
         context: ir.Context,
     ) -> ir.Value:
         source = self.source
@@ -210,7 +211,7 @@ class TensorRankCode(GuardCode):
     @override
     def build(
         self,
-        tree: SourceTree,
+        tree: InputTable,
         context: ir.Context,
     ) -> ir.Value:
         source = self.source
@@ -263,7 +264,7 @@ class RequiresGradCode(GuardCode):
             return cls(text, source, match.group("value") == "True")
 
     @override
-    def build(self, tree: SourceTree, context: ir.Context) -> ir.Value:
+    def build(self, tree: InputTable, context: ir.Context) -> ir.Value:
         # TVM FFI tensor metadata does not expose autograd state.  Treat this
         # specialization guard as satisfied; the wrapper ABI cannot perform a
         # runtime requires_grad check.
@@ -300,7 +301,7 @@ class DynamoAttributeAbsentCode(GuardCode):
         )
 
     @override
-    def build(self, tree: SourceTree, context: ir.Context) -> ir.Value:
+    def build(self, tree: InputTable, context: ir.Context) -> ir.Value:
         # These private Dynamo attributes are not part of the TVM FFI ABI.
         i1 = ir.IntegerType.get_signless(1, context)
         return arith.constant(i1, ir.IntegerAttr.get(i1, 1))

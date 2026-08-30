@@ -6,13 +6,13 @@ from __future__ import annotations
 import copy
 import gc
 import inspect
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, Final
 
 import torch
-import torch.utils._pytree as pytree
 import tvm_ffi
 import tvm_ffi.utils
+from torch.export.graph_signature import InputKind, SymIntArgument, TensorArgument
 
 from trident import capi_utils
 from trident.core import (
@@ -40,148 +40,8 @@ from trident.core.extras.fx_importer import FxImporter
 from trident.ffi import Exception
 
 from .guards import parse_guards
+from .input import InputTableBuilder
 from .patch import apply_patch
-
-
-class _InputTreeNode:
-    """Static shape information for one exported input pytree node."""
-
-    __slots__ = (
-        "child_indices",
-        "children",
-        "is_leaf",
-        "keys",
-        "main_input_index",
-        "type",
-    )
-
-    def __init__(
-        self,
-        type: ir.Type,
-        children: Sequence[_InputTreeNode] | None = None,
-        keys: Sequence[int | str] | None = None,
-        is_leaf: bool = False,
-        main_input_index: int | None = None,
-    ) -> None:
-        if children is None:
-            children = []
-        else:
-            children = [*children]
-        if keys is None:
-            keys = [i for i, _ in enumerate(children)]
-        else:
-            keys = [*keys]
-        assert len(keys) == len(children), (
-            "tree keys and children must have equal lengths"
-        )
-        assert len(set(keys)) == len(keys), "tree keys must be unique"
-        self.type: Final[ir.Type] = type
-        self.children: Final[list[_InputTreeNode]] = children
-        self.keys: Final[list[int | str]] = keys
-        self.child_indices: Final[dict[int | str, int]] = {
-            key: index for index, key in enumerate(keys)
-        }
-        self.is_leaf: Final[bool] = is_leaf
-        self.main_input_index: Final[int | None] = main_input_index
-
-    def __getitem__(self, key: int | str) -> _InputTreeNode:
-        """Return the child selected by *key*."""
-        assert key in self.child_indices, f"tree key {key!r} is not present"
-        return self.children[self.child_indices[key]]
-
-
-class _InputTreeMap:
-    """Lazily materialized IR values indexed by pytree paths.
-
-    Values are materialized on demand so structure guards can run before an
-    element access forces the corresponding TVM FFI array access.
-    Each path lookup gets a fresh map, keeping values local to the current IR
-    region. ``flatten_main_inputs`` uses the persistent map to share unpacks
-    while reconstructing the main function arguments.
-    """
-
-    def __init__(
-        self,
-        root: _InputTreeNode,
-        arguments: dict[str, ir.Value],
-    ) -> None:
-        self._root: Final[_InputTreeNode] = root
-        self._arguments: Final[dict[str, ir.Value]] = arguments
-        self._values: dict[str, ir.Value] = {
-            f"{[name]!r}": argument for name, argument in arguments.items()
-        }
-
-    def _unpack(
-        self,
-        node: _InputTreeNode,
-        path: list[int | str],
-        values: dict[str, ir.Value],
-    ) -> None:
-        if not node.children:
-            return
-        key, *_ = node.keys
-        if f"{[*path, key]!r}" in values:
-            return
-        argument: ir.Value = values[f"{path!r}"]
-        i64 = ir.IntegerType.get_signless(64, argument.context)
-        ffi_int = ir.Type.parse("!tvm_ffi.int", context=argument.context)
-        results: list[ir.Value] = [
-            tvm_ffi_d.array_get_item(
-                child.type,
-                argument,
-                tvm_ffi_d.constant(ffi_int, ir.IntegerAttr.get(i64, index)),
-                element_type=child.type,
-            )
-            for index, child in enumerate(node.children)
-        ]
-        for key, result in zip(node.keys, results):
-            values[f"{[*path, key]!r}"] = result
-
-    def __getitem__(self, path: Sequence[int | str]) -> ir.Value | None:
-        values: dict[str, ir.Value] = {
-            f"{[name]!r}": argument for name, argument in self._arguments.items()
-        }
-        node: _InputTreeNode = self._root
-        prefix: list[int | str] = []
-        for step in path:
-            assert not node.is_leaf, "path indexes through a leaf"
-            if not prefix and step not in node.child_indices:
-                return None
-            key, *_ = node.keys
-            if prefix and f"{[*prefix, key]!r}" not in values:
-                self._unpack(node, prefix, values)
-            prefix.append(step)
-            node = node[step]
-        if f"{prefix!r}" not in values:
-            self._unpack(node, prefix, values)
-        return values[f"{prefix!r}"]
-
-    def flatten_main_inputs(self) -> list[tuple[int, ir.Value]]:
-        """Return only leaves passed to the imported MLIR main function."""
-
-        def visit(
-            node: _InputTreeNode,
-            path: list[int | str],
-        ) -> list[tuple[int, ir.Value]]:
-            if node.is_leaf:
-                if node.main_input_index is None:
-                    return []
-                value: ir.Value | None = self[path]
-                assert value is not None, "leaf path must be present in input tree"
-                return [(node.main_input_index, value)]
-            else:
-                self._unpack(node, path, self._values)
-                return [
-                    value
-                    for key, child in zip(node.keys, node.children)
-                    for value in visit(child, [*path, key])
-                ]
-
-        return [
-            value
-            for key, child in zip(self._root.keys, self._root.children)
-            for value in visit(child, [key])
-        ]
 
 
 class TridentGraphModule:
@@ -220,7 +80,7 @@ class TridentGraphModule:
             if isinstance(result, Exception):
                 # The dispatcher returned an Exception ObjectRef
                 # (all specializations failed); compile a new one.
-                self.compile(*args, **kwargs)
+                return self.compile(*args, **kwargs)
             else:
                 # TODO: Preserve input/output aliasing when an ExportedProgram
                 # returns a mutated input. The current lowering writes the
@@ -234,19 +94,11 @@ class TridentGraphModule:
     def __name__(self) -> str:
         return self.fn.__name__
 
-    def compile(self, *args: Any, **kwargs: Any) -> None:
+    def compile(self, *args: Any, **kwargs: Any) -> Any:
         """Build a new sub-module for *args* and rebuild the combined
         module + dispatcher.  Called automatically from ``__call__`` when a
         ``GuardMatchException`` is raised."""
-        # 1. Build a new sub-module for the current arguments.
-        sub_mod: ir.Module = self._build_sub_module(
-            self.fn, self.ctx, len(self._sub_modules), list(args), kwargs
-        )
-        self._sub_modules.append(sub_mod)
-
-        # 2. Rebuild the combined module and dispatcher.
-        self.executor = self.stub_compile()
-        gc.collect()
+        return self._build_sub_module([*args], {**kwargs})
 
     # ------------------------------------------------------------------ #
     # Internal: orchestration
@@ -304,42 +156,39 @@ class TridentGraphModule:
     # Internal: sub-module construction
     # ------------------------------------------------------------------ #
 
-    @staticmethod
     def _build_sub_module(
-        fn: Callable[..., Any],
-        ctx: ir.Context,
-        index: int,
+        self,
         args: list[Any],
         kwargs: dict[str, Any],
-    ) -> ir.Module:
+    ) -> Any:
         """Export -> import -> wrap a single sub-module for *args*.
 
         Each sub-module's ``func.func`` is named ``main_{index}`` and its
-        ``tvm_ffi.func`` is named ``{fn.__name__}_{index}`` to avoid symbol
+        ``tvm_ffi.func`` is named ``{self.fn.__name__}_{index}`` to avoid symbol
         collisions in the merged module.
         """
 
         # Step 1: Export  ---------------------------------------------------
-        exported_gm: torch.fx.GraphModule
-        gs: torch._guards.GuardsSet
+        index = len(self._sub_modules)
         exported_gm, gs = torch._dynamo.export(
-            fn, aten_graph=True, assume_static_by_default=True
+            self.fn, aten_graph=True, assume_static_by_default=True
         )(*args, **kwargs)
         call_signature: inspect.Signature = inspect.signature(exported_gm.forward)
         call_bound: inspect.BoundArguments = call_signature.bind(*args, **kwargs)
         call_bound.apply_defaults()
         call_args: list[Any] = [*call_bound.arguments.values()]
-        trace_gm, trace_args = copy.deepcopy((exported_gm, call_args))
+        trace_gm = copy.deepcopy(exported_gm)
+        trace_args = call_args
         exported_program: torch.export.ExportedProgram = torch.export.export(
             trace_gm,
             tuple(trace_args),
             strict=False,
         ).run_decompositions()
-        exported_program.module()(*trace_args)
+        warmup_result = exported_program.module()(*trace_args)
 
         # Step 2: Import FX -> MLIR  ----------------------------------------
         with apply_patch():
-            importer: FxImporter = FxImporter(context=ctx)
+            importer: FxImporter = FxImporter(context=self.ctx)
             main_func_name: Final[str] = f"main_{index}"
             main_func: func.FuncOp = importer.import_program(
                 exported_program, func_name=main_func_name
@@ -349,22 +198,13 @@ class TridentGraphModule:
         torch._dynamo.reset()
 
         # Step 3: Wrap with tvm_ffi.func.
-        signature: inspect.Signature = inspect.signature(fn)
+        signature: inspect.Signature = inspect.signature(self.fn)
         bound: inspect.BoundArguments = signature.bind(*args, **kwargs)
         bound.apply_defaults()
-        signature_names: list[str] = [*signature.parameters]
         flat_types: Sequence[ir.Type] = main_func.type.inputs
 
-        with ctx:
-            dtype_type = ir.Type.parse("!torchext.dtype", context=ctx)
-
-        from torch.export.graph_signature import (
-            InputKind,
-            SymIntArgument,
-            TensorArgument,
-        )
-
-        array_type: ir.Type = ir.Type.parse("!tvm_ffi.array", context=ctx)
+        with self.ctx:
+            dtype_type = ir.Type.parse("!torchext.dtype", context=self.ctx)
 
         def value_type(value: Any) -> ir.Type:
             """Infer the wrapper type for an exported non-main input."""
@@ -372,113 +212,17 @@ class TridentGraphModule:
                 return dtype_type
             return importer._cc.value_info_to_type(value)
 
-        exported_input_values: list[Any] = pytree.tree_leaves(tuple(call_args))
-        input_specs = exported_program.graph_signature.input_specs
-        assert len(input_specs) == len(exported_input_values), (
-            "ExportedProgram input specs do not match flattened exported inputs: "
-            f"got {len(input_specs)} specs and {len(exported_input_values)} values"
+        input_builder = InputTableBuilder.get(
+            exported_program,
+            signature,
+            bound.arguments,
+            flat_types,
+            value_type,
+            self.ctx,
         )
-        main_input_indices: list[int | None] = [
-            index
-            if input_spec.kind == InputKind.USER_INPUT
-            and isinstance(input_spec.arg, (TensorArgument, SymIntArgument))
-            else None
-            for index, input_spec in enumerate(input_specs)
-        ]
-        main_input_count = sum(index is not None for index in main_input_indices)
-        assert main_input_count == len(flat_types), (
-            "ExportedProgram graph inputs do not match imported MLIR inputs: "
-            f"got {main_input_count} graph inputs and {len(flat_types)} MLIR inputs"
-        )
+        param_types = input_builder.input_types
 
-        in_spec: pytree.TreeSpec | None = getattr(exported_gm, "_in_spec", None)
-        assert isinstance(in_spec, pytree.TreeSpec), (
-            "trident.jit requires a pytree TreeSpec for exported inputs; "
-            f"got {in_spec!r}"
-        )
-
-        root_children: list[pytree.TreeSpec] = in_spec.children()
-        assert in_spec.type is tuple and len(root_children) == 2, (
-            f"unexpected _in_spec root (expected tuple TreeSpec, got {in_spec})"
-        )
-        [args_spec, kwargs_spec] = root_children
-        assert isinstance(args_spec, pytree.TreeSpec), (
-            f"expected args tree spec, got {type(args_spec)!r}"
-        )
-        assert isinstance(kwargs_spec, pytree.TreeSpec), (
-            f"expected kwargs tree spec, got {type(kwargs_spec)!r}"
-        )
-
-        # The ABI receives arguments in signature order.
-        pos_params: list[str] = [
-            name
-            for name, p in signature.parameters.items()
-            if p.kind
-            in (
-                inspect.Parameter.POSITIONAL_ONLY,
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            )
-        ]
-        args_names: list[str] = [
-            name for name, _ in zip(pos_params, args_spec.children())
-        ]
-        kwargs_names: list[str] = [*kwargs_spec.context]
-        leaf_iter: Iterator[tuple[int | None, Any]] = zip(
-            main_input_indices, exported_input_values
-        )
-
-        def build_tree(node: pytree.TreeSpec, name: str) -> _InputTreeNode:
-            """Build static pytree metadata and map leaves to main inputs."""
-            if node.is_leaf():
-                main_input_index, value = next(leaf_iter)
-                ty = (
-                    flat_types[main_input_index]
-                    if main_input_index is not None
-                    else value_type(value)
-                )
-                return _InputTreeNode(
-                    ty,
-                    is_leaf=True,
-                    main_input_index=main_input_index,
-                )
-            assert node.type is not dict, (
-                f"dict parameters (path step {name!r}) are not yet "
-                "supported by trident.jit"
-            )
-            children: list[_InputTreeNode] = [
-                build_tree(child, name) for child in node.children()
-            ]
-            assert not children or not all(
-                child.type == dtype_type for child in children
-            ), "containers of multiple torch.dtype values are not supported"
-            return _InputTreeNode(array_type, children=children)
-
-        provided_entries: dict[str, _InputTreeNode] = {
-            name: build_tree(child, name)
-            for name, child in [
-                *zip(args_names, args_spec.children()),
-                *zip(kwargs_names, kwargs_spec.children()),
-            ]
-        }
-
-        entries: list[_InputTreeNode] = [
-            provided_entries[name]
-            if name in provided_entries
-            else _InputTreeNode(
-                array_type
-                if isinstance(bound.arguments[name], (list, tuple))
-                else value_type(bound.arguments[name])
-            )
-            for name in signature_names
-        ]
-        param_types: list[ir.Type] = [node.type for node in entries]
-        input_root = _InputTreeNode(
-            array_type,
-            children=entries,
-            keys=signature_names,
-        )
-
-        with ctx:
+        with self.ctx:
             # Guarded wrappers have one TVM FFI ABI result.  A main function
             # may still have multiple semantic results; those are packed into
             # a TVM FFI array in the guarded success branch below.
@@ -487,27 +231,28 @@ class TridentGraphModule:
                 [result] = main_func.type.results
                 normal_result_type = _convert_torch_type_to_tvm_ffi_type(result)
             else:
-                normal_result_type = ir.Type.parse("!tvm_ffi.array", context=ctx)
+                normal_result_type = ir.Type.parse("!tvm_ffi.array", context=self.ctx)
             wrapper_result_type = ir.Type.parse(
                 f"!tvm_ffi.union<{normal_result_type}, !tvm_ffi.exception>",
-                context=ctx,
+                context=self.ctx,
             )
             ffi_type: ir.FunctionType = ir.FunctionType.get(
                 param_types, [wrapper_result_type]
             )
 
-        tvm_ffi_name: Final[str] = f"{fn.__name__}_{index}"
+        tvm_ffi_name: Final[str] = f"{self.fn.__name__}_{index}"
         with ir.InsertionPoint(module.body), main_func.operation.location:
             ffi_func: tvm_ffi_d.FuncOp = tvm_ffi_d.func(
                 tvm_ffi_name,
                 ir.TypeAttr.get(ffi_type),
-                emit_tvm_ffi_abi=ir.UnitAttr.get(ctx),
+                emit_tvm_ffi_abi=ir.UnitAttr.get(self.ctx),
             )
             entry_block: ir.Block = ir.Block.create_at_start(ffi_func.body, param_types)
             with ir.InsertionPoint(entry_block):
-                arguments = dict(zip(signature_names, entry_block.arguments))
-                guard_tree = _InputTreeMap(input_root, arguments)
-                guard_result: ir.Value = parse_guards(gs).build(guard_tree, ctx)
+                guard_result: ir.Value = parse_guards(gs).build(
+                    lambda: input_builder.build(entry_block.arguments),
+                    self.ctx,
+                )
                 # main_* is an ordinary func.func. Only the surrounding
                 # tvm_ffi.func is exposed through the TVM FFI ABI.
                 # Materialize guard success and guard failure as one ABI
@@ -519,20 +264,31 @@ class TridentGraphModule:
                 )
                 then_block: ir.Block = guard_if.then_block
                 with ir.InsertionPoint(then_block):
-                    main_tree = _InputTreeMap(input_root, arguments)
-                    main_args_by_index: dict[int, ir.Value] = dict(
-                        main_tree.flatten_main_inputs()
+                    main_table = input_builder.build(entry_block.arguments)
+                    input_specs = exported_program.graph_signature.input_specs
+                    flat_inputs = main_table.flatten_inputs()
+                    assert len(flat_inputs) == len(input_specs), (
+                        "unexpected number of reconstructed exported inputs: "
+                        f"got {len(flat_inputs)}, expected {len(input_specs)}"
                     )
-                    assert len(main_args_by_index) == len(flat_types), (
+                    main_inputs = [
+                        value
+                        for input_spec, value in zip(input_specs, flat_inputs)
+                        if input_spec.kind == InputKind.USER_INPUT
+                        and isinstance(
+                            input_spec.arg,
+                            (TensorArgument, SymIntArgument),
+                        )
+                    ]
+                    assert len(main_inputs) == len(flat_types), (
                         "unexpected number of reconstructed MLIR inputs: "
-                        f"got {len(main_args_by_index)}, expected {len(flat_types)}"
+                        f"got {len(main_inputs)}, expected {len(flat_types)}"
                     )
                     main_args: list[ir.Value] = [
                         torchext.convert(flat_type, main_arg)
                         if main_arg.type == dtype_type
                         else main_arg
-                        for index, flat_type in enumerate(flat_types)
-                        for main_arg in [main_args_by_index[index]]
+                        for flat_type, main_arg in zip(flat_types, main_inputs)
                     ]
                     call_result: ir.Value | Sequence[ir.Value] = func.call(
                         main_func.type.results,
@@ -549,7 +305,7 @@ class TridentGraphModule:
                         )
                         tuple_type = ir.Type.parse(
                             f"!torch.tuple<{element_types}>",
-                            context=ctx,
+                            context=self.ctx,
                         )
                         result = torch_d.prim_TupleConstruct(
                             tuple_type,
@@ -561,7 +317,9 @@ class TridentGraphModule:
                 else_block: ir.Block | None = guard_if.else_block
                 assert else_block is not None
                 with ir.InsertionPoint(else_block):
-                    exception_type = ir.Type.parse("!tvm_ffi.exception", context=ctx)
+                    exception_type = ir.Type.parse(
+                        "!tvm_ffi.exception", context=self.ctx
+                    )
                     exception = tvm_ffi_d.exception(exception_type, "GuardMatch")
                     error_value = tvm_ffi_d.cast(wrapper_result_type, exception)
                     scf.yield_([error_value])
@@ -569,7 +327,10 @@ class TridentGraphModule:
                 with ir.InsertionPoint.after(guard_if.operation):
                     tvm_ffi_d.return_(guard_if.results)
 
-        return module
+        self._sub_modules.append(module)
+        self.executor = self.stub_compile()
+        gc.collect()
+        return warmup_result
 
     # ------------------------------------------------------------------ #
     # Internal: module merging

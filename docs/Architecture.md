@@ -101,28 +101,27 @@ Each `compile(*args, **kwargs)` produces a new sub-module with these properties:
 - Guards exported by Dynamo are converted to semantic check IR in the `tvm_ffi.func` body.
 - `torch._dynamo.reset()` is called after each FX import to release tracing resources.
 
-### `tvm_ffi.func` signature reconstruction via `gm._in_spec`
+### `tvm_ffi.func` input reconstruction
 
 The `tvm_ffi.func` signature mirrors the *Python* function signature (one SSA
-argument per parameter; container parameters typed `!torch.any`), reconstructed
-from the `_in_spec` TreeSpec stored on the GraphModule returned by
-`torch._dynamo.export`.  This keeps `num_args` (as seen by the Python kwargs
-wrapper) equal to the number of SSA arguments, so tuple/list/dict parameters no
-longer overrun the FFI argument array.
+argument per parameter; container parameters typed `!tvm_ffi.array`). This
+keeps `num_args` (as seen by the Python kwargs wrapper) equal to the number of
+SSA arguments, so tuple/list parameters do not overrun the FFI argument array.
 
-- `backend.py::_build_sub_module` walks `gm._in_spec` (the pytree spec of
-  `(args, kwargs)`) in a single recursion: each node yields its SSA type (leaf
-  -> the flat type from `main_{i}`'s argument list; container -> `!torch.any`)
-  plus unpack and guard-source resolver closures. The resolver lets guard
-  builders address both top-level parameters and integer-indexed container
-  elements.
-- Container parameters are destructured in the `tvm_ffi.func` body with
-  torch-mlir's standard `torch.prim.ListUnpack` op (one op per container
-  node, recursively for nested containers), which yields the flattened leaf
-  order expected by `main_{i}`.  `torch.prim.ListUnpack` is lowered in
-  TVMFFIToLLVM to runtime `ffi.ArrayGetItem` calls — no new dialect op is
-  needed (the op is the inverse of the already-lowered
-  `torch.prim.ListConstruct`).
+- `input.py::InputTableBuilder` combines `ExportedProgram.graph_signature`
+  with `ExportedProgram.call_spec.in_spec`. It records static
+  `InputNodeBuilder` recipes, exported input names, and wrapper types without
+  retaining IR values.
+- A builder binds the operands of each IR region to a fresh `InputTable` whose
+  nodes own their child trees and lazy region-local value builders. Guards
+  resolve sources with `table[path]`; the table recursively emits one
+  `tvm_ffi.array.get_item` for each container level on that path and does not
+  cache materialized values.
+- The guarded success region uses its own table to recursively flatten all
+  exported inputs in graph-signature order. The backend pairs those values
+  with the input specs and selects the operands consumed by `main_{i}`. Values
+  are not cached across regions, so every extracted SSA value is defined in
+  the region where it is consumed.
 - `ffi.ArrayGetItem` returns a *borrowed* reference (the container argument is
   kept alive by the FFI call context for the duration of the call), so no
   ref-counting is emitted for extracted elements.
@@ -131,8 +130,8 @@ longer overrun the FFI argument array.
   work), and
   keyword arguments must be passed in signature order (the flat tree order must
   match the signature parameter order).
-- `gm._in_spec` is currently required. Older Dynamo versions or export paths
-  that do not attach it are rejected during signature reconstruction.
+- `ExportedProgram.call_spec.in_spec` is required. Export paths that do not
+  provide it are rejected during signature reconstruction.
 
 When runtime inputs change and guards no longer match:
 

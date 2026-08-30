@@ -27,6 +27,7 @@ from trident.guards.codes import (
     TensorRankCode,
     TypeIdCode,
 )
+from trident.guards.collection import Guards
 from trident.guards.kinds import (
     ConstantMatchGuard,
     DuplicateInputGuard,
@@ -37,7 +38,8 @@ from trident.guards.kinds import (
     TensorMatchGuard,
     TypeMatchGuard,
 )
-from trident.guards.local import Local, SourceTree
+from trident.guards.local import Local
+from trident.input import InputTable
 
 
 @dataclass(frozen=True)
@@ -56,7 +58,7 @@ class FirstMatchingCode(GuardCode):
     def parse(cls, text: str, source: Local | None) -> FirstMatchingCode:
         return cls(text, source)
 
-    def build(self, tree: SourceTree, context: ir.Context) -> ir.Value:
+    def build(self, tree: InputTable, context: ir.Context) -> ir.Value:
         return super().build(tree, context)
 
 
@@ -70,6 +72,44 @@ class AmbiguousTestGuard(Guard):
 
 
 class GuardParserTest(TridentTestCase):
+    def test_build_creates_a_table_for_each_guard_region(self) -> None:
+        guards = Guards(
+            [
+                FakeGuard(
+                    "TYPE_MATCH",
+                    ["___check_type_id(L['x'], 1), type=<class 'torch.Tensor'>"],
+                    "L['x']",
+                ),
+                FakeGuard(
+                    "TYPE_MATCH",
+                    ["___check_type_id(L['y'], 2), type=<class 'torch.Tensor'>"],
+                    "L['y']",
+                ),
+            ]
+        )
+        table_count = 0
+
+        def table_factory() -> InputTable:
+            nonlocal table_count
+            table_count += 1
+            return None  # type: ignore[return-value]
+
+        context = ir.Context()
+        register_all_dialects(context)
+        with context, ir.Location.unknown(context):
+            module = ir.Module.create()
+            with ir.InsertionPoint(module.body):
+                function = func.FuncOp(
+                    "guard_tables",
+                    ir.FunctionType.get([], []),
+                )
+                block = function.add_entry_block()
+                with ir.InsertionPoint(block):
+                    guards.build(table_factory, context)
+                    func.ReturnOp([])
+
+        self.assertEqual(table_count, 2)
+
     def assert_parsed(
         self,
         guard: FakeGuard,

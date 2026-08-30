@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Final
 
 import torch._guards
@@ -11,10 +11,10 @@ from torch._guards import GuardSource
 
 from trident.core import ir
 from trident.core.dialects import arithext
+from trident.input import InputTable
 
 from .codes import GuardCode
 from .kinds import Guard
-from .local import SourceTree
 
 _CAPTURE_GUARD_SOURCES: Final[frozenset[GuardSource]] = frozenset(
     {
@@ -36,7 +36,7 @@ class Guards:
 
     def build(
         self,
-        tree: SourceTree,
+        table_factory: Callable[[], InputTable],
         context: ir.Context,
     ) -> ir.Value:
         codes: list[GuardCode] = []
@@ -69,6 +69,7 @@ class Guards:
         for region, code in zip(and_then.regions_, ordered):
             block = ir.Block.create_at_start(region, [])
             with ir.InsertionPoint(block):
-                result = code.build(tree, context)
+                table = table_factory()
+                result = code.build(table, context)
                 arithext.and_then_yield(result)
         return and_then.result

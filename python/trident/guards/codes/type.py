@@ -8,8 +8,9 @@ from typing import Self
 
 from trident.core import ir
 from trident.core.dialects import arith
+from trident.input import InputTable
 
-from ..local import Local, SourceTree
+from ..local import Local
 from .base import GuardCode
 
 
@@ -34,7 +35,7 @@ class TypeIdCode(GuardCode):
         )
         return cls(text, source) if match is not None else None
 
-    def build(self, tree: SourceTree, context: ir.Context) -> ir.Value:
+    def build(self, tree: InputTable, context: ir.Context) -> ir.Value:
         """The ABI type tag and Torch signature cover this guard."""
         i1 = ir.IntegerType.get_signless(1, context)
         return arith.constant(i1, ir.IntegerAttr.get(i1, 1))

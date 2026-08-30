@@ -8,8 +8,9 @@ from collections.abc import Hashable
 from typing import ClassVar, Final, Self
 
 from trident.core import ir
+from trident.input import InputTable
 
-from ..local import Local, SourceTree
+from ..local import Local
 
 
 class GuardCode:
@@ -42,7 +43,7 @@ class GuardCode:
     @abstractmethod
     def build(
         self,
-        tree: SourceTree,
+        tree: InputTable,
         context: ir.Context,
     ) -> ir.Value:
         raise NotImplementedError(

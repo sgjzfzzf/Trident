@@ -6,15 +6,12 @@ from __future__ import annotations
 import ast
 import re
 from collections.abc import Sequence
-from typing import Protocol
+from typing import TypeAlias
 
 from trident.core import ir
+from trident.input import InputTable
 
-Subscript = int | str
-
-
-class SourceTree(Protocol):
-    def __getitem__(self, subscripts: Sequence[Subscript]) -> ir.Value | None: ...
+Subscript: TypeAlias = int | str
 
 
 class Local:
@@ -39,8 +36,7 @@ class Local:
         return self._subscripts
 
     def __eq__(self, other: object) -> bool:
-        assert isinstance(other, Local)
-        return self._subscripts == other._subscripts
+        return isinstance(other, Local) and self._subscripts == other._subscripts
 
     def __hash__(self) -> int:
         return hash(self._subscripts)
@@ -96,5 +92,5 @@ class Local:
     def regex(self) -> str:
         return re.escape(self.literal)
 
-    def resolve(self, tree: SourceTree) -> ir.Value | None:
+    def resolve(self, tree: InputTable) -> ir.Value | None:
         return tree[self._subscripts]

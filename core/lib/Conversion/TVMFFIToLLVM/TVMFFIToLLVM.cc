@@ -46,6 +46,7 @@
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
+#include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
 #include <torch/headeronly/macros/Export.h>
 #include <tvm/ffi/c_api.h>
 
@@ -394,6 +395,77 @@ public:
     // an identity after conversion; the source conversion has already
     // materialized the correct type tag and payload.
     rewriter.replaceOp(op, adaptor.getValue());
+    return mlir::success();
+  }
+};
+
+class ConvertTensorCopyOp
+    : public mlir::OpConversionPattern<tvm_ffi::TensorCopyOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(tvm_ffi::TensorCopyOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::ModuleOp module = op->getParentOfType<mlir::ModuleOp>();
+    if (!module) {
+      return op.emitError("failed to get parent ModuleOp");
+    }
+    mlir::Location const loc = op.getLoc();
+    mlir::LLVM::LLVMStructType const anyTy =
+        tvm_ffi::TVMFFIABIType::getLLVMType(rewriter.getContext());
+    mlir::LLVM::LLVMPointerType const ptrTy =
+        mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
+    mlir::Value const one =
+        mlir::LLVM::ConstantOp::create(rewriter, loc, rewriter.getI64Type(), 1);
+    mlir::Value const destinationSlot =
+        mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, anyTy, one);
+    mlir::Value const sourceSlot =
+        mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, anyTy, one);
+    mlir::LLVM::StoreOp::create(rewriter, loc, adaptor.getDestination(),
+                                destinationSlot);
+    mlir::LLVM::StoreOp::create(rewriter, loc, adaptor.getSource(), sourceSlot);
+    if (mlir::failed(conversion::utils::callTVMFFIGlobalFunction(
+            rewriter, loc, module, "trident.runtime.tensor_copy_",
+            {destinationSlot, sourceSlot}))) {
+      return op.emitError("failed to call TVM FFI tensor copy helper");
+    }
+    rewriter.eraseOp(op);
+    return mlir::success();
+  }
+};
+
+class ConvertTensorCloneOp
+    : public mlir::OpConversionPattern<tvm_ffi::TensorCloneOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(tvm_ffi::TensorCloneOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::ModuleOp module = op->getParentOfType<mlir::ModuleOp>();
+    if (!module) {
+      return op.emitError("failed to get parent ModuleOp");
+    }
+    mlir::Location const loc = op.getLoc();
+    mlir::LLVM::LLVMStructType const anyTy =
+        tvm_ffi::TVMFFIABIType::getLLVMType(rewriter.getContext());
+    mlir::LLVM::LLVMPointerType const ptrTy =
+        mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
+    mlir::Value const one =
+        mlir::LLVM::ConstantOp::create(rewriter, loc, rewriter.getI64Type(), 1);
+    mlir::Value const sourceSlot =
+        mlir::LLVM::AllocaOp::create(rewriter, loc, ptrTy, anyTy, one);
+    mlir::LLVM::StoreOp::create(rewriter, loc, adaptor.getTensor(), sourceSlot);
+    mlir::FailureOr<mlir::Value> resultSlot =
+        conversion::utils::callTVMFFIGlobalFunction(
+            rewriter, loc, module, "trident.runtime.tensor_clone",
+            {sourceSlot});
+    if (mlir::failed(resultSlot)) {
+      return op.emitError("failed to call TVM FFI tensor clone helper");
+    }
+    rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(op, anyTy,
+                                                    resultSlot.value());
     return mlir::success();
   }
 };
@@ -980,6 +1052,8 @@ public:
         [&](mlir::func::FuncOp op) {
           return typeConverter.isSignatureLegal(op.getFunctionType());
         });
+    target.markOpRecursivelyLegal<mlir::func::FuncOp>(
+        [](mlir::func::FuncOp) { return false; });
     target.addDynamicallyLegalOp<mlir::func::CallOp>(
         [&](mlir::func::CallOp op) {
           return llvm::all_of(op.getOperandTypes(),
@@ -999,6 +1073,7 @@ public:
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
       signalPassFailure();
+      return;
     }
   }
 };
@@ -1026,11 +1101,15 @@ void populateTVMFFIToLLVMConversionPatterns(
       return std::nullopt;
     }
   });
+  typeConverter.addConversion(
+      [](mlir::torch::Torch::BaseTensorType type) -> mlir::Type {
+        return tvm_ffi::TVMFFIABIType::getLLVMType(type.getContext());
+      });
   patterns.add<ConvertArrayLengthOp, ConvertCallOp, ConvertTVMFFICastOp,
                ConvertConstantOp, ConvertEqOp, ConvertExceptionOp,
                ConvertFunctionCallOp, ConvertFunctionGetGlobalOp, ConvertGetOp,
-               ConvertTensorDeviceOp, ConvertTensorDimOp, ConvertTensorDTypeOp,
-               ConvertTensorLiteralOp,
+               ConvertTensorCloneOp, ConvertTensorCopyOp, ConvertTensorDeviceOp,
+               ConvertTensorDimOp, ConvertTensorDTypeOp, ConvertTensorLiteralOp,
                ConvertTensorIndexedMetadataOp<tvm_ffi::TensorSizeOp, 4>,
                ConvertTensorIndexedMetadataOp<tvm_ffi::TensorStrideOp, 5>,
                ConvertTensorStorageOffsetOp>(typeConverter,

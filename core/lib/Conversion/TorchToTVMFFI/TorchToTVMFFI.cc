@@ -355,6 +355,45 @@ public:
   }
 };
 
+/// Lower the mutation marker to an explicit TVM FFI in-place copy operation.
+class ConvertTorchOverwriteTensorContents final
+    : public mlir::OpConversionPattern<
+          mlir::torch::Torch::OverwriteTensorContentsOp> {
+public:
+  ConvertTorchOverwriteTensorContents(
+      const TorchFFITypeConverter &typeConverter, mlir::MLIRContext *context)
+      : mlir::OpConversionPattern<
+            mlir::torch::Torch::OverwriteTensorContentsOp>(typeConverter,
+                                                           context, 100) {}
+
+  mlir::LogicalResult
+  matchAndRewrite(mlir::torch::Torch::OverwriteTensorContentsOp op,
+                  OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<tvm_ffi::TensorCopyOp>(
+        op, adaptor.getOverwritten(), adaptor.getValue());
+    return mlir::success();
+  }
+};
+
+/// Lower a value-semantic copy to an explicit TVM FFI tensor clone.  The
+/// operation owns a newly allocated storage and preserves the input layout.
+class ConvertTorchCopyToValueTensor final
+    : public mlir::OpConversionPattern<
+          mlir::torch::Torch::CopyToValueTensorOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(mlir::torch::Torch::CopyToValueTensorOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<tvm_ffi::TensorCloneOp>(
+        op, tvm_ffi::TensorType::get(rewriter.getContext()),
+        adaptor.getOperand());
+    return mlir::success();
+  }
+};
+
 class ConvertTorchValueTensorLiteralOp final
     : public mlir::OpConversionPattern<
           mlir::torch::Torch::ValueTensorLiteralOp> {
@@ -482,6 +521,10 @@ class ConvertTorchToTVMFFIPass final
     conversionPatterns.add<ConvertTorchExtConvert>(typeConverter,
                                                    &getContext());
     conversionPatterns.add<ConvertTorchExtGet>(typeConverter, &getContext());
+    conversionPatterns.add<ConvertTorchOverwriteTensorContents>(typeConverter,
+                                                                &getContext());
+    conversionPatterns.add<ConvertTorchCopyToValueTensor>(typeConverter,
+                                                          &getContext());
     conversionPatterns.add<ConvertTorchValueTensorLiteralOp>(typeConverter,
                                                              &getContext());
     conversionPatterns
@@ -510,11 +553,14 @@ class ConvertTorchToTVMFFIPass final
         tvm_ffi::ArrayCreateOp, tvm_ffi::CallOp, tvm_ffi::ConstantOp,
         tvm_ffi::ExceptionOp, tvm_ffi::FunctionCallOp,
         tvm_ffi::FunctionGetGlobalOp, tvm_ffi::GetOp, tvm_ffi::ObjectDecRefOp,
-        tvm_ffi::ObjectIncRefOp, tvm_ffi::TensorLiteralOp>();
+        tvm_ffi::ObjectIncRefOp, tvm_ffi::TensorCloneOp, tvm_ffi::TensorCopyOp,
+        tvm_ffi::TensorLiteralOp>();
     conversionTarget.addDynamicallyLegalOp<mlir::func::FuncOp>(
         [&](mlir::func::FuncOp func) {
           return typeConverter.isSignatureLegal(func.getFunctionType());
         });
+    conversionTarget.markOpRecursivelyLegal<mlir::func::FuncOp>(
+        [](mlir::func::FuncOp) { return false; });
     conversionTarget.addDynamicallyLegalOp<tvm_ffi::FuncOp>(
         [&](tvm_ffi::FuncOp func) {
           return typeConverter.isSignatureLegal(func.getFunctionType());
@@ -549,7 +595,9 @@ class ConvertTorchToTVMFFIPass final
         [](mlir::torch::Torch::OperatorOp op) {
           return !op.getName().starts_with("torch.aten.");
         });
-    conversionTarget.addIllegalOp<mlir::torch::Torch::ValueTensorLiteralOp>();
+    conversionTarget.addIllegalOp<mlir::torch::Torch::CopyToValueTensorOp,
+                                  mlir::torch::Torch::OverwriteTensorContentsOp,
+                                  mlir::torch::Torch::ValueTensorLiteralOp>();
     conversionTarget.addDynamicallyLegalOp<torchext::CastOp,
                                            torchext::TridentKernelLaunchOp>(
         [&](mlir::Operation *op) { return typeConverter.isLegal(op); });

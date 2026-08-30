@@ -229,6 +229,22 @@ def TVMFFI_TensorLiteralOp
   let hasVerifier = 1;
 }
 
+def TVMFFI_TensorCloneOp
+    : TVMFFI_Op<"tensor.clone", [TVMFFI_ObjectOwnershipOpInterface]> {
+  let summary = "Create an independent tensor copy preserving the layout";
+  let arguments = (ins TVMFFI_TensorType:$tensor);
+  let results = (outs TVMFFI_TensorType:$result);
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor) `->` type($result)";
+}
+
+def TVMFFI_TensorCopyOp
+    : TVMFFI_Op<"tensor.copy_", []> {
+  let summary = "Copy tensor contents into an existing tensor in place";
+  let arguments = (ins TVMFFI_TensorType:$destination,
+                       TVMFFI_TensorType:$source);
+  let assemblyFormat = "$destination `,` $source attr-dict `:` type($destination)";
+}
+
 def TVMFFI_TensorDimOp : TVMFFI_Op<"tensor.dim", [Pure]> {
   let summary = "Read the rank of a runtime tensor";
   let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);

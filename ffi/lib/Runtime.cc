@@ -5,6 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <ATen/DLConvertor.h>
+#include <ATen/Functions.h>
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
@@ -136,7 +138,22 @@ TVM_FFI_STATIC_INIT_BLOCK() {
                }
              };
              return tvm::ffi::Tensor::FromDLPack(managed);
-           });
+           })
+      .def("trident.runtime.tensor_clone",
+           [](tvm::ffi::Tensor source) -> tvm::ffi::Tensor {
+             at::Tensor source_tensor = at::fromDLPack(source.ToDLPack());
+             at::Tensor result = at::empty_strided(source_tensor.sizes(),
+                                                   source_tensor.strides(),
+                                                   source_tensor.options());
+             result.copy_(source_tensor);
+             return tvm::ffi::Tensor::FromDLPack(at::toDLPack(result));
+           })
+      .def("trident.runtime.tensor_copy_", [](tvm::ffi::Tensor destination,
+                                              tvm::ffi::Tensor source) {
+        at::Tensor destination_tensor = at::fromDLPack(destination.ToDLPack());
+        at::Tensor source_tensor = at::fromDLPack(source.ToDLPack());
+        destination_tensor.copy_(source_tensor);
+      });
 }
 
 #undef TRIDENT_TVMFFI_DTYPE_PAIR

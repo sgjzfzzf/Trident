@@ -15,6 +15,7 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include <ATen/dlpack.h>
 #include <c10/core/Device.h>
 #include <dlpack/dlpack.h>
@@ -46,7 +47,7 @@
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
-#include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
+#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 #include <torch/headeronly/macros/Export.h>
 #include <tvm/ffi/c_api.h>
 
@@ -590,11 +591,113 @@ public:
   mlir::LogicalResult
   matchAndRewrite(tvm_ffi::GetOp op, tvm_ffi::GetOpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::Location const loc = op.getLoc();
+    mlir::MLIRContext *ctx = rewriter.getContext();
+    mlir::Type const operandType = op.getOperand().getType();
+    mlir::Type const resultType = op.getResult().getType();
+
     mlir::Value const payload = mlir::LLVM::ExtractValueOp::create(
-        rewriter, op.getLoc(), adaptor.getOperand(),
+        rewriter, loc, rewriter.getI64Type(), adaptor.getOperand(),
         llvm::ArrayRef<int64_t>{2});
-    rewriter.replaceOpWithNewOp<mlir::LLVM::TruncOp>(op, rewriter.getI1Type(),
-                                                     payload);
+
+    if (mlir::isa<tvm_ffi::BoolType>(operandType) &&
+        resultType.isSignlessInteger(1)) {
+      rewriter.replaceOpWithNewOp<mlir::LLVM::TruncOp>(op, resultType, payload);
+    } else if (mlir::isa<tvm_ffi::IntType>(operandType) &&
+               mlir::isa<mlir::IntegerType>(resultType)) {
+      mlir::IntegerType const resultIntegerType =
+          mlir::cast<mlir::IntegerType>(resultType);
+      mlir::Value value = payload;
+      if (resultIntegerType.getWidth() < 64) {
+        mlir::IntegerType const truncType =
+            mlir::IntegerType::get(ctx, resultIntegerType.getWidth());
+        value = mlir::LLVM::TruncOp::create(rewriter, loc, truncType, value);
+      }
+      if (resultIntegerType.isSignless()) {
+        rewriter.replaceOp(op, value);
+      } else {
+        rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+            op, resultType, value);
+      }
+    } else if (mlir::isa<tvm_ffi::FloatType>(operandType) &&
+               mlir::isa<mlir::FloatType>(resultType)) {
+      mlir::Value const value = mlir::LLVM::BitcastOp::create(
+          rewriter, loc, rewriter.getF64Type(), payload);
+      if (resultType.isF64()) {
+        rewriter.replaceOp(op, value);
+      } else {
+        rewriter.replaceOpWithNewOp<mlir::LLVM::FPTruncOp>(op, resultType,
+                                                           value);
+      }
+    } else if (mlir::isa<tvm_ffi::TensorType>(operandType) &&
+               mlir::isa<mlir::LLVM::LLVMPointerType>(resultType)) {
+      mlir::IntegerType const i8Ty = rewriter.getI8Type();
+      mlir::LLVM::LLVMPointerType const ptrTy =
+          mlir::LLVM::LLVMPointerType::get(ctx);
+      mlir::LLVM::LLVMStructType const dlTensorTy =
+          conversion::utils::getDLTensorType(ctx);
+      mlir::Value const handle =
+          mlir::LLVM::IntToPtrOp::create(rewriter, loc, ptrTy, payload);
+      mlir::Value const dlTensorPtr = mlir::LLVM::GEPOp::create(
+          rewriter, loc, ptrTy, i8Ty, handle,
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{sizeof(TVMFFIObject)});
+      mlir::Value const dataGep = mlir::LLVM::GEPOp::create(
+          rewriter, loc, ptrTy, dlTensorTy, dlTensorPtr,
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0});
+      rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(op, resultType, dataGep);
+    } else {
+      return op.emitOpError("unsupported get from ")
+             << operandType << " to " << resultType;
+    }
+    return mlir::success();
+  }
+};
+
+class ConvertTorchExtGetOp : public mlir::OpConversionPattern<torchext::GetOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(torchext::GetOp op, torchext::GetOpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::Location const loc = op.getLoc();
+    mlir::MLIRContext *ctx = rewriter.getContext();
+    mlir::Type const operandType = op.getOperand().getType();
+    mlir::Type const resultType = op.getResult().getType();
+    mlir::Value const payload = mlir::LLVM::ExtractValueOp::create(
+        rewriter, loc, rewriter.getI64Type(), adaptor.getOperand(),
+        llvm::ArrayRef<int64_t>{2});
+
+    if (mlir::isa<tvm_ffi::BoolType>(operandType) &&
+        resultType.isSignlessInteger(1)) {
+      rewriter.replaceOpWithNewOp<mlir::LLVM::TruncOp>(op, resultType, payload);
+    } else if (mlir::isa<tvm_ffi::IntType>(operandType) &&
+               resultType.isSignlessInteger(64)) {
+      rewriter.replaceOp(op, payload);
+    } else if (mlir::isa<tvm_ffi::FloatType>(operandType) &&
+               resultType.isF64()) {
+      rewriter.replaceOpWithNewOp<mlir::LLVM::BitcastOp>(op, resultType,
+                                                         payload);
+    } else if (mlir::isa<tvm_ffi::TensorType>(operandType) &&
+               mlir::isa<mlir::LLVM::LLVMPointerType>(resultType)) {
+      mlir::IntegerType const i8Ty = rewriter.getI8Type();
+      mlir::LLVM::LLVMPointerType const ptrTy =
+          mlir::LLVM::LLVMPointerType::get(ctx);
+      mlir::LLVM::LLVMStructType const dlTensorTy =
+          conversion::utils::getDLTensorType(ctx);
+      mlir::Value const handle =
+          mlir::LLVM::IntToPtrOp::create(rewriter, loc, ptrTy, payload);
+      mlir::Value const dlTensorPtr = mlir::LLVM::GEPOp::create(
+          rewriter, loc, ptrTy, i8Ty, handle,
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{sizeof(TVMFFIObject)});
+      mlir::Value const dataGep = mlir::LLVM::GEPOp::create(
+          rewriter, loc, ptrTy, dlTensorTy, dlTensorPtr,
+          llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0});
+      rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(op, resultType, dataGep);
+    } else {
+      return op.emitOpError("unsupported get from ")
+             << operandType << " to " << resultType;
+    }
     return mlir::success();
   }
 };
@@ -1105,11 +1208,12 @@ void populateTVMFFIToLLVMConversionPatterns(
       [](mlir::torch::Torch::BaseTensorType type) -> mlir::Type {
         return tvm_ffi::TVMFFIABIType::getLLVMType(type.getContext());
       });
-  patterns.add<ConvertArrayLengthOp, ConvertCallOp, ConvertTVMFFICastOp,
-               ConvertConstantOp, ConvertEqOp, ConvertExceptionOp,
-               ConvertFunctionCallOp, ConvertFunctionGetGlobalOp, ConvertGetOp,
-               ConvertTensorCloneOp, ConvertTensorCopyOp, ConvertTensorDeviceOp,
-               ConvertTensorDimOp, ConvertTensorDTypeOp, ConvertTensorLiteralOp,
+  patterns.add<ConvertArrayLengthOp, ConvertCallOp, ConvertTorchExtGetOp,
+               ConvertTVMFFICastOp, ConvertConstantOp, ConvertEqOp,
+               ConvertExceptionOp, ConvertFunctionCallOp,
+               ConvertFunctionGetGlobalOp, ConvertGetOp, ConvertTensorCloneOp,
+               ConvertTensorCopyOp, ConvertTensorDeviceOp, ConvertTensorDimOp,
+               ConvertTensorDTypeOp, ConvertTensorLiteralOp,
                ConvertTensorIndexedMetadataOp<tvm_ffi::TensorSizeOp, 4>,
                ConvertTensorIndexedMetadataOp<tvm_ffi::TensorStrideOp, 5>,
                ConvertTensorStorageOffsetOp>(typeConverter,
@@ -1120,6 +1224,7 @@ void populateTVMFFIToLLVMConversionPatterns(
                             &conversion::utils::getOrCreateTVMFFIObjectIncRef>>(
       typeConverter, patterns.getContext());
   target.addIllegalDialect<tvm_ffi::TVMFFIDialect>();
+  target.addIllegalOp<torchext::GetOp>();
 }
 
 void registerConvertTVMFFIToLLVMInterface(mlir::DialectRegistry &registry) {

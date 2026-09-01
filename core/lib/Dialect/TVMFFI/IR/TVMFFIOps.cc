@@ -10,6 +10,7 @@
 
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/StringRef.h>
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypeInterfaces.h>
@@ -121,6 +122,36 @@ mlir::LogicalResult ArrayGetItemOp::verify() {
   }
   if (getResult().getType() != *element) {
     return emitOpError("result type must be ") << *element;
+  }
+  return mlir::success();
+}
+
+mlir::LogicalResult GetOp::verify() {
+  mlir::Type const operandType = getOperand().getType();
+  mlir::Type const resultType = getResult().getType();
+  if (mlir::isa<BoolType>(operandType) && !resultType.isSignlessInteger(1)) {
+    return emitOpError("a bool operand must produce i1");
+  }
+  if (mlir::isa<IntType>(operandType) &&
+      (!mlir::isa<mlir::IntegerType>(resultType) ||
+       resultType.getIntOrFloatBitWidth() > 64)) {
+    return emitOpError("an int operand must produce an integer from i1 to i64");
+  }
+  if (mlir::isa<FloatType>(operandType) &&
+      (!mlir::isa<mlir::FloatType>(resultType) ||
+       resultType.getIntOrFloatBitWidth() > 64)) {
+    return emitOpError(
+        "a float operand must produce a float no wider than f64");
+  }
+  if (mlir::isa<TensorType>(operandType) &&
+      !mlir::isa<mlir::LLVM::LLVMPointerType>(resultType)) {
+    return emitOpError("a tensor operand must produce an LLVM pointer");
+  }
+  if (mlir::isa<AnyType>(operandType) &&
+      !mlir::isa<mlir::IntegerType, mlir::FloatType,
+                 mlir::LLVM::LLVMPointerType>(resultType)) {
+    return emitOpError(
+        "an any operand must produce a native scalar or pointer");
   }
   return mlir::success();
 }

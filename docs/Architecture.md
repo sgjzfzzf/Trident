@@ -82,11 +82,13 @@ Trident exposes two entry points (`python/trident/compile.py`):
   resulting callable. No recompilation on guard mismatch — the returned function
   always uses the original specialization.
 
-- **`trident.jit(fn)`** — Returns a `TridentGraphModule` directly. Supports
-  incremental specialization: when the dispatcher returns an `Exception` ObjectRef
-  (indicating all specializations failed guard checks), the module automatically
-  recompiles for new input shapes/dtypes/devices (up to `max_compiles` times,
-  default 2). Supports both positional and keyword arguments via
+- **`trident.jit(fn)`** — Returns a `TridentGraphModule` directly. Dynamic shape
+  tracing is enabled by default and can be disabled with
+  `@trident.jit(dynamic=False)`. Supports incremental specialization:
+  when the dispatcher returns an `Exception` ObjectRef (indicating all
+  specializations failed guard checks), the module automatically recompiles for
+  new input shapes/dtypes/devices (up to `max_compiles` times, default 2).
+  Supports both positional and keyword arguments via
   `tvm_ffi.utils.kwargs_wrapper`.
 
 Use `compile` for one-shot compilation when inputs are known and stable.
@@ -152,12 +154,12 @@ matches are ignored instead of relying on parser order.
 
 Ordinary local sources are parsed from `Guard.name` with Python's AST into a
 root argument plus integer-index path. Code classes use source-aware regular
-expressions except for `ExpressionCode`, which uses an AST because shape
-expressions can combine multiple sources, arithmetic, and comparisons. Each
-parsed Code object owns its IR construction logic together with its deduplication
-key, execution phase, and structural depth. The collection orders the Code
-objects and invokes them in `arithext.and_then` regions so they short-circuit
-before unsafe tensor or container metadata access:
+expressions except for `ASTCode`, which uses an AST because shape expressions
+can combine multiple sources, arithmetic, and comparisons. Each parsed Code
+object produces a delayed builder carrying its deduplication key, execution
+phase, and structural depth. The collection orders the builders and invokes
+them in `arithext.and_then` regions so they short-circuit before unsafe tensor
+or container metadata access:
 
 | Dynamo create function | Selected Code classes |
 |---|---|
@@ -240,7 +242,7 @@ launches. Its lowering is split across two passes in `trident-lowering-pipeline`
 
 | Op | Lowered By | Purpose |
 |---|---|---|
-| `torchext.cast` | `ConvertTorchExtToGPU` | Converts `!torch.float` / `!torch.int` scalars to native MLIR types (f32/f64/i32/i64) for typed scalar passing to Triton kernels. Implements `CastOpInterface` for standard MLIR cast semantics. |
+| `torchext.get` | `ConvertTorchToTVMFFI` | Converts Torch/TVM FFI scalar values to native MLIR types through `tvm_ffi.get` for typed scalar passing to Triton kernels. |
 | `torchext.trident_kernel_launch` | `ConvertTorchExtToGPU` | Launches Triton kernels with explicit grid/block dimensions (I64); unpacks tensor/scalar args from TVMFFIAny into kernel parameters and emits `gpu.launch_func`. Uses TVMFFI stream API for CUDA stream management. |
 
 Reference counting for Torch objects (tensors, lists, tuples, optionals)

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s --convert-torch-to-tvm-ffi --convert-tvm-ffi-to-func --convert-tvm-ffi-to-llvm --convert-torchext-to-gpu -split-input-file | FileCheck %s
+// RUN: trident-core-opt %s --convert-torch-to-tvm-ffi --convert-torchext-to-gpu --convert-tvm-ffi-to-func --convert-tvm-ffi-to-llvm -split-input-file | FileCheck %s
 
 // CHECK-LABEL: module attributes {gpu.container_module}
 // CHECK:      llvm.func @TVMFFIEnvGetStream(i32, i32) -> !llvm.ptr
@@ -60,10 +60,9 @@ module attributes { gpu.container_module } {
     %shmem = llvm.mlir.constant(16384 : i32) : i32
 
     torchext.trident_kernel_launch @kernel::@entry
-      blocks in (%c32, %c16, %c1) threads in (%c128, %c1, %c1)
+      blocks in (%c32, %c16, %c1) : i64 threads in (%c128, %c1, %c1)
       dynamic_shared_memory_size %shmem
       args (%tensor, %scalar : !torch.vtensor<[4],f32>, !torch.int)
     func.return
   }
 }
-

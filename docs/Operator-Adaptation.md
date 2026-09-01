@@ -220,7 +220,7 @@ kernel launches. Its lowering is split across two passes:
 
 | Pass | Purpose |
 |---|---|
-| `ConvertTorchExtToGPU` | Lowers `torchext.cast` (Torch scalar → native MLIR types, implements `CastOpInterface`) and `torchext.trident_kernel_launch` (Triton kernel → `gpu.launch_func` with I64 grid/block dimensions, uses TVMFFI stream API) |
+| `ConvertTorchExtToGPU` | Lowers `torchext.trident_kernel_launch` (Triton kernel → `gpu.launch_func` with I64 grid/block dimensions, uses TVMFFI stream API); scalar `torchext.get` lowering is handled by `ConvertTorchToTVMFFI` and produces `tvm_ffi.get` |
 | `ConvertTorchExtToLLVM` | Lowers any remaining TorchExt ops to LLVM |
 
 Reference counting for Torch objects is handled inside `ConvertTorchToTVMFFI`

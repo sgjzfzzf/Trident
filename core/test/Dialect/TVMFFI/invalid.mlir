@@ -59,8 +59,8 @@ tvm_ffi.func @invalid_union_return()
 }
 // -----
 
-func.func @get_requires_bool(%arg: !tvm_ffi.int) {
-  // expected-error@+1 {{'tvm_ffi.get' op operand #0 must be , but got '!tvm_ffi.int'}}
-  %value = "tvm_ffi.get"(%arg) : (!tvm_ffi.int) -> i1
+func.func @get_int_width(%arg: !tvm_ffi.int) {
+  // expected-error@+1 {{'tvm_ffi.get' op an int operand must produce an integer from i1 to i64}}
+  %value = "tvm_ffi.get"(%arg) : (!tvm_ffi.int) -> i128
   return
 }

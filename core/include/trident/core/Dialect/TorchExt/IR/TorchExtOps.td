@@ -22,14 +22,15 @@ include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.td"
 class TorchExt_Op<string mnemonic, list<Trait> traits = []>
     : Op<TorchExt_Dialect, mnemonic, traits>;
 
-def TorchExt_CastOperandType
+def TorchExt_GetOperandType
     : AnyTypeOf<
-          [Torch_FloatType, Torch_IntType, TVMFFI_FloatType, TVMFFI_IntType],
-          "Torch scalar accepted by torchext.cast">;
+          [Torch_BoolType, Torch_FloatType, Torch_IntType, TVMFFI_BoolType,
+           TVMFFI_FloatType, TVMFFI_IntType, TVMFFI_TensorType],
+          "Torch or TVM FFI value accepted by torchext.get">;
 
-def TorchExt_CastResultType
-    : AnyTypeOf<[AnyFloat, AnyInteger],
-                "Native scalar produced by torchext.cast">;
+def TorchExt_GetResultType
+    : AnyTypeOf<[AnyFloat, AnyInteger, LLVM_AnyPointer],
+                "Native value produced by torchext.get">;
 
 def TorchExt_KernelOperandType
     : AnyTypeOf<[
@@ -38,26 +39,29 @@ def TorchExt_KernelOperandType
     ],
                 "Operand accepted by a Trident kernel launch">;
 
-def TorchExt_CastOp
-    : TorchExt_Op<"cast", [Pure, DeclareOpInterfaceMethods<CastOpInterface>]> {
-  let summary = "Cast a Torch scalar (!torch.float or !torch.int) to a native "
-                "MLIR scalar type";
+def TorchExt_GetOp
+    : TorchExt_Op<"get", [Pure]> {
+  let summary = "Extract a native value from a Torch or TVM FFI value";
   let description = [{
-    Converts a `!torch.float` or `!torch.int` scalar value to a native MLIR
-    type (f32, f64, i32, or i64).  This is necessary when passing scalar
-    constants to external kernels (e.g. Triton) that expect a specific
-    bit-width rather than the generic torch scalar representation.
+    Extracts a `!torch.float`, `!torch.int`, or boolean scalar value to a
+    native MLIR type. This is necessary when passing scalar constants to
+    external kernels (e.g. Triton) that expect a specific bit-width rather
+    than the generic Torch or TVM FFI representation.
 
     Example:
     ```
-      %f32 = torchext.cast %f to f32 : !torch.float -> f32
-      %i32 = torchext.cast %i to i32 : !torch.int -> i32
+      %f32 = torchext.get %f to f32 : !torch.float -> f32
+      %i32 = torchext.get %i to i32 : !torch.int -> i32
     ```
   }];
 
-  let arguments = (ins TorchExt_CastOperandType:$operand);
-  let results = (outs TorchExt_CastResultType:$result);
+  let arguments = (ins TorchExt_GetOperandType:$operand);
+  let results = (outs TorchExt_GetResultType:$result);
   let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    static bool areGetCompatible(::mlir::TypeRange inputs,
+                                 ::mlir::TypeRange outputs);
+  }];
 
   let assemblyFormat = [{
     $operand attr-dict `:` type($operand) `->` type($result)
@@ -83,13 +87,6 @@ def TorchExt_ConvertOp
   }];
 }
 
-def TorchExt_GetOp : TorchExt_Op<"get", [Pure]> {
-  let summary = "Extract a native boolean from a Torch boolean";
-  let arguments = (ins Torch_BoolType:$operand);
-  let results = (outs I1:$result);
-  let assemblyFormat = "$operand attr-dict `:` type($operand) `->` type($result)";
-}
-
 def TorchExt_TridentKernelLaunchOp
     : TorchExt_Op<"trident_kernel_launch", [
   AttrSizedOperandSegments, AllTypesMatch<[
@@ -101,7 +98,7 @@ def TorchExt_TridentKernelLaunchOp
   let description = [{
     Models launching a Torch kernel symbol with explicit grid/block sizes.
     Kernel operands may be Torch-MLIR tensor types or native scalar types
-    (f32, f64, i32, i64) produced by `torchext.cast`.
+    (f32, f64, i32, i64) produced by `torchext.get`.
 
     Optionally supports cluster-level parallelism via `clusterSizeX`,
     `clusterSizeY`, and `clusterSizeZ` arguments. When present, the kernel
@@ -132,6 +129,7 @@ let extraClassDeclaration = [{
     $kernel
     (`clusters` `in` `(` $clusterSizeX^ `,` $clusterSizeY `,` $clusterSizeZ `)`)?
     `blocks` `in` `(` $gridSizeX `,` $gridSizeY `,` $gridSizeZ `)`
+    `:` type($gridSizeX)
     `threads` `in` `(` $blockSizeX `,` $blockSizeY `,` $blockSizeZ `)`
     (`dynamic_shared_memory_size` $dynamicSharedMemorySize^)?
     (`args` `(` $kernelOperands^ `:` type($kernelOperands) `)`)?

@@ -16,12 +16,11 @@ from torch._guards import GuardSource
 from trident.core import ir, register_all_dialects
 from trident.core.dialects import func
 from trident.guards.codes import (
+    ASTCode,
     ConstantCode,
     DynamoAttributeAbsentCode,
-    ExpressionCode,
     GuardCode,
     RequiresGradCode,
-    SequenceLengthCode,
     TensorDeviceCode,
     TensorDTypeCode,
     TensorRankCode,
@@ -119,7 +118,10 @@ class GuardParserTest(TridentTestCase):
         parsed = Guard.parse(guard)
         self.assertIsInstance(parsed, handler_type)
         assert parsed is not None
-        self.assertEqual(tuple(map(type, parsed.codes)), code_types)
+        self.assertEqual(
+            tuple(type(code.code) for code in parsed.codes),
+            code_types,
+        )
         return parsed
 
     def test_ignored_guards_accept_every_code_list_shape(self) -> None:
@@ -161,7 +163,7 @@ class GuardParserTest(TridentTestCase):
                     ConstantMatchGuard,
                     (ConstantCode,),
                 )
-                code = parsed.codes[0]
+                code = parsed.codes[0].code
                 assert isinstance(code, ConstantCode)
                 self.assertEqual(code.value, expected)
                 self.assertIs(type(code.value), type(expected))
@@ -174,21 +176,11 @@ class GuardParserTest(TridentTestCase):
                 "L['new_out']",
             ),
             DuplicateInputGuard,
-            (ExpressionCode,),
+            (ASTCode,),
         )
-        (code,) = parsed.codes
-        assert isinstance(code, ExpressionCode)
-
-    def test_duplicate_input_rejects_non_identity_expressions(self) -> None:
-        for text in (
-            "L['out_grad'] == L['new_out']",
-            "L['out_grad'] is not L['new_out']",
-            "L['out_grad'] is L['new_out'] or True",
-        ):
-            with self.subTest(text=text):
-                self.assertIsNone(
-                    Guard.parse(FakeGuard("DUPLICATE_INPUT", [text], "L['new_out']"))
-                )
+        (builder,) = parsed.codes
+        code = builder.code
+        assert isinstance(code, ASTCode)
 
     def test_constant_match_rejects_unsupported_literals(self) -> None:
         for literal in ("b'constant'", "[1, 2]", "{'value': 1}", "not valid"):
@@ -235,19 +227,15 @@ class GuardParserTest(TridentTestCase):
                     "___check_type_id(L['xs'], 123), type=<class 'list'>",
                     "len(L['xs']) == 2",
                 ],
-                (TypeIdCode, SequenceLengthCode),
-                2,
-                0,
+                (TypeIdCode, ASTCode),
             ),
             (
                 "L['xss'][1]",
                 ["not L['xss'][1]"],
-                (SequenceLengthCode,),
-                0,
-                1,
+                (ASTCode,),
             ),
         ]
-        for name, code_list, code_types, expected_length, expected_depth in cases:
+        for name, code_list, code_types in cases:
             with self.subTest(name=name):
                 parsed = self.assert_parsed(
                     FakeGuard("SEQUENCE_LENGTH", code_list, name),
@@ -255,25 +243,29 @@ class GuardParserTest(TridentTestCase):
                     code_types,
                 )
                 length_code = next(
-                    code
-                    for code in parsed.codes
-                    if isinstance(code, SequenceLengthCode)
+                    builder.code
+                    for builder in parsed.codes
+                    if isinstance(builder.code, ASTCode)
                 )
-                self.assertEqual(length_code.expected, expected_length)
-                self.assertEqual(length_code.depth, expected_depth)
+                self.assertIsNotNone(length_code.expression)
 
-    def test_sequence_length_rejects_unsupported_code(self) -> None:
-        cases = [
-            "len(L['other']) == 2",
-            "len(L['xs']) != 2",
-            "len(L['xs']) == -1",
-            "bool(L['xs']) == False",
-        ]
-        for text in cases:
-            with self.subTest(text=text):
-                self.assertIsNone(
-                    Guard.parse(FakeGuard("SEQUENCE_LENGTH", [text], "L['xs']"))
-                )
+    def test_sequence_length_parses_tensor_shape_with_expression_code(self) -> None:
+        parsed = self.assert_parsed(
+            FakeGuard(
+                "SEQUENCE_LENGTH",
+                [
+                    "___check_type_id(L['x'].shape, 123), type=<class 'torch.Size'>",
+                    "len(L['x'].shape) == 3",
+                ],
+                "L['x'].shape",
+            ),
+            SequenceLengthGuard,
+            (ASTCode,),
+        )
+        (builder,) = parsed.codes
+        code = builder.code
+        assert isinstance(code, ASTCode)
+        self.assertIsInstance(code.expression, ast.Compare)
 
     def test_shape_env_accepts_none_empty_and_multiple_codes(self) -> None:
         cases = [
@@ -287,7 +279,7 @@ class GuardParserTest(TridentTestCase):
                     "L['x'].size()[0] == L['y'].size()[0]",
                     "1 if L['x'].ndimension() == 2 else 0",
                 ],
-                (ExpressionCode,) * 5,
+                (ASTCode,) * 5,
             ),
         ]
         for code_list, code_types in cases:
@@ -304,21 +296,21 @@ class GuardParserTest(TridentTestCase):
         cases = [
             (
                 ["2 <= L['x'].size()[0] <= 8"],
-                (ExpressionCode,),
+                (ASTCode,),
             ),
             (
                 [
                     "L['x'].size()[0] == 2 * L['y'].size()[0]",
                     "L['x'].size()[1] == L['y'].size()[1] * 4",
                 ],
-                (ExpressionCode,) * 2,
+                (ASTCode,) * 2,
             ),
             (
                 [
                     "L['x'].size()[0] + 1 == 2 * L['y'].size()[0]",
                     "L['x'].size()[0] == 2 and L['x'].size()[1] >= 1",
                 ],
-                (ExpressionCode,) * 2,
+                (ASTCode,) * 2,
             ),
             (
                 [
@@ -326,7 +318,7 @@ class GuardParserTest(TridentTestCase):
                     "L['x'].size()[0] <= 2 * L['y'].size()[0]",
                     "L['x'].size()[0] % 2 == 0",
                 ],
-                (ExpressionCode,) * 3,
+                (ASTCode,) * 3,
             ),
         ]
         for code_list, code_types in cases:
@@ -374,7 +366,10 @@ class GuardParserTest(TridentTestCase):
             ),
         )
 
-        _, dtype, device, _, rank, *attributes = parsed.codes
+        _, dtype_builder, device_builder, _, rank_builder, *attributes = parsed.codes
+        dtype = dtype_builder.code
+        device = device_builder.code
+        rank = rank_builder.code
         assert isinstance(dtype, TensorDTypeCode)
         assert isinstance(device, TensorDeviceCode)
         assert isinstance(rank, TensorRankCode)
@@ -383,9 +378,9 @@ class GuardParserTest(TridentTestCase):
         self.assertEqual(rank.expected, 2)
         self.assertEqual(
             tuple(
-                code.attribute
-                for code in attributes
-                if isinstance(code, DynamoAttributeAbsentCode)
+                builder.code.attribute
+                for builder in attributes
+                if isinstance(builder.code, DynamoAttributeAbsentCode)
             ),
             (
                 "_dynamo_dynamic_indices",
@@ -429,7 +424,7 @@ class GuardParserTest(TridentTestCase):
             TensorMatchGuard,
             (RequiresGradCode,),
         )
-        code = parsed.codes[0]
+        code = parsed.codes[0].code
         assert isinstance(code, RequiresGradCode)
         self.assertTrue(code.expected)
 
@@ -453,7 +448,7 @@ class GuardParserTest(TridentTestCase):
         for text in cases:
             with self.subTest(text=text):
                 expression = ast.parse(text, mode="eval").body
-                code = ExpressionCode(text, expression)
+                code = ASTCode(text, expression)
                 context = ir.Context()
                 with (
                     context,
@@ -468,7 +463,7 @@ class GuardParserTest(TridentTestCase):
 
     def test_chained_comparison_builds_an_i1_value(self) -> None:
         text = "1 == 1 <= 3"
-        code = ExpressionCode(text, ast.parse(text, mode="eval").body)
+        code = ASTCode(text, ast.parse(text, mode="eval").body)
         context = ir.Context()
         register_all_dialects(context)
         with context, ir.Location.unknown(context):
@@ -484,9 +479,28 @@ class GuardParserTest(TridentTestCase):
                     func.ReturnOp([])
         self.assertEqual(str(result.type), "i1")
 
+    def test_bitwise_or_expression_builds_an_i1_value(self) -> None:
+        text = "(1 | 2) == 3"
+        code = ASTCode(text, ast.parse(text, mode="eval").body)
+        context = ir.Context()
+        register_all_dialects(context)
+        with context, ir.Location.unknown(context):
+            module = ir.Module.create()
+            with ir.InsertionPoint(module.body):
+                function = func.FuncOp(
+                    "bitwise_or_expression",
+                    ir.FunctionType.get([], []),
+                )
+                block = function.add_entry_block()
+                with ir.InsertionPoint(block):
+                    result = code.build(None, context)  # type: ignore[arg-type]
+                    func.ReturnOp([])
+        self.assertEqual(str(result.type), "i1")
+        self.assertIn("arith.ori", str(module))
+
     def test_tensor_identity_is_skipped_with_warning(self) -> None:
         text = "L['x'] is L['y']"
-        code = ExpressionCode(text, ast.parse(text, mode="eval").body)
+        code = ASTCode(text, ast.parse(text, mode="eval").body)
         context = ir.Context()
         register_all_dialects(context)
         with context, ir.Location.unknown(context):
@@ -527,7 +541,7 @@ class GuardParserTest(TridentTestCase):
         ]
         for text, message in cases:
             with self.subTest(text=text):
-                code = ExpressionCode(text, ast.parse(text, mode="eval").body)
+                code = ASTCode(text, ast.parse(text, mode="eval").body)
                 context = ir.Context()
                 with (
                     context,

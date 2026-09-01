@@ -25,6 +25,33 @@ func.func @get_bool(%arg: !tvm_ffi.bool) -> i1 {
   return %value : i1
 }
 
+// DIALECT-LABEL: func.func @get_int(
+// DIALECT-SAME: [[INT_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.int) -> i64 {
+// DIALECT-NEXT: [[INT_VALUE:%[a-zA-Z0-9_]+]] = tvm_ffi.get [[INT_ARG]] : !tvm_ffi.int -> i64
+// DIALECT-NEXT: return [[INT_VALUE]] : i64
+func.func @get_int(%arg: !tvm_ffi.int) -> i64 {
+  %value = tvm_ffi.get %arg : !tvm_ffi.int -> i64
+  return %value : i64
+}
+
+// DIALECT-LABEL: func.func @get_float(
+// DIALECT-SAME: [[FLOAT_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.float) -> f64 {
+// DIALECT-NEXT: [[FLOAT_VALUE:%[a-zA-Z0-9_]+]] = tvm_ffi.get [[FLOAT_ARG]] : !tvm_ffi.float -> f64
+// DIALECT-NEXT: return [[FLOAT_VALUE]] : f64
+func.func @get_float(%arg: !tvm_ffi.float) -> f64 {
+  %value = tvm_ffi.get %arg : !tvm_ffi.float -> f64
+  return %value : f64
+}
+
+// DIALECT-LABEL: func.func @get_tensor(
+// DIALECT-SAME: [[TENSOR_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.tensor) -> !llvm.ptr {
+// DIALECT-NEXT: [[TENSOR_VALUE:%[a-zA-Z0-9_]+]] = tvm_ffi.get [[TENSOR_ARG]] : !tvm_ffi.tensor -> !llvm.ptr
+// DIALECT-NEXT: return [[TENSOR_VALUE]] : !llvm.ptr
+func.func @get_tensor(%arg: !tvm_ffi.tensor) -> !llvm.ptr {
+  %value = tvm_ffi.get %arg : !tvm_ffi.tensor -> !llvm.ptr
+  return %value : !llvm.ptr
+}
+
 // DIALECT-LABEL: tvm_ffi.func @with_torch_int(
 // DIALECT-SAME:    [[INT_ARG:%[a-zA-Z0-9_]+]]: !torch.int) -> !torch.int {
 // DIALECT-NEXT:    tvm_ffi.return [[INT_ARG]] : !torch.int

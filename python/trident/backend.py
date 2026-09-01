@@ -6,13 +6,16 @@ from __future__ import annotations
 import copy
 import gc
 import inspect
-from collections.abc import Callable, Sequence
+import operator
+from collections.abc import Callable, Hashable, Sequence
 from typing import Any, Final
 
 import torch
 import tvm_ffi
 import tvm_ffi.utils
+from torch.export._trace import _extract_fake_inputs
 from torch.export.graph_signature import InputKind, SymIntArgument, TensorArgument
+from torch.utils import _pytree as pytree
 
 from trident import capi_utils
 from trident.core import (
@@ -54,16 +57,107 @@ class TridentGraphModule:
     order - the first one that returns 0 (guard match) wins.
     """
 
+    @staticmethod
+    def _retrieve_dynamic_shapes(
+        exported_gm: torch.fx.GraphModule,
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
+    ) -> torch.export.ShapesCollection:
+        """Recover a ``torch.export`` shape specification from Dynamo metadata."""
+        fake_args, fake_kwargs, fake_mode = _extract_fake_inputs(
+            exported_gm, tuple(args), kwargs
+        )
+        shape_env = fake_mode.shape_env
+        assert shape_env is not None, "Dynamo FakeTensorMode does not have a ShapeEnv"
+
+        dimensions: dict[Hashable, torch.export.Dim] = {}
+        dynamic_shapes = torch.export.ShapesCollection()
+
+        def dimension(symbol: Hashable) -> torch.export.Dim:
+            result = dimensions.get(symbol)
+            if result is not None:
+                return result
+
+            value_range = shape_env.var_to_range.get(symbol)
+            options: dict[str, int] = {}
+            if value_range is not None:
+                if value_range.lower.is_Integer is True:
+                    options["min"] = operator.index(round(value_range.lower))
+                if value_range.upper.is_Integer is True:
+                    options["max"] = operator.index(round(value_range.upper))
+            result = torch.export.Dim(f"{symbol}", **options)
+            dimensions[symbol] = result
+            return result
+
+        def symbolic_dimension(
+            value: torch.SymInt, concrete_size: int
+        ) -> torch.export.Dim | None:
+            expression = value.node.expr
+            symbols = expression.free_symbols
+            if not symbols:
+                assert expression.is_Integer is True, (
+                    f"Dynamo dimension {expression} is neither static nor symbolic"
+                )
+                assert operator.index(round(expression)) == concrete_size, (
+                    f"Dynamo dimension {expression} does not match input size "
+                    f"{concrete_size}"
+                )
+                return None
+            assert len(symbols) == 1, (
+                f"cannot represent Dynamo dimension {expression} with torch.export.Dim"
+            )
+
+            [symbol] = symbols
+            coefficient = expression.coeff(symbol)
+            offset = expression.subs(symbol, 0)
+            assert (
+                coefficient.is_Integer is True
+                and coefficient > 0
+                and offset.is_Integer is True
+                and expression == coefficient * symbol + offset
+            ), f"cannot represent Dynamo dimension {expression} with torch.export.Dim"
+
+            result = dimension(symbol)
+            if coefficient != 1:
+                result = operator.index(round(coefficient)) * result
+            if offset != 0:
+                result = result + operator.index(round(offset))
+            return result
+
+        def register_shape(value: Any, fake_value: Any) -> None:
+            if isinstance(value, torch.Tensor):
+                assert isinstance(fake_value, torch.Tensor), (
+                    "Dynamo placeholder for a Tensor input does not contain "
+                    "FakeTensor metadata"
+                )
+                assert value.dim() == fake_value.dim(), (
+                    f"Dynamo FakeTensor has rank {fake_value.dim()}, but its input "
+                    f"has rank {value.dim()}"
+                )
+                dynamic_shapes[value] = {
+                    index: dimension_spec
+                    for index, size in enumerate(fake_value.shape)
+                    if isinstance(size, torch.SymInt)
+                    if (dimension_spec := symbolic_dimension(size, value.shape[index]))
+                    is not None
+                }
+
+        pytree.tree_map(
+            register_shape,
+            (tuple(args), kwargs),
+            (fake_args, fake_kwargs),
+        )
+        return dynamic_shapes
+
     def __init__(
         self,
         fn: Callable[..., Any],
-        max_compiles: int = 2,
-        *args: Any,
-        **kwargs: Any,
+        *,
+        dynamic: bool = True,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__()
         self.fn: Final[Callable[..., Any]] = fn
-        self._max_compiles: Final[int] = max_compiles
+        self.dynamic: Final[bool] = dynamic
         self.ctx: Final[ir.Context] = ir.Context()
         register_all_dialects(self.ctx)
         register_all_passes()
@@ -75,21 +169,16 @@ class TridentGraphModule:
     # ------------------------------------------------------------------ #
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        for _ in range(self._max_compiles):
-            result = self.executor(*args, **kwargs)
-            if isinstance(result, Exception):
-                # The dispatcher returned an Exception ObjectRef
-                # (all specializations failed); compile a new one.
-                return self.compile(*args, **kwargs)
-            else:
-                # TODO: Preserve input/output aliasing when an ExportedProgram
-                # returns a mutated input. The current lowering writes the
-                # mutation back but may return a tensor with distinct storage.
-                return result
-
-        raise RuntimeError(
-            f"recompilation limit ({self._max_compiles}) exceeded without finding a matching specialization"
-        )
+        result = self.executor(*args, **kwargs)
+        if isinstance(result, Exception):
+            # The dispatcher returned an Exception ObjectRef
+            # (all specializations failed); compile a new one.
+            return self.compile(*args, **kwargs)
+        else:
+            # TODO: Preserve input/output aliasing when an ExportedProgram
+            # returns a mutated input. The current lowering writes the
+            # mutation back but may return a tensor with distinct storage.
+            return result
 
     def __name__(self) -> str:
         return self.fn.__name__
@@ -170,21 +259,27 @@ class TridentGraphModule:
 
         # Step 1: Export  ---------------------------------------------------
         index = len(self._sub_modules)
+
+        signature: inspect.Signature = inspect.signature(self.fn)
+        trace_args: tuple[Any, ...] = tuple(args)
+        bound: inspect.BoundArguments = signature.bind(*trace_args, **kwargs)
+        bound.apply_defaults()
         exported_gm, gs = torch._dynamo.export(
-            self.fn, aten_graph=True, assume_static_by_default=True
-        )(*args, **kwargs)
-        call_signature: inspect.Signature = inspect.signature(exported_gm.forward)
-        call_bound: inspect.BoundArguments = call_signature.bind(*args, **kwargs)
-        call_bound.apply_defaults()
-        call_args: list[Any] = [*call_bound.arguments.values()]
+            self.fn,
+            aten_graph=True,
+            assume_static_by_default=not self.dynamic,
+        )(*trace_args, **kwargs)
+        dynamic_shapes = self._retrieve_dynamic_shapes(exported_gm, trace_args, kwargs)
         trace_gm = copy.deepcopy(exported_gm)
-        trace_args = call_args
+
         exported_program: torch.export.ExportedProgram = torch.export.export(
             trace_gm,
-            tuple(trace_args),
+            trace_args,
+            kwargs,
+            dynamic_shapes=dynamic_shapes,
             strict=False,
         ).run_decompositions()
-        warmup_result = exported_program.module()(*trace_args)
+        warmup_result = exported_program.module()(*trace_args, **kwargs)
 
         # Step 2: Import FX -> MLIR  ----------------------------------------
         with apply_patch():
@@ -198,26 +293,21 @@ class TridentGraphModule:
         torch._dynamo.reset()
 
         # Step 3: Wrap with tvm_ffi.func.
-        signature: inspect.Signature = inspect.signature(self.fn)
-        bound: inspect.BoundArguments = signature.bind(*args, **kwargs)
-        bound.apply_defaults()
         flat_types: Sequence[ir.Type] = main_func.type.inputs
 
         with self.ctx:
             dtype_type = ir.Type.parse("!torchext.dtype", context=self.ctx)
-
-        def value_type(value: Any) -> ir.Type:
-            """Infer the wrapper type for an exported non-main input."""
-            if isinstance(value, torch.dtype):
-                return dtype_type
-            return importer._cc.value_info_to_type(value)
 
         input_builder = InputTableBuilder.get(
             exported_program,
             signature,
             bound.arguments,
             flat_types,
-            value_type,
+            lambda value: (
+                dtype_type
+                if isinstance(value, torch.dtype)
+                else importer._cc.value_info_to_type(value)
+            ),
             self.ctx,
         )
         param_types = input_builder.input_types

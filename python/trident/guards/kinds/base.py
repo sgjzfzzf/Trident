@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, Final
 
-from ..codes.base import GuardCode
+from ..codes.base import GuardBuilder, GuardCode
 from ..local import Local
 
 if TYPE_CHECKING:
@@ -22,10 +22,10 @@ class Guard:
     def __init__(
         self,
         source: Local | None,
-        codes: list[GuardCode],
+        codes: list[GuardBuilder],
     ) -> None:
         self.source: Final[Local | None] = source
-        self.codes: Final[list[GuardCode]] = codes
+        self.codes: Final[list[GuardBuilder]] = codes
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -86,16 +86,19 @@ class Guard:
         cls,
         texts: list[str],
         source: Local | None,
-    ) -> list[GuardCode] | None:
+    ) -> list[GuardBuilder] | None:
         assert cls.create_fn_name is not None
-        parsed_codes: list[GuardCode] = []
+        parsed_codes: list[GuardBuilder] = []
         for text in texts:
             matches = [
                 parsed
                 for code_type in cls.code_types
                 if (parsed := code_type.parse(text, source)) is not None
             ]
+            # An ambiguous or unsupported guard code is not parseable by this
+            # handler; let the caller reject the whole guard uniformly.
             if len(matches) != 1:
                 return None
-            parsed_codes.append(matches[0])
+            [match] = matches
+            parsed_codes.append(match.to_builder())
         return parsed_codes

@@ -258,6 +258,7 @@ class InputTableBuilder:
             f"expected kwargs tree spec, got {type(kwargs_spec)!r}"
         )
 
+        signature_names = [*signature.parameters]
         positional_names = [
             name
             for name, parameter in signature.parameters.items()
@@ -267,8 +268,28 @@ class InputTableBuilder:
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
             )
         ]
-        args_names = [name for name, _ in zip(positional_names, args_spec.children())]
+        args_children = args_spec.children()
         kwargs_names = [*kwargs_spec.context]
+        kwargs_children = kwargs_spec.children()
+        assert len(kwargs_names) == len(kwargs_children), (
+            "ExportedProgram keyword inputs do not match the call spec: "
+            f"got {len(kwargs_children)} inputs and {len(kwargs_names)} names"
+        )
+        assert len(args_children) <= len(positional_names), (
+            "ExportedProgram positional inputs exceed the positional parameters: "
+            f"got {len(args_children)} inputs and "
+            f"{len(positional_names)} parameters"
+        )
+        args_names = [name for name, _ in zip(positional_names, args_children)]
+        provided_names = [*args_names, *kwargs_names]
+        assert len(provided_names) == len(set(provided_names)), (
+            "ExportedProgram input trees map multiple inputs to the same "
+            f"function parameter: {provided_names!r}"
+        )
+        assert all(name in signature_names for name in provided_names), (
+            "ExportedProgram input trees contain unknown function parameters: "
+            f"got {provided_names!r}, expected names from {signature_names!r}"
+        )
         leaf_iter = zip(input_specs, exported_input_values)
         main_input_type_iter = iter(main_input_types)
 
@@ -296,11 +317,10 @@ class InputTableBuilder:
         provided_entries = {
             name: build_node(child, name)
             for name, child in [
-                *zip(args_names, args_spec.children()),
-                *zip(kwargs_names, kwargs_spec.children()),
+                *zip(args_names, args_children),
+                *zip(kwargs_names, kwargs_children),
             ]
         }
-        signature_names = [*signature.parameters]
         entries = [
             provided_entries[name]
             if name in provided_entries

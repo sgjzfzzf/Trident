@@ -7,9 +7,9 @@
 
 // RUN: trident-core-opt %s -split-input-file -verify-diagnostics
 
-func.func @cast_int_to_float(%arg: !torch.int) -> f32 {
-  // expected-error@+1 {{'torchext.cast' op operand type '!torch.int' and result type 'f32' are cast incompatible}}
-  %result = torchext.cast %arg : !torch.int -> f32
+func.func @get_int_to_float(%arg: !torch.int) -> f32 {
+  // expected-error@+1 {{'torchext.get' op unsupported get from '!torch.int' to 'f32'}}
+  %result = torchext.get %arg : !torch.int -> f32
   return %result : f32
 }
 
@@ -22,8 +22,8 @@ func.func @convert_dtype_to_float(%arg: !torchext.dtype) -> !torch.float {
 }
 // -----
 
-func.func @get_requires_bool(%arg: !torch.int) {
-  // expected-error@+1 {{'torchext.get' op operand #0 must be Torch BoolType}}
-  %value = "torchext.get"(%arg) : (!torch.int) -> i1
+func.func @get_requires_bool(%arg: !torch.float) {
+  // expected-error@+1 {{'torchext.get' op unsupported get from '!torch.float' to 'i1'}}
+  %value = "torchext.get"(%arg) : (!torch.float) -> i1
   return
 }

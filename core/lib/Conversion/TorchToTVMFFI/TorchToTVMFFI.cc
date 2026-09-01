@@ -349,7 +349,9 @@ public:
   mlir::LogicalResult
   matchAndRewrite(torchext::GetOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<tvm_ffi::GetOp>(op, rewriter.getI1Type(),
+    mlir::Location const loc = op.getLoc();
+    mlir::Type const resultType = op.getResult().getType();
+    rewriter.replaceOpWithNewOp<tvm_ffi::GetOp>(op, resultType,
                                                 adaptor.getOperand());
     return mlir::success();
   }
@@ -548,7 +550,7 @@ class ConvertTorchToTVMFFIPass final
     mlir::ConversionTarget conversionTarget(getContext());
     conversionTarget
         .addLegalDialect<mlir::arith::ArithDialect, mlir::BuiltinDialect,
-                         arithext::ArithExtDialect>();
+                         arithext::ArithExtDialect, mlir::LLVM::LLVMDialect>();
     conversionTarget.addLegalOp<
         tvm_ffi::ArrayCreateOp, tvm_ffi::CallOp, tvm_ffi::ConstantOp,
         tvm_ffi::ExceptionOp, tvm_ffi::FunctionCallOp,
@@ -598,11 +600,11 @@ class ConvertTorchToTVMFFIPass final
     conversionTarget.addIllegalOp<mlir::torch::Torch::CopyToValueTensorOp,
                                   mlir::torch::Torch::OverwriteTensorContentsOp,
                                   mlir::torch::Torch::ValueTensorLiteralOp>();
-    conversionTarget.addDynamicallyLegalOp<torchext::CastOp,
-                                           torchext::TridentKernelLaunchOp>(
+    conversionTarget.addIllegalOp<torchext::GetOp>();
+    conversionTarget.addDynamicallyLegalOp<torchext::TridentKernelLaunchOp>(
         [&](mlir::Operation *op) { return typeConverter.isLegal(op); });
     conversionPatterns
-        .add<MaterializeTorchExtOperands<torchext::CastOp>,
+        .add<MaterializeTorchExtOperands<torchext::GetOp>,
              MaterializeTorchExtOperands<torchext::TridentKernelLaunchOp>>(
             typeConverter, &getContext());
     if (mlir::failed(mlir::applyPartialConversion(

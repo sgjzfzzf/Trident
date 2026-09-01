@@ -7,25 +7,25 @@
 
 // RUN: trident-core-opt %s -split-input-file | FileCheck %s
 
-// CHECK-LABEL: func.func @cast_float(
+// CHECK-LABEL: func.func @get_float(
 // CHECK-SAME:    %[[ARG:[a-zA-Z0-9_]+]]: !torch.float) -> f32 {
-// CHECK:         %[[VAL:[a-zA-Z0-9_]+]] = torchext.cast %[[ARG]] : !torch.float -> f32
+// CHECK:         %[[VAL:[a-zA-Z0-9_]+]] = torchext.get %[[ARG]] : !torch.float -> f32
 // CHECK-NEXT:    return %[[VAL]] : f32
 // CHECK-NEXT:  }
-func.func @cast_float(%arg0: !torch.float) -> f32 {
-  %0 = torchext.cast %arg0 : !torch.float -> f32
+func.func @get_float(%arg0: !torch.float) -> f32 {
+  %0 = torchext.get %arg0 : !torch.float -> f32
   return %0 : f32
 }
 
 // -----
 
-// CHECK-LABEL: func.func @cast_int(
+// CHECK-LABEL: func.func @get_int(
 // CHECK-SAME:    %[[ARG:[a-zA-Z0-9_]+]]: !torch.int) -> i32 {
-// CHECK:         %[[VAL:[a-zA-Z0-9_]+]] = torchext.cast %[[ARG]] : !torch.int -> i32
+// CHECK:         %[[VAL:[a-zA-Z0-9_]+]] = torchext.get %[[ARG]] : !torch.int -> i32
 // CHECK-NEXT:    return %[[VAL]] : i32
 // CHECK-NEXT:  }
-func.func @cast_int(%arg0: !torch.int) -> i32 {
-  %0 = torchext.cast %arg0 : !torch.int -> i32
+func.func @get_int(%arg0: !torch.int) -> i32 {
+  %0 = torchext.get %arg0 : !torch.int -> i32
   return %0 : i32
 }
 

@@ -169,9 +169,10 @@ def TVMFFI_FunctionGetGlobalOp
 }
 
 def TVMFFI_GetOp : TVMFFI_Op<"get", [Pure]> {
-  let summary = "Extract a native boolean from a TVM FFI boolean";
-  let arguments = (ins TVMFFI_BoolType:$operand);
-  let results = (outs I1:$result);
+  let summary = "Extract a native value from a TVM FFI value";
+  let arguments = (ins AnyTVMFFIAnyABIType:$operand);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
   let assemblyFormat = "$operand attr-dict `:` type($operand) `->` type($result)";
 }
 

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from collections.abc import Hashable
 from functools import reduce
@@ -200,9 +201,11 @@ class TensorRankCode(GuardCode):
             rf"(?P<rank>\d+)\s*",
             text,
         )
-        return (
-            cls(text, source, int(match.group("rank"))) if match is not None else None
-        )
+        if match is None:
+            return None
+        rank = ast.literal_eval(match.group("rank"))
+        assert isinstance(rank, int) and not isinstance(rank, bool)
+        return cls(text, source, rank)
 
     @property
     def key(self) -> Hashable:

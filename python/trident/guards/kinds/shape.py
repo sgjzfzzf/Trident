@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..codes import ExpressionCode
+from ..codes import ASTCode
 from .base import Guard
 
 if TYPE_CHECKING:
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 class ShapeEnvGuard(Guard):
     create_fn_name = "SHAPE_ENV"
-    code_types = (ExpressionCode,)
+    code_types = (ASTCode,)
 
     @classmethod
     def validate_guard(cls, guard: torch._guards.Guard) -> bool:

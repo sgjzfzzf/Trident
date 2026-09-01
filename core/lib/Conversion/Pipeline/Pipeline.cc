@@ -49,10 +49,10 @@ class TridentLoweringPipelinePass
     pm.addPass(createConvertTorchToTVMFFI());
     pm.addPass(tvm_ffi::createApplyObjectOwnership());
     pm.addPass(tvm_ffi::createDecomposeTVMFFI());
+    pm.addPass(createConvertTorchExtToGPU());
     pm.addPass(createConvertTVMFFIToFunc());
     pm.addPass(mlir::createSCFToControlFlowPass());
     pm.addPass(createConvertTVMFFIToLLVM());
-    pm.addPass(createConvertTorchExtToGPU());
     pm.addPass(mlir::createArithToLLVMConversionPass());
     pm.addPass(mlir::createConvertControlFlowToLLVMPass());
     pm.addPass(

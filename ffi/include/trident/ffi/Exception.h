@@ -56,8 +56,7 @@ public:
 
 namespace tvm::ffi {
 template <>
-struct tvm::ffi::TypeTraits<trident::runtime::ExceptionObj>
-    : public TypeTraitsBase {};
+struct TypeTraits<trident::runtime::ExceptionObj> : public TypeTraitsBase {};
 } // namespace tvm::ffi
 
 #endif // TRIDENT_FFI_EXCEPTION_H_

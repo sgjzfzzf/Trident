@@ -12,6 +12,8 @@
 #include <mlir-c/IR.h>
 #include <mlir/CAPI/IR.h>
 #include <mlir/IR/DialectRegistry.h>
+#include <mlir/IR/Types.h>
+#include <mlir/Support/LLVM.h>
 #include <torch-mlir-c/Registration.h>
 
 void tridentCoreRegisterAllDialects(MlirContext context) {

@@ -1,14 +1,19 @@
 # Part of the Trident project, under the MIT License.
 # SPDX-License-Identifier: MIT
 
+from __future__ import annotations
+
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ParamSpec, TypeVar, overload
 
 from .backend import TridentGraphModule
 
+P = ParamSpec("P")
+R = TypeVar("R")
 
-def compile(fn: Callable[..., Any]) -> Callable[..., Callable[..., Any]]:
-    def f(*args: Any, **kwargs: Any) -> Any:
+
+def compile(fn: Callable[P, R]) -> Callable[P, Any]:
+    def f(*args: P.args, **kwargs: P.kwargs) -> Any:
         gm: TridentGraphModule = TridentGraphModule(fn)
         gm.compile(*args, **kwargs)
         return gm.gm
@@ -16,5 +21,23 @@ def compile(fn: Callable[..., Any]) -> Callable[..., Callable[..., Any]]:
     return f
 
 
-def jit(fn: Callable[..., Any]) -> TridentGraphModule:
-    return TridentGraphModule(fn)
+@overload
+def jit(fn: Callable[P, R], *, dynamic: bool = True) -> TridentGraphModule: ...
+
+
+@overload
+def jit(
+    fn: None = None, *, dynamic: bool = True
+) -> Callable[[Callable[P, R]], TridentGraphModule]: ...
+
+
+def jit(
+    fn: Callable[P, R] | None = None, *, dynamic: bool = True
+) -> TridentGraphModule | Callable[[Callable[P, R]], TridentGraphModule]:
+    if fn is None:
+
+        def decorator(decorated_fn: Callable[P, R]) -> TridentGraphModule:
+            return TridentGraphModule(decorated_fn, dynamic=dynamic)
+
+        return decorator
+    return TridentGraphModule(fn, dynamic=dynamic)

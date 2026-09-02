@@ -8,4 +8,6 @@ add_mlir_library(
   MLIRIR
   MLIRPass
   MLIRTransformUtils
+  MLIRArithDialect
+  TorchMLIRTorchConversionDialect
   TorchMLIRTorchDialect)

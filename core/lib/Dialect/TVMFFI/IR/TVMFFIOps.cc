@@ -92,6 +92,17 @@ mlir::LogicalResult ConstantOp::verify() {
   return mlir::success();
 }
 
+mlir::LogicalResult ToOp::verify() {
+  mlir::Type const nativeType = getValue().getType();
+  mlir::Type const resultType = getResult().getType();
+  auto nativeTypeInterface =
+      mlir::dyn_cast<TVMFFINativeTypeInterface>(resultType);
+  if (nativeTypeInterface && nativeTypeInterface.getNativeType() == nativeType)
+    return mlir::success();
+  return emitOpError("unsupported native-to-TVM FFI conversion from ")
+         << nativeType << " to " << resultType;
+}
+
 mlir::LogicalResult TensorLiteralOp::verify() {
   if (!mlir::isa<mlir::DenseElementsAttr>(getValue())) {
     return emitOpError("requires a dense elements attribute");

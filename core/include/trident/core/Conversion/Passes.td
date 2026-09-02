@@ -61,7 +61,9 @@ def ConvertTorchToTVMFFI : Pass<"convert-torch-to-tvm-ffi", "mlir::ModuleOp"> {
     values share !tvm_ffi.array, and object results carry explicit ownership.
   }];
   let dependentDialects = [
-    "trident::tvm_ffi::TVMFFIDialect", "mlir::LLVM::LLVMDialect"
+    "mlir::LLVM::LLVMDialect",
+    "mlir::torch::TorchConversion::TorchConversionDialect",
+    "trident::tvm_ffi::TVMFFIDialect"
   ];
 }
 

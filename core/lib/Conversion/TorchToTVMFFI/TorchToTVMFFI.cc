@@ -40,6 +40,7 @@
 #include <string>
 #include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
+#include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.h>
 #include <type_traits>
 #include <utility>
 
@@ -318,6 +319,20 @@ private:
   const TorchFFITypeConverter &typeConverter;
 };
 
+template <typename Op, typename ResultType>
+class ConvertTorchConversionFrom final : public mlir::OpConversionPattern<Op> {
+public:
+  using mlir::OpConversionPattern<Op>::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(Op op, typename Op::Adaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<tvm_ffi::ToOp>(
+        op, ResultType::get(rewriter.getContext()), adaptor.getOperand());
+    return mlir::success();
+  }
+};
+
 /// Convert a TorchExt dtype wrapper to the TVM FFI integer consumed by Torch
 /// operations after this pass.  This pattern intentionally lives in the same
 /// conversion as the Torch users so the producer and its users agree on the
@@ -356,6 +371,24 @@ public:
   }
 };
 
+/// Lower a value-semantic copy to an explicit TVM FFI tensor clone.  The
+/// operation owns a newly allocated storage and preserves the input layout.
+class ConvertTorchCopyToValueTensor final
+    : public mlir::OpConversionPattern<
+          mlir::torch::Torch::CopyToValueTensorOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(mlir::torch::Torch::CopyToValueTensorOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<tvm_ffi::TensorCloneOp>(
+        op, tvm_ffi::TensorType::get(rewriter.getContext()),
+        adaptor.getOperand());
+    return mlir::success();
+  }
+};
+
 /// Lower the mutation marker to an explicit TVM FFI in-place copy operation.
 class ConvertTorchOverwriteTensorContents final
     : public mlir::OpConversionPattern<
@@ -373,24 +406,6 @@ public:
                   mlir::ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<tvm_ffi::TensorCopyOp>(
         op, adaptor.getOverwritten(), adaptor.getValue());
-    return mlir::success();
-  }
-};
-
-/// Lower a value-semantic copy to an explicit TVM FFI tensor clone.  The
-/// operation owns a newly allocated storage and preserves the input layout.
-class ConvertTorchCopyToValueTensor final
-    : public mlir::OpConversionPattern<
-          mlir::torch::Torch::CopyToValueTensorOp> {
-public:
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(mlir::torch::Torch::CopyToValueTensorOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<tvm_ffi::TensorCloneOp>(
-        op, tvm_ffi::TensorType::get(rewriter.getContext()),
-        adaptor.getOperand());
     return mlir::success();
   }
 };
@@ -509,6 +524,12 @@ class ConvertTorchToTVMFFIPass final
     conversionPatterns.add<ConvertArrayGetItem>(typeConverter, &getContext());
     conversionPatterns.add<
         ConvertAtenCall,
+        ConvertTorchConversionFrom<mlir::torch::TorchConversion::FromF64Op,
+                                   tvm_ffi::FloatType>,
+        ConvertTorchConversionFrom<mlir::torch::TorchConversion::FromI1Op,
+                                   tvm_ffi::BoolType>,
+        ConvertTorchConversionFrom<mlir::torch::TorchConversion::FromI64Op,
+                                   tvm_ffi::IntType>,
         ConvertTorchArrayConstruct<mlir::torch::Torch::PrimListConstructOp>,
         ConvertTorchArrayConstruct<mlir::torch::Torch::PrimTupleConstructOp>,
         ConvertTorchArrayUnpack,
@@ -519,13 +540,13 @@ class ConvertTorchToTVMFFIPass final
         ConvertTorchConstant<mlir::torch::Torch::ConstantNoneOp>,
         ConvertTorchConstant<mlir::torch::Torch::ConstantStrOp>>(typeConverter,
                                                                  &getContext());
+    conversionPatterns.add<ConvertTorchCopyToValueTensor>(typeConverter,
+                                                          &getContext());
     conversionPatterns.add<ConvertTorchExtConvert>(typeConverter,
                                                    &getContext());
     conversionPatterns.add<ConvertTorchExtGet>(typeConverter, &getContext());
     conversionPatterns.add<ConvertTorchOverwriteTensorContents>(typeConverter,
                                                                 &getContext());
-    conversionPatterns.add<ConvertTorchCopyToValueTensor>(typeConverter,
-                                                          &getContext());
     conversionPatterns.add<ConvertTorchValueTensorLiteralOp>(typeConverter,
                                                              &getContext());
     conversionPatterns
@@ -555,7 +576,7 @@ class ConvertTorchToTVMFFIPass final
         tvm_ffi::ExceptionOp, tvm_ffi::FunctionCallOp,
         tvm_ffi::FunctionGetGlobalOp, tvm_ffi::GetOp, tvm_ffi::ObjectDecRefOp,
         tvm_ffi::ObjectIncRefOp, tvm_ffi::TensorCloneOp, tvm_ffi::TensorCopyOp,
-        tvm_ffi::TensorLiteralOp>();
+        tvm_ffi::TensorLiteralOp, tvm_ffi::ToOp>();
     conversionTarget.addDynamicallyLegalOp<mlir::func::FuncOp>(
         [&](mlir::func::FuncOp func) {
           return typeConverter.isSignatureLegal(func.getFunctionType());
@@ -599,6 +620,9 @@ class ConvertTorchToTVMFFIPass final
     conversionTarget.addIllegalOp<mlir::torch::Torch::CopyToValueTensorOp,
                                   mlir::torch::Torch::OverwriteTensorContentsOp,
                                   mlir::torch::Torch::ValueTensorLiteralOp>();
+    conversionTarget.addIllegalOp<mlir::torch::TorchConversion::FromF64Op,
+                                  mlir::torch::TorchConversion::FromI1Op,
+                                  mlir::torch::TorchConversion::FromI64Op>();
     conversionTarget.addIllegalOp<torchext::GetOp>();
     conversionTarget.addDynamicallyLegalOp<torchext::TridentKernelLaunchOp>(
         [&](mlir::Operation *op) { return typeConverter.isLegal(op); });

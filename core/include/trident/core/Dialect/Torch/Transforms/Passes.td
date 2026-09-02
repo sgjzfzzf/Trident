@@ -13,5 +13,10 @@ def GeneralizeAtenOps : Pass<"generalize-aten-ops", "mlir::ModuleOp"> {
     Rewrites concrete torch.aten operations to equivalent torch.operator
     operations so backend lowering does not invoke value-semantic ATen folders.
   }];
-  let dependentDialects = ["mlir::torch::Torch::TorchDialect"];
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::torch::Torch::TorchDialect",
+    "mlir::torch::TorchConversion::TorchConversionDialect",
+    "trident::torchext::TorchExtDialect"
+  ];
 }

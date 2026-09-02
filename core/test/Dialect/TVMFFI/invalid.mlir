@@ -72,3 +72,11 @@ func.func @get_unsupported_array(%arg: !tvm_ffi.array) {
   %value = "tvm_ffi.get"(%arg) : (!tvm_ffi.array) -> i64
   return
 }
+
+// -----
+
+func.func @to_mismatched_native_type(%value: i64) {
+  // expected-error@+1 {{'tvm_ffi.to' op unsupported native-to-TVM FFI conversion from 'i64' to '!tvm_ffi.bool'}}
+  %result = tvm_ffi.to %value : i64 -> !tvm_ffi.bool
+  return
+}

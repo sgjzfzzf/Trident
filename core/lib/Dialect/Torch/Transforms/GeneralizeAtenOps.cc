@@ -6,7 +6,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Dialect/Torch/Transforms/GeneralizeAtenOps.h" // NOLINT(misc-include-cleaner)
+#include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include <llvm/ADT/StringRef.h>
+#include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/OperationSupport.h>
@@ -14,6 +17,7 @@
 #include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/WalkPatternRewriteDriver.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
+#include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.h>
 #include <utility>
 
 namespace trident::torch {
@@ -38,6 +42,24 @@ public:
       if (op->getNumRegions() != 0) {
         return rewriter.notifyMatchFailure(
             op, "expected a regionless ATen operation");
+      }
+
+      if (name == "torch.aten.Int.bool") {
+        if (op->getNumOperands() != 1 || op->getNumResults() != 1) {
+          return rewriter.notifyMatchFailure(
+              op, "expected one operand and one result");
+        }
+        mlir::Value const operand = op->getOperand(0);
+        rewriter.setInsertionPoint(op);
+        trident::torchext::GetOp nativeBoolOp =
+            trident::torchext::GetOp::create(rewriter, op->getLoc(),
+                                             rewriter.getI1Type(), operand);
+        mlir::Value const nativeInt = mlir::arith::ExtUIOp::create(
+            rewriter, op->getLoc(), rewriter.getI64Type(),
+            nativeBoolOp.getResult());
+        rewriter.replaceOpWithNewOp<mlir::torch::TorchConversion::FromI64Op>(
+            op, nativeInt);
+        return mlir::success();
       }
 
       rewriter.replaceOpWithNewOp<mlir::torch::Torch::OperatorOp>(

@@ -13,6 +13,7 @@ add_mlir_conversion_library(
   MLIRPass
   MLIRTransformUtils
   TorchExtDialect
+  TorchMLIRTorchConversionDialect
   TorchMLIRTorchDialect
   TridentTorchInterfaces
   TVMFFIDialect)

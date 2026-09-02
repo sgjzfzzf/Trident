@@ -286,4 +286,13 @@ def TVMFFI_TensorStrideOp
   let summary = "Read a runtime tensor stride";
 }
 
+def TVMFFI_ToOp : TVMFFI_Op<"to", [Pure]> {
+  let summary = "Convert a native scalar to a TVM FFI semantic value";
+  let arguments = (ins AnyTypeOf<[I1, I64, F64]> : $value);
+  let results = (outs AnyTypeOf<[TVMFFI_BoolType, TVMFFI_IntType,
+                                 TVMFFI_FloatType]> : $result);
+  let hasVerifier = 1;
+  let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
+}
+
 #endif // TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIOPS_TD_

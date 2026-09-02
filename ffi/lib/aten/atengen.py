@@ -171,8 +171,15 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.op is None:
-        schemas: Iterator[torch.FunctionSchema] = filter(
-            lambda s: s.name.startswith("aten::"), torch._C._jit_get_all_schemas()
+        schemas: Iterator[torch.FunctionSchema] = itertools.starmap(
+            torch._C._get_schema,
+            (
+                name.split(".", 1) if "." in name else (name, "")
+                for name in filter(
+                    lambda name: name.startswith("aten::"),
+                    sorted(torch._C._dispatch_get_all_op_names()),
+                )
+            ),
         )
     else:
         schemas: Iterator[torch.FunctionSchema] = itertools.starmap(

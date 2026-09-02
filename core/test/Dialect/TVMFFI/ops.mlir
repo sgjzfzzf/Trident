@@ -43,6 +43,19 @@ func.func @get_float(%arg: !tvm_ffi.float) -> f64 {
   return %value : f64
 }
 
+// DIALECT-LABEL: func.func @to_native_scalars(
+// DIALECT: [[BOOL:%[a-zA-Z0-9_]+]] = tvm_ffi.to %arg0 : i1 -> !tvm_ffi.bool
+// DIALECT: [[INT:%[a-zA-Z0-9_]+]] = tvm_ffi.to %arg1 : i64 -> !tvm_ffi.int
+// DIALECT: [[FLOAT:%[a-zA-Z0-9_]+]] = tvm_ffi.to %arg2 : f64 -> !tvm_ffi.float
+func.func @to_native_scalars(%bool: i1, %int: i64, %float: f64)
+    -> (!tvm_ffi.bool, !tvm_ffi.int, !tvm_ffi.float) {
+  %bool_value = tvm_ffi.to %bool : i1 -> !tvm_ffi.bool
+  %int_value = tvm_ffi.to %int : i64 -> !tvm_ffi.int
+  %float_value = tvm_ffi.to %float : f64 -> !tvm_ffi.float
+  return %bool_value, %int_value, %float_value
+      : !tvm_ffi.bool, !tvm_ffi.int, !tvm_ffi.float
+}
+
 // DIALECT-LABEL: func.func @get_tensor(
 // DIALECT-SAME: [[TENSOR_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.tensor) -> !tvm_ffi.object {
 // DIALECT-NEXT: [[TENSOR_VALUE:%[a-zA-Z0-9_]+]] = tvm_ffi.get [[TENSOR_ARG]] : !tvm_ffi.tensor -> !tvm_ffi.object

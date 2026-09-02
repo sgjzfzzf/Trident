@@ -99,7 +99,7 @@ def TVMFFI_IntType
   }]>;
 def TVMFFI_NoneType : TVMFFIIndexed_Type<"None", "none", 0>;
 def TVMFFI_ObjectType
-    : TVMFFIObject_Type<"Object", "object">;
+    : TVMFFIABI_Type<"Object", "object">;
 def TVMFFI_RawStrType : TVMFFIIndexed_Type<"RawStr", "raw_str", 8>;
 def TVMFFI_SmallStrType
     : TVMFFIIndexed_Type<"SmallStr", "small_str", 11>;

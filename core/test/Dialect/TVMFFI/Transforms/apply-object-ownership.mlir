@@ -33,3 +33,14 @@ func.func @object_result_in_guard(%arg0: !tvm_ffi.array, %arg1: !tvm_ffi.int) ->
   }) : () -> i1
   return %result : i1
 }
+
+// A generic object returned by tvm_ffi.get is a borrowed view and is not
+// tracked by this pass.
+// CHECK-LABEL: tvm_ffi.func @get_object(
+// CHECK-SAME: %arg0: !tvm_ffi.tensor) -> !tvm_ffi.object {
+// CHECK-NEXT: %[[OBJECT:[a-zA-Z0-9_]+]] = tvm_ffi.get %arg0 : !tvm_ffi.tensor -> !tvm_ffi.object
+// CHECK-NEXT: tvm_ffi.return %[[OBJECT]] : !tvm_ffi.object
+tvm_ffi.func @get_object(%arg: !tvm_ffi.tensor) -> !tvm_ffi.object {
+  %object = tvm_ffi.get %arg : !tvm_ffi.tensor -> !tvm_ffi.object
+  tvm_ffi.return %object : !tvm_ffi.object
+}

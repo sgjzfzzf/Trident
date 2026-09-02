@@ -282,7 +282,7 @@ class TridentGraphModule:
         warmup_result = exported_program.module()(*trace_args, **kwargs)
 
         # Step 2: Import FX -> MLIR  ----------------------------------------
-        with apply_patch():
+        with apply_patch(index):
             importer: FxImporter = FxImporter(context=self.ctx)
             main_func_name: Final[str] = f"main_{index}"
             main_func: func.FuncOp = importer.import_program(

@@ -86,28 +86,25 @@ public:
     mlir::Value const dynamicSharedMemorySize =
         adaptor.getDynamicSharedMemorySize();
 
-    mlir::gpu::GPUFuncOp kernel =
-        mlir::SymbolTable::lookupNearestSymbolFrom<mlir::gpu::GPUFuncOp>(
-            op, op.getKernel());
-    if (!kernel) {
-      return op->emitOpError("cannot find GPU kernel ") << op.getKernel();
+    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    if (!moduleOp) {
+      return op->emitOpError("op is not inside a ModuleOp");
     }
-    mlir::FunctionType const kernelType = kernel.getFunctionType();
-    constexpr uint32_t kSyntheticKernelOperands = 2;
-    if (kernelType.getNumInputs() !=
-        op.getKernelOperands().size() + kSyntheticKernelOperands) {
-      return op->emitOpError("kernel operand count does not match GPU kernel");
+
+    // Triton kernels are compiled into a gpu.binary.  The kernel name after
+    // the root reference is stored in the binary and is resolved later by
+    // gpu.launch_func lowering/runtime.
+    mlir::gpu::BinaryOp binary = moduleOp.lookupSymbol<mlir::gpu::BinaryOp>(
+        op.getKernel().getRootReference());
+    if (!binary) {
+      return op->emitOpError("cannot find GPU binary ")
+             << op.getKernel().getRootReference();
     }
 
     llvm::SmallVector<mlir::Value> operands(adaptor.getKernelOperands().begin(),
                                             adaptor.getKernelOperands().end());
 
     // Retrieve the current CUDA stream and pass as asyncObject.
-    mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
-    if (!moduleOp) {
-      return op->emitOpError("op is not inside a ModuleOp");
-    }
-
     // Step 1: call aoti_torch_get_current_device_index(&slot).
     mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getDevIdxFn =
         utils::getOrCreateAOTITorchGetCurrentDeviceIndex(moduleOp);

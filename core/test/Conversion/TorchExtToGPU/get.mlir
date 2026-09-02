@@ -32,3 +32,18 @@ func.func @cast_int_to_i64(%arg0: !torch.int) -> i64 {
   %0 = torchext.get %arg0 : !torch.int -> i64
   return %0 : i64
 }
+
+// -----
+// Test the kernel-argument construction shape: !torch.int -> i64 -> i32
+// CHECK-LABEL: func.func @cast_int_to_i32
+// CHECK-SAME:  %[[ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>
+// CHECK:       %[[PLD:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK:       %[[I32:[a-zA-Z0-9_]+]] = llvm.trunc %[[PLD]] : i64 to i32
+// CHECK-NOT:   torchext.get
+// CHECK-NOT:   tvm_ffi.get
+// CHECK:       return %[[I32]] : i32
+func.func @cast_int_to_i32(%arg0: !torch.int) -> i32 {
+  %native = torchext.get %arg0 : !torch.int -> i64
+  %0 = llvm.trunc %native : i64 to i32
+  return %0 : i32
+}

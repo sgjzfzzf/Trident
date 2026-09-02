@@ -18,6 +18,7 @@ from trident.core import ir
 from trident.core.dialects import (
     arith,
     gpu,
+    llvm,
     torchext,
 )
 from trident.core.dialects import (
@@ -44,11 +45,15 @@ KernelArgument: TypeAlias = torch.fx.Node | KernelValue
 
 
 class GraphNodeImporterTritonHopPatchState:
-    refcount: int = 0
-    original_attrs: ClassVar[dict[str, Any]] = {}
-    original_scalar_type_map: ClassVar[dict[type[Any], str] | None] = None
-    original_builtin_ops: ClassVar[dict[str, OpOverloadPacket] | None] = None
+    _refcount: ClassVar[int] = 0
+    _active_state: ClassVar[Self | None] = None
     _lock: Final[threading.RLock] = threading.RLock()
+
+    def __init__(self, specialization_id: int = 0) -> None:
+        self.specialization_id: int = specialization_id
+        self.original_attrs: dict[str, Any] = {}
+        self.original_scalar_type_map: dict[type[Any], str] | None = None
+        self.original_builtin_ops: dict[Any, OpOverloadPacket] | None = None
 
     @staticmethod
     def _symbolic_builtin_ops() -> dict[str, OpOverloadPacket]:
@@ -163,77 +168,8 @@ class GraphNodeImporterTritonHopPatchState:
             return arith.constant(i64_type, value, loc=loc)
         return None
 
-    @classmethod
-    def apply(cls) -> None:
-        with cls._lock:
-            if cls.refcount > 0:
-                cls.refcount += 1
-            else:
-                importer_patches: tuple[Callable[..., None], ...] = (
-                    _import_hop_triton_kernel_wrapper_functional,
-                    _import_hop_triton_kernel_wrapper_mutation,
-                )
-                for importer_patch in importer_patches:
-                    attr_name: str = importer_patch.__name__
-                    if hasattr(GraphNodeImporter, attr_name):
-                        cls.original_attrs[attr_name] = getattr(
-                            GraphNodeImporter, attr_name
-                        )
-                    setattr(GraphNodeImporter, attr_name, importer_patch)
-                cls.original_scalar_type_map = (
-                    fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE
-                )
-                fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE = {
-                    **cls.original_scalar_type_map,
-                    torch.dtype: "!torch.int",
-                }
-                builtin_ops = cls._symbolic_builtin_ops()
-                cls.original_builtin_ops = {
-                    name: fx_importer.PY_BUILTIN_TO_TORCH_OP[name]
-                    for name in builtin_ops
-                    if name in fx_importer.PY_BUILTIN_TO_TORCH_OP
-                }
-                fx_importer.PY_BUILTIN_TO_TORCH_OP.update(builtin_ops)
-                cls.refcount = 1
-
-    @classmethod
-    def restore(cls) -> None:
-        with cls._lock:
-            if cls.refcount == 0:
-                return
-            cls.refcount -= 1
-            if cls.refcount > 0:
-                return
-            importer_patches: tuple[Callable[..., None], ...] = (
-                _import_hop_triton_kernel_wrapper_functional,
-                _import_hop_triton_kernel_wrapper_mutation,
-            )
-            for importer_patch in importer_patches:
-                attr_name: str = importer_patch.__name__
-                if hasattr(GraphNodeImporter, attr_name):
-                    delattr(GraphNodeImporter, attr_name)
-                if attr_name in cls.original_attrs:
-                    setattr(
-                        GraphNodeImporter,
-                        attr_name,
-                        cls.original_attrs.pop(attr_name),
-                    )
-            assert cls.original_scalar_type_map is not None
-            fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE = cls.original_scalar_type_map
-            cls.original_scalar_type_map = None
-            assert cls.original_builtin_ops is not None
-            builtin_ops = cls._symbolic_builtin_ops()
-            for name in builtin_ops:
-                if name in cls.original_builtin_ops:
-                    fx_importer.PY_BUILTIN_TO_TORCH_OP[name] = cls.original_builtin_ops[
-                        name
-                    ]
-                else:
-                    fx_importer.PY_BUILTIN_TO_TORCH_OP.pop(name, None)
-            cls.original_builtin_ops = None
-
     def __enter__(self) -> Self:
-        self.apply()
+        _patch_manager.apply(self)
         return self
 
     def __exit__(
@@ -242,7 +178,85 @@ class GraphNodeImporterTritonHopPatchState:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        self.restore()
+        _patch_manager.restore()
+
+
+class _GraphNodeImporterPatchManager:
+    """Own the process-global monkey-patch lifecycle."""
+
+    def __init__(self) -> None:
+        self.refcount: int = 0
+        self.active_state: GraphNodeImporterTritonHopPatchState | None = None
+        self.lock: Final[threading.RLock] = threading.RLock()
+
+    def apply(self, state: GraphNodeImporterTritonHopPatchState) -> None:
+        with self.lock:
+            if self.refcount > 0:
+                self.refcount += 1
+                return
+
+            importer_patches: tuple[Callable[..., None], ...] = (
+                _import_hop_triton_kernel_wrapper_functional,
+                _import_hop_triton_kernel_wrapper_mutation,
+            )
+            for importer_patch in importer_patches:
+                attr_name: str = importer_patch.__name__
+                if hasattr(GraphNodeImporter, attr_name):
+                    state.original_attrs[attr_name] = getattr(
+                        GraphNodeImporter, attr_name
+                    )
+                setattr(GraphNodeImporter, attr_name, importer_patch)
+
+            state.original_scalar_type_map = fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE
+            fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE = {
+                **state.original_scalar_type_map,
+                torch.dtype: "!torch.int",
+            }
+
+            builtin_ops = GraphNodeImporterTritonHopPatchState._symbolic_builtin_ops()
+            state.original_builtin_ops = dict(fx_importer.PY_BUILTIN_TO_TORCH_OP)
+            fx_importer.PY_BUILTIN_TO_TORCH_OP = {
+                **state.original_builtin_ops,
+                **builtin_ops,
+            }
+            self.active_state = state
+            self.refcount = 1
+
+    def restore(self) -> None:
+        with self.lock:
+            if self.refcount == 0:
+                return
+            self.refcount -= 1
+            if self.refcount > 0:
+                return
+
+            active_state = self.active_state
+            assert active_state is not None
+            importer_patches: tuple[Callable[..., None], ...] = (
+                _import_hop_triton_kernel_wrapper_functional,
+                _import_hop_triton_kernel_wrapper_mutation,
+            )
+            for importer_patch in importer_patches:
+                attr_name: str = importer_patch.__name__
+                if hasattr(GraphNodeImporter, attr_name):
+                    delattr(GraphNodeImporter, attr_name)
+                if attr_name in active_state.original_attrs:
+                    setattr(
+                        GraphNodeImporter,
+                        attr_name,
+                        active_state.original_attrs[attr_name],
+                    )
+
+            assert active_state.original_scalar_type_map is not None
+            fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE = (
+                active_state.original_scalar_type_map
+            )
+            assert active_state.original_builtin_ops is not None
+            fx_importer.PY_BUILTIN_TO_TORCH_OP = active_state.original_builtin_ops
+            self.active_state = None
+
+
+_patch_manager = _GraphNodeImporterPatchManager()
 
 
 def _import_hop_triton_kernel_wrapper(
@@ -324,11 +338,24 @@ def _import_hop_triton_kernel_wrapper(
                     target = ir.IntegerType.get_signless(
                         ast.literal_eval(triton_type[1:])
                     )
-                    call_arguments[name] = torchext.get(target, const_val)
+                    native = torchext.get(ir.IntegerType.get_signless(64), const_val)
+                    call_arguments[name] = (
+                        native
+                        if target.width == 64
+                        else llvm.trunc(
+                            res=target,
+                            arg=native,
+                            overflow_flags=ir.Attribute.parse("#llvm.overflow<none>"),
+                        )
+                    )
                 elif triton_type == "fp32":
                     const_val = torch_d.constant_float(value)
                     target = ir.F32Type.get()
-                    call_arguments[name] = torchext.get(target, const_val)
+                    native = torchext.get(ir.F64Type.get(), const_val)
+                    call_arguments[name] = llvm.fptrunc(
+                        res=target,
+                        arg=native,
+                    )
                 elif triton_type == "fp64":
                     const_val = torch_d.constant_float(value)
                     target = ir.F64Type.get()
@@ -348,14 +375,19 @@ def _import_hop_triton_kernel_wrapper(
         grid: tuple[int, int, int] = grids[i]
     else:
         [grid] = grids
-    binary_name: Final[str] = f"_{node.name}"
+    # Each imported specialization gets a unique symbol namespace from the
+    # graph module.  FX node names are unique within an imported graph, so the
+    # pair is sufficient to keep binaries distinct after module merging.
+    cubin = kernel.asm["cubin"]
+    active_state = _patch_manager.active_state
+    assert active_state is not None
+    binary_name: Final[str] = f"_trident_s{active_state.specialization_id}_{node.name}"
     module_op = self.fx_importer.module.operation
     module_op.attributes["gpu.container_module"] = ir.UnitAttr.get()
     if all(
         not isinstance(op, gpu.BinaryOp) or op.sym_name != binary_name
         for op in self.fx_importer.module.body.operations
     ):
-        cubin = kernel.asm["cubin"]
         cubin_mlir: str = "".join(f"\\{byte:02X}" for byte in cubin)
         gpu_object = ir.Attribute.parse(
             f'#gpu.object<#nvvm.target<chip = "sm_{kernel.metadata.target.arch}">, '
@@ -416,5 +448,5 @@ def _import_hop_triton_kernel_wrapper_mutation(
     _import_hop_triton_kernel_wrapper(self, loc, node, hop)
 
 
-def apply_patch() -> GraphNodeImporterTritonHopPatchState:
-    return GraphNodeImporterTritonHopPatchState()
+def apply_patch(specialization_id: int = 0) -> GraphNodeImporterTritonHopPatchState:
+    return GraphNodeImporterTritonHopPatchState(specialization_id)

@@ -10,11 +10,7 @@
 // CHECK-LABEL: module attributes {gpu.container_module}
 // CHECK:      llvm.func @TVMFFIEnvGetStream(i32, i32) -> !llvm.ptr
 // CHECK:      llvm.func @aoti_torch_get_current_device_index(!llvm.ptr) -> i32
-// CHECK:      gpu.module @kernel {
-// CHECK:        gpu.func @entry(%arg0: !llvm.ptr, %arg1: i32, %arg2: i64, %arg3: i64)
-// CHECK-SAME:   kernel attributes {gpu.binary = ""}
-// CHECK-NEXT:     gpu.return
-// CHECK-NEXT:   }
+// CHECK:      gpu.binary @kernel
 // CHECK:      func.func @test_kernel_launch
 // CHECK-SAME: %[[TENS_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[SCAL_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>
 // CHECK-DAG:  %[[C32:[a-zA-Z0-9_]+]] = llvm.mlir.constant(32 : i64) : i64
@@ -43,12 +39,7 @@
 
 // CHECK-NOT: torchext.trident_kernel_launch
 module attributes { gpu.container_module } {
-  gpu.module @kernel {
-    gpu.func @entry(%arg0: !llvm.ptr, %arg1: i32, %arg2: i64, %arg3: i64)
-        attributes { gpu.binary = "", gpu.kernel } {
-      gpu.return
-    }
-  }
+  gpu.binary @kernel [#gpu.object<#nvvm.target, "">]
 
   func.func @test_kernel_launch(
     %tensor: !torch.vtensor<[4],f32>,

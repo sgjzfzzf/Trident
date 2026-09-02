@@ -28,7 +28,7 @@
 // CHECK: %[[RET:[a-zA-Z0-9_]+]] = llvm.load %[[RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.return %[[RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_mul_scalar(
-// CHECK: llvm.call @mul_scalar
+// CHECK: llvm.call @mul_scalar(%[[WRAPPER_INPUT:[a-zA-Z0-9_]+]], %[[WRAPPER_SCALAR:[a-zA-Z0-9_]+]]) : (!llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
 
 // Allocate the args array for 2 operands.
 // Store the input operands.

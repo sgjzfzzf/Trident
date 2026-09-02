@@ -30,7 +30,7 @@
 // CHECK: %[[RET:[a-zA-Z0-9_]+]] = llvm.load %[[RET_SLOT:[a-zA-Z0-9_]+]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.return %[[RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_empty(
-// CHECK: llvm.call @empty
+// CHECK: llvm.call @empty(%[[WRAPPER_SHAPE:[a-zA-Z0-9_]+]], %[[WRAPPER_DTYPE:[a-zA-Z0-9_]+]], %[[WRAPPER_DEVICE:[a-zA-Z0-9_]+]]) : (!llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
 
 // Allocate the args array for 6 operands.
 // Store the input operands.

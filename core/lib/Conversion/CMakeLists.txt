@@ -1,4 +1,6 @@
 add_subdirectory(ArithExtToScf)
+add_subdirectory(DLPackToLLVM)
+add_subdirectory(FinalizeTVMFFI)
 add_subdirectory(Pipeline)
 add_subdirectory(TorchExtToGPU)
 add_subdirectory(TorchToCf)

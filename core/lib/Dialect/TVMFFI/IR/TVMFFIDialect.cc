@@ -14,7 +14,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
-#include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.cpp.inc"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h" // NOLINT(misc-include-cleaner)
@@ -23,6 +22,7 @@
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/ADT/TypeSwitch.h> // NOLINT(misc-include-cleaner)
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/Diagnostics.h>
@@ -36,6 +36,8 @@
 #include <mlir/Support/LLVM.h>
 #include <string>
 #include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
+
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.cpp.inc"
 
 #define GET_TYPEDEF_CLASSES
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.cpp.inc"

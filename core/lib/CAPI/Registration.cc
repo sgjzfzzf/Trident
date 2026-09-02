@@ -33,6 +33,6 @@ MlirType tridentCoreConvertTorchTypeToTVMFFIType(MlirType type) {
   trident::torch::TorchToTVMFFITypeInterface const interface =
       mlir::dyn_cast<trident::torch::TorchToTVMFFITypeInterface>(sourceType);
   return wrap(
-      interface ? interface.convertToTVMFFIType()
+      interface ? interface.getTVMFFIType()
                 : trident::tvm_ffi::AnyType::get(sourceType.getContext()));
 }

@@ -44,12 +44,12 @@ func.func @get_float(%arg: !tvm_ffi.float) -> f64 {
 }
 
 // DIALECT-LABEL: func.func @get_tensor(
-// DIALECT-SAME: [[TENSOR_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.tensor) -> !llvm.ptr {
-// DIALECT-NEXT: [[TENSOR_VALUE:%[a-zA-Z0-9_]+]] = tvm_ffi.get [[TENSOR_ARG]] : !tvm_ffi.tensor -> !llvm.ptr
-// DIALECT-NEXT: return [[TENSOR_VALUE]] : !llvm.ptr
-func.func @get_tensor(%arg: !tvm_ffi.tensor) -> !llvm.ptr {
-  %value = tvm_ffi.get %arg : !tvm_ffi.tensor -> !llvm.ptr
-  return %value : !llvm.ptr
+// DIALECT-SAME: [[TENSOR_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.tensor) -> !tvm_ffi.object {
+// DIALECT-NEXT: [[TENSOR_VALUE:%[a-zA-Z0-9_]+]] = tvm_ffi.get [[TENSOR_ARG]] : !tvm_ffi.tensor -> !tvm_ffi.object
+// DIALECT-NEXT: return [[TENSOR_VALUE]] : !tvm_ffi.object
+func.func @get_tensor(%arg: !tvm_ffi.tensor) -> !tvm_ffi.object {
+  %value = tvm_ffi.get %arg : !tvm_ffi.tensor -> !tvm_ffi.object
+  return %value : !tvm_ffi.object
 }
 
 // DIALECT-LABEL: tvm_ffi.func @with_torch_int(

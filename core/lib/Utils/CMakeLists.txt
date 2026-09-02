@@ -7,6 +7,9 @@ add_mlir_library(
   ArithExtDialect
   ArithExtToScf
   DecomposeTVMFFI
+  DLPackToLLVM
+  DLPackDialect
+  FinalizeTVMFFI
   GeneralizeAtenOps
   MLIRRegisterAllDialects
   MLIRRegisterAllExtensions

@@ -10,8 +10,7 @@
 // CHECK-LABEL: func.func @transpose(
 // CHECK-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
 // CHECK: %[[FUNC:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.t"
-// CHECK: %[[CALL:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%[[ARG]])
-// CHECK-SAME: -> !tvm_ffi.tensor
+// CHECK: %[[CALL:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%[[ARG]]) : (!tvm_ffi.tensor) -> !tvm_ffi.tensor
 // CHECK: return %[[CALL]] : !tvm_ffi.tensor
 func.func @transpose(%arg0: !torch.vtensor<[2,3],f32>)
     -> !torch.vtensor<[3,2],f32> {
@@ -26,8 +25,7 @@ func.func @transpose(%arg0: !torch.vtensor<[2,3],f32>)
 // CHECK-LABEL: func.func @clone_contiguous(
 // CHECK: %[[FORMAT:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = 0 : i64}> : () -> !tvm_ffi.int
 // CHECK: %[[FUNC:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.clone"
-// CHECK: %[[CLONE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%arg0, %[[FORMAT]])
-// CHECK-SAME: -> !tvm_ffi.tensor
+// CHECK: %[[CLONE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%arg0, %[[FORMAT]]) : (!tvm_ffi.tensor, !tvm_ffi.int) -> !tvm_ffi.tensor
 // CHECK: return %[[CLONE]] : !tvm_ffi.tensor
 func.func @clone_contiguous(%arg0: !torch.vtensor<[32,2],f32>)
     -> !torch.vtensor<[32,2],f32> {

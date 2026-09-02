@@ -7,6 +7,8 @@
 
 #include "trident/core/Conversion/Pipeline/Pipeline.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Conversion/ArithExtToScf/ArithExtToScf.h"
+#include "trident/core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
+#include "trident/core/Conversion/FinalizeTVMFFI/FinalizeTVMFFI.h"
 #include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h"
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "trident/core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
@@ -46,13 +48,15 @@ class TridentLoweringPipelinePass
     pm.addPass(createConvertArithExtToScf());
     pm.addPass(createConvertTorchToCf());
     pm.addPass(createConvertTorchToScf());
+    pm.addPass(createConvertTorchExtToGPU());
     pm.addPass(createConvertTorchToTVMFFI());
     pm.addPass(tvm_ffi::createApplyObjectOwnership());
     pm.addPass(tvm_ffi::createDecomposeTVMFFI());
-    pm.addPass(createConvertTorchExtToGPU());
+    pm.addPass(createFinalizeTVMFFI());
     pm.addPass(createConvertTVMFFIToFunc());
     pm.addPass(mlir::createSCFToControlFlowPass());
     pm.addPass(createConvertTVMFFIToLLVM());
+    pm.addPass(createConvertDLPackToLLVM());
     pm.addPass(mlir::createArithToLLVMConversionPass());
     pm.addPass(mlir::createConvertControlFlowToLLVMPass());
     pm.addPass(

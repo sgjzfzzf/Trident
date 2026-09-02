@@ -14,8 +14,8 @@ import unittest
 from abc import abstractmethod
 from typing import Final
 
-import tvm_ffi
 import torch
+import tvm_ffi
 from trident import capi_utils
 from trident.core import (
     execution_engine,

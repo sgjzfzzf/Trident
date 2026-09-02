@@ -11,7 +11,11 @@
 #include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
 #include "trident/core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
+#include "trident/core/Dialect/DLPack/IR/DLPackDialect.h"
+#include "trident/core/Dialect/DLPack/IR/DLPackOps.h"
+#include "trident/core/Dialect/DLPack/IR/DLPackTypes.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include <llvm/ADT/STLExtras.h>
@@ -27,6 +31,7 @@
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Location.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/IR/SymbolTable.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -45,8 +50,7 @@ public:
   ConvertTridentKernelLaunchOp(mlir::TypeConverter &typeConverter,
                                mlir::MLIRContext *context)
       : mlir::OpConversionPattern<torchext::TridentKernelLaunchOp>(
-            typeConverter, context),
-        typeConverter(typeConverter) {}
+            typeConverter, context) {}
 
   mlir::LogicalResult
   matchAndRewrite(torchext::TridentKernelLaunchOp op, OpAdaptor adaptor,
@@ -82,24 +86,21 @@ public:
     mlir::Value const dynamicSharedMemorySize =
         adaptor.getDynamicSharedMemorySize();
 
-    // Type-convert kernel operands.  Values whose type changes are represented
-    // by torchext.get, allowing the later LLVM lowering to extract the native
-    // scalar or tensor pointer from the converted TVM FFI value.
-    llvm::SmallVector<mlir::Value> operands;
-    for (auto [original, adapted] :
-         llvm::zip(op.getKernelOperands(), adaptor.getKernelOperands())) {
-      mlir::Type const convertedType =
-          typeConverter.convertType(original.getType());
-      if (!convertedType) {
-        return op.emitOpError("cannot convert a kernel operand of type ")
-               << original.getType();
-      }
-      operands.push_back(
-          convertedType == original.getType()
-              ? adapted
-              : torchext::GetOp::create(rewriter, loc, convertedType, original)
-                    .getResult());
+    mlir::gpu::GPUFuncOp kernel =
+        mlir::SymbolTable::lookupNearestSymbolFrom<mlir::gpu::GPUFuncOp>(
+            op, op.getKernel());
+    if (!kernel) {
+      return op->emitOpError("cannot find GPU kernel ") << op.getKernel();
     }
+    mlir::FunctionType const kernelType = kernel.getFunctionType();
+    constexpr uint32_t kSyntheticKernelOperands = 2;
+    if (kernelType.getNumInputs() !=
+        op.getKernelOperands().size() + kSyntheticKernelOperands) {
+      return op->emitOpError("kernel operand count does not match GPU kernel");
+    }
+
+    llvm::SmallVector<mlir::Value> operands(adaptor.getKernelOperands().begin(),
+                                            adaptor.getKernelOperands().end());
 
     // Retrieve the current CUDA stream and pass as asyncObject.
     mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
@@ -157,9 +158,6 @@ public:
 
     return mlir::success();
   }
-
-private:
-  mlir::TypeConverter const &typeConverter;
 };
 
 class ConvertTorchExtToGPUPass
@@ -174,25 +172,66 @@ public:
         });
     typeConverter.addConversion(
         [](mlir::torch::Torch::FloatType type) -> mlir::Type {
-          return mlir::Float64Type::get(type.getContext());
+          return mlir::Float32Type::get(type.getContext());
         });
     typeConverter.addConversion(
         [](mlir::torch::Torch::IntType type) -> mlir::Type {
-          return mlir::IntegerType::get(type.getContext(), 64);
+          return mlir::IntegerType::get(type.getContext(), 32);
         });
-    typeConverter.addConversion([](tvm_ffi::BoolType type) -> mlir::Type {
-      return mlir::IntegerType::get(type.getContext(), 1);
-    });
-    typeConverter.addConversion([](tvm_ffi::IntType type) -> mlir::Type {
-      return mlir::IntegerType::get(type.getContext(), 64);
-    });
-    typeConverter.addConversion([](tvm_ffi::FloatType type) -> mlir::Type {
-      return mlir::Float64Type::get(type.getContext());
-    });
-    typeConverter.addConversion([](tvm_ffi::TensorType type) -> mlir::Type {
-      return mlir::LLVM::LLVMPointerType::get(type.getContext());
-    });
-    mlir::RewritePatternSet patterns(&getContext());
+    typeConverter.addConversion(
+        [](mlir::torch::Torch::NonValueTensorType type) -> mlir::Type {
+          return mlir::LLVM::LLVMPointerType::get(type.getContext());
+        });
+    typeConverter.addConversion(
+        [](mlir::torch::Torch::ValueTensorType type) -> mlir::Type {
+          return mlir::LLVM::LLVMPointerType::get(type.getContext());
+        });
+    typeConverter.addTargetMaterialization(
+        [](mlir::OpBuilder &builder, mlir::Type resultType,
+           mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
+          mlir::Value const input = inputs.front();
+          mlir::Type const inputType = input.getType();
+          if (mlir::isa<mlir::torch::Torch::BaseTensorType>(inputType) &&
+              mlir::isa<mlir::LLVM::LLVMPointerType>(resultType)) {
+            mlir::LLVM::LLVMPointerType const pointerType =
+                mlir::cast<mlir::LLVM::LLVMPointerType>(resultType);
+            mlir::Value const object = torchext::GetOp::create(
+                builder, loc,
+                tvm_ffi::ObjectType::get(pointerType.getContext()), input);
+            mlir::Value const tensor = tvm_ffi::AsOp::create(
+                builder, loc,
+                dlpack::DLTensorType::get(pointerType.getContext()), object);
+            return dlpack::TensorDataOp::create(builder, loc, pointerType,
+                                                tensor)
+                .getResult();
+          } else if (mlir::isa<mlir::torch::Torch::BoolType>(inputType) &&
+                     resultType.isSignlessInteger()) {
+            return torchext::GetOp::create(builder, loc, resultType, input)
+                .getResult();
+          } else if (mlir::isa<mlir::torch::Torch::IntType>(inputType) &&
+                     resultType.isSignlessInteger()) {
+            return mlir::LLVM::TruncOp::create(
+                       builder, loc, resultType,
+                       torchext::GetOp::create(
+                           builder, loc,
+                           mlir::IntegerType::get(inputType.getContext(), 64),
+                           input))
+                .getResult();
+          } else if (mlir::isa<mlir::torch::Torch::FloatType>(inputType) &&
+                     mlir::isa<mlir::FloatType>(resultType)) {
+            return mlir::LLVM::FPTruncOp::create(
+                       builder, loc, resultType,
+                       torchext::GetOp::create(
+                           builder, loc,
+                           mlir::Float64Type::get(inputType.getContext()),
+                           input))
+                .getResult();
+          } else {
+            return mlir::UnrealizedConversionCastOp::create(
+                       builder, loc, mlir::TypeRange(resultType), input)
+                .getResult(0);
+          }
+        });
 
     typeConverter.addConversion(
         [](mlir::Type type) -> std::optional<mlir::Type> {
@@ -203,11 +242,12 @@ public:
           }
         });
     target.addIllegalOp<torchext::TridentKernelLaunchOp>();
-    target.addLegalOp<torchext::GetOp>();
+    target.addLegalOp<mlir::gpu::LaunchFuncOp, torchext::GetOp>();
     target.addLegalDialect<mlir::gpu::GPUDialect, mlir::BuiltinDialect,
                            mlir::func::FuncDialect, mlir::LLVM::LLVMDialect,
-                           tvm_ffi::TVMFFIDialect>();
+                           tvm_ffi::TVMFFIDialect, dlpack::DLPackDialect>();
 
+    mlir::RewritePatternSet patterns(&getContext());
     populateTorchExtToGPUConversionPatterns(target, patterns, typeConverter);
 
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,

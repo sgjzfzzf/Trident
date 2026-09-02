@@ -19,7 +19,7 @@ def Torch_ToTVMFFITypeInterface
   let methods = [
     InterfaceMethod<
       "Returns the corresponding semantic TVM FFI type.",
-      "::mlir::Type", "convertToTVMFFIType", (ins)
+      "::mlir::Type", "getTVMFFIType", (ins)
     >
   ];
 }

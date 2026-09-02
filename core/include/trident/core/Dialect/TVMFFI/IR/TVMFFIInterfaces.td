@@ -24,6 +24,21 @@ def TVMFFI_TypeIndexInterface
   ];
 }
 
+def TVMFFI_NativeTypeInterface
+    : TypeInterface<"TVMFFINativeTypeInterface"> {
+  let cppNamespace = "::trident::tvm_ffi";
+  let description = [{
+    Provides the native MLIR type used when a TVM FFI value is passed to a
+    kernel.
+  }];
+  let methods = [
+    InterfaceMethod<
+      "Returns the corresponding native MLIR type.",
+      "::mlir::Type", "getNativeType", (ins)
+    >
+  ];
+}
+
 def TVMFFI_ObjectOwnershipOpInterface
     : OpInterface<"ObjectOwnershipOpInterface"> {
   let cppNamespace = "::trident::tvm_ffi";

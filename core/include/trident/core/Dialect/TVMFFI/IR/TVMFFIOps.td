@@ -60,6 +60,14 @@ def TVMFFI_ArrayLengthOp : TVMFFI_Op<"array.length", [Pure]> {
   let assemblyFormat = "$array attr-dict `:` type($array)";
 }
 
+def TVMFFI_AsOp : TVMFFI_Op<"as", [Pure]> {
+  let summary = "View the payload of a TVM FFI object as a native type";
+  let arguments = (ins TVMFFI_ObjectType:$object);
+  let results = (outs AnyType:$result);
+  let hasVerifier = 1;
+  let assemblyFormat = "$object attr-dict `:` type($object) `->` type($result)";
+}
+
 def TVMFFI_CallOp : TVMFFI_Op<"call", [TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Call a TVM FFI function defined in the current module";
   let arguments = (ins FlatSymbolRefAttr:$callee,
@@ -170,8 +178,8 @@ def TVMFFI_FunctionGetGlobalOp
 
 def TVMFFI_GetOp : TVMFFI_Op<"get", [Pure]> {
   let summary = "Extract a native value from a TVM FFI value";
-  let arguments = (ins AnyTVMFFIAnyABIType:$operand);
-  let results = (outs AnyType:$result);
+  let arguments = (ins AnyTVMFFIGetOperandType:$operand);
+  let results = (outs AnyTVMFFIGetResultType:$result);
   let hasVerifier = 1;
   let assemblyFormat = "$operand attr-dict `:` type($operand) `->` type($result)";
 }
@@ -214,22 +222,6 @@ def TVMFFI_ReturnOp
   let hasVerifier = 1;
 }
 
-def TVMFFI_TensorDeviceOp : TVMFFI_Op<"tensor.device", [Pure]> {
-  let summary = "Read DLPack device fields from a runtime tensor";
-  let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);
-  let results = (outs I32:$device_type, I32:$device_index);
-  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
-}
-
-def TVMFFI_TensorLiteralOp
-    : TVMFFI_Op<"tensor.literal", [TVMFFI_ObjectOwnershipOpInterface]> {
-  let summary = "Create an owned TVM FFI tensor from a dense literal";
-  let arguments = (ins ElementsAttr:$value);
-  let results = (outs TVMFFI_TensorType:$result);
-  let assemblyFormat = "$value attr-dict `:` type($result)";
-  let hasVerifier = 1;
-}
-
 def TVMFFI_TensorCloneOp
     : TVMFFI_Op<"tensor.clone", [TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Create an independent tensor copy preserving the layout";
@@ -246,6 +238,13 @@ def TVMFFI_TensorCopyOp
   let assemblyFormat = "$destination `,` $source attr-dict `:` type($destination)";
 }
 
+def TVMFFI_TensorDeviceOp : TVMFFI_Op<"tensor.device", [Pure]> {
+  let summary = "Read DLPack device fields from a runtime tensor";
+  let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);
+  let results = (outs I32:$device_type, I32:$device_index);
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
 def TVMFFI_TensorDimOp : TVMFFI_Op<"tensor.dim", [Pure]> {
   let summary = "Read the rank of a runtime tensor";
   let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);
@@ -258,6 +257,15 @@ def TVMFFI_TensorDTypeOp : TVMFFI_Op<"tensor.dtype", [Pure]> {
   let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);
   let results = (outs I8:$code, I8:$bits, I16:$lanes);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
+def TVMFFI_TensorLiteralOp
+    : TVMFFI_Op<"tensor.literal", [TVMFFI_ObjectOwnershipOpInterface]> {
+  let summary = "Create an owned TVM FFI tensor from a dense literal";
+  let arguments = (ins ElementsAttr:$value);
+  let results = (outs TVMFFI_TensorType:$result);
+  let assemblyFormat = "$value attr-dict `:` type($result)";
+  let hasVerifier = 1;
 }
 
 def TVMFFI_TensorSizeOp

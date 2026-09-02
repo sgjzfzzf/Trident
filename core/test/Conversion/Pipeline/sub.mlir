@@ -43,7 +43,7 @@
 // CHECK: %[[TENSOR_RET:[a-zA-Z0-9_]+]] = llvm.load %[[TENSOR_RET_SLOT:[a-zA-Z0-9_]+]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.return %[[TENSOR_RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_sub_scalar(
-// CHECK: llvm.call @sub_scalar
+// CHECK: llvm.call @sub_scalar(%[[SCALAR_WRAPPER_INPUT:[a-zA-Z0-9_]+]], %[[SCALAR_WRAPPER_OTHER:[a-zA-Z0-9_]+]], %[[SCALAR_WRAPPER_ALPHA:[a-zA-Z0-9_]+]]) : (!llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
 
 // Allocate the args array for 3 operands.
 // Store the input operands.

@@ -48,12 +48,12 @@ tvm_ffi.func @ffi_return(%arg0: !torch.vtensor<[2,3],f32>)
 // Object ownership analysis.
 // CHECK-LABEL: func.func @control_flow_return
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = scf.if
-// CHECK: %[[THEN_CALL:[a-zA-Z0-9_]+]] = func.call @make_tensor
+// CHECK: %[[THEN_CALL:[a-zA-Z0-9_]+]] = func.call @make_tensor() : () -> !tvm_ffi.tensor
 // CHECK-NEXT: %[[THEN_CAST:[a-zA-Z0-9_]+]] = tvm_ffi.cast %[[THEN_CALL]]
 // CHECK-NEXT: tvm_ffi.ObjectIncRef %[[THEN_CAST]] : !tvm_ffi.any
 // CHECK-NEXT: tvm_ffi.ObjectDecRef %[[THEN_CALL]] : !tvm_ffi.tensor
 // CHECK-NEXT: scf.yield %[[THEN_CAST]] : !tvm_ffi.any
-// CHECK: %[[ELSE_CALL:[a-zA-Z0-9_]+]] = func.call @make_tensor
+// CHECK: %[[ELSE_CALL:[a-zA-Z0-9_]+]] = func.call @make_tensor() : () -> !tvm_ffi.tensor
 // CHECK-NEXT: %[[ELSE_CAST:[a-zA-Z0-9_]+]] = tvm_ffi.cast %[[ELSE_CALL]]
 // CHECK-NEXT: tvm_ffi.ObjectIncRef %[[ELSE_CAST]] : !tvm_ffi.any
 // CHECK-NEXT: tvm_ffi.ObjectDecRef %[[ELSE_CALL]] : !tvm_ffi.tensor
@@ -121,7 +121,7 @@ func.func @explicit_increment() {
 // analysis must not schedule a second semantic DecRef for it.
 // CHECK-LABEL: func.func @consumed_function_handle
 // CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "test.make_tensor"
-// CHECK-NEXT: %[[VALUE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[HANDLE]]
+// CHECK-NEXT: %[[VALUE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[HANDLE]]() : () -> !tvm_ffi.tensor
 // CHECK-NOT: tvm_ffi.ObjectDecRef %[[HANDLE]]
 // CHECK: tvm_ffi.ObjectIncRef %[[VALUE]]
 // CHECK-NEXT: tvm_ffi.ObjectDecRef %[[VALUE]]

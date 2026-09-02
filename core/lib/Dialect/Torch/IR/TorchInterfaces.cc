@@ -21,7 +21,7 @@ namespace detail {
 template <typename ConcreteModel, typename SourceType, typename TargetType>
 struct SimpleTypeModel
     : TorchToTVMFFITypeInterface::ExternalModel<ConcreteModel, SourceType> {
-  mlir::Type convertToTVMFFIType(mlir::Type type) const {
+  mlir::Type getTVMFFIType(mlir::Type type) const {
     return TargetType::get(type.getContext());
   }
 };
@@ -64,7 +64,7 @@ struct ValueTensorTypeModel final
 struct StringTypeModel final
     : TorchToTVMFFITypeInterface::ExternalModel<
           StringTypeModel, mlir::torch::Torch::StringType> {
-  mlir::Type convertToTVMFFIType(mlir::Type type) const {
+  mlir::Type getTVMFFIType(mlir::Type type) const {
     return tvm_ffi::UnionType::get(
         type.getContext(), {tvm_ffi::RawStrType::get(type.getContext()),
                             tvm_ffi::SmallStrType::get(type.getContext()),

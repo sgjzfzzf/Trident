@@ -3,8 +3,8 @@ add_mlir_conversion_library(
   CFunctionDeclUtils.cc
   GlobalString.cc
   TVMFFIUtils.cc
-  Type.cc
   LINK_LIBS
   PUBLIC
+  DLPackDialect
   MLIRLLVMDialect
   MLIRTransforms)

@@ -19,8 +19,7 @@ func.func @dtype_identity(%arg0: !torchext.dtype) -> !torchext.dtype {
 // CHECK-LABEL: func.func @dtype_to_torch_type(
 // CHECK-SAME: %[[DTYPE:[a-zA-Z0-9_]+]]: !tvm_ffi.dtype) -> !tvm_ffi.int {
 // CHECK: %[[FUNC:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.runtime.tvm_ffi_to_torch_type"
-// CHECK: %[[TYPE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%[[DTYPE]])
-// CHECK-SAME: (!tvm_ffi.dtype) -> !tvm_ffi.int
+// CHECK: %[[TYPE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%[[DTYPE]]) : (!tvm_ffi.dtype) -> !tvm_ffi.int
 // CHECK: return %[[TYPE]] : !tvm_ffi.int
 func.func @dtype_to_torch_type(%dtype: !torchext.dtype) -> !torch.int {
   %type = torchext.convert %dtype : !torchext.dtype -> !torch.int

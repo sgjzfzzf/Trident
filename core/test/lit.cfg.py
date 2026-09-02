@@ -1,5 +1,6 @@
 # Part of the Trident project, under the MIT License.
 # SPDX-License-Identifier: MIT
+# ruff: noqa: F821
 
 import os
 

@@ -1,0 +1,13 @@
+add_mlir_conversion_library(
+  DLPackToLLVM
+  DLPackToLLVM.cc
+  DEPENDS
+  MLIRConversionPassIncGen
+  LINK_LIBS
+  PUBLIC
+  DLPackDialect
+  MLIRFuncDialect
+  MLIRFuncTransforms
+  MLIRLLVMCommonConversion
+  MLIRLLVMDialect
+  MLIRPass)

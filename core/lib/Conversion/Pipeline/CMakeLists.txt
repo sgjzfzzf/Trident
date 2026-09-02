@@ -8,6 +8,8 @@ add_mlir_conversion_library(
   ApplyObjectOwnership
   ArithExtToScf
   DecomposeTVMFFI
+  DLPackToLLVM
+  FinalizeTVMFFI
   GeneralizeAtenOps
   MLIRArithToLLVM
   MLIRControlFlowToLLVM

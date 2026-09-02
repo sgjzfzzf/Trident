@@ -1,0 +1,11 @@
+add_mlir_dialect_library(
+  DLPackDialect
+  DLPackDialect.cc
+  DLPackTypes.cc
+  DEPENDS
+  MLIRDLPackIncGen
+  MLIRDLPackTypeDefsIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRLLVMDialect)

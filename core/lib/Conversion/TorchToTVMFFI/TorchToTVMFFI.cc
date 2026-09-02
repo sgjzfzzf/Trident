@@ -55,7 +55,7 @@ void populateTorchToTVMFFITypeConversions(mlir::TypeConverter &typeConverter) {
     }
     if (mlir::isa<trident::torch::TorchToTVMFFITypeInterface>(type)) {
       return mlir::cast<trident::torch::TorchToTVMFFITypeInterface>(type)
-          .convertToTVMFFIType();
+          .getTVMFFIType();
     }
     return tvm_ffi::AnyType::get(type.getContext());
   });
@@ -305,7 +305,7 @@ public:
           mlir::TypeRange{
               mlir::cast<trident::torch::TorchToTVMFFITypeInterface>(
                   op.getResult().getType())
-                  .convertToTVMFFIType()},
+                  .getTVMFFIType()},
           getGlobal.getResult(), mlir::ValueRange{raw.getResult()});
       rewriter.replaceOp(op, string.getResult(0));
       return mlir::success();
@@ -349,7 +349,6 @@ public:
   mlir::LogicalResult
   matchAndRewrite(torchext::GetOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Location const loc = op.getLoc();
     mlir::Type const resultType = op.getResult().getType();
     rewriter.replaceOpWithNewOp<tvm_ffi::GetOp>(op, resultType,
                                                 adaptor.getOperand());

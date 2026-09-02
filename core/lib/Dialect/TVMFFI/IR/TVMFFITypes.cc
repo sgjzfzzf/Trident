@@ -37,6 +37,34 @@ bool TVMFFIObjectType::classof(mlir::Type type) {
   return type && type.hasTrait<mlir::TypeTrait::Object>();
 }
 
+mlir::Type BoolType::getNativeType() const {
+  return mlir::IntegerType::get(getContext(), 1);
+}
+
+mlir::Type FloatType::getNativeType() const {
+  return mlir::Float64Type::get(getContext());
+}
+
+mlir::Type IntType::getNativeType() const {
+  return mlir::IntegerType::get(getContext(), 64);
+}
+
+mlir::Type ArrayType::getNativeType() const {
+  return ObjectType::get(getContext());
+}
+
+mlir::Type FunctionType::getNativeType() const {
+  return ObjectType::get(getContext());
+}
+
+mlir::Type StrType::getNativeType() const {
+  return ObjectType::get(getContext());
+}
+
+mlir::Type TensorType::getNativeType() const {
+  return ObjectType::get(getContext());
+}
+
 mlir::LLVM::LLVMStructType
 TVMFFIABIType::getLLVMType(mlir::MLIRContext *context) {
   mlir::IntegerType const i32Ty = mlir::IntegerType::get(context, 32);

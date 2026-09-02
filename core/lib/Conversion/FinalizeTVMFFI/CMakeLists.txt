@@ -1,0 +1,11 @@
+add_mlir_conversion_library(
+  FinalizeTVMFFI
+  FinalizeTVMFFI.cc
+  DEPENDS
+  MLIRConversionPassIncGen
+  LINK_LIBS
+  PUBLIC
+  DLPackDialect
+  TVMFFIDialect
+  MLIRPass
+  MLIRTransformUtils)

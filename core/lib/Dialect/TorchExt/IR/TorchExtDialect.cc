@@ -12,6 +12,7 @@
 // ODS-generated .cpp.inc files.
 
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h" // NOLINT(misc-include-cleaner)

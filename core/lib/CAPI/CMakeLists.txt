@@ -8,6 +8,7 @@ add_mlir_public_c_api_library(
   LINK_LIBS
   PUBLIC
   ArithExtDialect
+  DLPackDialect
   MLIRIR
   MLIRSupport
   TorchExtDialect

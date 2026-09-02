@@ -55,7 +55,11 @@ class TVMFFIIndexedObject_Type<string name, string typeMnemonic, int typeIndex,
                                list<Trait> traits = [],
                                string extraDeclarations = "">
     : TVMFFIIndexed_Type<name, typeMnemonic, typeIndex,
-                         !listconcat([TVMFFI_Object], traits),
+                         !listconcat(
+                             [TVMFFI_Object,
+                              DeclareTypeInterfaceMethods<
+                                  TVMFFI_NativeTypeInterface>],
+                             traits),
                          extraDeclarations,
                          "::trident::tvm_ffi::TVMFFIObjectType">;
 
@@ -63,7 +67,9 @@ def TVMFFI_AnyType : TVMFFIABI_Type<"Any", "any">;
 def TVMFFI_ArrayType
     : TVMFFIIndexedObject_Type<"Array", "array", 71>;
 def TVMFFI_BoolType
-    : TVMFFIIndexed_Type<"Bool", "bool", 2>;
+    : TVMFFIIndexed_Type<"Bool", "bool", 2,
+                         [DeclareTypeInterfaceMethods<
+                             TVMFFI_NativeTypeInterface>]>;
 def TVMFFI_DeviceType
     : TVMFFIIndexed_Type<"Device", "device", 6>;
 def TVMFFI_DTypeType
@@ -77,24 +83,31 @@ def TVMFFI_ExceptionType
                         [DeclareTypeInterfaceMethods<
                             TVMFFI_TypeIndexInterface>]>;
 def TVMFFI_FloatType
-    : TVMFFIIndexed_Type<"Float", "float", 3>;
+    : TVMFFIIndexed_Type<"Float", "float", 3,
+                         [DeclareTypeInterfaceMethods<
+                             TVMFFI_NativeTypeInterface>]>;
 def TVMFFI_FunctionType
     : TVMFFIIndexedObject_Type<"Function", "function", 68>;
 def TVMFFI_IntType
-    : TVMFFIIndexed_Type<"Int", "int", 1, [], [{
+    : TVMFFIIndexed_Type<"Int", "int", 1,
+                         [DeclareTypeInterfaceMethods<
+                             TVMFFI_NativeTypeInterface>], [{
     static ::mlir::Value build(::mlir::OpBuilder &builder,
                                ::mlir::Location loc, int64_t value);
     static ::mlir::Value build(::mlir::OpBuilder &builder,
                                ::mlir::Location loc, ::mlir::Value value);
   }]>;
 def TVMFFI_NoneType : TVMFFIIndexed_Type<"None", "none", 0>;
+def TVMFFI_ObjectType
+    : TVMFFIObject_Type<"Object", "object">;
 def TVMFFI_RawStrType : TVMFFIIndexed_Type<"RawStr", "raw_str", 8>;
 def TVMFFI_SmallStrType
     : TVMFFIIndexed_Type<"SmallStr", "small_str", 11>;
 def TVMFFI_StrType
     : TVMFFIIndexedObject_Type<"Str", "str", 65>;
 def TVMFFI_TensorType
-    : TVMFFIIndexedObject_Type<"Tensor", "tensor", 70>;
+    : TVMFFIIndexedObject_Type<"Tensor", "tensor", 70,
+                               []>;
 def TVMFFI_UnionType : TVMFFIABI_Type<"Union", "union"> {
   let summary = "A finite set of TVM FFI ABI alternatives";
   let parameters = (ins ArrayRefParameter<"::mlir::Type">:$types);
@@ -107,11 +120,18 @@ def TVMFFI_UnionType : TVMFFIABI_Type<"Union", "union"> {
 
 def AnyTVMFFIAnyABIType : AnyTypeOf<[
   TVMFFI_AnyType, TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_DeviceType,
-  TVMFFI_DTypeType,
-  TVMFFI_ExceptionType, TVMFFI_FloatType, TVMFFI_FunctionType, TVMFFI_IntType,
-  TVMFFI_NoneType, TVMFFI_RawStrType, TVMFFI_SmallStrType, TVMFFI_StrType,
-  TVMFFI_TensorType, TVMFFI_UnionType
+  TVMFFI_DTypeType, TVMFFI_ExceptionType, TVMFFI_FloatType,
+  TVMFFI_FunctionType, TVMFFI_IntType, TVMFFI_NoneType, TVMFFI_ObjectType,
+  TVMFFI_RawStrType, TVMFFI_SmallStrType, TVMFFI_StrType, TVMFFI_TensorType,
+  TVMFFI_UnionType
 ], "TVM FFI value with a TVMFFIAny ABI representation">;
+def AnyTVMFFIGetResultType : AnyTypeOf<[
+  AnyType, TVMFFI_ObjectType
+], "TVM FFI get result">;
+def AnyTVMFFIGetOperandType : AnyTypeOf<[
+  TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_FloatType,
+  TVMFFI_FunctionType, TVMFFI_IntType, TVMFFI_StrType, TVMFFI_TensorType
+], "TVM FFI value with a native type">;
 def AnyTVMFFIAnyABIOrTorchType : AnyTypeOf<[
   AnyTVMFFIAnyABIType, AnyTorchType, TorchExt_DTypeType
 ], "TVM FFI ABI value or a Torch frontend value">;
@@ -119,9 +139,8 @@ def AnyTVMFFIArrayOrTorchType : AnyTypeOf<[
   TVMFFI_ArrayType, AnyTorchListType, Torch_TupleType, Torch_AnyType
 ], "TVM FFI array or a Torch frontend container value">;
 def AnyTVMFFIObjectOrAnyType : AnyTypeOf<[
-  TVMFFI_AnyType, TVMFFI_ArrayType, TVMFFI_ExceptionType,
-  TVMFFI_FunctionType, TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType,
-  AnyTorchTensorType
+  AnyTorchTensorType, TVMFFI_AnyType, TVMFFI_ArrayType, TVMFFI_ExceptionType,
+  TVMFFI_FunctionType, TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType
 ], "TVM FFI object value or !tvm_ffi.any">;
 def AnyTVMFFISemanticType : AnyTypeOf<[
   TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_DeviceType, TVMFFI_DTypeType,
@@ -130,7 +149,7 @@ def AnyTVMFFISemanticType : AnyTypeOf<[
   TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType
 ], "TVM FFI semantic value">;
 def AnyTVMFFITensorOrTorchType : AnyTypeOf<[
-  TVMFFI_TensorType, AnyTorchTensorType
+  AnyTorchTensorType, TVMFFI_TensorType
 ], "TVM FFI tensor or a Torch frontend tensor value">;
 
 #endif

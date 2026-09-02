@@ -13,6 +13,7 @@ include "mlir/IR/DialectBase.td"
 def TorchExt_Dialect : Dialect {
   let name = "torchext";
   let cppNamespace = "::trident::torchext";
+  let dependentDialects = ["::trident::tvm_ffi::TVMFFIDialect"];
   let useDefaultTypePrinterParser = 1;
   let summary = "TorchExt dialect";
   let description = [{

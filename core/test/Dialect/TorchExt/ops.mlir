@@ -8,25 +8,25 @@
 // RUN: trident-core-opt %s -split-input-file | FileCheck %s
 
 // CHECK-LABEL: func.func @get_float(
-// CHECK-SAME:    %[[ARG:[a-zA-Z0-9_]+]]: !torch.float) -> f32 {
-// CHECK:         %[[VAL:[a-zA-Z0-9_]+]] = torchext.get %[[ARG]] : !torch.float -> f32
-// CHECK-NEXT:    return %[[VAL]] : f32
+// CHECK-SAME:    %[[ARG:[a-zA-Z0-9_]+]]: !torch.float) -> f64 {
+// CHECK:         %[[VAL:[a-zA-Z0-9_]+]] = torchext.get %[[ARG]] : !torch.float -> f64
+// CHECK-NEXT:    return %[[VAL]] : f64
 // CHECK-NEXT:  }
-func.func @get_float(%arg0: !torch.float) -> f32 {
-  %0 = torchext.get %arg0 : !torch.float -> f32
-  return %0 : f32
+func.func @get_float(%arg0: !torch.float) -> f64 {
+  %0 = torchext.get %arg0 : !torch.float -> f64
+  return %0 : f64
 }
 
 // -----
 
 // CHECK-LABEL: func.func @get_int(
-// CHECK-SAME:    %[[ARG:[a-zA-Z0-9_]+]]: !torch.int) -> i32 {
-// CHECK:         %[[VAL:[a-zA-Z0-9_]+]] = torchext.get %[[ARG]] : !torch.int -> i32
-// CHECK-NEXT:    return %[[VAL]] : i32
+// CHECK-SAME:    %[[ARG:[a-zA-Z0-9_]+]]: !torch.int) -> i64 {
+// CHECK:         %[[VAL:[a-zA-Z0-9_]+]] = torchext.get %[[ARG]] : !torch.int -> i64
+// CHECK-NEXT:    return %[[VAL]] : i64
 // CHECK-NEXT:  }
-func.func @get_int(%arg0: !torch.int) -> i32 {
-  %0 = torchext.get %arg0 : !torch.int -> i32
-  return %0 : i32
+func.func @get_int(%arg0: !torch.int) -> i64 {
+  %0 = torchext.get %arg0 : !torch.int -> i64
+  return %0 : i64
 }
 
 // -----
@@ -50,4 +50,15 @@ func.func @convert_dtype(%arg0: !torchext.dtype) -> !torch.int {
 func.func @get_bool(%arg: !torch.bool) -> i1 {
   %value = torchext.get %arg : !torch.bool -> i1
   return %value : i1
+}
+
+// -----
+
+// CHECK-LABEL: func.func @get_tensor_object(
+// CHECK-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !tvm_ffi.tensor) -> !tvm_ffi.object {
+// CHECK: %[[VALUE:[a-zA-Z0-9_]+]] = torchext.get %[[ARG]] : !tvm_ffi.tensor -> !tvm_ffi.object
+// CHECK-NEXT: return %[[VALUE]] : !tvm_ffi.object
+func.func @get_tensor_object(%arg: !tvm_ffi.tensor) -> !tvm_ffi.object {
+  %value = torchext.get %arg : !tvm_ffi.tensor -> !tvm_ffi.object
+  return %value : !tvm_ffi.object
 }

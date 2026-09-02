@@ -60,7 +60,15 @@ tvm_ffi.func @invalid_union_return()
 // -----
 
 func.func @get_int_width(%arg: !tvm_ffi.int) {
-  // expected-error@+1 {{'tvm_ffi.get' op an int operand must produce an integer from i1 to i64}}
+  // expected-error@+1 {{'tvm_ffi.get' op unsupported get from '!tvm_ffi.int' to 'i128'}}
   %value = "tvm_ffi.get"(%arg) : (!tvm_ffi.int) -> i128
+  return
+}
+
+// -----
+
+func.func @get_unsupported_array(%arg: !tvm_ffi.array) {
+  // expected-error@+1 {{'tvm_ffi.get' op unsupported get from '!tvm_ffi.array' to 'i64'}}
+  %value = "tvm_ffi.get"(%arg) : (!tvm_ffi.array) -> i64
   return
 }

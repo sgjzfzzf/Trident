@@ -11,6 +11,7 @@ add_mlir_dialect_library(
   MLIRTVMFFITypeDefsIncGen
   LINK_LIBS
   PUBLIC
+  DLPackDialect
   MLIRControlFlowInterfaces
   MLIRFuncDialect
   MLIRIR

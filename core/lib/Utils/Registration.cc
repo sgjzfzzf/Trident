@@ -7,6 +7,8 @@
 
 #include "trident/core/Utils/Registration.h"
 #include "trident/core/Conversion/ArithExtToScf/ArithExtToScf.h"
+#include "trident/core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
+#include "trident/core/Conversion/FinalizeTVMFFI/FinalizeTVMFFI.h"
 #include "trident/core/Conversion/Pipeline/Pipeline.h"
 #include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h"
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
@@ -15,6 +17,7 @@
 #include "trident/core/Conversion/TorchToScf/TorchToScf.h"
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
 #include "trident/core/Dialect/ArithExt/IR/ArithExtDialect.h"
+#include "trident/core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.h"
 #include "trident/core/Dialect/TVMFFI/Transforms/ApplyObjectOwnership.h"
@@ -35,16 +38,17 @@
 
 void trident::conversion::registerAllDialects(mlir::DialectRegistry &registry) {
   mlir::registerAllDialects(registry);
-  registry.insert<mlir::torch::Torch::TorchDialect,
-                  mlir::torch::TorchConversion::TorchConversionDialect,
-                  trident::arithext::ArithExtDialect,
-                  trident::torchext::TorchExtDialect,
-                  trident::tvm_ffi::TVMFFIDialect>();
+  registry.insert<
+      mlir::torch::Torch::TorchDialect,
+      mlir::torch::TorchConversion::TorchConversionDialect,
+      trident::arithext::ArithExtDialect, trident::dlpack::DLPackDialect,
+      trident::torchext::TorchExtDialect, trident::tvm_ffi::TVMFFIDialect>();
   mlir::registerAllExtensions(registry);
   mlir::arith::registerConvertArithToLLVMInterface(registry);
   mlir::registerConvertFuncToLLVMInterface(registry);
   mlir::gpu::registerConvertGpuToLLVMInterface(registry);
   trident::conversion::registerConvertTVMFFIToLLVMInterface(registry);
+  trident::conversion::registerConvertDLPackToLLVMInterface(registry);
   trident::torch::registerTorchToTVMFFITypeInterfaces(registry);
   trident::tvm_ffi::registerTVMFFIObjectOwnershipExternalModels(registry);
 }
@@ -58,6 +62,8 @@ void trident::conversion::registerAllPasses() {
   trident::conversion::registerConvertTorchToTVMFFIPass();
   trident::conversion::registerConvertTVMFFIToFuncPass();
   trident::conversion::registerConvertTVMFFIToLLVMPass();
+  trident::conversion::registerConvertDLPackToLLVMPass();
+  trident::conversion::registerFinalizeTVMFFIPass();
   trident::tvm_ffi::registerDecomposeTVMFFIPass();
   trident::tvm_ffi::registerApplyObjectOwnershipPass();
   trident::torch::registerGeneralizeAtenOpsPass();

@@ -6,11 +6,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
+#include "trident/core/Dialect/DLPack/IR/DLPackTypes.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
-
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/StringRef.h>
-#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypeInterfaces.h>
@@ -127,31 +126,22 @@ mlir::LogicalResult ArrayGetItemOp::verify() {
 }
 
 mlir::LogicalResult GetOp::verify() {
-  mlir::Type const operandType = getOperand().getType();
+  mlir::Type const tvmFFIType = getOperand().getType();
   mlir::Type const resultType = getResult().getType();
-  if (mlir::isa<BoolType>(operandType) && !resultType.isSignlessInteger(1)) {
-    return emitOpError("a bool operand must produce i1");
+  if (auto nativeTypeInterface =
+          mlir::dyn_cast<TVMFFINativeTypeInterface>(tvmFFIType);
+      nativeTypeInterface &&
+      nativeTypeInterface.getNativeType() == resultType) {
+    return mlir::success();
   }
-  if (mlir::isa<IntType>(operandType) &&
-      (!mlir::isa<mlir::IntegerType>(resultType) ||
-       resultType.getIntOrFloatBitWidth() > 64)) {
-    return emitOpError("an int operand must produce an integer from i1 to i64");
-  }
-  if (mlir::isa<FloatType>(operandType) &&
-      (!mlir::isa<mlir::FloatType>(resultType) ||
-       resultType.getIntOrFloatBitWidth() > 64)) {
-    return emitOpError(
-        "a float operand must produce a float no wider than f64");
-  }
-  if (mlir::isa<TensorType>(operandType) &&
-      !mlir::isa<mlir::LLVM::LLVMPointerType>(resultType)) {
-    return emitOpError("a tensor operand must produce an LLVM pointer");
-  }
-  if (mlir::isa<AnyType>(operandType) &&
-      !mlir::isa<mlir::IntegerType, mlir::FloatType,
-                 mlir::LLVM::LLVMPointerType>(resultType)) {
-    return emitOpError(
-        "an any operand must produce a native scalar or pointer");
+  return emitOpError("unsupported get from ")
+         << tvmFFIType << " to " << resultType;
+}
+
+mlir::LogicalResult AsOp::verify() {
+  if (auto resultType = getResult().getType();
+      !mlir::isa<dlpack::DLTensorType>(resultType)) {
+    return emitOpError("unsupported object view type ") << resultType;
   }
   return mlir::success();
 }

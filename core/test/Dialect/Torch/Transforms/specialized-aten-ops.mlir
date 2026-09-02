@@ -40,7 +40,7 @@ func.func @int_bool(%arg0: !torch.bool) -> !torch.int {
 
 // CHECK-LABEL: func.func @size_int
 // CHECK: %[[DIM_NATIVE:[a-zA-Z0-9_]+]] = torchext.get %arg1 : !torch.int -> i64
-// CHECK: %[[SIZE:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.size %arg0[%[[DIM_NATIVE]]] : !torch.vtensor<[?,?],f32>
+// CHECK: %[[SIZE:[a-zA-Z0-9_]+]] = torchext.tensor.size %arg0[%[[DIM_NATIVE]]] : !torch.vtensor<[?,?],f32>
 // CHECK: torch_c.from_i64 %[[SIZE]]
 func.func @size_int(%arg0: !torch.vtensor<[?,?],f32>, %arg1: !torch.int)
     -> !torch.int {

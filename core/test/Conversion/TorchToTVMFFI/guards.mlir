@@ -8,8 +8,9 @@
 // RUN: trident-core-opt %s -generalize-aten-ops -convert-torch-to-tvm-ffi | FileCheck %s
 
 // Existing semantic inspection operations keep their operation and result
-// types while all Torch operands are converted by the common conversion
-// adaptor. Every inspection result remains live through the returned guard.
+// types while the remaining Torch operands are converted by the common
+// conversion adaptor. Every inspection result remains live through the
+// returned guard.
 // CHECK-LABEL: tvm_ffi.func @guard_operand_conversion(
 // CHECK-SAME: %[[TENSOR:[a-zA-Z0-9_]+]]: !tvm_ffi.tensor,
 // CHECK-SAME: %[[ARRAY:[a-zA-Z0-9_]+]]: !tvm_ffi.array,
@@ -59,22 +60,22 @@
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = arith.select %[[GUARD_OK]], %[[SUCCESS]], %[[ERROR]] : !tvm_ffi.any
 // CHECK: tvm_ffi.return %[[RESULT]] : !tvm_ffi.any
 tvm_ffi.func @guard_operand_conversion(
-    %tensor: !torch.vtensor<[2,3],f32>,
+    %tensor: !tvm_ffi.tensor,
     %array: !torch.list<int>,
     %lhs: !torch.bool,
     %rhs: !torch.bool) {
   %index = arith.constant 0 : i64
-  %dim = tvm_ffi.tensor.dim %tensor : !torch.vtensor<[2,3],f32>
+  %dim = tvm_ffi.tensor.dim %tensor : !tvm_ffi.tensor
   %size = tvm_ffi.tensor.size %tensor[%index]
-      : !torch.vtensor<[2,3],f32>
+      : !tvm_ffi.tensor
   %stride = tvm_ffi.tensor.stride %tensor[%index]
-      : !torch.vtensor<[2,3],f32>
+      : !tvm_ffi.tensor
   %offset = tvm_ffi.tensor.storage_offset %tensor
-      : !torch.vtensor<[2,3],f32>
+      : !tvm_ffi.tensor
   %dtype_code, %dtype_bits, %dtype_lanes = tvm_ffi.tensor.dtype %tensor
-      : !torch.vtensor<[2,3],f32>
+      : !tvm_ffi.tensor
   %device_type, %device_index = tvm_ffi.tensor.device %tensor
-      : !torch.vtensor<[2,3],f32>
+      : !tvm_ffi.tensor
   %length = tvm_ffi.array.length %array : !torch.list<int>
   %values_equal = tvm_ffi.eq %lhs, %rhs : !torch.bool, !torch.bool
 

@@ -1016,9 +1016,8 @@ void populateTVMFFIToLLVMConversionPatterns(
                ConvertConstantOp, ConvertEqOp, ConvertExceptionOp,
                ConvertFunctionCallOp, ConvertFunctionGetGlobalOp, ConvertGetOp,
                ConvertTensorCloneOp, ConvertTensorCopyOp,
-               ConvertTensorLiteralOp, ConvertToOp, ConvertTVMFFICastOp>(
-      typeConverter, patterns.getContext());
-  patterns.add<ConvertRefOp<tvm_ffi::ObjectDecRefOp,
+               ConvertTensorLiteralOp, ConvertToOp, ConvertTVMFFICastOp,
+               ConvertRefOp<tvm_ffi::ObjectDecRefOp,
                             &conversion::utils::getOrCreateTVMFFIObjectDecRef>,
                ConvertRefOp<tvm_ffi::ObjectIncRefOp,
                             &conversion::utils::getOrCreateTVMFFIObjectIncRef>>(

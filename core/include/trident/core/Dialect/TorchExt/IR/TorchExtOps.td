@@ -22,6 +22,13 @@ include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.td"
 class TorchExt_Op<string mnemonic, list<Trait> traits = []>
     : Op<TorchExt_Dialect, mnemonic, traits>;
 
+class TorchExt_TensorIndexedMetadataOp<string mnemonic>
+    : TorchExt_Op<mnemonic, [Pure]> {
+  let arguments = (ins AnyTorchTensorType:$tensor, I64:$index);
+  let results = (outs I64:$result);
+  let assemblyFormat = "$tensor `[` $index `]` attr-dict `:` type($tensor)";
+}
+
 def TorchExt_GetOperandType
     : AnyTypeOf<
            [Torch_BoolType, Torch_FloatType, Torch_IntType, TVMFFI_BoolType,
@@ -82,6 +89,45 @@ def TorchExt_ConvertOp
   let assemblyFormat = [{
     $operand attr-dict `:` type($operand) `->` type($result)
   }];
+}
+
+def TorchExt_TensorDeviceOp : TorchExt_Op<"tensor.device", [Pure]> {
+  let summary = "Read DLPack device fields from a Torch tensor";
+  let arguments = (ins AnyTorchTensorType:$tensor);
+  let results = (outs I32:$device_type, I32:$device_index);
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
+def TorchExt_TensorDimOp : TorchExt_Op<"tensor.dim", [Pure]> {
+  let summary = "Read the rank of a Torch tensor";
+  let arguments = (ins AnyTorchTensorType:$tensor);
+  let results = (outs I64:$result);
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
+def TorchExt_TensorDTypeOp : TorchExt_Op<"tensor.dtype", [Pure]> {
+  let summary = "Read DLPack dtype fields from a Torch tensor";
+  let arguments = (ins AnyTorchTensorType:$tensor);
+  let results = (outs I8:$code, I8:$bits, I16:$lanes);
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
+def TorchExt_TensorSizeOp
+    : TorchExt_TensorIndexedMetadataOp<"tensor.size"> {
+  let summary = "Read a Torch tensor dimension size";
+}
+
+def TorchExt_TensorStorageOffsetOp
+    : TorchExt_Op<"tensor.storage_offset", [Pure]> {
+  let summary = "Read a Torch tensor storage offset";
+  let arguments = (ins AnyTorchTensorType:$tensor);
+  let results = (outs I64:$result);
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
+def TorchExt_TensorStrideOp
+    : TorchExt_TensorIndexedMetadataOp<"tensor.stride"> {
+  let summary = "Read a Torch tensor dimension stride";
 }
 
 def TorchExt_TridentKernelLaunchOp

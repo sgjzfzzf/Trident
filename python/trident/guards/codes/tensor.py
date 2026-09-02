@@ -12,7 +12,7 @@ from typing import Final, Self, override
 import tvm_ffi as runtime_ffi
 
 from trident.core import ir
-from trident.core.dialects import arith, tvm_ffi
+from trident.core.dialects import arith, torchext
 from trident.input import InputTable
 
 from ..local import Local
@@ -75,7 +75,7 @@ class TensorDTypeCode(GuardCode):
             ir.IntegerType.get_signless(8, context),
             ir.IntegerType.get_signless(16, context),
         )
-        metadata = tvm_ffi.tensor_dtype(*result_types, tensor)
+        metadata = torchext.tensor_dtype(*result_types, tensor)
         i1 = ir.IntegerType.get_signless(1, context)
         return reduce(
             arith.andi,
@@ -149,7 +149,7 @@ class TensorDeviceCode(GuardCode):
         if tensor is None:
             return super().build(tree, context)
         i32 = ir.IntegerType.get_signless(32, context)
-        metadata = tvm_ffi.tensor_device(i32, i32, tensor)
+        metadata = torchext.tensor_device(i32, i32, tensor)
         i1 = ir.IntegerType.get_signless(1, context)
         return reduce(
             arith.andi,
@@ -224,7 +224,7 @@ class TensorRankCode(GuardCode):
         tensor = source.resolve(tree)
         if tensor is None:
             return super().build(tree, context)
-        actual = tvm_ffi.tensor_dim(
+        actual = torchext.tensor_dim(
             i64,
             tensor,
         )

@@ -48,7 +48,7 @@ Pattern AtenSizeInt with benefit(1) {
   rewrite root with {
     let nativeDim = op<torchext.get>(dim) -> (type<"i64">);
     let nativeSize =
-        op<tvm_ffi.tensor.size>(self, nativeDim) -> (type<"i64">);
+        op<torchext.tensor.size>(self, nativeDim) -> (type<"i64">);
     replace root with op<torch_c.from_i64>(nativeSize) -> (types);
   };
 }

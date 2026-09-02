@@ -26,7 +26,7 @@ class TVMFFI_Op<string mnemonic, list<Trait> traits = []>
 
 class TVMFFI_TensorIndexedMetadataOp<string mnemonic>
     : TVMFFI_Op<mnemonic, [Pure]> {
-  let arguments = (ins AnyTVMFFITensorOrTorchType : $tensor, I64 : $index);
+  let arguments = (ins TVMFFI_TensorType : $tensor, I64 : $index);
   let results = (outs I64 : $result);
   let assemblyFormat = "$tensor `[` $index `]` attr-dict `:` type($tensor)";
 }
@@ -240,21 +240,21 @@ def TVMFFI_TensorCopyOp
 
 def TVMFFI_TensorDeviceOp : TVMFFI_Op<"tensor.device", [Pure]> {
   let summary = "Read DLPack device fields from a runtime tensor";
-  let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);
+  let arguments = (ins TVMFFI_TensorType:$tensor);
   let results = (outs I32:$device_type, I32:$device_index);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
 }
 
 def TVMFFI_TensorDimOp : TVMFFI_Op<"tensor.dim", [Pure]> {
   let summary = "Read the rank of a runtime tensor";
-  let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);
+  let arguments = (ins TVMFFI_TensorType:$tensor);
   let results = (outs I64:$result);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
 }
 
 def TVMFFI_TensorDTypeOp : TVMFFI_Op<"tensor.dtype", [Pure]> {
   let summary = "Read DLPack dtype fields from a runtime tensor";
-  let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);
+  let arguments = (ins TVMFFI_TensorType:$tensor);
   let results = (outs I8:$code, I8:$bits, I16:$lanes);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
 }
@@ -276,7 +276,7 @@ def TVMFFI_TensorSizeOp
 def TVMFFI_TensorStorageOffsetOp
     : TVMFFI_Op<"tensor.storage_offset", [Pure]> {
   let summary = "Read a runtime tensor storage offset";
-  let arguments = (ins AnyTVMFFITensorOrTorchType:$tensor);
+  let arguments = (ins TVMFFI_TensorType:$tensor);
   let results = (outs I64:$result);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
 }

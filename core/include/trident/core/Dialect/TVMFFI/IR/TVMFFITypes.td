@@ -139,7 +139,7 @@ def AnyTVMFFIArrayOrTorchType : AnyTypeOf<[
   TVMFFI_ArrayType, AnyTorchListType, Torch_TupleType, Torch_AnyType
 ], "TVM FFI array or a Torch frontend container value">;
 def AnyTVMFFIObjectOrAnyType : AnyTypeOf<[
-  AnyTorchTensorType, TVMFFI_AnyType, TVMFFI_ArrayType, TVMFFI_ExceptionType,
+  TVMFFI_AnyType, TVMFFI_ArrayType, TVMFFI_ExceptionType,
   TVMFFI_FunctionType, TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType
 ], "TVM FFI object value or !tvm_ffi.any">;
 def AnyTVMFFISemanticType : AnyTypeOf<[
@@ -148,8 +148,4 @@ def AnyTVMFFISemanticType : AnyTypeOf<[
   TVMFFI_IntType, TVMFFI_NoneType, TVMFFI_RawStrType, TVMFFI_SmallStrType,
   TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType
 ], "TVM FFI semantic value">;
-def AnyTVMFFITensorOrTorchType : AnyTypeOf<[
-  AnyTorchTensorType, TVMFFI_TensorType
-], "TVM FFI tensor or a Torch frontend tensor value">;
-
 #endif

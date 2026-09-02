@@ -78,8 +78,8 @@ tvm_ffi.func @cond_branch_arguments() -> !torch.int attributes {emit_tvm_ffi_abi
 // Switch destinations and forwarded operands are lowered by the standard CF
 // interface using the shared LLVM type converter.
 // INTERMEDIATE-LABEL: func.func @switch_argument(
-// INTERMEDIATE-SAME: [[SWITCH_TENSOR:%[a-zA-Z0-9_]+]]: !torch.tensor, [[DEFAULT_VALUE:%[a-zA-Z0-9_]+]]: !torch.int, [[CASE_VALUE:%[a-zA-Z0-9_]+]]: !torch.int) -> !torch.int {
-// INTERMEDIATE: [[SELECTOR:%[a-zA-Z0-9_]+]], [[DEVICE_INDEX:%[a-zA-Z0-9_]+]] = tvm_ffi.tensor.device [[SWITCH_TENSOR]] : !torch.tensor
+// INTERMEDIATE-SAME: [[SWITCH_TENSOR:%[a-zA-Z0-9_]+]]: !tvm_ffi.tensor, [[DEFAULT_VALUE:%[a-zA-Z0-9_]+]]: !torch.int, [[CASE_VALUE:%[a-zA-Z0-9_]+]]: !torch.int) -> !torch.int {
+// INTERMEDIATE: [[SELECTOR:%[a-zA-Z0-9_]+]], [[DEVICE_INDEX:%[a-zA-Z0-9_]+]] = tvm_ffi.tensor.device [[SWITCH_TENSOR]] : !tvm_ffi.tensor
 // INTERMEDIATE-NEXT: cf.switch [[SELECTOR]] : i32, [
 // INTERMEDIATE-NEXT: default: [[SWITCH_MERGE:\^bb[0-9]+]]([[DEFAULT_VALUE]] : !torch.int),
 // INTERMEDIATE-NEXT: 1: [[SWITCH_MERGE]]([[CASE_VALUE]] : !torch.int)
@@ -87,10 +87,10 @@ tvm_ffi.func @cond_branch_arguments() -> !torch.int attributes {emit_tvm_ffi_abi
 // INTERMEDIATE: [[SWITCH_MERGE]]([[SWITCH_RESULT:%[a-zA-Z0-9_]+]]: !torch.int):
 // INTERMEDIATE-NEXT: return [[SWITCH_RESULT]] : !torch.int
 tvm_ffi.func @switch_argument(
-    %tensor: !torch.tensor,
+    %tensor: !tvm_ffi.tensor,
     %default_value: !torch.int,
     %case_value: !torch.int) -> !torch.int {
-  %selector, %device_index = tvm_ffi.tensor.device %tensor : !torch.tensor
+  %selector, %device_index = tvm_ffi.tensor.device %tensor : !tvm_ffi.tensor
   cf.switch %selector : i32, [
     default: ^merge(%default_value : !torch.int),
     1: ^merge(%case_value : !torch.int)

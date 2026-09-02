@@ -371,6 +371,36 @@ public:
   }
 };
 
+template <typename Op, typename TargetOp>
+class ConvertTorchExtTensorMetadata final
+    : public mlir::OpConversionPattern<Op> {
+public:
+  using mlir::OpConversionPattern<Op>::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(Op op, typename Op::Adaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<TargetOp>(op, op->getResultTypes(),
+                                          adaptor.getTensor());
+    return mlir::success();
+  }
+};
+
+template <typename Op, typename TargetOp>
+class ConvertTorchExtTensorIndexedMetadata final
+    : public mlir::OpConversionPattern<Op> {
+public:
+  using mlir::OpConversionPattern<Op>::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(Op op, typename Op::Adaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<TargetOp>(
+        op, op->getResultTypes(), adaptor.getTensor(), adaptor.getIndex());
+    return mlir::success();
+  }
+};
+
 /// Lower a value-semantic copy to an explicit TVM FFI tensor clone.  The
 /// operation owns a newly allocated storage and preserves the input layout.
 class ConvertTorchCopyToValueTensor final
@@ -521,9 +551,8 @@ class ConvertTorchToTVMFFIPass final
         conversionPatterns, typeConverter);
     mlir::populateReturnOpTypeConversionPattern(conversionPatterns,
                                                 typeConverter);
-    conversionPatterns.add<ConvertArrayGetItem>(typeConverter, &getContext());
     conversionPatterns.add<
-        ConvertAtenCall,
+        ConvertArrayGetItem, ConvertAtenCall,
         ConvertTorchConversionFrom<mlir::torch::TorchConversion::FromF64Op,
                                    tvm_ffi::FloatType>,
         ConvertTorchConversionFrom<mlir::torch::TorchConversion::FromI1Op,
@@ -538,34 +567,37 @@ class ConvertTorchToTVMFFIPass final
         ConvertTorchConstant<mlir::torch::Torch::ConstantFloatOp>,
         ConvertTorchConstant<mlir::torch::Torch::ConstantIntOp>,
         ConvertTorchConstant<mlir::torch::Torch::ConstantNoneOp>,
-        ConvertTorchConstant<mlir::torch::Torch::ConstantStrOp>>(typeConverter,
-                                                                 &getContext());
-    conversionPatterns.add<ConvertTorchCopyToValueTensor>(typeConverter,
-                                                          &getContext());
-    conversionPatterns.add<ConvertTorchExtConvert>(typeConverter,
+        ConvertTorchConstant<mlir::torch::Torch::ConstantStrOp>,
+        ConvertTorchCopyToValueTensor, ConvertTorchExtConvert,
+        ConvertTorchExtGet,
+        ConvertTorchExtTensorMetadata<torchext::TensorDeviceOp,
+                                      tvm_ffi::TensorDeviceOp>,
+        ConvertTorchExtTensorMetadata<torchext::TensorDimOp,
+                                      tvm_ffi::TensorDimOp>,
+        ConvertTorchExtTensorMetadata<torchext::TensorDTypeOp,
+                                      tvm_ffi::TensorDTypeOp>,
+        ConvertTorchExtTensorMetadata<torchext::TensorStorageOffsetOp,
+                                      tvm_ffi::TensorStorageOffsetOp>,
+        ConvertTorchExtTensorIndexedMetadata<torchext::TensorSizeOp,
+                                             tvm_ffi::TensorSizeOp>,
+        ConvertTorchExtTensorIndexedMetadata<torchext::TensorStrideOp,
+                                             tvm_ffi::TensorStrideOp>,
+        ConvertTorchOverwriteTensorContents, ConvertTorchValueTensorLiteralOp,
+        ConvertGenericOp<tvm_ffi::ArrayLengthOp>,
+        ConvertGenericOp<tvm_ffi::CastOp>, ConvertGenericOp<tvm_ffi::EqOp>,
+        ConvertGenericOp<tvm_ffi::TensorDeviceOp>,
+        ConvertGenericOp<tvm_ffi::TensorDimOp>,
+        ConvertGenericOp<tvm_ffi::TensorDTypeOp>,
+        ConvertGenericOp<tvm_ffi::TensorSizeOp>,
+        ConvertGenericOp<tvm_ffi::TensorStorageOffsetOp>,
+        ConvertGenericOp<tvm_ffi::TensorStrideOp>,
+        ConvertGenericOp<mlir::func::CallOp>,
+        ConvertGenericOp<tvm_ffi::ArrayCreateOp>,
+        ConvertGenericOp<tvm_ffi::CallOp>,
+        ConvertGenericOp<tvm_ffi::ConstantOp>,
+        ConvertGenericOp<tvm_ffi::ExceptionOp>,
+        ConvertGenericOp<tvm_ffi::FunctionCallOp>>(typeConverter,
                                                    &getContext());
-    conversionPatterns.add<ConvertTorchExtGet>(typeConverter, &getContext());
-    conversionPatterns.add<ConvertTorchOverwriteTensorContents>(typeConverter,
-                                                                &getContext());
-    conversionPatterns.add<ConvertTorchValueTensorLiteralOp>(typeConverter,
-                                                             &getContext());
-    conversionPatterns
-        .add<ConvertGenericOp<tvm_ffi::ArrayLengthOp>,
-             ConvertGenericOp<tvm_ffi::CastOp>, ConvertGenericOp<tvm_ffi::EqOp>,
-             ConvertGenericOp<tvm_ffi::TensorDeviceOp>,
-             ConvertGenericOp<tvm_ffi::TensorDimOp>,
-             ConvertGenericOp<tvm_ffi::TensorDTypeOp>,
-             ConvertGenericOp<tvm_ffi::TensorSizeOp>,
-             ConvertGenericOp<tvm_ffi::TensorStorageOffsetOp>,
-             ConvertGenericOp<tvm_ffi::TensorStrideOp>>(typeConverter,
-                                                        &getContext());
-    conversionPatterns.add<ConvertGenericOp<mlir::func::CallOp>,
-                           ConvertGenericOp<tvm_ffi::ArrayCreateOp>,
-                           ConvertGenericOp<tvm_ffi::CallOp>,
-                           ConvertGenericOp<tvm_ffi::ConstantOp>,
-                           ConvertGenericOp<tvm_ffi::ExceptionOp>,
-                           ConvertGenericOp<tvm_ffi::FunctionCallOp>>(
-        typeConverter, &getContext());
 
     mlir::ConversionTarget conversionTarget(getContext());
     conversionTarget
@@ -623,7 +655,10 @@ class ConvertTorchToTVMFFIPass final
     conversionTarget.addIllegalOp<mlir::torch::TorchConversion::FromF64Op,
                                   mlir::torch::TorchConversion::FromI1Op,
                                   mlir::torch::TorchConversion::FromI64Op>();
-    conversionTarget.addIllegalOp<torchext::GetOp>();
+    conversionTarget.addIllegalOp<
+        torchext::GetOp, torchext::TensorDeviceOp, torchext::TensorDimOp,
+        torchext::TensorDTypeOp, torchext::TensorSizeOp,
+        torchext::TensorStorageOffsetOp, torchext::TensorStrideOp>();
     conversionTarget.addDynamicallyLegalOp<torchext::TridentKernelLaunchOp>(
         [&](mlir::Operation *op) { return typeConverter.isLegal(op); });
     conversionPatterns

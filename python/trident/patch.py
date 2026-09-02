@@ -136,12 +136,12 @@ class GraphNodeImporterTritonHopPatchState:
                 [tensor, index] = value.args
                 tensor = importer._import_argument(loc, tensor)
                 index = arith.constant(i64_type, index, loc=loc)
-                return tvm_ffi_d.tensor_size(i64_type, tensor, index, loc=loc)
+                return torchext.tensor_size(i64_type, tensor, index, loc=loc)
             if value.target == torch.ops.aten.sym_stride.int:
                 [tensor, index] = value.args
                 tensor = importer._import_argument(loc, tensor)
                 index = arith.constant(i64_type, index, loc=loc)
-                return tvm_ffi_d.tensor_stride(i64_type, tensor, index, loc=loc)
+                return torchext.tensor_stride(i64_type, tensor, index, loc=loc)
             if value.target == operator.pow:
                 [base, exponent] = value.args
                 base = GraphNodeImporterTritonHopPatchState._import_kernel_value(

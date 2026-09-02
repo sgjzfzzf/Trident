@@ -11,7 +11,7 @@ from itertools import chain, pairwise
 from typing import TypeAlias
 
 from trident.core import ir
-from trident.core.dialects import arith, tvm_ffi
+from trident.core.dialects import arith, torchext, tvm_ffi
 from trident.input import InputTable
 
 from .local import Local
@@ -169,8 +169,8 @@ class ASTVisitor(ast.NodeVisitor):
         if source is None:
             return None
         operations = {
-            "ndimension": tvm_ffi.tensor_dim,
-            "storage_offset": tvm_ffi.tensor_storage_offset,
+            "ndimension": torchext.tensor_dim,
+            "storage_offset": torchext.tensor_storage_offset,
         }
         operation = operations.get(node.func.attr)
         return self._build_tensor_metadata(source, operation) if operation else None
@@ -276,7 +276,7 @@ class ASTVisitor(ast.NodeVisitor):
             return None
         return self._build_tensor_metadata(
             source,
-            tvm_ffi.tensor_dim if is_tensor_shape else tvm_ffi.array_length,
+            torchext.tensor_dim if is_tensor_shape else tvm_ffi.array_length,
         )
 
     def visit_Compare(self, node: ast.Compare) -> GuardBuildFn | None:
@@ -381,8 +381,8 @@ class ASTVisitor(ast.NodeVisitor):
         if source is None:
             return None
         operations = {
-            "size": tvm_ffi.tensor_size,
-            "stride": tvm_ffi.tensor_stride,
+            "size": torchext.tensor_size,
+            "stride": torchext.tensor_stride,
         }
         operation = operations.get(call.func.attr)
         if operation is None:

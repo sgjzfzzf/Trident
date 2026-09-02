@@ -20,6 +20,7 @@
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/OperationSupport.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/Parser/Parser.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/WalkPatternRewriteDriver.h>
@@ -30,112 +31,8 @@
 namespace trident::torch {
 
 #define GEN_PASS_DEF_GENERALIZEATENOPS
+#include "GeneralizeAtenOpsPDLLPatterns.h.inc"
 #include "trident/core/Dialect/Torch/Transforms/Passes.h.inc"
-
-class ConvertAtenAddInt final
-    : public mlir::OpConversionPattern<mlir::torch::Torch::AtenAddIntOp> {
-public:
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(mlir::torch::Torch::AtenAddIntOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Value nativeResult = mlir::arith::AddIOp::create(
-        rewriter, op.getLoc(),
-        trident::torchext::GetOp::create(rewriter, op.getLoc(),
-                                         rewriter.getI64Type(), adaptor.getA())
-            .getResult(),
-        trident::torchext::GetOp::create(rewriter, op.getLoc(),
-                                         rewriter.getI64Type(), adaptor.getB())
-            .getResult());
-    rewriter.replaceOpWithNewOp<mlir::torch::TorchConversion::FromI64Op>(
-        op, nativeResult);
-    return mlir::success();
-  }
-};
-
-class ConvertAtenFloordivInt final
-    : public mlir::OpConversionPattern<mlir::torch::Torch::AtenFloordivIntOp> {
-public:
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(mlir::torch::Torch::AtenFloordivIntOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Value nativeResult = mlir::arith::FloorDivSIOp::create(
-        rewriter, op.getLoc(),
-        trident::torchext::GetOp::create(rewriter, op.getLoc(),
-                                         rewriter.getI64Type(), adaptor.getA())
-            .getResult(),
-        trident::torchext::GetOp::create(rewriter, op.getLoc(),
-                                         rewriter.getI64Type(), adaptor.getB())
-            .getResult());
-    rewriter.replaceOpWithNewOp<mlir::torch::TorchConversion::FromI64Op>(
-        op, nativeResult);
-    return mlir::success();
-  }
-};
-
-class ConvertAtenIntBool final
-    : public mlir::OpConversionPattern<mlir::torch::Torch::AtenIntBoolOp> {
-public:
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(mlir::torch::Torch::AtenIntBoolOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Value nativeBool = trident::torchext::GetOp::create(
-        rewriter, op.getLoc(), rewriter.getI1Type(), adaptor.getA());
-    mlir::Value nativeInt = mlir::arith::ExtUIOp::create(
-        rewriter, op.getLoc(), rewriter.getI64Type(), nativeBool);
-    rewriter.replaceOpWithNewOp<mlir::torch::TorchConversion::FromI64Op>(
-        op, nativeInt);
-    return mlir::success();
-  }
-};
-
-class ConvertAtenSizeInt final
-    : public mlir::OpConversionPattern<mlir::torch::Torch::AtenSizeIntOp> {
-public:
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(mlir::torch::Torch::AtenSizeIntOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Value nativeDim =
-        trident::torchext::GetOp::create(
-            rewriter, op.getLoc(), rewriter.getI64Type(), adaptor.getDim())
-            .getResult();
-    mlir::Value nativeSize = trident::tvm_ffi::TensorSizeOp::create(
-        rewriter, op.getLoc(), rewriter.getI64Type(), adaptor.getSelf(),
-        nativeDim);
-    rewriter.replaceOpWithNewOp<mlir::torch::TorchConversion::FromI64Op>(
-        op, nativeSize);
-    return mlir::success();
-  }
-};
-
-class ConvertAtenSubInt final
-    : public mlir::OpConversionPattern<mlir::torch::Torch::AtenSubIntOp> {
-public:
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(mlir::torch::Torch::AtenSubIntOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Value nativeResult = mlir::arith::SubIOp::create(
-        rewriter, op.getLoc(),
-        trident::torchext::GetOp::create(rewriter, op.getLoc(),
-                                         rewriter.getI64Type(), adaptor.getA())
-            .getResult(),
-        trident::torchext::GetOp::create(rewriter, op.getLoc(),
-                                         rewriter.getI64Type(), adaptor.getB())
-            .getResult());
-    rewriter.replaceOpWithNewOp<mlir::torch::TorchConversion::FromI64Op>(
-        op, nativeResult);
-    return mlir::success();
-  }
-};
 
 class GeneralizeAtenOpPattern final : public mlir::RewritePattern {
 public:
@@ -182,9 +79,7 @@ public:
         [](mlir::Operation *) { return true; });
 
     mlir::RewritePatternSet specializedPatterns(&getContext());
-    specializedPatterns
-        .add<ConvertAtenAddInt, ConvertAtenFloordivInt, ConvertAtenIntBool,
-             ConvertAtenSizeInt, ConvertAtenSubInt>(&getContext());
+    populateGeneratedPDLLPatterns(specializedPatterns);
     if (mlir::failed(mlir::applyPartialConversion(
             getOperation(), target, std::move(specializedPatterns)))) {
       signalPassFailure();

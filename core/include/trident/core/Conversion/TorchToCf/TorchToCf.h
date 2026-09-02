@@ -8,9 +8,9 @@
 #ifndef TRIDENT_CORE_CONVERSION_TORCHTOCF_TORCHTOCF_H_
 #define TRIDENT_CORE_CONVERSION_TORCHTOCF_TORCHTOCF_H_
 
+#include <mlir/IR/PatternMatch.h>
 #include <mlir/Pass/Pass.h>
 #include <mlir/Pass/PassRegistry.h>
-#include <mlir/Transforms/DialectConversion.h>
 
 namespace trident::conversion {
 
@@ -20,9 +20,7 @@ namespace trident::conversion {
 #define GEN_PASS_REGISTRATION_CONVERTTORCHTOCF
 #include "trident/core/Conversion/Passes.h.inc"
 
-void populateTorchToCfConversionPatterns(mlir::ConversionTarget &target,
-                                         mlir::TypeConverter &typeConverter,
-                                         mlir::RewritePatternSet &patterns);
+void populateTorchToCfConversionPatterns(mlir::RewritePatternSet &patterns);
 
 void registerConvertTorchToCfPass();
 

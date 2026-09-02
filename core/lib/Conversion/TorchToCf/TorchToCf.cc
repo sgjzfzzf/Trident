@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/Support/Casting.h>
-#include <mlir/Conversion/LLVMCommon/TypeConverter.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
@@ -19,9 +18,7 @@
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Location.h>
 #include <mlir/IR/PatternMatch.h>
-#include <mlir/Rewrite/FrozenRewritePatternSet.h>
 #include <mlir/Support/LLVM.h>
-#include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
 #include <utility>
@@ -63,10 +60,8 @@ class ConvertTorchToCfPass
 public:
   void runOnOperation() final {
     mlir::MLIRContext &context = getContext();
-    mlir::LLVMTypeConverter typeConverter(&context);
-    mlir::ConversionTarget target(context);
     mlir::RewritePatternSet patterns(&context);
-    populateTorchToCfConversionPatterns(target, typeConverter, patterns);
+    populateTorchToCfConversionPatterns(patterns);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
@@ -75,12 +70,8 @@ public:
   }
 };
 
-void populateTorchToCfConversionPatterns(mlir::ConversionTarget &target,
-                                         mlir::TypeConverter &,
-                                         mlir::RewritePatternSet &patterns) {
+void populateTorchToCfConversionPatterns(mlir::RewritePatternSet &patterns) {
   patterns.add<ConvertRuntimeAssertOp>(patterns.getContext());
-  target.addLegalDialect<mlir::cf::ControlFlowDialect>();
-  target.addIllegalOp<mlir::torch::Torch::RuntimeAssertOp>();
 }
 
 } // namespace trident::conversion

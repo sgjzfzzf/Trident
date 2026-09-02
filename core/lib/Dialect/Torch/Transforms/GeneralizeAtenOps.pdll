@@ -1,0 +1,64 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
+#include "mlir/Dialect/Arith/IR/ArithOps.td"
+#include "torch-mlir/Dialect/Torch/IR/TorchOps.td"
+#include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.td"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtOps.td"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.td"
+
+Pattern AtenAddInt with benefit(1) {
+  let root = op<torch.aten.add.int>(a: Value, b: Value) -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torchext.get>(a) -> (type<"i64">);
+    let nativeB = op<torchext.get>(b) -> (type<"i64">);
+    let nativeResult = op<arith.addi>(nativeA, nativeB) -> (type<"i64">);
+    replace root with op<torch_c.from_i64>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenFloordivInt with benefit(1) {
+  let root = op<torch.aten.floordiv.int>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torchext.get>(a) -> (type<"i64">);
+    let nativeB = op<torchext.get>(b) -> (type<"i64">);
+    let nativeResult =
+        op<arith.floordivsi>(nativeA, nativeB) -> (type<"i64">);
+    replace root with op<torch_c.from_i64>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenIntBool with benefit(1) {
+  let root = op<torch.aten.Int.bool>(a: Value) -> (types: TypeRange);
+  rewrite root with {
+    let nativeBool = op<torchext.get>(a) -> (type<"i1">);
+    let nativeInt = op<arith.extui>(nativeBool) -> (type<"i64">);
+    replace root with op<torch_c.from_i64>(nativeInt) -> (types);
+  };
+}
+
+Pattern AtenSizeInt with benefit(1) {
+  let root = op<torch.aten.size.int>(self: Value, dim: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeDim = op<torchext.get>(dim) -> (type<"i64">);
+    let nativeSize =
+        op<tvm_ffi.tensor.size>(self, nativeDim) -> (type<"i64">);
+    replace root with op<torch_c.from_i64>(nativeSize) -> (types);
+  };
+}
+
+Pattern AtenSubInt with benefit(1) {
+  let root = op<torch.aten.sub.int>(a: Value, b: Value) -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torchext.get>(a) -> (type<"i64">);
+    let nativeB = op<torchext.get>(b) -> (type<"i64">);
+    let nativeResult = op<arith.subi>(nativeA, nativeB) -> (type<"i64">);
+    replace root with op<torch_c.from_i64>(nativeResult) -> (types);
+  };
+}

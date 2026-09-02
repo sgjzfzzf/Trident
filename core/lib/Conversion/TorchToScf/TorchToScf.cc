@@ -9,31 +9,20 @@
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include <mlir/Dialect/SCF/IR/SCF.h>
-#include <mlir/IR/PatternMatch.h>
 #include <mlir/IR/Region.h>
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
 #include <utility>
+
+#include "TorchToScfPatterns.inc"
 
 namespace trident::conversion {
 
 #define GEN_PASS_DEF_CONVERTTORCHTOSCF
 #include "trident/core/Conversion/Passes.h.inc"
-
-class ConvertPrimIfYieldOp final
-    : public mlir::OpRewritePattern<mlir::torch::Torch::PrimIfYieldOp> {
-public:
-  using OpRewritePattern::OpRewritePattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(mlir::torch::Torch::PrimIfYieldOp op,
-                  mlir::PatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<mlir::scf::YieldOp>(op, op.getOperands());
-    return mlir::success();
-  }
-};
 
 class ConvertPrimIfOp final
     : public mlir::OpRewritePattern<mlir::torch::Torch::PrimIfOp> {
@@ -69,8 +58,15 @@ class ConvertTorchToScfPass final
                            torchext::TorchExtDialect>();
     target.addIllegalOp<mlir::torch::Torch::PrimIfOp,
                         mlir::torch::Torch::PrimIfYieldOp>();
+    mlir::RewritePatternSet yieldPatterns(&getContext());
+    populateWithGenerated(yieldPatterns);
+    if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),
+                                                 std::move(yieldPatterns)))) {
+      signalPassFailure();
+      return;
+    }
     mlir::RewritePatternSet patterns(&getContext());
-    patterns.add<ConvertPrimIfOp, ConvertPrimIfYieldOp>(&getContext());
+    patterns.add<ConvertPrimIfOp>(&getContext());
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
       signalPassFailure();

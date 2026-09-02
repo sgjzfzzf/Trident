@@ -5,6 +5,51 @@ This document describes the core workflows in the current repository:
 - Build workflow: how the Python packaging entry points trigger CMake and external dependency builds.
 - Runtime workflow: how a Python function is transformed into MLIR/LLVM and then executed via JIT.
 
+## Pattern Rewriting Architecture
+
+Trident uses MLIR's generic DAG-to-DAG rewrite infrastructure for local IR
+transformations. Pattern definitions are split by the kind of reasoning they
+require:
+
+When constructing a pattern, use the following order of preference:
+
+1. DRR (`.td`) for a fixed, local DAG rewrite whose operands, results, types,
+   attributes, and builders can be expressed declaratively.
+2. PDLL (`.pdll`) when the match needs richer structural constraints, named
+   operations or values, or a small multi-operation rewrite that is awkward in
+   DRR.
+3. C++ only when the rewrite cannot be represented safely or clearly by either
+   declarative form.
+
+DRR and PDLL can be used in a conversion pass for type-independent local
+rewrites, but they do not receive conversion-specific remapped operands.
+C++ `ConversionPattern` implementations are required when a rewrite depends
+on `OpAdaptor`, `TypeConverter`, materializations, legality, region signature
+conversion, or other conversion state.
+
+C++ `RewritePattern` implementations also handle region movement, block
+creation, recursive cloning, or other imperative construction that is not
+appropriate for a declarative pattern.
+
+Dedicated analyses remain responsible for cross-region ownership, guards, ABI
+layout, and other global data-flow concerns.
+
+DRR sources are compiled at build time with MLIR TableGen, while PDLL sources
+are compiled with the repository's pinned `mlir-pdll` tool. Both produce
+headers under the build directory; generated files are never edited or
+committed. MLIR's `add_mlir_pdll_library` CMake helper should be used for PDLL
+generation instead of duplicating the `mlir-pdll` custom command. This keeps
+declarative matchers close to the rewrites they describe while preserving C++
+for control-flow and runtime-sensitive lowering.
+
+The current declarative rewrite examples include the DRR definition for
+`torch.prim.If.yield -> scf.yield` and `GeneralizeAtenOps.pdll`, which
+expresses the fixed scalar and tensor-metadata ATen conversions. The generic
+ATen operation wrapper in `GeneralizeAtenOps.cc` remains in C++ because it
+must inspect dynamic operation names, copy arbitrary attributes, and reject
+region-bearing operations. The surrounding `torch.prim.If` rewrite also
+remains in C++ because it must inline regions and manage the replacement block.
+
 ## High-Level Components
 
 - Top-level CMake project

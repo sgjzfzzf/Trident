@@ -22,6 +22,65 @@ In this repository, there are two common adaptation paths.
 
 For a new operator bring-up, start with path 1, then validate path 2 if needed.
 
+### Choose The Rewrite Representation
+
+When constructing a new pattern, evaluate the representations in this order:
+
+1. **DRR** (`.td`) — the default for a fixed, local DAG rewrite. Use it when
+   the operation names, operands, results, attributes, types, and builders are
+   straightforward to express declaratively.
+2. **PDLL** (`.pdll`) — use it when the match needs richer structural
+   constraints, named operations or values, or a small multi-operation rewrite
+   that would be awkward in DRR.
+3. **C++** — use it only when DRR and PDLL cannot express the rewrite clearly
+   or safely.
+
+DRR and PDLL are allowed in an `OpConversion` pass for ordinary local rewrites
+that do not depend on converted operands. They are not substitutes for a C++
+`ConversionPattern` when the implementation needs `OpAdaptor`,
+`TypeConverter`, materialized values, legality checks, region signature
+conversion, or conversion-specific state. In those cases, choose C++ directly.
+
+For example, a `torchext.get` conversion that must consume
+`adaptor.getOperand()` belongs in C++, even if the operation name replacement
+itself looks simple.
+
+Keep the implementation in C++ when it performs type conversion, creates or
+rearranges regions or blocks, recursively clones IR, emits runtime/ABI code, or
+depends on ownership and data-flow analysis. A pattern may also use a native
+C++ rewrite from PDLL when matching is declarative but construction is
+operation-specific.
+
+The native C++ escape hatch should be treated as a compatibility bridge, not a
+reason to choose PDLL over DRR: if the whole pattern is already a simple DRR
+rewrite, keep it in DRR; if only matching is declarative but construction is
+imperative, PDLL plus a native rewrite can be appropriate.
+
+For DRR-based changes:
+
+1. Add the `.td` pattern source beside the pass that owns the rewrite.
+2. Use `mlir_tablegen(... -gen-rewriters)` and make the generated target a
+   dependency of the consuming library.
+3. Populate the generated patterns from the pass together with any remaining
+   C++ patterns.
+4. Add a focused Lit test covering the matched operation, operands, result
+   types, locations, and a nearby non-match.
+5. Run the focused core Lit suite and the Python suite when the lowering is
+   exercised end to end.
+
+For PDLL-based changes:
+
+1. Add the `.pdll` source beside the pass that owns the rewrite.
+2. Use MLIR's `add_mlir_pdll_library` CMake helper for build-time generation;
+   do not duplicate its `mlir-pdll` custom command. Never edit the generated
+   header under `build/` or `core-build/`.
+3. Populate the generated patterns from the pass together with any remaining
+   C++ patterns.
+4. Add a focused Lit test covering the matched operation, operands, result
+   types, locations, and a nearby non-match.
+5. Run the focused core Lit suite and the Python suite when the lowering is
+   exercised end to end.
+
 ## atengen Auto-Wrapping
 
 Most ATen operators are automatically wrapped by the atengen codegen tool at build

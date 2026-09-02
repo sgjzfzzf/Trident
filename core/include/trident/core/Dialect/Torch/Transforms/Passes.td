@@ -17,6 +17,7 @@ def GeneralizeAtenOps : Pass<"generalize-aten-ops", "mlir::ModuleOp"> {
     "mlir::arith::ArithDialect",
     "mlir::torch::Torch::TorchDialect",
     "mlir::torch::TorchConversion::TorchConversionDialect",
+    "trident::tvm_ffi::TVMFFIDialect",
     "trident::torchext::TorchExtDialect"
   ];
 }

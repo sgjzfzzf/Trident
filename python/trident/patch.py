@@ -198,9 +198,10 @@ class _GraphNodeImporterPatchManager:
             importer_patches: tuple[Callable[..., None], ...] = (
                 _import_hop_triton_kernel_wrapper_functional,
                 _import_hop_triton_kernel_wrapper_mutation,
+                return_node_values,
             )
             for importer_patch in importer_patches:
-                attr_name: str = importer_patch.__name__
+                attr_name = importer_patch.__name__
                 if hasattr(GraphNodeImporter, attr_name):
                     state.original_attrs[attr_name] = getattr(
                         GraphNodeImporter, attr_name
@@ -235,9 +236,10 @@ class _GraphNodeImporterPatchManager:
             importer_patches: tuple[Callable[..., None], ...] = (
                 _import_hop_triton_kernel_wrapper_functional,
                 _import_hop_triton_kernel_wrapper_mutation,
+                return_node_values,
             )
             for importer_patch in importer_patches:
-                attr_name: str = importer_patch.__name__
+                attr_name = importer_patch.__name__
                 if hasattr(GraphNodeImporter, attr_name):
                     delattr(GraphNodeImporter, attr_name)
                 if attr_name in active_state.original_attrs:
@@ -446,6 +448,28 @@ def _import_hop_triton_kernel_wrapper_mutation(
     hop: Any,
 ) -> None:
     _import_hop_triton_kernel_wrapper(self, loc, node, hop)
+
+
+def return_node_values(
+    self: GraphNodeImporter,
+    loc: ir.Location,
+    nodes: list[torch.fx.Node | None],
+    constants: dict[int, Any],
+) -> None:
+    """Fix constant output indices before delegating to the FX importer."""
+    active_state = _patch_manager.active_state
+    assert active_state is not None
+    original_return_node_values = active_state.original_attrs.get("return_node_values")
+    assert original_return_node_values is not None
+    compact_constants = {
+        compact_index: constants[original_index]
+        for compact_index, original_index in zip(
+            (index for index, node in enumerate(nodes) if node is None),
+            sorted(constants.keys()),
+            strict=True,
+        )
+    }
+    original_return_node_values(self, loc, nodes, compact_constants)
 
 
 def apply_patch(specialization_id: int = 0) -> GraphNodeImporterTritonHopPatchState:

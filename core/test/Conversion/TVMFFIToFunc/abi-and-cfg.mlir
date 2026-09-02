@@ -6,8 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: trident-core-opt %s -split-input-file --trident-lowering-pipeline | FileCheck %s --check-prefix=STRICT
-// RUN: trident-core-opt %s -split-input-file -convert-tvm-ffi-to-func | FileCheck %s --check-prefix=INTERMEDIATE
-// RUN: trident-core-opt %s -split-input-file -convert-tvm-ffi-to-func | FileCheck %s --check-prefix=FUNC
+// RUN: trident-core-opt %s -split-input-file -convert-tvm-ffi-to-func | FileCheck %s --check-prefixes=INTERMEDIATE,FUNC
 // STRICT-NOT: !torch.
 // STRICT: llvm.func @make_int() -> !llvm.struct<(i32, i32, i64)>
 // STRICT: llvm.func @multi_return_three_tensors(
@@ -147,4 +146,3 @@ tvm_ffi.func @no_wrapper() -> !torch.int {
 tvm_ffi.func @guarded(%arg0: !torch.int, %arg1: !torch.bool) -> !torch.int attributes {emit_tvm_ffi_abi} {
   tvm_ffi.return %arg0 : !torch.int
 }
-

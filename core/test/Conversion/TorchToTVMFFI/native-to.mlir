@@ -11,6 +11,7 @@
 // CHECK: %[[BOOL:[a-zA-Z0-9_]+]] = tvm_ffi.to %arg0 : i1 -> !tvm_ffi.bool
 // CHECK: %[[INT:[a-zA-Z0-9_]+]] = tvm_ffi.to %arg1 : i64 -> !tvm_ffi.int
 // CHECK: %[[FLOAT:[a-zA-Z0-9_]+]] = tvm_ffi.to %arg2 : f64 -> !tvm_ffi.float
+// CHECK: return %[[BOOL]], %[[INT]], %[[FLOAT]] : !tvm_ffi.bool, !tvm_ffi.int, !tvm_ffi.float
 // CHECK-NOT: torch_c.from_i
 // CHECK-NOT: torch_c.from_f64
 func.func @native_to_tvm_ffi(%arg0: i1, %arg1: i64, %arg2: f64)

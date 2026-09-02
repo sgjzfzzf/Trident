@@ -9,7 +9,7 @@
 
 // CHECK-LABEL: func.func @transpose(
 // CHECK-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
-// CHECK: %[[FUNC:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.t"
+// CHECK: %[[FUNC:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.t" : !tvm_ffi.function
 // CHECK: %[[CALL:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%[[ARG]]) : (!tvm_ffi.tensor) -> !tvm_ffi.tensor
 // CHECK: return %[[CALL]] : !tvm_ffi.tensor
 func.func @transpose(%arg0: !torch.vtensor<[2,3],f32>)
@@ -24,7 +24,7 @@ func.func @transpose(%arg0: !torch.vtensor<[2,3],f32>)
 // folder, which ignores memory_format, can replace it with its input.
 // CHECK-LABEL: func.func @clone_contiguous(
 // CHECK: %[[FORMAT:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = 0 : i64}> : () -> !tvm_ffi.int
-// CHECK: %[[FUNC:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.clone"
+// CHECK: %[[FUNC:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.clone" : !tvm_ffi.function
 // CHECK: %[[CLONE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%arg0, %[[FORMAT]]) : (!tvm_ffi.tensor, !tvm_ffi.int) -> !tvm_ffi.tensor
 // CHECK: return %[[CLONE]] : !tvm_ffi.tensor
 func.func @clone_contiguous(%arg0: !torch.vtensor<[32,2],f32>)
@@ -52,12 +52,13 @@ func.func @opaque_operator() {
 // CHECK-LABEL: func.func @multi_result(
 // CHECK: %[[DIM:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = 0 : i64}> : () -> !tvm_ffi.int
 // CHECK: %[[KEEPDIM:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = false}> : () -> !tvm_ffi.bool
-// CHECK: %[[FUNC:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.max.dim"
+// CHECK: %[[FUNC:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.max.dim" : !tvm_ffi.function
 // CHECK: %[[PACKED:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%arg0, %[[DIM]], %[[KEEPDIM]]) : (!tvm_ffi.tensor, !tvm_ffi.int, !tvm_ffi.bool) -> !tvm_ffi.array
 // CHECK: %[[IDX0:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = 0 : i64}> : () -> !tvm_ffi.int
-// CHECK: tvm_ffi.array.get_item %[[PACKED]][%[[IDX0]]] as !tvm_ffi.tensor
+// CHECK: %[[VALUE0:[a-zA-Z0-9_]+]] = tvm_ffi.array.get_item %[[PACKED]][%[[IDX0]]] as !tvm_ffi.tensor : !tvm_ffi.array, !tvm_ffi.int -> !tvm_ffi.tensor
 // CHECK: %[[IDX1:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = 1 : i64}> : () -> !tvm_ffi.int
-// CHECK: tvm_ffi.array.get_item %[[PACKED]][%[[IDX1]]] as !tvm_ffi.tensor
+// CHECK: %[[VALUE1:[a-zA-Z0-9_]+]] = tvm_ffi.array.get_item %[[PACKED]][%[[IDX1]]] as !tvm_ffi.tensor : !tvm_ffi.array, !tvm_ffi.int -> !tvm_ffi.tensor
+// CHECK: return %[[VALUE0]], %[[VALUE1]] : !tvm_ffi.tensor, !tvm_ffi.tensor
 func.func @multi_result(%arg0: !torch.vtensor<[4],f32>)
     -> (!torch.vtensor<[4],f32>, !torch.vtensor<[4],si64>) {
   %dim = torch.constant.int 0

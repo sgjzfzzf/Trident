@@ -24,3 +24,25 @@ func.func @dlpack_tensor_ops(%tensor: !dlpack.dl_tensor, %index: i64) {
   %device_type, %device_index = dlpack.tensor.device %tensor : !dlpack.dl_tensor
   return
 }
+
+// The DLPack handle types are structural wrappers with identity semantics.
+// CHECK-LABEL: func.func @dl_tensor_type(
+// CHECK-SAME: %[[TENSOR_TYPE:[a-zA-Z0-9_]+]]: !dlpack.dl_tensor) -> !dlpack.dl_tensor {
+// CHECK-NEXT: return %[[TENSOR_TYPE]] : !dlpack.dl_tensor
+func.func @dl_tensor_type(%tensor: !dlpack.dl_tensor) -> !dlpack.dl_tensor {
+  return %tensor : !dlpack.dl_tensor
+}
+
+// CHECK-LABEL: func.func @dl_device_type(
+// CHECK-SAME: %[[DEVICE_TYPE:[a-zA-Z0-9_]+]]: !dlpack.dl_device) -> !dlpack.dl_device {
+// CHECK-NEXT: return %[[DEVICE_TYPE]] : !dlpack.dl_device
+func.func @dl_device_type(%device: !dlpack.dl_device) -> !dlpack.dl_device {
+  return %device : !dlpack.dl_device
+}
+
+// CHECK-LABEL: func.func @dl_data_type(
+// CHECK-SAME: %[[DATA_TYPE:[a-zA-Z0-9_]+]]: !dlpack.dl_data_type) -> !dlpack.dl_data_type {
+// CHECK-NEXT: return %[[DATA_TYPE]] : !dlpack.dl_data_type
+func.func @dl_data_type(%dtype: !dlpack.dl_data_type) -> !dlpack.dl_data_type {
+  return %dtype : !dlpack.dl_data_type
+}

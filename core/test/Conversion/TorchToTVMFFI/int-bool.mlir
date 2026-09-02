@@ -19,12 +19,16 @@
 // LLVM-NOT: ConvertUnrealizedIntCastOp
 // LLVM-NOT: tvm_ffi.to
 // LLVM-NOT: torch_c.from_i64
-// LLVM: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.extractvalue %arg0[2]
+// LLVM: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.extractvalue %arg0[2] : !llvm.struct<(i32, i32, i64)>
 // LLVM: %[[BOOL:[a-zA-Z0-9_]+]] = llvm.trunc %[[PAYLOAD]] : i64 to i1
 // LLVM: %[[INT:[a-zA-Z0-9_]+]] = arith.extui %[[BOOL]] : i1 to i64
-// LLVM: %[[TYPE_INDEX:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i32)
-// LLVM: llvm.insertvalue %[[TYPE_INDEX]], {{.*}}[0]
-// LLVM: llvm.insertvalue %[[INT]], {{.*}}[2]
+// LLVM: %[[UNDEF_RESULT:[a-zA-Z0-9_]+]] = llvm.mlir.undef : !llvm.struct<(i32, i32, i64)>
+// LLVM: %[[TYPE_INDEX:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i32) : i32
+// LLVM: %[[TYPE_RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[TYPE_INDEX]], %[[UNDEF_RESULT]][0] : !llvm.struct<(i32, i32, i64)>
+// LLVM: %[[KIND_INDEX:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
+// LLVM: %[[KIND_RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[KIND_INDEX]], %[[TYPE_RESULT]][1] : !llvm.struct<(i32, i32, i64)>
+// LLVM: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[INT]], %[[KIND_RESULT]][2] : !llvm.struct<(i32, i32, i64)>
+// LLVM: return %[[RESULT]] : !llvm.struct<(i32, i32, i64)>
 func.func @int_bool(%arg0: !torch.bool) -> !torch.int {
   %0 = torch.aten.Int.bool %arg0 : !torch.bool -> !torch.int
   return %0 : !torch.int

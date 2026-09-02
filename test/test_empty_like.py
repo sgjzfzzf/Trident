@@ -14,7 +14,7 @@ class EmptyLikeTest(AtenOpTest):
     @classmethod
     @override
     def op_name(cls) -> str:
-        return "empty-like"
+        return "empty"
 
     def test_call_empty_like(self) -> None:
         """Call empty_like and verify output shape/dtype match input."""

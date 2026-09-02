@@ -11,12 +11,22 @@
 // The tensor produced by torch.aten.t is IncRef'd for the branch yield and
 // DecRef'd for the branch-local ownership.
 // CHECK-LABEL: func.func @nested_if
+// CHECK-SAME: %[[INPUT:[a-zA-Z0-9_]+]]: !tvm_ffi.tensor, %[[COND:[a-zA-Z0-9_]+]]: !tvm_ffi.bool) -> !tvm_ffi.tensor {
 // CHECK-NOT: torch.prim.If
 // CHECK-NOT: !torch.vtensor
-// CHECK: tvm_ffi.get
-// CHECK: scf.if
-// CHECK: scf.yield
-// CHECK: scf.yield
+// CHECK: %[[NATIVE_COND:[a-zA-Z0-9_]+]] = tvm_ffi.get %[[COND]] : !tvm_ffi.bool -> i1
+// CHECK-NEXT: %[[RESULT:[a-zA-Z0-9_]+]] = scf.if %[[NATIVE_COND]] -> (!tvm_ffi.tensor) {
+// CHECK: %[[TRUE_FUNCTION:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.t" : !tvm_ffi.function
+// CHECK: %[[TRUE_TRANSPOSE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[TRUE_FUNCTION]](%[[INPUT]]) : (!tvm_ffi.tensor) -> !tvm_ffi.tensor
+// CHECK-NEXT: tvm_ffi.ObjectIncRef %[[TRUE_TRANSPOSE]] : !tvm_ffi.tensor
+// CHECK-NEXT: tvm_ffi.ObjectDecRef %[[TRUE_TRANSPOSE]] : !tvm_ffi.tensor
+// CHECK-NEXT: scf.yield %[[TRUE_TRANSPOSE]] : !tvm_ffi.tensor
+// CHECK: %[[FALSE_FUNCTION:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.t" : !tvm_ffi.function
+// CHECK: %[[FALSE_TRANSPOSE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FALSE_FUNCTION]](%[[INPUT]]) : (!tvm_ffi.tensor) -> !tvm_ffi.tensor
+// CHECK-NEXT: tvm_ffi.ObjectIncRef %[[FALSE_TRANSPOSE]] : !tvm_ffi.tensor
+// CHECK-NEXT: tvm_ffi.ObjectDecRef %[[FALSE_TRANSPOSE]] : !tvm_ffi.tensor
+// CHECK-NEXT: scf.yield %[[FALSE_TRANSPOSE]] : !tvm_ffi.tensor
+// CHECK: return %[[RESULT]] : !tvm_ffi.tensor
 func.func @nested_if(%arg0: !torch.vtensor<[2,3],f32>, %cond: !torch.bool)
     -> !torch.vtensor<[3,2],f32> {
   %0 = torch.prim.If %cond -> (!torch.vtensor<[3,2],f32>) {
@@ -35,7 +45,11 @@ func.func @nested_if(%arg0: !torch.vtensor<[2,3],f32>, %cond: !torch.bool)
 // by the same terminator pattern.
 // CHECK-LABEL: tvm_ffi.func @ffi_return
 // CHECK-SAME: %arg0: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
-// CHECK: tvm_ffi.return
+// CHECK: %[[FFI_FUNCTION:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.t" : !tvm_ffi.function
+// CHECK-NEXT: %[[FFI_RESULT:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FFI_FUNCTION]](%arg0) : (!tvm_ffi.tensor) -> !tvm_ffi.tensor
+// CHECK-NEXT: tvm_ffi.ObjectIncRef %[[FFI_RESULT]] : !tvm_ffi.tensor
+// CHECK-NEXT: tvm_ffi.ObjectDecRef %[[FFI_RESULT]] : !tvm_ffi.tensor
+// CHECK-NEXT: tvm_ffi.return %[[FFI_RESULT]] : !tvm_ffi.tensor
 tvm_ffi.func @ffi_return(%arg0: !torch.vtensor<[2,3],f32>)
     -> !torch.vtensor<[3,2],f32> {
   %0 = torch.aten.t %arg0
@@ -47,7 +61,8 @@ tvm_ffi.func @ffi_return(%arg0: !torch.vtensor<[2,3],f32>)
 // the static tensor ownership; the dynamic container is outside this static
 // Object ownership analysis.
 // CHECK-LABEL: func.func @control_flow_return
-// CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = scf.if
+// CHECK-SAME: %[[COND:[a-zA-Z0-9_]+]]: i1) -> !tvm_ffi.any {
+// CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = scf.if %[[COND]] -> (!tvm_ffi.any) {
 // CHECK: %[[THEN_CALL:[a-zA-Z0-9_]+]] = func.call @make_tensor() : () -> !tvm_ffi.tensor
 // CHECK-NEXT: %[[THEN_CAST:[a-zA-Z0-9_]+]] = tvm_ffi.cast %[[THEN_CALL]]
 // CHECK-NEXT: tvm_ffi.ObjectIncRef %[[THEN_CAST]] : !tvm_ffi.any
@@ -77,9 +92,10 @@ func.func @control_flow_return(%cond: i1) -> !tvm_ffi.any {
 // A borrowed branch input gains one reference at the yield. It must not be
 // released as branch-local ownership.
 // CHECK-LABEL: func.func @borrowed_control_flow
-// CHECK: %[[BORROWED_RESULT:[a-zA-Z0-9_]+]] = scf.if
-// CHECK: scf.yield %[[BORROWED:[a-zA-Z0-9_]+]] : !tvm_ffi.tensor
-// CHECK: scf.yield %[[BORROWED]] : !tvm_ffi.tensor
+// CHECK-SAME: %[[COND:[a-zA-Z0-9_]+]]: i1, %[[INPUT:[a-zA-Z0-9_]+]]: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
+// CHECK: %[[BORROWED_RESULT:[a-zA-Z0-9_]+]] = scf.if %[[COND]] -> (!tvm_ffi.tensor) {
+// CHECK: scf.yield %[[INPUT]] : !tvm_ffi.tensor
+// CHECK: scf.yield %[[INPUT]] : !tvm_ffi.tensor
 // CHECK: return %[[BORROWED_RESULT]] : !tvm_ffi.tensor
 func.func @borrowed_control_flow(%cond: i1, %value: !tvm_ffi.tensor)
     -> !tvm_ffi.tensor {
@@ -120,7 +136,7 @@ func.func @explicit_increment() {
 // FunctionCall consumes the owned global-function handle. The ownership
 // analysis must not schedule a second semantic DecRef for it.
 // CHECK-LABEL: func.func @consumed_function_handle
-// CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "test.make_tensor"
+// CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "test.make_tensor" : !tvm_ffi.function
 // CHECK-NEXT: %[[VALUE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[HANDLE]]() : () -> !tvm_ffi.tensor
 // CHECK-NOT: tvm_ffi.ObjectDecRef %[[HANDLE]]
 // CHECK: tvm_ffi.ObjectIncRef %[[VALUE]]

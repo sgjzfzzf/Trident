@@ -287,7 +287,7 @@ launches. Its lowering is split across two passes in `trident-lowering-pipeline`
 
 | Op | Lowered By | Purpose |
 |---|---|---|
-| `torchext.get` | `ConvertTorchToTVMFFI` | Converts Torch/TVM FFI scalar values to native MLIR types through `tvm_ffi.get` for typed scalar passing to Triton kernels. |
+| `torch_c.to_i1`, `torch_c.to_i64`, `torch_c.to_f64` | `ConvertTorchToTVMFFI` | Custom-lowers Torch scalar conversion ops to `tvm_ffi.get` for typed scalar passing to Triton kernels. |
 | `torchext.trident_kernel_launch` | `ConvertTorchExtToGPU` | Launches Triton kernels with explicit grid/block dimensions (I64); unpacks tensor/scalar args from TVMFFIAny into kernel parameters and emits `gpu.launch_func`. Uses TVMFFI stream API for CUDA stream management. |
 
 Reference counting for Torch objects (tensors, lists, tuples, optionals)

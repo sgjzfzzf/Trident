@@ -12,8 +12,6 @@
 // "trident.aten.sub.Tensor", called via TVMFFIFunctionGetGlobal /
 // TVMFFIFunctionCall / TVMFFIObjectDecRef.
 
-// CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.sub.Scalar_trident.aten.sub.Scalar("trident.aten.sub.Scalar\00")
-// CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.sub.Tensor_trident.aten.sub.Tensor("trident.aten.sub.Tensor\00")
 // CHECK-LABEL:   llvm.func @torch.aten.sub.Scalar
 // CHECK-SAME: %[[SCALAR_ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[SCALAR_ARG1:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[SCALAR_ARG2:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[SCALAR_FUNCTION_NAME:[0-9]+]], %[[SCALAR_HANDLE_SLOT:[0-9]+]]) : (!llvm.ptr, !llvm.ptr) -> i32

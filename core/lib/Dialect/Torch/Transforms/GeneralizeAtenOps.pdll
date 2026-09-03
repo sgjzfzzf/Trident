@@ -14,8 +14,8 @@
 Pattern AtenAddInt with benefit(1) {
   let root = op<torch.aten.add.int>(a: Value, b: Value) -> (types: TypeRange);
   rewrite root with {
-    let nativeA = op<torchext.get>(a) -> (type<"i64">);
-    let nativeB = op<torchext.get>(b) -> (type<"i64">);
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
     let nativeResult = op<arith.addi>(nativeA, nativeB) -> (type<"i64">);
     replace root with op<torch_c.from_i64>(nativeResult) -> (types);
   };
@@ -25,8 +25,8 @@ Pattern AtenFloordivInt with benefit(1) {
   let root = op<torch.aten.floordiv.int>(a: Value, b: Value)
       -> (types: TypeRange);
   rewrite root with {
-    let nativeA = op<torchext.get>(a) -> (type<"i64">);
-    let nativeB = op<torchext.get>(b) -> (type<"i64">);
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
     let nativeResult =
         op<arith.floordivsi>(nativeA, nativeB) -> (type<"i64">);
     replace root with op<torch_c.from_i64>(nativeResult) -> (types);
@@ -36,7 +36,7 @@ Pattern AtenFloordivInt with benefit(1) {
 Pattern AtenIntBool with benefit(1) {
   let root = op<torch.aten.Int.bool>(a: Value) -> (types: TypeRange);
   rewrite root with {
-    let nativeBool = op<torchext.get>(a) -> (type<"i1">);
+    let nativeBool = op<torch_c.to_i1>(a) -> (type<"i1">);
     let nativeInt = op<arith.extui>(nativeBool) -> (type<"i64">);
     replace root with op<torch_c.from_i64>(nativeInt) -> (types);
   };
@@ -46,7 +46,7 @@ Pattern AtenSizeInt with benefit(1) {
   let root = op<torch.aten.size.int>(self: Value, dim: Value)
       -> (types: TypeRange);
   rewrite root with {
-    let nativeDim = op<torchext.get>(dim) -> (type<"i64">);
+    let nativeDim = op<torch_c.to_i64>(dim) -> (type<"i64">);
     let nativeSize =
         op<torchext.tensor.size>(self, nativeDim) -> (type<"i64">);
     replace root with op<torch_c.from_i64>(nativeSize) -> (types);
@@ -56,8 +56,8 @@ Pattern AtenSizeInt with benefit(1) {
 Pattern AtenSubInt with benefit(1) {
   let root = op<torch.aten.sub.int>(a: Value, b: Value) -> (types: TypeRange);
   rewrite root with {
-    let nativeA = op<torchext.get>(a) -> (type<"i64">);
-    let nativeB = op<torchext.get>(b) -> (type<"i64">);
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
     let nativeResult = op<arith.subi>(nativeA, nativeB) -> (type<"i64">);
     replace root with op<torch_c.from_i64>(nativeResult) -> (types);
   };

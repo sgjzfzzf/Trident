@@ -10,12 +10,12 @@
 // Frontend array accesses may temporarily carry their Torch element type.
 // CHECK-LABEL: func.func @frontend_array_get_item(
 // CHECK-SAME: %[[ARRAY:[a-zA-Z0-9_]+]]: !tvm_ffi.array) -> !tvm_ffi.tensor {
-// CHECK: %[[INDEX:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = 0 : i64}> : () -> !tvm_ffi.int
+// CHECK: %[[INDEX:[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 0
 // CHECK: %[[ITEM:[a-zA-Z0-9_]+]] = tvm_ffi.array.get_item %[[ARRAY]][%[[INDEX]]] as !tvm_ffi.tensor : !tvm_ffi.array, !tvm_ffi.int -> !tvm_ffi.tensor
 // CHECK: return %[[ITEM]] : !tvm_ffi.tensor
 func.func @frontend_array_get_item(%arg0: !tvm_ffi.array)
     -> !torch.vtensor<[2,3],f32> {
-  %index = "tvm_ffi.constant"() <{value = 0 : i64}> : () -> !tvm_ffi.int
+  %index = "tvm_ffi.constant.int"() <{value = 0 : i64}> : () -> !tvm_ffi.int
   %item = tvm_ffi.array.get_item %arg0[%index]
       as !torch.vtensor<[2,3],f32>
       : !tvm_ffi.array, !tvm_ffi.int -> !torch.vtensor<[2,3],f32>
@@ -48,9 +48,9 @@ func.func @tuple_construct(%lhs: !torch.int, %rhs: !torch.int)
 
 // CHECK-LABEL: func.func @list_unpack(
 // CHECK-SAME: %[[ARRAY:[a-zA-Z0-9_]+]]: !tvm_ffi.array) -> (!tvm_ffi.int, !tvm_ffi.int) {
-// CHECK: %[[ZERO:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = 0 : i64}> : () -> !tvm_ffi.int
+// CHECK: %[[ZERO:[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 0
 // CHECK: %[[LHS:[a-zA-Z0-9_]+]] = tvm_ffi.array.get_item %[[ARRAY]][%[[ZERO]]] as !tvm_ffi.int : !tvm_ffi.array, !tvm_ffi.int -> !tvm_ffi.int
-// CHECK: %[[ONE:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = 1 : i64}> : () -> !tvm_ffi.int
+// CHECK: %[[ONE:[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 1
 // CHECK: %[[RHS:[a-zA-Z0-9_]+]] = tvm_ffi.array.get_item %[[ARRAY]][%[[ONE]]] as !tvm_ffi.int : !tvm_ffi.array, !tvm_ffi.int -> !tvm_ffi.int
 // CHECK: return %[[LHS]], %[[RHS]] : !tvm_ffi.int, !tvm_ffi.int
 func.func @list_unpack(%array: !torch.list<int>) -> (!torch.int, !torch.int) {

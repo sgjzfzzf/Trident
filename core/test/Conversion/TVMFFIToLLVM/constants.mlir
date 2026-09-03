@@ -8,7 +8,8 @@
 // RUN: trident-core-opt %s -split-input-file -convert-tvm-ffi-to-llvm | FileCheck %s
 
 // CHECK-LABEL: func.func @bool_constant() -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i64) : i64
+// CHECK: %[[BOOL_VALUE:[a-zA-Z0-9_]+]] = arith.constant true
+// CHECK: %[[PAYLOAD:[a-zA-Z0-9_]+]] = arith.extui %[[BOOL_VALUE]] : i1 to i64
 // CHECK: %[[VALUE:[a-zA-Z0-9_]+]] = llvm.mlir.undef : !llvm.struct<(i32, i32, i64)>
 // CHECK: %[[KIND:[a-zA-Z0-9_]+]] = llvm.mlir.constant(2 : i32) : i32
 // CHECK: %[[WITH_KIND:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[KIND]], %[[VALUE]][0]
@@ -17,7 +18,7 @@
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[PAYLOAD]], %[[WITH_AUX]][2]
 // CHECK: return %[[RESULT]] : !llvm.struct<(i32, i32, i64)>
 func.func @bool_constant() -> !tvm_ffi.bool {
-  %value = "tvm_ffi.constant"() <{value = true}> : () -> !tvm_ffi.bool
+  %value = "tvm_ffi.constant.bool"() <{value = true}> : () -> !tvm_ffi.bool
   return %value : !tvm_ffi.bool
 }
 
@@ -33,7 +34,7 @@ func.func @bool_constant() -> !tvm_ffi.bool {
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[PAYLOAD]], %[[WITH_AUX]][2]
 // CHECK: return %[[RESULT]] : !llvm.struct<(i32, i32, i64)>
 func.func @int_constant() -> !tvm_ffi.int {
-  %value = "tvm_ffi.constant"() <{value = -7 : i64}> : () -> !tvm_ffi.int
+  %value = "tvm_ffi.constant.int"() <{value = -7 : i64}> : () -> !tvm_ffi.int
   return %value : !tvm_ffi.int
 }
 
@@ -50,7 +51,7 @@ func.func @int_constant() -> !tvm_ffi.int {
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[PAYLOAD]], %[[WITH_AUX]][2]
 // CHECK: return %[[RESULT]] : !llvm.struct<(i32, i32, i64)>
 func.func @float_constant() -> !tvm_ffi.float {
-  %value = "tvm_ffi.constant"() <{value = 2.5 : f64}> : () -> !tvm_ffi.float
+  %value = "tvm_ffi.constant.float"() <{value = 2.5 : f64}> : () -> !tvm_ffi.float
   return %value : !tvm_ffi.float
 }
 
@@ -66,7 +67,7 @@ func.func @float_constant() -> !tvm_ffi.float {
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[PACKED]], %[[WITH_AUX]][2]
 // CHECK: return %[[RESULT]] : !llvm.struct<(i32, i32, i64)>
 func.func @dtype_constant() -> !tvm_ffi.dtype {
-  %value = "tvm_ffi.constant"() <{value = [2, 32, 1]}>
+  %value = "tvm_ffi.constant.dtype"() <{value = [2, 32, 1]}>
       : () -> !tvm_ffi.dtype
   return %value : !tvm_ffi.dtype
 }
@@ -83,7 +84,7 @@ func.func @dtype_constant() -> !tvm_ffi.dtype {
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[PAYLOAD]], %[[WITH_AUX]][2]
 // CHECK: return %[[RESULT]] : !llvm.struct<(i32, i32, i64)>
 func.func @none_constant() -> !tvm_ffi.none {
-  %value = "tvm_ffi.constant"() <{value}> : () -> !tvm_ffi.none
+  %value = "tvm_ffi.constant.none"() : () -> !tvm_ffi.none
   return %value : !tvm_ffi.none
 }
 

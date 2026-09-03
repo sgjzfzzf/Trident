@@ -13,7 +13,6 @@
 // the Python regression test passes a transposed tensor here and checks that a
 // distinct, contiguous allocation is returned.
 
-// CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.clone_trident.aten.clone("trident.aten.clone\00")
 // CHECK-LABEL: llvm.func @torch.aten.clone(
 // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // CHECK: %[[NARGS:[0-9]+]] = llvm.mlir.constant(2 : i32) : i32

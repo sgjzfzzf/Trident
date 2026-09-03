@@ -16,7 +16,6 @@
 // runtime semantics of the transposed view (strides preserved across the
 // DLPack boundary) are exercised end-to-end by test/test_t.py.
 
-// CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.t_trident.aten.t("trident.aten.t\00")
 // CHECK-LABEL: llvm.func @torch.aten.t(
 // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // CHECK: %[[GETGLOBAL:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionGetGlobal(%[[FUNCTION_NAME:[0-9]+]], %[[HANDLE_SLOT:[0-9]+]]) : (!llvm.ptr, !llvm.ptr) -> i32

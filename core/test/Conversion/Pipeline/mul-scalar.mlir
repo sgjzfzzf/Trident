@@ -11,7 +11,6 @@
 // FFI dispatch path: "trident.aten.mul.Scalar", called via
 // TVMFFIFunctionGetGlobal / TVMFFIFunctionCall / TVMFFIObjectDecRef.
 
-// CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.mul.Scalar_trident.aten.mul.Scalar("trident.aten.mul.Scalar\00")
 // CHECK-LABEL:   llvm.func @torch.aten.mul.Scalar
 // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[ARG1:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // CHECK: %[[GETGLOBAL:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionGetGlobal(%[[FUNCTION_NAME:[0-9]+]], %[[HANDLE_SLOT:[0-9]+]]) : (!llvm.ptr, !llvm.ptr) -> i32

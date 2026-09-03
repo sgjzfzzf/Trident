@@ -49,7 +49,9 @@ def ConvertTorchToScf : Pass<"trident-convert-torch-to-scf", "mlir::ModuleOp"> {
     Lowers torch.prim.If and torch.prim.If.yield while preserving result types.
   }];
   let dependentDialects = [
-    "mlir::scf::SCFDialect", "trident::torchext::TorchExtDialect"
+    "mlir::scf::SCFDialect",
+    "mlir::torch::TorchConversion::TorchConversionDialect",
+    "trident::torchext::TorchExtDialect"
   ];
 }
 

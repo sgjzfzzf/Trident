@@ -92,12 +92,49 @@ def TVMFFI_CastOp
   let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
 }
 
-def TVMFFI_ConstantOp
-    : TVMFFI_Op<"constant", [TVMFFI_ObjectOwnershipOpInterface]> {
-  let summary = "Create a TVM FFI scalar or owned tensor constant";
-  let arguments = (ins AnyAttr : $value);
-  let results = (outs AnyTVMFFISemanticType : $result);
+class TVMFFI_ConstantOp<string mnemonic, Type resultType, Attr valueType>
+    : TVMFFI_Op<mnemonic, [TVMFFI_ObjectOwnershipOpInterface]> {
+  let arguments = (ins valueType:$value);
+  let results = (outs resultType:$result);
+  let assemblyFormat = "$value attr-dict";
+}
+
+def TVMFFI_ConstantBoolOp
+    : TVMFFI_ConstantOp<"constant.bool", TVMFFI_BoolType, I1Attr> {
+  let summary = "Create a TVM FFI boolean constant";
+}
+
+def TVMFFI_ConstantDeviceOp
+    : TVMFFI_ConstantOp<"constant.device", TVMFFI_DeviceType, StrAttr> {
+  let summary = "Create a TVM FFI device constant";
+}
+
+def TVMFFI_ConstantDTypeOp
+    : TVMFFI_ConstantOp<"constant.dtype", TVMFFI_DTypeType, ArrayAttr> {
+  let summary = "Create a TVM FFI dtype constant";
   let hasVerifier = 1;
+}
+
+def TVMFFI_ConstantFloatOp
+    : TVMFFI_ConstantOp<"constant.float", TVMFFI_FloatType, F64Attr> {
+  let summary = "Create a TVM FFI floating-point constant";
+}
+
+def TVMFFI_ConstantIntOp
+    : TVMFFI_ConstantOp<"constant.int", TVMFFI_IntType, I64Attr> {
+  let summary = "Create a TVM FFI integer constant";
+}
+
+def TVMFFI_ConstantNoneOp
+    : TVMFFI_Op<"constant.none", [TVMFFI_ObjectOwnershipOpInterface]> {
+  let summary = "Create a TVM FFI None constant";
+  let results = (outs TVMFFI_NoneType:$result);
+  let assemblyFormat = "attr-dict";
+}
+
+def TVMFFI_ConstantRawStrOp
+    : TVMFFI_ConstantOp<"constant.raw_str", TVMFFI_RawStrType, StrAttr> {
+  let summary = "Create a TVM FFI raw string constant";
 }
 
 def TVMFFI_EqOp : TVMFFI_Op<"eq", [Pure]> {

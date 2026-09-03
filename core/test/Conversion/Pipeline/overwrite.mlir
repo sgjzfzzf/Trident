@@ -10,7 +10,6 @@
 // The in-place copy keeps the destination as the first tensor argument to the
 // runtime copy function and passes the source as the second argument.
 
-// CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.runtime.tensor_copy__trident.runtime.tensor_copy_("trident.runtime.tensor_copy_\00")
 // CHECK-LABEL: llvm.func @torch.overwrite(
 // CHECK-SAME: %[[SOURCE:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[DESTINATION:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) {
 // CHECK: %[[ONE:[0-9]+]] = llvm.mlir.constant(1 : i64) : i64

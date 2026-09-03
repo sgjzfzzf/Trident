@@ -76,43 +76,49 @@ class ConstantCode(GuardCode):
         source = self.source
         if source is None:
             return super().build(tree, context)
-        if self.value is None:
+        value = self.value
+        if value is None:
             expected_type = "!tvm_ffi.none"
-            expected_attr: ir.Attribute = ir.UnitAttr.get(context)
-        elif isinstance(self.value, torch.dtype):
+            constant_builder = tvm_ffi_d.constant_none
+            expected_attr = None
+        elif isinstance(value, torch.dtype):
             expected_type = "!tvm_ffi.dtype"
-            dtype = tvm_ffi.convert(self.value)
+            constant_builder = tvm_ffi_d.constant_dtype
+            dtype = tvm_ffi.convert(value)
             expected_attr = ir.ArrayAttr.get(
                 [
                     ir.IntegerAttr.get(ir.IntegerType.get_signless(64, context), value)
                     for value in (dtype.type_code, dtype.bits, dtype.lanes)
                 ]
             )
-        elif isinstance(self.value, bool):
+        elif isinstance(value, bool):
             expected_type = "!tvm_ffi.bool"
-            expected_attr = ir.BoolAttr.get(self.value, context=context)
-        elif isinstance(self.value, int):
+            constant_builder = tvm_ffi_d.constant_bool
+            expected_attr = ir.BoolAttr.get(value, context=context)
+        elif isinstance(value, int):
             expected_type = "!tvm_ffi.int"
+            constant_builder = tvm_ffi_d.constant_int
             expected_attr = ir.IntegerAttr.get(
                 ir.IntegerType.get_signless(64, context),
-                self.value,
+                value,
             )
-        elif isinstance(self.value, float):
+        elif isinstance(value, float):
             expected_type = "!tvm_ffi.float"
-            expected_attr = ir.FloatAttr.get(
-                ir.F64Type.get(context),
-                self.value,
-            )
-        elif isinstance(self.value, str):
+            constant_builder = tvm_ffi_d.constant_float
+            expected_attr = ir.FloatAttr.get(ir.F64Type.get(context), value)
+        else:
             expected_type = "!tvm_ffi.raw_str"
-            expected_attr = ir.StringAttr.get(self.value, context)
+            constant_builder = tvm_ffi_d.constant_raw_str
+            expected_attr = ir.StringAttr.get(value, context)
 
         actual = source.resolve(tree)
         if actual is None:
             return super().build(tree, context)
-        expected = tvm_ffi_d.constant(
-            ir.Type.parse(expected_type, context=context),
-            expected_attr,
+        expected_ir_type = ir.Type.parse(expected_type, context=context)
+        expected = (
+            constant_builder(expected_ir_type)
+            if expected_attr is None
+            else constant_builder(expected_ir_type, expected_attr)
         )
         return tvm_ffi_d.eq(
             ir.IntegerType.get_signless(1, context),

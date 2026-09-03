@@ -15,6 +15,8 @@
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
+#include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h>
+#include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.h>
 #include <utility>
 
 #include "TorchToScfPatterns.inc"
@@ -32,8 +34,9 @@ public:
   mlir::LogicalResult
   matchAndRewrite(mlir::torch::Torch::PrimIfOp op,
                   mlir::PatternRewriter &rewriter) const override {
-    torchext::GetOp condition = torchext::GetOp::create(
-        rewriter, op.getLoc(), rewriter.getI1Type(), op.getCondition());
+    mlir::torch::TorchConversion::ToI1Op condition =
+        mlir::torch::TorchConversion::ToI1Op::create(
+            rewriter, op.getLoc(), rewriter.getI1Type(), op.getCondition());
     mlir::scf::IfOp replacement = mlir::scf::IfOp::create(
         rewriter, op.getLoc(), op.getResultTypes(), condition.getResult(),
         /*withElseRegion=*/true);
@@ -55,6 +58,7 @@ class ConvertTorchToScfPass final
     mlir::ConversionTarget target(getContext());
     target.addLegalDialect<mlir::scf::SCFDialect,
                            mlir::torch::Torch::TorchDialect,
+                           mlir::torch::TorchConversion::TorchConversionDialect,
                            torchext::TorchExtDialect>();
     target.addIllegalOp<mlir::torch::Torch::PrimIfOp,
                         mlir::torch::Torch::PrimIfYieldOp>();

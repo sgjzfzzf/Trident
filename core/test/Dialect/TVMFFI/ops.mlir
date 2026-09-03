@@ -147,11 +147,11 @@ tvm_ffi.func @function_call() -> !tvm_ffi.array {
 
 // A semantic TVM FFI value may be returned through the generic Any ABI slot.
 // DIALECT-LABEL: tvm_ffi.func @any_return() -> !tvm_ffi.any {
-// DIALECT-NEXT:    [[ANY_VALUE:%[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value = 1 : i64}> : () -> !tvm_ffi.int
+// DIALECT-NEXT:    [[ANY_VALUE:%[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 1
 // DIALECT-NEXT:    tvm_ffi.return [[ANY_VALUE]] : !tvm_ffi.int
 // DIALECT-NEXT:  }
 tvm_ffi.func @any_return() -> !tvm_ffi.any {
-  %value = "tvm_ffi.constant"() <{value = 1 : i64}>
+  %value = "tvm_ffi.constant.int"() <{value = 1 : i64}>
       : () -> !tvm_ffi.int
   tvm_ffi.return %value : !tvm_ffi.int
 }

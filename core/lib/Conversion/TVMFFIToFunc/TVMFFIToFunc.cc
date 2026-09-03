@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h" // NOLINT(misc-include-cleaner)
-#include "trident/core/Conversion/Utils/GlobalString.h"
+#include "trident/core/Conversion/Utils/String.h"
 #include "trident/core/Conversion/Utils/TVMFFIUtils.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
@@ -259,9 +259,8 @@ class ConvertTVMFFIToFuncPass final
                                       arrayValue, resultPtr);
         }
         builder.setInsertionPointToStart(guard.elseBlock());
-        const mlir::Value kindPtr = conversion::utils::getOrCreateGlobalString(
-            builder, tvmffiFuncOp.getLoc(), module, "ExceptionKind",
-            "GuardMatch");
+        const mlir::Value kindPtr =
+            utils::getString(builder, tvmffiFuncOp.getLoc(), "GuardMatch");
         mlir::Value exceptionValue = mlir::LLVM::UndefOp::create(
             builder, tvmffiFuncOp.getLoc(), llvmAnyTy);
         exceptionValue = mlir::LLVM::InsertValueOp::create(

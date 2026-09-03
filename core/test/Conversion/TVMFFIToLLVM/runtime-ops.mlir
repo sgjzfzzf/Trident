@@ -10,7 +10,6 @@
 // CHECK-DAG: llvm.func @TVMFFIFunctionCall(!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK-DAG: llvm.func @TVMFFIFunctionGetGlobal(!llvm.ptr, !llvm.ptr) -> i32
 // CHECK-DAG: llvm.func @TVMFFIObjectDecRef(!llvm.ptr) -> i32
-// CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_test.identity_test.identity("test.identity\00")
 // CHECK-LABEL: func.func @global_call(
 // CHECK-SAME: %[[GLOBAL_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[GLOBAL_NAME:[a-zA-Z0-9_]+]], %[[GLOBAL_HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
@@ -58,10 +57,12 @@ func.func @local_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
 
 // -----
 
-// CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_ExceptionKind_GuardMatch("GuardMatch\00")
-// CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.ffi.Exception_trident.ffi.Exception("trident.ffi.Exception\00")
 // CHECK-LABEL: func.func @exception() -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: %[[MESSAGE_PTR:[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_constant_ExceptionKind_GuardMatch
+// CHECK: %[[MESSAGE_SIZE:[0-9]+]] = llvm.mlir.constant(11 : i64) : i64
+// CHECK: %[[MESSAGE_PTR:[a-zA-Z0-9_]+]] = llvm.alloca %[[MESSAGE_SIZE]] x i8 : (i64) -> !llvm.ptr
+// CHECK: %[[MESSAGE_END_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[MESSAGE_PTR]][10] : (!llvm.ptr) -> !llvm.ptr, i8
+// CHECK: %[[MESSAGE_END:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i8) : i8
+// CHECK: llvm.store %[[MESSAGE_END]], %[[MESSAGE_END_PTR]] : i8, !llvm.ptr
 // CHECK: %[[UNDEF:[a-zA-Z0-9_]+]] = llvm.mlir.undef
 // CHECK: %[[KIND:[a-zA-Z0-9_]+]] = llvm.mlir.constant(8 : i32) : i32
 // CHECK: %[[WITH_KIND:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[KIND]], %[[UNDEF]][0]

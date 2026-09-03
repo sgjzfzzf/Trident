@@ -8,14 +8,13 @@
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "trident/core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/Check.h"
-#include "trident/core/Conversion/Utils/GlobalString.h"
+#include "trident/core/Conversion/Utils/String.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/TVMFFIUtils.h"
 #include "trident/core/Dialect/DLPack/IR/DLPackTypes.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
-#include <ATen/dlpack.h>
 #include <c10/core/Device.h>
 #include <dlpack/dlpack.h>
 #include <llvm/ADT/STLExtras.h>
@@ -41,6 +40,7 @@
 #include <mlir/IR/DialectRegistry.h>
 #include <mlir/IR/Location.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/Parser/Parser.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -61,7 +61,28 @@ TORCH_API DLDevice torchDeviceToDLDevice(c10::Device device);
 namespace trident::conversion {
 
 #define GEN_PASS_DEF_CONVERTTVMFFITOLLVM
+#include "TVMFFIToLLVMPDLLPatterns.h.inc"
 #include "trident/core/Conversion/Passes.h.inc"
+
+static mlir::Value createConstantABI(mlir::ConversionPatternRewriter &rewriter,
+                                     mlir::Location loc, int32_t typeIndex,
+                                     mlir::Value payload) {
+  mlir::LLVM::LLVMStructType const anyTy =
+      tvm_ffi::TVMFFIABIType::getLLVMType(rewriter.getContext());
+  mlir::IntegerType const i32Ty = rewriter.getI32Type();
+  mlir::Value result = mlir::LLVM::UndefOp::create(rewriter, loc, anyTy);
+  result = mlir::LLVM::InsertValueOp::create(
+      rewriter, loc, result,
+      mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, typeIndex),
+      llvm::ArrayRef<int64_t>{0});
+  result = mlir::LLVM::InsertValueOp::create(
+      rewriter, loc, result,
+      mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 0),
+      llvm::ArrayRef<int64_t>{1});
+  result = mlir::LLVM::InsertValueOp::create(rewriter, loc, result, payload,
+                                             llvm::ArrayRef<int64_t>{2});
+  return result;
+}
 
 class ConvertArrayLengthOp
     : public mlir::OpConversionPattern<tvm_ffi::ArrayLengthOp> {
@@ -186,115 +207,85 @@ public:
   }
 };
 
-class ConvertConstantOp
-    : public mlir::OpConversionPattern<tvm_ffi::ConstantOp> {
+class ConvertConstantDeviceOp
+    : public mlir::OpConversionPattern<tvm_ffi::ConstantDeviceOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
   mlir::LogicalResult
-  matchAndRewrite(tvm_ffi::ConstantOp op, tvm_ffi::ConstantOpAdaptor,
+  matchAndRewrite(tvm_ffi::ConstantDeviceOp op,
+                  tvm_ffi::ConstantDeviceOpAdaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
     mlir::Location const loc = op.getLoc();
-    mlir::Type const resultType = op.getResult().getType();
     mlir::IntegerType const i64Ty = rewriter.getI64Type();
-    mlir::Value payload;
-    int32_t typeIndex;
-    if (mlir::BoolAttr const attr =
-            mlir::dyn_cast<mlir::BoolAttr>(op.getValue())) {
-      typeIndex = tvm_ffi::BoolType::getTypeIndex();
-      payload =
-          mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, attr.getValue());
-    } else if (mlir::IntegerAttr const attr =
-                   mlir::dyn_cast<mlir::IntegerAttr>(op.getValue())) {
-      typeIndex = mlir::isa<tvm_ffi::DeviceType>(resultType)
-                      ? tvm_ffi::DeviceType::getTypeIndex()
-                      : tvm_ffi::IntType::getTypeIndex();
-      payload =
-          mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, attr.getInt());
-    } else if (mlir::ArrayAttr attr =
-                   mlir::dyn_cast<mlir::ArrayAttr>(op.getValue());
-               attr && mlir::isa<tvm_ffi::DTypeType>(resultType)) {
-      if (attr.size() != 3 || !llvm::all_of(attr, [](mlir::Attribute value) {
-            return mlir::isa<mlir::IntegerAttr>(value);
-          })) {
-        return op.emitError("dtype constant requires [code, bits, lanes]");
-      }
-      const int64_t code =
-          mlir::cast<mlir::IntegerAttr>(attr[0]).getInt() & 0xff;
-      const int64_t bits =
-          mlir::cast<mlir::IntegerAttr>(attr[1]).getInt() & 0xff;
-      const int64_t lanes =
-          mlir::cast<mlir::IntegerAttr>(attr[2]).getInt() & 0xffff;
-      const int64_t packed = code | (bits << 8) | (lanes << 16);
-      typeIndex = tvm_ffi::DTypeType::getTypeIndex();
-      payload = mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, packed);
-    } else if (mlir::StringAttr const attr =
-                   mlir::dyn_cast<mlir::StringAttr>(op.getValue());
-               attr && mlir::isa<tvm_ffi::DeviceType>(resultType)) {
-      c10::Device const device = attr.getValue().str();
-      DLDevice const dlDevice = at::torchDeviceToDLDevice(device);
-      typeIndex = tvm_ffi::DeviceType::getTypeIndex();
-      mlir::LLVM::LLVMStructType const dlDeviceTy =
-          dlpack::DLDeviceType::getLLVMType(rewriter.getContext());
-      mlir::Value deviceValue =
-          mlir::LLVM::UndefOp::create(rewriter, loc, dlDeviceTy);
-      deviceValue = mlir::LLVM::InsertValueOp::create(
-          rewriter, loc, deviceValue,
-          mlir::LLVM::ConstantOp::create(
-              rewriter, loc, rewriter.getI32Type(),
-              static_cast<int32_t>(dlDevice.device_type)),
-          llvm::ArrayRef<int64_t>{0});
-      deviceValue = mlir::LLVM::InsertValueOp::create(
-          rewriter, loc, deviceValue,
-          mlir::LLVM::ConstantOp::create(rewriter, loc, rewriter.getI32Type(),
-                                         dlDevice.device_id),
-          llvm::ArrayRef<int64_t>{1});
-      mlir::LLVM::LLVMPointerType const ptrTy =
-          mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
-      mlir::Value const deviceSlot = mlir::LLVM::AllocaOp::create(
-          rewriter, loc, ptrTy, dlDeviceTy,
-          mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1));
-      mlir::LLVM::StoreOp::create(rewriter, loc, deviceValue, deviceSlot);
-      payload = mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, deviceSlot);
-    } else if (mlir::StringAttr const attr =
-                   mlir::dyn_cast<mlir::StringAttr>(op.getValue());
-               attr && mlir::isa<tvm_ffi::RawStrType>(resultType)) {
-      mlir::ModuleOp const module = op->getParentOfType<mlir::ModuleOp>();
-      if (!module) {
-        return op.emitError("failed to get parent ModuleOp");
-      }
-      mlir::Value const stringPtr = conversion::utils::getOrCreateGlobalString(
-          rewriter, loc, module, "string", attr.getValue());
-      typeIndex = tvm_ffi::RawStrType::getTypeIndex();
-      payload = mlir::LLVM::PtrToIntOp::create(rewriter, loc, i64Ty, stringPtr);
-    } else if (mlir::FloatAttr const attr =
-                   mlir::dyn_cast<mlir::FloatAttr>(op.getValue())) {
-      typeIndex = tvm_ffi::FloatType::getTypeIndex();
-      mlir::Value const value = mlir::LLVM::ConstantOp::create(
-          rewriter, loc, rewriter.getF64Type(),
-          rewriter.getFloatAttr(rewriter.getF64Type(),
-                                attr.getValueAsDouble()));
-      payload = mlir::LLVM::BitcastOp::create(rewriter, loc, i64Ty, value);
-    } else if (mlir::isa<mlir::UnitAttr>(op.getValue())) {
-      typeIndex = tvm_ffi::NoneType::getTypeIndex();
-      payload = mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 0);
-    } else {
-      return op.emitError("unsupported tvm_ffi.constant attribute");
-    }
-    mlir::LLVM::LLVMStructType const anyTy =
-        tvm_ffi::TVMFFIABIType::getLLVMType(rewriter.getContext());
-    mlir::IntegerType const i32Ty = rewriter.getI32Type();
-    mlir::Value result = mlir::LLVM::UndefOp::create(rewriter, loc, anyTy);
-    result = mlir::LLVM::InsertValueOp::create(
-        rewriter, loc, result,
-        mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, typeIndex),
+    c10::Device const device = op.getValue().str();
+    DLDevice const dlDevice = at::torchDeviceToDLDevice(device);
+    mlir::LLVM::LLVMStructType const dlDeviceTy =
+        dlpack::DLDeviceType::getLLVMType(rewriter.getContext());
+    mlir::Value deviceValue =
+        mlir::LLVM::UndefOp::create(rewriter, loc, dlDeviceTy);
+    deviceValue = mlir::LLVM::InsertValueOp::create(
+        rewriter, loc, deviceValue,
+        mlir::LLVM::ConstantOp::create(
+            rewriter, loc, rewriter.getI32Type(),
+            static_cast<int32_t>(dlDevice.device_type)),
         llvm::ArrayRef<int64_t>{0});
-    result = mlir::LLVM::InsertValueOp::create(
-        rewriter, loc, result,
-        mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 0),
+    deviceValue = mlir::LLVM::InsertValueOp::create(
+        rewriter, loc, deviceValue,
+        mlir::LLVM::ConstantOp::create(rewriter, loc, rewriter.getI32Type(),
+                                       dlDevice.device_id),
         llvm::ArrayRef<int64_t>{1});
-    result = mlir::LLVM::InsertValueOp::create(rewriter, loc, result, payload,
-                                               llvm::ArrayRef<int64_t>{2});
-    rewriter.replaceOp(op, result);
+    mlir::LLVM::LLVMPointerType const ptrTy =
+        mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
+    mlir::Value const deviceSlot = mlir::LLVM::AllocaOp::create(
+        rewriter, loc, ptrTy, dlDeviceTy,
+        mlir::LLVM::ConstantOp::create(rewriter, loc, i64Ty, 1));
+    mlir::LLVM::StoreOp::create(rewriter, loc, deviceValue, deviceSlot);
+    mlir::Value const payload =
+        mlir::LLVM::LoadOp::create(rewriter, loc, i64Ty, deviceSlot);
+    rewriter.replaceOp(
+        op, createConstantABI(rewriter, loc,
+                              tvm_ffi::DeviceType::getTypeIndex(), payload));
+    return mlir::success();
+  }
+};
+
+class ConvertConstantDTypeOp
+    : public mlir::OpConversionPattern<tvm_ffi::ConstantDTypeOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+  mlir::LogicalResult
+  matchAndRewrite(tvm_ffi::ConstantDTypeOp op, tvm_ffi::ConstantDTypeOpAdaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::ArrayAttr const attr = op.getValue();
+    const int64_t code = mlir::cast<mlir::IntegerAttr>(attr[0]).getInt() & 0xff;
+    const int64_t bits = mlir::cast<mlir::IntegerAttr>(attr[1]).getInt() & 0xff;
+    const int64_t lanes =
+        mlir::cast<mlir::IntegerAttr>(attr[2]).getInt() & 0xffff;
+    const int64_t packed = code | (bits << 8) | (lanes << 16);
+    mlir::Value const payload = mlir::LLVM::ConstantOp::create(
+        rewriter, op.getLoc(), rewriter.getI64Type(), packed);
+    rewriter.replaceOp(op, createConstantABI(rewriter, op.getLoc(),
+                                             tvm_ffi::DTypeType::getTypeIndex(),
+                                             payload));
+    return mlir::success();
+  }
+};
+
+class ConvertConstantRawStrOp
+    : public mlir::OpConversionPattern<tvm_ffi::ConstantRawStrOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+  mlir::LogicalResult
+  matchAndRewrite(tvm_ffi::ConstantRawStrOp op,
+                  tvm_ffi::ConstantRawStrOpAdaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::Value const stringPtr =
+        utils::getString(rewriter, op.getLoc(), op.getValue());
+    mlir::Value const payload = mlir::LLVM::PtrToIntOp::create(
+        rewriter, op.getLoc(), rewriter.getI64Type(), stringPtr);
+    rewriter.replaceOp(
+        op, createConstantABI(rewriter, op.getLoc(),
+                              tvm_ffi::RawStrType::getTypeIndex(), payload));
     return mlir::success();
   }
 };
@@ -368,8 +359,7 @@ public:
         mlir::LLVM::LLVMPointerType::get(context);
     mlir::LLVM::LLVMStructType const anyTy =
         tvm_ffi::TVMFFIABIType::getLLVMType(context);
-    mlir::Value const kindPtr = conversion::utils::getOrCreateGlobalString(
-        rewriter, loc, module, "ExceptionKind", op.getKind());
+    mlir::Value const kindPtr = utils::getString(rewriter, loc, op.getKind());
     mlir::Value exceptionArg =
         mlir::LLVM::UndefOp::create(rewriter, loc, anyTy);
     exceptionArg = mlir::LLVM::InsertValueOp::create(
@@ -1012,8 +1002,12 @@ void populateTVMFFIToLLVMConversionPatterns(
       [](mlir::torch::Torch::BaseTensorType type) -> mlir::Type {
         return tvm_ffi::TVMFFIABIType::getLLVMType(type.getContext());
       });
+  mlir::registerConversionPDLFunctions(patterns);
+  populateGeneratedPDLLPatterns(patterns,
+                                mlir::PDLConversionConfig(&typeConverter));
   patterns.add<ConvertArrayLengthOp, ConvertAsOp, ConvertCallOp,
-               ConvertConstantOp, ConvertEqOp, ConvertExceptionOp,
+               ConvertConstantDeviceOp, ConvertConstantDTypeOp,
+               ConvertConstantRawStrOp, ConvertEqOp, ConvertExceptionOp,
                ConvertFunctionCallOp, ConvertFunctionGetGlobalOp, ConvertGetOp,
                ConvertTensorCloneOp, ConvertTensorCopyOp,
                ConvertTensorLiteralOp, ConvertToOp, ConvertTVMFFICastOp,

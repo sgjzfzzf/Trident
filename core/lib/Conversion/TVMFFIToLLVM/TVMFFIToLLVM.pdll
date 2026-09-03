@@ -1,0 +1,101 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
+#include "mlir/Dialect/LLVMIR/LLVMOps.td"
+#include "mlir/Dialect/Arith/IR/ArithOps.td"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.td"
+
+Rewrite convertType(type: Type) -> Type;
+
+Pattern ConstantInt with benefit(1) {
+  let root = op<tvm_ffi.constant.int> {value = value: Attr}
+      -> (rootType: Type);
+    rewrite root with {
+      let payload = op<llvm.mlir.constant>() {value = value}
+          -> (type<"i64">);
+      let abiType = convertType(rootType);
+      let undef = op<llvm.mlir.undef>() -> (abiType);
+      let withKind = op<llvm.insertvalue>(undef,
+          op<llvm.mlir.constant>() {value = attr<"1 : i32">}
+              -> (type<"i32">)) {position = attr<"array<i64: 0>">}
+          -> (abiType);
+      let withAux = op<llvm.insertvalue>(withKind,
+          op<llvm.mlir.constant>() {value = attr<"0 : i32">}
+              -> (type<"i32">)) {position = attr<"array<i64: 1>">}
+          -> (abiType);
+      let final = op<llvm.insertvalue>(withAux, payload)
+          {position = attr<"array<i64: 2>">} -> (abiType);
+      replace root with final;
+  };
+}
+
+Pattern ConstantBool with benefit(1) {
+  let root = op<tvm_ffi.constant.bool> {value = value: Attr}
+      -> (rootType: Type);
+  rewrite root with {
+      let boolValue = op<arith.constant>() {value = value}
+          -> (type<"i1">);
+      let payload = op<arith.extui>(boolValue) -> (type<"i64">);
+      let abiType = convertType(rootType);
+      let undef = op<llvm.mlir.undef>() -> (abiType);
+      let withKind = op<llvm.insertvalue>(undef,
+          op<llvm.mlir.constant>() {value = attr<"2 : i32">}
+              -> (type<"i32">)) {position = attr<"array<i64: 0>">}
+          -> (abiType);
+      let withAux = op<llvm.insertvalue>(withKind,
+          op<llvm.mlir.constant>() {value = attr<"0 : i32">}
+              -> (type<"i32">)) {position = attr<"array<i64: 1>">}
+          -> (abiType);
+      let final = op<llvm.insertvalue>(withAux, payload)
+          {position = attr<"array<i64: 2>">} -> (abiType);
+      replace root with final;
+  };
+}
+
+Pattern ConstantFloat with benefit(1) {
+  let root = op<tvm_ffi.constant.float> {value = value: Attr}
+      -> (rootType: Type);
+  rewrite root with {
+      let floatValue = op<llvm.mlir.constant>() {value = value}
+          -> (type<"f64">);
+      let payload = op<llvm.bitcast>(floatValue) -> (type<"i64">);
+      let abiType = convertType(rootType);
+      let undef = op<llvm.mlir.undef>() -> (abiType);
+      let withKind = op<llvm.insertvalue>(undef,
+          op<llvm.mlir.constant>() {value = attr<"3 : i32">}
+              -> (type<"i32">)) {position = attr<"array<i64: 0>">}
+          -> (abiType);
+      let withAux = op<llvm.insertvalue>(withKind,
+          op<llvm.mlir.constant>() {value = attr<"0 : i32">}
+              -> (type<"i32">)) {position = attr<"array<i64: 1>">}
+          -> (abiType);
+      let final = op<llvm.insertvalue>(withAux, payload)
+          {position = attr<"array<i64: 2>">} -> (abiType);
+      replace root with final;
+  };
+}
+
+Pattern ConstantNone with benefit(1) {
+  let root = op<tvm_ffi.constant.none> -> (rootType: Type);
+    rewrite root with {
+      let payload = op<llvm.mlir.constant>() {value = attr<"0 : i64">}
+          -> (type<"i64">);
+      let abiType = convertType(rootType);
+      let undef = op<llvm.mlir.undef>() -> (abiType);
+      let withKind = op<llvm.insertvalue>(undef,
+          op<llvm.mlir.constant>() {value = attr<"0 : i32">}
+              -> (type<"i32">)) {position = attr<"array<i64: 0>">}
+          -> (abiType);
+      let withAux = op<llvm.insertvalue>(withKind,
+          op<llvm.mlir.constant>() {value = attr<"0 : i32">}
+              -> (type<"i32">)) {position = attr<"array<i64: 1>">}
+          -> (abiType);
+      let final = op<llvm.insertvalue>(withAux, payload)
+          {position = attr<"array<i64: 2>">} -> (abiType);
+      replace root with final;
+  };
+}

@@ -1,7 +1,7 @@
 add_mlir_conversion_library(
   ConversionUtils
   CFunctionDeclUtils.cc
-  GlobalString.cc
+  String.cc
   TVMFFIUtils.cc
   LINK_LIBS
   PUBLIC

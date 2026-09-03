@@ -41,9 +41,9 @@ that do not depend on converted operands. They are not substitutes for a C++
 `TypeConverter`, materialized values, legality checks, region signature
 conversion, or conversion-specific state. In those cases, choose C++ directly.
 
-For example, a `torchext.get` conversion that must consume
-`adaptor.getOperand()` belongs in C++, even if the operation name replacement
-itself looks simple.
+For example, the `torch_c.to_i1`, `torch_c.to_i64`, and `torch_c.to_f64`
+conversions consume `adaptor.getOperand()` and therefore belong in C++, even
+though the operation-name replacement itself is simple.
 
 Keep the implementation in C++ when it performs type conversion, creates or
 rearranges regions or blocks, recursively clones IR, emits runtime/ABI code, or
@@ -278,7 +278,7 @@ kernel launches. Its lowering is split across two passes:
 
 | Pass | Purpose |
 |---|---|
-| `ConvertTorchExtToGPU` | Lowers `torchext.trident_kernel_launch` (Triton kernel → `gpu.launch_func` with I64 grid/block dimensions, uses TVMFFI stream API); scalar `torchext.get` lowering is handled by `ConvertTorchToTVMFFI` and produces `tvm_ffi.get` |
+| `ConvertTorchExtToGPU` | Lowers `torchext.trident_kernel_launch` (Triton kernel → `gpu.launch_func` with I64 grid/block dimensions, uses TVMFFI stream API); scalar `torch_c.to_i1/to_i64/to_f64` lowering is handled by `ConvertTorchToTVMFFI` and produces `tvm_ffi.get` |
 | `ConvertTorchExtToLLVM` | Lowers any remaining TorchExt ops to LLVM |
 
 Reference counting for Torch objects is handled inside `ConvertTorchToTVMFFI`

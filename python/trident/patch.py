@@ -340,7 +340,12 @@ def _import_hop_triton_kernel_wrapper(
                     target = ir.IntegerType.get_signless(
                         ast.literal_eval(triton_type[1:])
                     )
-                    native = torchext.get(ir.IntegerType.get_signless(64), const_val)
+                    [native] = ir.Operation.create(
+                        "torch_c.to_i64",
+                        results=[ir.IntegerType.get_signless(64)],
+                        operands=[const_val],
+                        loc=loc,
+                    )
                     call_arguments[name] = (
                         native
                         if target.width == 64
@@ -353,7 +358,12 @@ def _import_hop_triton_kernel_wrapper(
                 elif triton_type == "fp32":
                     const_val = torch_d.constant_float(value)
                     target = ir.F32Type.get()
-                    native = torchext.get(ir.F64Type.get(), const_val)
+                    [native] = ir.Operation.create(
+                        "torch_c.to_f64",
+                        results=[ir.F64Type.get()],
+                        operands=[const_val],
+                        loc=loc,
+                    ).results
                     call_arguments[name] = llvm.fptrunc(
                         res=target,
                         arg=native,
@@ -361,7 +371,13 @@ def _import_hop_triton_kernel_wrapper(
                 elif triton_type == "fp64":
                     const_val = torch_d.constant_float(value)
                     target = ir.F64Type.get()
-                    call_arguments[name] = torchext.get(target, const_val)
+                    [native] = ir.Operation.create(
+                        "torch_c.to_f64",
+                        results=[target],
+                        operands=[const_val],
+                        loc=loc,
+                    ).results
+                    call_arguments[name] = native
                 else:
                     raise RuntimeError(
                         f"unsupported constant argument type: {triton_type}"

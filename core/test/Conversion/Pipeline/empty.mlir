@@ -10,8 +10,6 @@
 // This test covers the two empty tensor factories that use the AtenGen FFI
 // dispatch path: empty_like and empty.memory_format.
 
-// CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.empty.memory_format_trident.aten.empty.memory_format("trident.aten.empty.memory_format\00")
-// CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.empty_like_trident.aten.empty_like("trident.aten.empty_like\00")
 // CHECK-LABEL:   llvm.func @torch.aten.empty_like
 // CHECK-SAME: %[[EMPTY_LIKE_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // CHECK: %[[EMPTY_LIKE_GETGLOBAL:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionGetGlobal(%[[EMPTY_LIKE_FUNCTION_NAME:[0-9]+]], %[[EMPTY_LIKE_HANDLE_SLOT:[0-9]+]]) : (!llvm.ptr, !llvm.ptr) -> i32

@@ -18,7 +18,8 @@
 // CHECK: %[[CLONE_INPUT_VALUE:[0-9]+]] = llvm.load %[[CLONE_INPUT_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.store %[[CLONE_INPUT_VALUE]], %[[CLONE_OUTPUT_PTR]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK: %[[CLONE_NUM_ARGS:[0-9]+]] = llvm.mlir.constant(1 : i32) : i32
-// CHECK: %[[CLONE_GLOBAL_NAME:[0-9]+]] = llvm.mlir.addressof @__trident_constant_trident.runtime.tensor_clone_trident.runtime.tensor_clone : !llvm.ptr
+// CHECK: %[[CLONE_STRING_SIZE:[0-9]+]] = llvm.mlir.constant(29 : i64) : i64
+// CHECK: %[[CLONE_GLOBAL_NAME:[0-9]+]] = llvm.alloca %[[CLONE_STRING_SIZE]] x i8 : (i64) -> !llvm.ptr
 // CHECK: %[[CLONE_GLOBAL_NAME_SIZE:[0-9]+]] = llvm.mlir.constant(1 : i64) : i64
 // CHECK: %[[CLONE_GLOBAL_NAME_SLOT:[0-9]+]] = llvm.alloca %[[CLONE_GLOBAL_NAME_SIZE]] x !llvm.struct<(ptr, i64)> : (i64) -> !llvm.ptr
 // CHECK: %[[CLONE_GLOBAL_NAME_PTR:[0-9]+]] = llvm.getelementptr %[[CLONE_GLOBAL_NAME_SLOT]][0, 0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(ptr, i64)>
@@ -58,7 +59,8 @@ func.func @clone(%input: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
 // CHECK: %[[COPY_ARGUMENTS_COUNT:[0-9]+]] = llvm.mlir.constant(2 : i64) : i64
 // CHECK: %[[COPY_ARGUMENTS_SLOT:[0-9]+]] = llvm.alloca %[[COPY_ARGUMENTS_COUNT]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
 // CHECK: %[[COPY_NUM_ARGS:[0-9]+]] = llvm.mlir.constant(2 : i32) : i32
-// CHECK: %[[COPY_GLOBAL_NAME:[0-9]+]] = llvm.mlir.addressof @__trident_constant_trident.runtime.tensor_copy__trident.runtime.tensor_copy_ : !llvm.ptr
+// CHECK: %[[COPY_STRING_SIZE:[0-9]+]] = llvm.mlir.constant(29 : i64) : i64
+// CHECK: %[[COPY_GLOBAL_NAME:[0-9]+]] = llvm.alloca %[[COPY_STRING_SIZE]] x i8 : (i64) -> !llvm.ptr
 // CHECK: %[[COPY_GLOBAL_NAME_SIZE:[0-9]+]] = llvm.mlir.constant(1 : i64) : i64
 // CHECK: %[[COPY_GLOBAL_NAME_SLOT:[0-9]+]] = llvm.alloca %[[COPY_GLOBAL_NAME_SIZE]] x !llvm.struct<(ptr, i64)> : (i64) -> !llvm.ptr
 // CHECK: %[[COPY_GLOBAL_NAME_PTR:[0-9]+]] = llvm.getelementptr %[[COPY_GLOBAL_NAME_SLOT]][0, 0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(ptr, i64)>

@@ -30,8 +30,8 @@ class TorchExt_TensorIndexedMetadataOp<string mnemonic>
 }
 
 def TorchExt_GetOperandType
-    : AnyTypeOf<
-           [Torch_BoolType, Torch_FloatType, Torch_IntType, TVMFFI_BoolType,
+    : AnyTypeOf<[
+           Torch_BoolType, Torch_FloatType, Torch_IntType, TVMFFI_BoolType,
            TVMFFI_FloatType, TVMFFI_IntType, TVMFFI_ArrayType,
            TVMFFI_FunctionType, TVMFFI_StrType, TVMFFI_TensorType,
            AnyTorchTensorType],
@@ -48,30 +48,6 @@ def TorchExt_KernelOperandType
     ],
                 "Operand accepted by a Trident kernel launch">;
 
-def TorchExt_GetOp
-    : TorchExt_Op<"get", [Pure]> {
-  let summary = "Extract a native value from a Torch or TVM FFI value";
-  let description = [{
-    Extracts a `!torch.float`, `!torch.int`, or boolean scalar value to a
-    native MLIR type. Torch integers, floats, and booleans are represented as
-    `i64`, `f64`, and `i1`, respectively.
-
-    Example:
-    ```
-      %f64 = torchext.get %f to f64 : !torch.float -> f64
-      %i64 = torchext.get %i to i64 : !torch.int -> i64
-    ```
-  }];
-
-  let arguments = (ins TorchExt_GetOperandType:$operand);
-  let results = (outs TorchExt_GetResultType:$result);
-  let hasVerifier = 1;
-
-  let assemblyFormat = [{
-    $operand attr-dict `:` type($operand) `->` type($result)
-  }];
-}
-
 def TorchExt_ConvertOp
     : TorchExt_Op<"convert", [Pure]> {
   let summary = "Convert a wrapper dtype to a Torch ScalarType integer";
@@ -86,6 +62,17 @@ def TorchExt_ConvertOp
   let results = (outs Torch_IntType:$result);
   let hasVerifier = 1;
 
+  let assemblyFormat = [{
+    $operand attr-dict `:` type($operand) `->` type($result)
+  }];
+}
+
+def TorchExt_GetOp
+    : TorchExt_Op<"get", [Pure]> {
+  let summary = "Extract a native value from a Torch or TVM FFI value";
+  let arguments = (ins TorchExt_GetOperandType:$operand);
+  let results = (outs TorchExt_GetResultType:$result);
+  let hasVerifier = 1;
   let assemblyFormat = [{
     $operand attr-dict `:` type($operand) `->` type($result)
   }];
@@ -141,7 +128,7 @@ def TorchExt_TridentKernelLaunchOp
   let description = [{
     Models launching a Torch kernel symbol with explicit grid/block sizes.
     Kernel operands may be Torch-MLIR tensor types or native scalar types
-    (f64, i64) produced by `torchext.get`.
+    (f64, i64) produced by `torch_c.to_f64` or `torch_c.to_i64`.
 
     Optionally supports cluster-level parallelism via `clusterSizeX`,
     `clusterSizeY`, and `clusterSizeZ` arguments. When present, the kernel

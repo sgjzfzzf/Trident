@@ -53,7 +53,7 @@
 // CHECK: %[[METADATA_OK:[a-zA-Z0-9_]+]] = arith.andi %[[METADATA_HEAD_OK]], %[[METADATA_TAIL_OK]] : i1
 // CHECK: %[[CONTAINER_OK:[a-zA-Z0-9_]+]] = arith.andi %[[LENGTH_OK]], %[[VALUES_EQUAL]] : i1
 // CHECK: %[[GUARD_OK:[a-zA-Z0-9_]+]] = arith.andi %[[METADATA_OK]], %[[CONTAINER_OK]] : i1
-// CHECK: %[[NONE:[a-zA-Z0-9_]+]] = "tvm_ffi.constant"() <{value}> : () -> !tvm_ffi.none
+// CHECK: %[[NONE:[a-zA-Z0-9_]+]] = tvm_ffi.constant.none
 // CHECK: %[[SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.cast %[[NONE]] : !tvm_ffi.none -> !tvm_ffi.any
 // CHECK: %[[EXCEPTION:[a-zA-Z0-9_]+]] = tvm_ffi.exception "GuardMatch" : !tvm_ffi.exception
 // CHECK: %[[ERROR:[a-zA-Z0-9_]+]] = tvm_ffi.cast %[[EXCEPTION]] : !tvm_ffi.exception -> !tvm_ffi.any
@@ -111,7 +111,7 @@ tvm_ffi.func @guard_operand_conversion(
   %container_ok = arith.andi %length_ok, %values_equal : i1
   %guard_ok = arith.andi %tensor_metadata_ok, %container_ok : i1
 
-  %none = "tvm_ffi.constant"() <{value}> : () -> !tvm_ffi.none
+  %none = "tvm_ffi.constant.none"() : () -> !tvm_ffi.none
   %success = tvm_ffi.cast %none : !tvm_ffi.none -> !tvm_ffi.any
   %exception = tvm_ffi.exception "GuardMatch" : !tvm_ffi.exception
   %error = tvm_ffi.cast %exception : !tvm_ffi.exception -> !tvm_ffi.any

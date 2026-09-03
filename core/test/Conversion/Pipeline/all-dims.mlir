@@ -12,7 +12,6 @@
 // particular, the list-valued dimensions operand must be passed as an FFI
 // object and the tvm_ffi wrapper must unpack all three arguments.
 
-// CHECK-DAG: llvm.mlir.global internal constant @__trident_constant_trident.aten.all.dims_trident.aten.all.dims("trident.aten.all.dims\00")
 // CHECK-LABEL: llvm.func @torch.aten.all.dims(
 // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // The first dispatch constructs the FFI Array for the list of dimensions.

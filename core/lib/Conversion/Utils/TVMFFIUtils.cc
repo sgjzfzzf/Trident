@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/Utils/TVMFFIUtils.h"
-#include "trident/core/Conversion/Utils/GlobalString.h"
+#include "trident/core/Conversion/Utils/String.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include <cstddef>
@@ -75,8 +75,7 @@ mlir::FailureOr<mlir::Value> getTVMFFIGlobalFunction(mlir::OpBuilder &builder,
 
   mlir::LLVM::LLVMStructType const byteArrayTy =
       mlir::LLVM::LLVMStructType::getLiteral(ctx, {ptrTy, i64Ty});
-  mlir::Value const namePtr =
-      getOrCreateGlobalString(builder, loc, moduleOp, funcName, funcName);
+  mlir::Value const namePtr = getString(builder, loc, funcName);
   mlir::Value const nameSlot = mlir::LLVM::AllocaOp::create(
       builder, loc, ptrTy, byteArrayTy,
       mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));

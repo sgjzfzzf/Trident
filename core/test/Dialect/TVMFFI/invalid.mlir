@@ -18,9 +18,9 @@ func.func @duplicate_union_member(
 
 // -----
 
-func.func @invalid_bool_constant() {
-  // expected-error@+1 {{'tvm_ffi.constant' op bool result requires a BoolAttr}}
-  %value = "tvm_ffi.constant"() <{value = 1 : i64}> : () -> !tvm_ffi.bool
+func.func @invalid_dtype_constant() {
+  // expected-error@+1 {{dtype result requires [code, bits, lanes]}}
+  %value = "tvm_ffi.constant.dtype"() <{value = [1, 2]}> : () -> !tvm_ffi.dtype
   return
 }
 
@@ -52,7 +52,7 @@ tvm_ffi.func @empty_any_return() -> !tvm_ffi.any {
 
 tvm_ffi.func @invalid_union_return()
     -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.bool> {
-  %value = "tvm_ffi.constant"() <{value = 1.0 : f64}>
+  %value = "tvm_ffi.constant.float"() <{value = 1.0 : f64}>
       : () -> !tvm_ffi.float
   // expected-error@+1 {{operand type is not a member of the result type}}
   tvm_ffi.return %value : !tvm_ffi.float

@@ -11,7 +11,7 @@
 // CHECK-SAME: %[[COND:[a-zA-Z0-9_]+]]: !torch.bool,
 // CHECK-SAME: %[[LHS:[a-zA-Z0-9_]+]]: !torch.vtensor<[2],f32>,
 // CHECK-SAME: %[[RHS:[a-zA-Z0-9_]+]]: !torch.vtensor<[2],f32>)
-// CHECK: %[[NATIVE_COND:[a-zA-Z0-9_]+]] = torchext.get %[[COND]] : !torch.bool -> i1
+// CHECK: %[[NATIVE_COND:[a-zA-Z0-9_]+]] = torch_c.to_i1 %[[COND]]
 // CHECK-NEXT: %[[RESULT:[a-zA-Z0-9_]+]] = scf.if %[[NATIVE_COND]] -> (!torch.vtensor<[2],f32>) {
 // CHECK-NEXT: scf.yield %[[LHS]] : !torch.vtensor<[2],f32>
 // CHECK-NEXT: } else {

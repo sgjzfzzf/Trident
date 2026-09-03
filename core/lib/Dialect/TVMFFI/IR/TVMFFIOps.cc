@@ -61,35 +61,14 @@ mlir::LogicalResult ReturnOp::verify() {
   return mlir::success();
 }
 
-mlir::LogicalResult ConstantOp::verify() {
-  mlir::Type type = getResult().getType();
-  if (mlir::isa<BoolType>(type) && !mlir::isa<mlir::BoolAttr>(getValue())) {
-    return emitOpError("bool result requires a BoolAttr");
-  } else if (mlir::isa<IntType>(type) &&
-             !mlir::isa<mlir::IntegerAttr>(getValue())) {
-    return emitOpError("int result requires an IntegerAttr");
-  } else if (mlir::isa<DTypeType>(type)) {
-    if (mlir::ArrayAttr values = mlir::dyn_cast<mlir::ArrayAttr>(getValue());
-        values && values.size() == 3 &&
-        llvm::all_of(values, [](mlir::Attribute value) {
-          return mlir::isa<mlir::IntegerAttr>(value);
-        })) {
-      return mlir::success();
-    }
-    return emitOpError("dtype result requires [code, bits, lanes]");
-  } else if (mlir::isa<FloatType>(type) &&
-             !mlir::isa<mlir::FloatAttr>(getValue())) {
-    return emitOpError("float result requires a FloatAttr");
-  } else if (mlir::isa<NoneType>(type) &&
-             !mlir::isa<mlir::UnitAttr>(getValue())) {
-    return emitOpError("none result requires a UnitAttr");
-  } else if (mlir::isa<RawStrType>(type) &&
-             !mlir::isa<mlir::StringAttr>(getValue())) {
-    return emitOpError("string result requires a StringAttr");
-  } else if (type.hasTrait<mlir::TypeTrait::Object>()) {
-    return emitOpError("object constants are not supported");
+mlir::LogicalResult ConstantDTypeOp::verify() {
+  if (mlir::ArrayAttr values = getValue();
+      values.size() == 3 && llvm::all_of(values, [](mlir::Attribute value) {
+        return mlir::isa<mlir::IntegerAttr>(value);
+      })) {
+    return mlir::success();
   }
-  return mlir::success();
+  return emitOpError("dtype result requires [code, bits, lanes]");
 }
 
 mlir::LogicalResult ToOp::verify() {
@@ -97,8 +76,10 @@ mlir::LogicalResult ToOp::verify() {
   mlir::Type const resultType = getResult().getType();
   auto nativeTypeInterface =
       mlir::dyn_cast<TVMFFINativeTypeInterface>(resultType);
-  if (nativeTypeInterface && nativeTypeInterface.getNativeType() == nativeType)
+  if (nativeTypeInterface &&
+      nativeTypeInterface.getNativeType() == nativeType) {
     return mlir::success();
+  }
   return emitOpError("unsupported native-to-TVM FFI conversion from ")
          << nativeType << " to " << resultType;
 }
@@ -139,6 +120,10 @@ mlir::LogicalResult ArrayGetItemOp::verify() {
 mlir::LogicalResult GetOp::verify() {
   mlir::Type const tvmFFIType = getOperand().getType();
   mlir::Type const resultType = getResult().getType();
+  if (mlir::isa<mlir::torch::Torch::BaseTensorType>(tvmFFIType) &&
+      mlir::isa<ObjectType>(resultType)) {
+    return mlir::success();
+  }
   if (auto nativeTypeInterface =
           mlir::dyn_cast<TVMFFINativeTypeInterface>(tvmFFIType);
       nativeTypeInterface &&

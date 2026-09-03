@@ -17,7 +17,7 @@
 func.func @torchext_operand_conversion(
     %scalar: !torch.float, %tensor: !torch.vtensor<[4],f32>) -> f64 {
   %one = arith.constant 1 : i64
-  %cast = torchext.get %scalar : !torch.float -> f64
+  %cast = torch_c.to_f64 %scalar
   torchext.trident_kernel_launch @kernel::@entry
       blocks in (%one, %one, %one) : i64 threads in (%one, %one, %one)
       args (%tensor, %scalar : !torch.vtensor<[4],f32>, !torch.float)

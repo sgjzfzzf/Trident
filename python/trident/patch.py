@@ -345,7 +345,7 @@ def _import_hop_triton_kernel_wrapper(
                         results=[ir.IntegerType.get_signless(64)],
                         operands=[const_val],
                         loc=loc,
-                    )
+                    ).results
                     call_arguments[name] = (
                         native
                         if target.width == 64

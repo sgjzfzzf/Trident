@@ -7,20 +7,20 @@ add_mlir_library(
   ArithExtDialect
   ArithExtToScf
   DecomposeTVMFFI
-  DLPackToLLVM
   DLPackDialect
+  DLPackToLLVM
   FinalizeTVMFFI
   GeneralizeAtenOps
   MLIRRegisterAllDialects
   MLIRRegisterAllExtensions
   MLIRRegisterAllPasses
-  MLIRToLLVMIRTranslationRegistration
   MLIRSCFDialect
+  MLIRToLLVMIRTranslationRegistration
   TorchExtToGPU
   TorchMLIRCAPI
+  TorchMLIRConversionUtils
   TorchMLIRTorchConversionDialect
   TorchMLIRTorchOnnxToTorch
-  TorchMLIRConversionUtils
   TorchPipeline
   TorchToCf
   TorchToTVMFFI

@@ -16,10 +16,10 @@ add_mlir_library(
   GeneralizeAtenOpsPDLLPatternsIncGen
   LINK_LIBS
   PUBLIC
+  MLIRArithDialect
   MLIRIR
   MLIRPass
   MLIRTransformUtils
-  MLIRArithDialect
   TorchMLIRTorchConversionDialect
   TorchMLIRTorchDialect)
 

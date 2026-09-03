@@ -6,5 +6,5 @@ add_mlir_dialect_library(
   MLIRArithExtIncGen
   LINK_LIBS
   PUBLIC
-  MLIRIR
-  MLIRControlFlowInterfaces)
+  MLIRControlFlowInterfaces
+  MLIRIR)

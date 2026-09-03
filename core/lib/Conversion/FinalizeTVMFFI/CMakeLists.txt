@@ -6,6 +6,6 @@ add_mlir_conversion_library(
   LINK_LIBS
   PUBLIC
   DLPackDialect
-  TVMFFIDialect
   MLIRPass
-  MLIRTransformUtils)
+  MLIRTransformUtils
+  TVMFFIDialect)

@@ -8,7 +8,7 @@ import warnings
 from collections.abc import Callable
 from functools import reduce
 from itertools import chain, pairwise
-from typing import TypeAlias
+from typing import ClassVar, TypeAlias
 
 from trident.core import ir
 from trident.core.dialects import arith, torchext, tvm_ffi
@@ -19,6 +19,7 @@ from .local import Local
 GuardBuildFn: TypeAlias = Callable[[InputTable, ir.Context], ir.Value]
 TensorMetadataFn: TypeAlias = Callable[[ir.Type, ir.Value], ir.Value]
 TensorIndexedMetadataFn: TypeAlias = Callable[[ir.Type, ir.Value, ir.Value], ir.Value]
+NumericOperationFn: TypeAlias = Callable[[ir.Value, ir.Value], ir.Value]
 
 
 class _SkipBaseGuard(Exception): ...
@@ -27,19 +28,185 @@ class _SkipBaseGuard(Exception): ...
 class ASTVisitor(ast.NodeVisitor):
     """Compose delayed IR builders from supported Dynamo guard AST nodes."""
 
+    _binary_ops: ClassVar[
+        dict[
+            type[ast.operator] | str,
+            tuple[NumericOperationFn | None, NumericOperationFn | None],
+        ]
+    ] = {
+        ast.Add: (arith.addf, arith.addi),
+        ast.Sub: (arith.subf, arith.subi),
+        ast.Mult: (arith.mulf, arith.muli),
+        ast.Div: (arith.divf, arith.divsi),
+        ast.FloorDiv: (None, arith.floordivsi),
+        ast.Mod: (None, arith.remsi),
+        ast.BitOr: (None, arith.ori),
+        ast.RShift: (None, arith.shrsi),
+        "min": (arith.minimumf, arith.minsi),
+        "max": (arith.maximumf, arith.maxsi),
+    }
+    _compare_predicates: ClassVar[dict] = {
+        ast.Eq: (arith.CmpIPredicate.eq, arith.CmpFPredicate.OEQ),
+        ast.NotEq: (arith.CmpIPredicate.ne, arith.CmpFPredicate.ONE),
+        ast.Lt: (arith.CmpIPredicate.slt, arith.CmpFPredicate.OLT),
+        ast.LtE: (arith.CmpIPredicate.sle, arith.CmpFPredicate.OLE),
+        ast.Gt: (arith.CmpIPredicate.sgt, arith.CmpFPredicate.OGT),
+        ast.GtE: (arith.CmpIPredicate.sge, arith.CmpFPredicate.OGE),
+    }
+
+    @staticmethod
+    def _build_binary_template(
+        lhs: GuardBuildFn,
+        rhs: GuardBuildFn,
+        float_operation: NumericOperationFn | None,
+        integer_operation: NumericOperationFn | None,
+    ) -> GuardBuildFn:
+        def build(tree: InputTable, context: ir.Context) -> ir.Value:
+            lhs_value = ASTVisitor._value(lhs, tree, context)
+            rhs_value = ASTVisitor._value(rhs, tree, context)
+            lhs_value, rhs_value, is_float = ASTVisitor._promote_numeric(
+                lhs_value, rhs_value, context
+            )
+            operation = float_operation if is_float else integer_operation
+            assert operation is not None, (
+                f"unsupported numeric operation for "
+                f"{'float' if is_float else 'integer'} guard operands"
+            )
+            return operation(lhs_value, rhs_value)
+
+        return build
+
+    @staticmethod
+    def _build_compare_template(
+        lhs: GuardBuildFn,
+        rhs: GuardBuildFn,
+        integer_predicate: arith.CmpIPredicate,
+        float_predicate: arith.CmpFPredicate,
+    ) -> GuardBuildFn:
+        def build(tree: InputTable, context: ir.Context) -> ir.Value:
+            lhs_value = ASTVisitor._value(lhs, tree, context)
+            rhs_value = ASTVisitor._value(rhs, tree, context)
+            lhs_value, rhs_value, is_float = ASTVisitor._promote_numeric(
+                lhs_value, rhs_value, context
+            )
+            if is_float:
+                return arith.cmpf(float_predicate, lhs_value, rhs_value)
+            return arith.cmpi(integer_predicate, lhs_value, rhs_value)
+
+        return build
+
     def __init__(self, text: str) -> None:
         self.text = text
 
-    def _apply_binary(
+    @staticmethod
+    def _is_integer(value: ir.Value) -> bool:
+        return isinstance(value.type, ir.IntegerType)
+
+    @staticmethod
+    def _is_float(value: ir.Value) -> bool:
+        return isinstance(value.type, ir.FloatType)
+
+    @classmethod
+    def _promote_numeric(
+        cls,
+        lhs: ir.Value,
+        rhs: ir.Value,
+        context: ir.Context,
+    ) -> tuple[ir.Value, ir.Value, bool]:
+        assert cls._is_integer(lhs) or cls._is_float(lhs)
+        assert cls._is_integer(rhs) or cls._is_float(rhs)
+        if cls._is_float(lhs) or cls._is_float(rhs):
+            if cls._is_float(lhs) and cls._is_float(rhs):
+                target = lhs.type if lhs.type.width >= rhs.type.width else rhs.type
+            else:
+                target = lhs.type if cls._is_float(lhs) else rhs.type
+            return (
+                cls._cast_numeric(lhs, target),
+                cls._cast_numeric(rhs, target),
+                True,
+            )
+        width = max(lhs.type.width, rhs.type.width)
+        target = ir.IntegerType.get_signless(width, context)
+        return (
+            cls._cast_numeric(lhs, target),
+            cls._cast_numeric(rhs, target),
+            False,
+        )
+
+    @classmethod
+    def _cast_numeric(
+        cls,
+        value: ir.Value,
+        target: ir.Type,
+    ) -> ir.Value:
+        if value.type == target:
+            return value
+        if cls._is_integer(value) and cls._is_integer_value_type(target):
+            if value.type.width < target.width:
+                return arith.extsi(target, value)
+            return arith.trunci(target, value)
+        if cls._is_integer(value) and cls._is_float_type(target):
+            return arith.sitofp(target, value)
+        assert cls._is_float(value) and cls._is_float_type(target)
+        if value.type.width < target.width:
+            return arith.extf(target, value)
+        return arith.truncf(target, value)
+
+    @staticmethod
+    def _is_integer_value_type(value_type: ir.Type) -> bool:
+        return isinstance(value_type, ir.IntegerType)
+
+    @staticmethod
+    def _is_float_type(value_type: ir.Type) -> bool:
+        return isinstance(value_type, ir.FloatType)
+
+    def _build_comparison(
         self,
-        operation: Callable[[ir.Value, ir.Value], ir.Value],
+        operation: ast.cmpop,
         lhs: GuardBuildFn,
         rhs: GuardBuildFn,
     ) -> GuardBuildFn:
-        return lambda tree, context: operation(
-            self._value(lhs, tree, context),
-            self._value(rhs, tree, context),
+        predicates = self._compare_predicates.get(type(operation))
+        assert predicates is not None
+        integer_predicate, float_predicate = predicates
+        return self._build_compare_template(
+            lhs, rhs, integer_predicate, float_predicate
         )
+
+    @staticmethod
+    def _build_logical_and(lhs: ir.Value, rhs: ir.Value) -> ir.Value:
+        return arith.andi(lhs, rhs)
+
+    @staticmethod
+    def _build_logical_or(lhs: ir.Value, rhs: ir.Value) -> ir.Value:
+        return arith.ori(lhs, rhs)
+
+    @staticmethod
+    def _build_logical_not(value: ir.Value, context: ir.Context) -> ir.Value:
+        i1 = ir.IntegerType.get_signless(1, context)
+        true = arith.constant(i1, ir.IntegerAttr.get(i1, 1))
+        return arith.xori(value, true)
+
+    @staticmethod
+    def _build_select(
+        condition: ir.Value,
+        true_value: ir.Value,
+        false_value: ir.Value,
+    ) -> ir.Value:
+        return arith.select(condition, true_value, false_value)
+
+    @staticmethod
+    def _build_negate(value: ir.Value) -> ir.Value:
+        zero = arith.constant(
+            value.type,
+            ir.FloatAttr.get(value.type, 0.0)
+            if isinstance(value.type, ir.FloatType)
+            else ir.IntegerAttr.get(value.type, 0),
+        )
+        if isinstance(value.type, ir.FloatType):
+            return arith.subf(zero, value)
+        assert isinstance(value.type, ir.IntegerType)
+        return arith.subi(zero, value)
 
     def _build_identity(self, lhs: Local, rhs: Local) -> GuardBuildFn:
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
@@ -72,17 +239,13 @@ class ASTVisitor(ast.NodeVisitor):
         return build
 
     def _build_not_sequence(self, source: Local) -> GuardBuildFn:
-        def build(tree: InputTable, context: ir.Context) -> ir.Value:
+        def length(tree: InputTable, context: ir.Context) -> ir.Value:
             value = source.resolve(tree)
             assert value is not None, f"guard source cannot be resolved: {self.text!r}"
             i64 = ir.IntegerType.get_signless(64, context)
-            return arith.cmpi(
-                arith.CmpIPredicate.eq,
-                tvm_ffi.array_length(i64, value),
-                arith.constant(i64, ir.IntegerAttr.get(i64, 0)),
-            )
+            return tvm_ffi.array_length(i64, value)
 
-        return build
+        return self._build_comparison(ast.Eq(), length, self._constant(0))
 
     def _build_tensor_indexed_metadata(
         self,
@@ -120,10 +283,10 @@ class ASTVisitor(ast.NodeVisitor):
         )
 
     @staticmethod
-    def _constant_i1(value: bool) -> GuardBuildFn:
+    def _constant_float(value: float) -> GuardBuildFn:
         return lambda _, context: arith.constant(
-            (i1 := ir.IntegerType.get_signless(1, context)),
-            ir.IntegerAttr.get(i1, int(value)),
+            (f64 := ir.F64Type.get(context)),
+            ir.FloatAttr.get(f64, value),
         )
 
     def _error(self, message: str) -> GuardBuildFn:
@@ -201,63 +364,54 @@ class ASTVisitor(ast.NodeVisitor):
         return None
 
     def visit_BinOp(self, node: ast.BinOp) -> GuardBuildFn | None:
-        operations: dict[
-            type[ast.operator], Callable[[ir.Value, ir.Value], ir.Value]
-        ] = {
-            ast.Add: arith.addi,
-            ast.Mult: arith.muli,
-            ast.BitOr: arith.ori,
-            ast.RShift: arith.shrsi,
-            ast.Sub: arith.subi,
-            ast.FloorDiv: arith.floordivsi,
-            # Modulo guards operate on positive shape values.
-            ast.Mod: arith.remsi,
-        }
-        operation = operations.get(type(node.op))
-        if operation is None:
+        if type(node.op) not in self._binary_ops:
             return None
         lhs = self.visit(node.left)
         rhs = self.visit(node.right)
         if lhs is None or rhs is None:
             return None
-        return self._apply_binary(operation, lhs, rhs)
+        operations = self._binary_ops.get(type(node.op))
+        assert operations is not None
+        float_operation, integer_operation = operations
+        return self._build_binary_template(lhs, rhs, float_operation, integer_operation)
 
     def visit_BoolOp(self, node: ast.BoolOp) -> GuardBuildFn | None:
         values = [self.visit(value) for value in node.values]
         if any(value is None for value in values):
             return None
-        function = arith.andi if isinstance(node.op, ast.And) else arith.ori
+        function = (
+            self._build_logical_and
+            if isinstance(node.op, ast.And)
+            else self._build_logical_or
+        )
 
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
-            i1 = ir.IntegerType.get_signless(1, context)
-            initial = arith.constant(
-                i1,
-                ir.IntegerAttr.get(i1, 1 if isinstance(node.op, ast.And) else 0),
-            )
             return reduce(
                 function,
                 (self._value(value, tree, context) for value in values if value),
-                initial,
             )
 
         return build
 
     def visit_Call(self, node: ast.Call) -> GuardBuildFn | None:
-        operations: dict[str, Callable[[ir.Value, ir.Value], ir.Value]] = {
-            "min": arith.minsi,
-            "max": arith.maxsi,
-        }
+        operations = {"min", "max"}
         if (
             isinstance(node.func, ast.Name)
             and len(node.args) == 2
             and not node.keywords
             and node.func.id in operations
         ):
-            lhs = self.visit(node.args[0])
-            rhs = self.visit(node.args[1])
+            lhs_node, rhs_node = node.args
+            lhs = self.visit(lhs_node)
+            rhs = self.visit(rhs_node)
             if lhs is None or rhs is None:
                 return None
-            return self._apply_binary(operations[node.func.id], lhs, rhs)
+            operations = self._binary_ops.get(node.func.id)
+            assert operations is not None
+            float_operation, integer_operation = operations
+            return self._build_binary_template(
+                lhs, rhs, float_operation, integer_operation
+            )
 
         if (
             not isinstance(node.func, ast.Name)
@@ -267,7 +421,7 @@ class ASTVisitor(ast.NodeVisitor):
         ):
             return self._visit_method_call(node)
 
-        argument = node.args[0]
+        [argument] = node.args
         is_tensor_shape = (
             isinstance(argument, ast.Attribute) and argument.attr == "shape"
         )
@@ -290,40 +444,30 @@ class ASTVisitor(ast.NodeVisitor):
                 return None
             return self._build_identity(lhs_local, rhs_local)
 
-        predicates = [
-            {
-                ast.Eq: arith.CmpIPredicate.eq,
-                ast.NotEq: arith.CmpIPredicate.ne,
-                ast.Lt: arith.CmpIPredicate.slt,
-                ast.LtE: arith.CmpIPredicate.sle,
-                ast.Gt: arith.CmpIPredicate.sgt,
-                ast.GtE: arith.CmpIPredicate.sge,
-            }.get(type(operation))
+        if any(
+            not isinstance(
+                operation,
+                (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE),
+            )
             for operation in node.ops
-        ]
-        if any(predicate is None for predicate in predicates):
+        ):
             return self._error("unsupported guard comparison operator")
         values = [
             self.visit(operand) for operand in chain((node.left,), node.comparators)
         ]
         if any(value is None for value in values):
             return self._error("guard comparison operand cannot be lowered")
+        comparison_builders = tuple(
+            self._build_comparison(operation, lhs, rhs)
+            for operation, (lhs, rhs) in zip(node.ops, pairwise(values), strict=True)
+        )
 
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
             i1 = ir.IntegerType.get_signless(1, context)
             true = arith.constant(i1, ir.IntegerAttr.get(i1, 1))
             return reduce(
-                arith.andi,
-                (
-                    arith.cmpi(
-                        predicate,
-                        self._value(lhs, tree, context),
-                        self._value(rhs, tree, context),
-                    )
-                    for predicate, (lhs, rhs) in zip(
-                        predicates, pairwise(values), strict=True
-                    )
-                ),
+                self._build_logical_and,
+                (comparison(tree, context) for comparison in comparison_builders),
                 true,
             )
 
@@ -332,6 +476,8 @@ class ASTVisitor(ast.NodeVisitor):
     def visit_Constant(self, node: ast.Constant) -> GuardBuildFn | None:
         if isinstance(node.value, int) and not isinstance(node.value, bool):
             return self._constant(node.value)
+        if isinstance(node.value, float):
+            return self._constant_float(node.value)
         return None
 
     def visit_IfExp(self, node: ast.IfExp) -> GuardBuildFn | None:
@@ -341,7 +487,7 @@ class ASTVisitor(ast.NodeVisitor):
         if condition is None or body is None or orelse is None:
             return None
 
-        return lambda tree, context: arith.select(
+        return lambda tree, context: self._build_select(
             self._value(condition, tree, context),
             self._value(body, tree, context),
             self._value(orelse, tree, context),
@@ -403,19 +549,14 @@ class ASTVisitor(ast.NodeVisitor):
         if operand is None:
             return None
         if isinstance(node.op, ast.Not):
-            return self._apply_binary(
-                arith.xori,
-                operand,
-                self._constant_i1(True),
+            return lambda tree, context: self._build_logical_not(
+                self._value(operand, tree, context),
+                context,
             )
         if isinstance(node.op, ast.UAdd):
             return operand
         if isinstance(node.op, ast.USub):
-
-            def build(tree: InputTable, context: ir.Context) -> ir.Value:
-                i64 = ir.IntegerType.get_signless(64, context)
-                zero = arith.constant(i64, ir.IntegerAttr.get(i64, 0))
-                return arith.subi(zero, self._value(operand, tree, context))
-
-            return build
+            return lambda tree, context: self._build_negate(
+                self._value(operand, tree, context),
+            )
         return None

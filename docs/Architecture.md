@@ -200,7 +200,10 @@ matches are ignored instead of relying on parser order.
 Ordinary local sources are parsed from `Guard.name` with Python's AST into a
 root argument plus integer-index path. Code classes use source-aware regular
 expressions except for `ASTCode`, which uses an AST because shape expressions
-can combine multiple sources, arithmetic, and comparisons. Each parsed Code
+can combine multiple sources, arithmetic, and comparisons. Shape expressions
+ may use integer division and floating-point constants. Integer operands use
+ integer arithmetic, while floating-point or mixed operands are promoted to a
+ common floating-point type. Each parsed Code
 object produces a delayed builder carrying its deduplication key, execution
 phase, and structural depth. The collection orders the builders and invokes
 them in `arithext.and_then` regions so they short-circuit before unsafe tensor

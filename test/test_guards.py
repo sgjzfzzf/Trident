@@ -479,6 +479,26 @@ class GuardParserTest(TridentTestCase):
                     func.ReturnOp([])
         self.assertEqual(str(result.type), "i1")
 
+    def test_shape_guard_supports_integer_division_and_float_comparison(self) -> None:
+        text = "(L['inp'].size()[1] / 108) <= 1.0"
+        code = ASTCode(text, ast.parse(text, mode="eval").body)
+        self.assertIsNotNone(code.build_fn)
+
+    def test_integer_division_uses_integer_division(self) -> None:
+        code = ASTCode("5 / 2", ast.parse("5 / 2", mode="eval").body)
+        context = ir.Context()
+        register_all_dialects(context)
+        with context, ir.Location.unknown(context):
+            module = ir.Module.create()
+            with ir.InsertionPoint(module.body):
+                function = func.FuncOp("integer_division", ir.FunctionType.get([], []))
+                block = function.add_entry_block()
+                with ir.InsertionPoint(block):
+                    result = code.build(None, context)  # type: ignore[arg-type]
+                    func.ReturnOp([])
+        self.assertEqual(str(result.type), "i64")
+        self.assertIn("arith.divsi", str(module))
+
     def test_bitwise_or_expression_builds_an_i1_value(self) -> None:
         text = "(1 | 2) == 3"
         code = ASTCode(text, ast.parse(text, mode="eval").body)

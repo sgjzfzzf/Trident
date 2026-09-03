@@ -57,97 +57,31 @@ class TridentGraphModule:
     order - the first one that returns 0 (guard match) wins.
     """
 
-    @staticmethod
-    def _retrieve_dynamic_shapes(
-        exported_gm: torch.fx.GraphModule,
-        args: Sequence[Any],
-        kwargs: dict[str, Any],
-    ) -> torch.export.ShapesCollection:
-        """Recover a ``torch.export`` shape specification from Dynamo metadata."""
-        fake_args, fake_kwargs, fake_mode = _extract_fake_inputs(
-            exported_gm, tuple(args), kwargs
+    def _alloca_tvmffi_any(
+        self,
+        index: int,
+        payload: ir.Value,
+    ) -> ir.Value:
+        """Allocate a TVMFFIAny slot, fill it, and return the pointer.
+
+        A convenience that combines ``llvm.alloca`` + ``_fill_tvmffi_any``::
+
+            %slot = llvm.alloca %any_ty
+            _fill_tvmffi_any(%slot, index, payload)
+        """
+        i32_ty: ir.Type = ir.IntegerType.get_signless(32)
+        i64_ty: ir.Type = ir.IntegerType.get_signless(64)
+        slot: ir.Value = llvm.alloca(
+            res=llvm.PointerType.get(),
+            array_size=llvm.mlir_constant(
+                value=ir.IntegerAttr.get(i64_ty, 1),
+            ),
+            elem_type=ir.TypeAttr.get(
+                llvm.StructType.get_literal([i32_ty, i32_ty, i64_ty], context=self.ctx),
+            ),
         )
-        shape_env = fake_mode.shape_env
-        assert shape_env is not None, "Dynamo FakeTensorMode does not have a ShapeEnv"
-
-        dimensions: dict[Hashable, torch.export.Dim] = {}
-        dynamic_shapes = torch.export.ShapesCollection()
-
-        def dimension(symbol: Hashable) -> torch.export.Dim:
-            result = dimensions.get(symbol)
-            if result is not None:
-                return result
-
-            value_range = shape_env.var_to_range.get(symbol)
-            options: dict[str, int] = {}
-            if value_range is not None:
-                if value_range.lower.is_Integer is True:
-                    options["min"] = operator.index(round(value_range.lower))
-                if value_range.upper.is_Integer is True:
-                    options["max"] = operator.index(round(value_range.upper))
-            result = torch.export.Dim(f"{symbol}", **options)
-            dimensions[symbol] = result
-            return result
-
-        def symbolic_dimension(
-            value: torch.SymInt, concrete_size: int
-        ) -> torch.export.Dim | None:
-            expression = value.node.expr
-            symbols = expression.free_symbols
-            if not symbols:
-                assert expression.is_Integer is True, (
-                    f"Dynamo dimension {expression} is neither static nor symbolic"
-                )
-                assert operator.index(round(expression)) == concrete_size, (
-                    f"Dynamo dimension {expression} does not match input size "
-                    f"{concrete_size}"
-                )
-                return None
-            assert len(symbols) == 1, (
-                f"cannot represent Dynamo dimension {expression} with torch.export.Dim"
-            )
-
-            [symbol] = symbols
-            coefficient = expression.coeff(symbol)
-            offset = expression.subs(symbol, 0)
-            assert (
-                coefficient.is_Integer is True
-                and coefficient > 0
-                and offset.is_Integer is True
-                and expression == coefficient * symbol + offset
-            ), f"cannot represent Dynamo dimension {expression} with torch.export.Dim"
-
-            result = dimension(symbol)
-            if coefficient != 1:
-                result = operator.index(round(coefficient)) * result
-            if offset != 0:
-                result = result + operator.index(round(offset))
-            return result
-
-        def register_shape(value: Any, fake_value: Any) -> None:
-            if isinstance(value, torch.Tensor):
-                assert isinstance(fake_value, torch.Tensor), (
-                    "Dynamo placeholder for a Tensor input does not contain "
-                    "FakeTensor metadata"
-                )
-                assert value.dim() == fake_value.dim(), (
-                    f"Dynamo FakeTensor has rank {fake_value.dim()}, but its input "
-                    f"has rank {value.dim()}"
-                )
-                dynamic_shapes[value] = {
-                    index: dimension_spec
-                    for index, size in enumerate(fake_value.shape)
-                    if isinstance(size, torch.SymInt)
-                    if (dimension_spec := symbolic_dimension(size, value.shape[index]))
-                    is not None
-                }
-
-        pytree.tree_map(
-            register_shape,
-            (tuple(args), kwargs),
-            (fake_args, fake_kwargs),
-        )
-        return dynamic_shapes
+        self._fill_tvmffi_any(slot, index, payload)
+        return slot
 
     def __init__(
         self,
@@ -233,194 +167,34 @@ class TridentGraphModule:
             keep_alive_object=engine,
         )
 
-        f: Callable[..., Any] = (
+        wrapped: Callable[..., Any] = (
             tvm_ffi.utils.kwargs_wrapper.make_kwargs_wrapper_from_signature(
                 fn, inspect.signature(self.fn)
             )
         )
 
+        signature = inspect.signature(self.fn)
+
+        def normalize(value: Any) -> Any:
+            if isinstance(value, torch.device):
+                return tvm_ffi.device(f"{value}")
+            if isinstance(value, tuple):
+                return tuple(normalize(element) for element in value)
+            if isinstance(value, list):
+                return [normalize(element) for element in value]
+            if isinstance(value, dict):
+                return {key: normalize(element) for key, element in value.items()}
+            return value
+
+        def f(*args: Any, **kwargs: Any) -> Any:
+            bound = signature.bind(*args, **kwargs)
+            bound.apply_defaults()
+            bound.arguments = {
+                name: normalize(value) for name, value in bound.arguments.items()
+            }
+            return wrapped(*bound.args, **bound.kwargs)
+
         return f
-
-    # ------------------------------------------------------------------ #
-    # Internal: sub-module construction
-    # ------------------------------------------------------------------ #
-
-    def _build_sub_module(
-        self,
-        args: list[Any],
-        kwargs: dict[str, Any],
-    ) -> Any:
-        """Export -> import -> wrap a single sub-module for *args*.
-
-        Each sub-module's ``func.func`` is named ``main_{index}`` and its
-        ``tvm_ffi.func`` is named ``{self.fn.__name__}_{index}`` to avoid symbol
-        collisions in the merged module.
-        """
-
-        # Step 1: Export  ---------------------------------------------------
-        index = len(self._sub_modules)
-
-        signature: inspect.Signature = inspect.signature(self.fn)
-        trace_args: tuple[Any, ...] = tuple(args)
-        bound: inspect.BoundArguments = signature.bind(*trace_args, **kwargs)
-        bound.apply_defaults()
-        exported_gm, gs = torch._dynamo.export(
-            self.fn,
-            aten_graph=True,
-            assume_static_by_default=not self.dynamic,
-        )(*trace_args, **kwargs)
-        dynamic_shapes = self._retrieve_dynamic_shapes(exported_gm, trace_args, kwargs)
-        trace_gm = copy.deepcopy(exported_gm)
-
-        exported_program: torch.export.ExportedProgram = torch.export.export(
-            trace_gm,
-            trace_args,
-            kwargs,
-            dynamic_shapes=dynamic_shapes,
-            strict=False,
-        ).run_decompositions()
-        warmup_result = exported_program.module()(*trace_args, **kwargs)
-
-        # Step 2: Import FX -> MLIR  ----------------------------------------
-        with apply_patch(index):
-            importer: FxImporter = FxImporter(context=self.ctx)
-            main_func_name: Final[str] = f"main_{index}"
-            main_func: func.FuncOp = importer.import_program(
-                exported_program, func_name=main_func_name
-            )
-            module: ir.Module = importer.module
-
-        torch._dynamo.reset()
-
-        # Step 3: Wrap with tvm_ffi.func.
-        flat_types: Sequence[ir.Type] = main_func.type.inputs
-
-        with self.ctx:
-            dtype_type = ir.Type.parse("!torchext.dtype", context=self.ctx)
-
-        input_builder = InputTableBuilder.get(
-            exported_program,
-            signature,
-            bound.arguments,
-            flat_types,
-            lambda value: (
-                dtype_type
-                if isinstance(value, torch.dtype)
-                else importer._cc.value_info_to_type(value)
-            ),
-            self.ctx,
-        )
-        param_types = input_builder.input_types
-
-        with self.ctx:
-            # Guarded wrappers have one TVM FFI ABI result.  A main function
-            # may still have multiple semantic results; those are packed into
-            # a TVM FFI array in the guarded success branch below.
-            normal_result_type: ir.Type
-            if len(main_func.type.results) == 1:
-                [result] = main_func.type.results
-                normal_result_type = _convert_torch_type_to_tvm_ffi_type(result)
-            else:
-                normal_result_type = ir.Type.parse("!tvm_ffi.array", context=self.ctx)
-            wrapper_result_type = ir.Type.parse(
-                f"!tvm_ffi.union<{normal_result_type}, !tvm_ffi.exception>",
-                context=self.ctx,
-            )
-            ffi_type: ir.FunctionType = ir.FunctionType.get(
-                param_types, [wrapper_result_type]
-            )
-
-        tvm_ffi_name: Final[str] = f"{self.fn.__name__}_{index}"
-        with ir.InsertionPoint(module.body), main_func.operation.location:
-            ffi_func: tvm_ffi_d.FuncOp = tvm_ffi_d.func(
-                tvm_ffi_name,
-                ir.TypeAttr.get(ffi_type),
-                emit_tvm_ffi_abi=ir.UnitAttr.get(self.ctx),
-            )
-            entry_block: ir.Block = ir.Block.create_at_start(ffi_func.body, param_types)
-            with ir.InsertionPoint(entry_block):
-                guard_result: ir.Value = parse_guards(gs).build(
-                    lambda: input_builder.build(entry_block.arguments),
-                    self.ctx,
-                )
-                # main_* is an ordinary func.func. Only the surrounding
-                # tvm_ffi.func is exposed through the TVM FFI ABI.
-                # Materialize guard success and guard failure as one ABI
-                # value.  This keeps both scf.yield operations type-identical
-                # while preserving the dispatcher convention that a
-                # GuardMatch exception is returned from the wrapper.
-                guard_if: scf.IfOp = scf.IfOp(
-                    guard_result, [wrapper_result_type], has_else=True
-                )
-                then_block: ir.Block = guard_if.then_block
-                with ir.InsertionPoint(then_block):
-                    main_table = input_builder.build(entry_block.arguments)
-                    input_specs = exported_program.graph_signature.input_specs
-                    flat_inputs = main_table.flatten_inputs()
-                    assert len(flat_inputs) == len(input_specs), (
-                        "unexpected number of reconstructed exported inputs: "
-                        f"got {len(flat_inputs)}, expected {len(input_specs)}"
-                    )
-                    main_inputs = [
-                        value
-                        for input_spec, value in zip(input_specs, flat_inputs)
-                        if input_spec.kind == InputKind.USER_INPUT
-                        and isinstance(
-                            input_spec.arg,
-                            (TensorArgument, SymIntArgument),
-                        )
-                    ]
-                    assert len(main_inputs) == len(flat_types), (
-                        "unexpected number of reconstructed MLIR inputs: "
-                        f"got {len(main_inputs)}, expected {len(flat_types)}"
-                    )
-                    main_args: list[ir.Value] = [
-                        torchext.convert(flat_type, main_arg)
-                        if main_arg.type == dtype_type
-                        else main_arg
-                        for flat_type, main_arg in zip(flat_types, main_inputs)
-                    ]
-                    call_result: ir.Value | Sequence[ir.Value] = func.call(
-                        main_func.type.results,
-                        main_func_name,
-                        main_args,
-                    )
-                    result: ir.Value
-                    if isinstance(call_result, ir.Value):
-                        result = call_result
-                    else:
-                        element_types = ", ".join(
-                            f"{element.type}".removeprefix("!torch.")
-                            for element in call_result
-                        )
-                        tuple_type = ir.Type.parse(
-                            f"!torch.tuple<{element_types}>",
-                            context=self.ctx,
-                        )
-                        result = torch_d.prim_TupleConstruct(
-                            tuple_type,
-                            call_result,
-                        )
-                    normal_value = tvm_ffi_d.cast(wrapper_result_type, result)
-                    scf.yield_([normal_value])
-
-                else_block: ir.Block | None = guard_if.else_block
-                assert else_block is not None
-                with ir.InsertionPoint(else_block):
-                    exception_type = ir.Type.parse(
-                        "!tvm_ffi.exception", context=self.ctx
-                    )
-                    exception = tvm_ffi_d.exception(exception_type, "GuardMatch")
-                    error_value = tvm_ffi_d.cast(wrapper_result_type, exception)
-                    scf.yield_([error_value])
-
-                with ir.InsertionPoint.after(guard_if.operation):
-                    tvm_ffi_d.return_(guard_if.results)
-
-        self._sub_modules.append(module)
-        self.executor = self.stub_compile()
-        gc.collect()
-        return warmup_result
 
     # ------------------------------------------------------------------ #
     # Internal: module merging
@@ -456,96 +230,6 @@ class TridentGraphModule:
                     sub_mod.operation,
                 )
         return combined
-
-    # ------------------------------------------------------------------ #
-    # Internal: TVMFFIAny helpers
-    # ------------------------------------------------------------------ #
-
-    def _build_tvmffi_any(
-        self,
-        index: int,
-        payload: ir.Value,
-    ) -> ir.Value:
-        """Build a TVMFFIAny struct value ``!llvm.struct<(i32, i32, i64)>``.
-
-        Returns an SSA value with fields::
-
-            {type_index=index, zero_padding=0, payload}
-
-        ``payload`` must be an ``i64`` value (e.g. a ``zero_i64`` constant,
-        or the result of ``ptrtoint``, …).
-        """
-        i32_ty: ir.Type = ir.IntegerType.get_signless(32)
-        i64_ty: ir.Type = ir.IntegerType.get_signless(64)
-        undef: ir.Value = llvm.mlir_undef(
-            res=llvm.StructType.get_literal([i32_ty, i32_ty, i64_ty], context=self.ctx),
-        )
-        with_index: ir.Value = llvm.insertvalue(
-            container=undef,
-            value=llvm.mlir_constant(
-                value=ir.IntegerAttr.get(
-                    i32_ty,
-                    index,
-                ),
-            ),
-            position=ir.DenseI64ArrayAttr.get([0]),
-        )
-        with_padding: ir.Value = llvm.insertvalue(
-            container=with_index,
-            value=llvm.mlir_constant(
-                value=ir.IntegerAttr.get(
-                    i32_ty,
-                    0,
-                ),
-            ),
-            position=ir.DenseI64ArrayAttr.get([1]),
-        )
-        result: ir.Value = llvm.insertvalue(
-            container=with_padding,
-            value=payload,
-            position=ir.DenseI64ArrayAttr.get([2]),
-        )
-        return result
-
-    def _fill_tvmffi_any(
-        self,
-        slot: ir.Value,
-        index: int,
-        payload: ir.Value,
-    ) -> None:
-        """Store a TVMFFIAny into the alloca'd *slot*.
-
-        Builds a complete ``!llvm.struct<(i32, i32, i64)>`` via
-        ``_build_tvmffi_any`` and stores it in one shot.
-        """
-        struct_val: ir.Value = self._build_tvmffi_any(index, payload)
-        llvm.store(value=struct_val, addr=slot)
-
-    def _alloca_tvmffi_any(
-        self,
-        index: int,
-        payload: ir.Value,
-    ) -> ir.Value:
-        """Allocate a TVMFFIAny slot, fill it, and return the pointer.
-
-        A convenience that combines ``llvm.alloca`` + ``_fill_tvmffi_any``::
-
-            %slot = llvm.alloca %any_ty
-            _fill_tvmffi_any(%slot, index, payload)
-        """
-        i32_ty: ir.Type = ir.IntegerType.get_signless(32)
-        i64_ty: ir.Type = ir.IntegerType.get_signless(64)
-        slot: ir.Value = llvm.alloca(
-            res=llvm.PointerType.get(),
-            array_size=llvm.mlir_constant(
-                value=ir.IntegerAttr.get(i64_ty, 1),
-            ),
-            elem_type=ir.TypeAttr.get(
-                llvm.StructType.get_literal([i32_ty, i32_ty, i64_ty], context=self.ctx),
-            ),
-        )
-        self._fill_tvmffi_any(slot, index, payload)
-        return slot
 
     # ------------------------------------------------------------------ #
     # Internal: LLVM dispatcher
@@ -945,3 +629,349 @@ class TridentGraphModule:
                         ),
                     )
                 llvm.return_(arg=exit_ret_val)
+
+    # ------------------------------------------------------------------ #
+    # Internal: sub-module construction
+    # ------------------------------------------------------------------ #
+
+    def _build_sub_module(
+        self,
+        args: list[Any],
+        kwargs: dict[str, Any],
+    ) -> Any:
+        """Export -> import -> wrap a single sub-module for *args*.
+
+        Each sub-module's ``func.func`` is named ``main_{index}`` and its
+        ``tvm_ffi.func`` is named ``{self.fn.__name__}_{index}`` to avoid symbol
+        collisions in the merged module.
+        """
+
+        # Step 1: Export  ---------------------------------------------------
+        index = len(self._sub_modules)
+
+        signature: inspect.Signature = inspect.signature(self.fn)
+        trace_args: tuple[Any, ...] = tuple(args)
+        bound: inspect.BoundArguments = signature.bind(*trace_args, **kwargs)
+        bound.apply_defaults()
+        exported_gm, gs = torch._dynamo.export(
+            self.fn,
+            aten_graph=True,
+            assume_static_by_default=not self.dynamic,
+        )(*trace_args, **kwargs)
+        dynamic_shapes = self._retrieve_dynamic_shapes(exported_gm, trace_args, kwargs)
+        trace_gm = copy.deepcopy(exported_gm)
+
+        exported_program: torch.export.ExportedProgram = torch.export.export(
+            trace_gm,
+            trace_args,
+            kwargs,
+            dynamic_shapes=dynamic_shapes,
+            strict=False,
+        ).run_decompositions()
+        warmup_result = torch.fx.Interpreter(exported_program.module()).run(
+            *pytree.tree_leaves(exported_program.example_inputs)
+        )
+
+        # Step 2: Import FX -> MLIR  ----------------------------------------
+        with apply_patch(index):
+            importer: FxImporter = FxImporter(context=self.ctx)
+            main_func_name: Final[str] = f"main_{index}"
+            main_func: func.FuncOp = importer.import_program(
+                exported_program, func_name=main_func_name
+            )
+            module: ir.Module = importer.module
+
+        torch._dynamo.reset()
+
+        # Step 3: Wrap with tvm_ffi.func.
+        flat_types: Sequence[ir.Type] = main_func.type.inputs
+
+        with self.ctx:
+            device_type = ir.Type.parse("!torch.Device", context=self.ctx)
+            dtype_type = ir.Type.parse("!torchext.dtype", context=self.ctx)
+
+        input_builder = InputTableBuilder.get(
+            exported_program,
+            signature,
+            bound.arguments,
+            flat_types,
+            lambda value: (
+                device_type
+                if isinstance(value, torch.device)
+                else dtype_type
+                if isinstance(value, torch.dtype)
+                else importer._cc.value_info_to_type(value)
+            ),
+            self.ctx,
+        )
+        param_types = input_builder.input_types
+
+        with self.ctx:
+            # Guarded wrappers have one TVM FFI ABI result.  A main function
+            # may still have multiple semantic results; those are packed into
+            # a TVM FFI array in the guarded success branch below.
+            normal_result_type: ir.Type
+            if len(main_func.type.results) == 1:
+                [result] = main_func.type.results
+                normal_result_type = _convert_torch_type_to_tvm_ffi_type(result)
+            else:
+                normal_result_type = ir.Type.parse("!tvm_ffi.array", context=self.ctx)
+            wrapper_result_type = ir.Type.parse(
+                f"!tvm_ffi.union<{normal_result_type}, !tvm_ffi.exception>",
+                context=self.ctx,
+            )
+            ffi_type: ir.FunctionType = ir.FunctionType.get(
+                param_types, [wrapper_result_type]
+            )
+
+        tvm_ffi_name: Final[str] = f"{self.fn.__name__}_{index}"
+        with ir.InsertionPoint(module.body), main_func.operation.location:
+            ffi_func: tvm_ffi_d.FuncOp = tvm_ffi_d.func(
+                tvm_ffi_name,
+                ir.TypeAttr.get(ffi_type),
+                emit_tvm_ffi_abi=ir.UnitAttr.get(self.ctx),
+            )
+            entry_block: ir.Block = ir.Block.create_at_start(ffi_func.body, param_types)
+            with ir.InsertionPoint(entry_block):
+                guard_result: ir.Value = parse_guards(gs).build(
+                    lambda: input_builder.build(entry_block.arguments),
+                    self.ctx,
+                )
+                # main_* is an ordinary func.func. Only the surrounding
+                # tvm_ffi.func is exposed through the TVM FFI ABI.
+                # Materialize guard success and guard failure as one ABI
+                # value.  This keeps both scf.yield operations type-identical
+                # while preserving the dispatcher convention that a
+                # GuardMatch exception is returned from the wrapper.
+                guard_if: scf.IfOp = scf.IfOp(
+                    guard_result, [wrapper_result_type], has_else=True
+                )
+                then_block: ir.Block = guard_if.then_block
+                with ir.InsertionPoint(then_block):
+                    main_table = input_builder.build(entry_block.arguments)
+                    input_specs = exported_program.graph_signature.input_specs
+                    flat_inputs = main_table.flatten_inputs()
+                    assert len(flat_inputs) == len(input_specs), (
+                        "unexpected number of reconstructed exported inputs: "
+                        f"got {len(flat_inputs)}, expected {len(input_specs)}"
+                    )
+                    main_inputs = [
+                        value
+                        for input_spec, value in zip(input_specs, flat_inputs)
+                        if input_spec.kind == InputKind.USER_INPUT
+                        and isinstance(
+                            input_spec.arg,
+                            (TensorArgument, SymIntArgument),
+                        )
+                    ]
+                    assert len(main_inputs) == len(flat_types), (
+                        "unexpected number of reconstructed MLIR inputs: "
+                        f"got {len(main_inputs)}, expected {len(flat_types)}"
+                    )
+                    main_args: list[ir.Value] = [
+                        torchext.convert(flat_type, main_arg)
+                        if main_arg.type == dtype_type
+                        else main_arg
+                        for flat_type, main_arg in zip(flat_types, main_inputs)
+                    ]
+                    call_result: ir.Value | Sequence[ir.Value] = func.call(
+                        main_func.type.results,
+                        main_func_name,
+                        main_args,
+                    )
+                    result: ir.Value
+                    if isinstance(call_result, ir.Value):
+                        result = call_result
+                    else:
+                        element_types = ", ".join(
+                            f"{element.type}".removeprefix("!torch.")
+                            for element in call_result
+                        )
+                        tuple_type = ir.Type.parse(
+                            f"!torch.tuple<{element_types}>",
+                            context=self.ctx,
+                        )
+                        result = torch_d.prim_TupleConstruct(
+                            tuple_type,
+                            call_result,
+                        )
+                    normal_value = tvm_ffi_d.cast(wrapper_result_type, result)
+                    scf.yield_([normal_value])
+
+                else_block: ir.Block | None = guard_if.else_block
+                assert else_block is not None
+                with ir.InsertionPoint(else_block):
+                    exception_type = ir.Type.parse(
+                        "!tvm_ffi.exception", context=self.ctx
+                    )
+                    exception = tvm_ffi_d.exception(exception_type, "GuardMatch")
+                    error_value = tvm_ffi_d.cast(wrapper_result_type, exception)
+                    scf.yield_([error_value])
+
+                with ir.InsertionPoint.after(guard_if.operation):
+                    tvm_ffi_d.return_(guard_if.results)
+
+        self._sub_modules.append(module)
+        self.executor = self.stub_compile()
+        gc.collect()
+        return warmup_result
+
+    # ------------------------------------------------------------------ #
+    # Internal: TVMFFIAny helpers
+    # ------------------------------------------------------------------ #
+
+    def _build_tvmffi_any(
+        self,
+        index: int,
+        payload: ir.Value,
+    ) -> ir.Value:
+        """Build a TVMFFIAny struct value ``!llvm.struct<(i32, i32, i64)>``.
+
+        Returns an SSA value with fields::
+
+            {type_index=index, zero_padding=0, payload}
+
+        ``payload`` must be an ``i64`` value (e.g. a ``zero_i64`` constant,
+        or the result of ``ptrtoint``, …).
+        """
+        i32_ty: ir.Type = ir.IntegerType.get_signless(32)
+        i64_ty: ir.Type = ir.IntegerType.get_signless(64)
+        undef: ir.Value = llvm.mlir_undef(
+            res=llvm.StructType.get_literal([i32_ty, i32_ty, i64_ty], context=self.ctx),
+        )
+        with_index: ir.Value = llvm.insertvalue(
+            container=undef,
+            value=llvm.mlir_constant(
+                value=ir.IntegerAttr.get(
+                    i32_ty,
+                    index,
+                ),
+            ),
+            position=ir.DenseI64ArrayAttr.get([0]),
+        )
+        with_padding: ir.Value = llvm.insertvalue(
+            container=with_index,
+            value=llvm.mlir_constant(
+                value=ir.IntegerAttr.get(
+                    i32_ty,
+                    0,
+                ),
+            ),
+            position=ir.DenseI64ArrayAttr.get([1]),
+        )
+        result: ir.Value = llvm.insertvalue(
+            container=with_padding,
+            value=payload,
+            position=ir.DenseI64ArrayAttr.get([2]),
+        )
+        return result
+
+    def _fill_tvmffi_any(
+        self,
+        slot: ir.Value,
+        index: int,
+        payload: ir.Value,
+    ) -> None:
+        """Store a TVMFFIAny into the alloca'd *slot*.
+
+        Builds a complete ``!llvm.struct<(i32, i32, i64)>`` via
+        ``_build_tvmffi_any`` and stores it in one shot.
+        """
+        struct_val: ir.Value = self._build_tvmffi_any(index, payload)
+        llvm.store(value=struct_val, addr=slot)
+
+    # ------------------------------------------------------------------ #
+    # Internal: dynamic-shape helpers
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _retrieve_dynamic_shapes(
+        exported_gm: torch.fx.GraphModule,
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
+    ) -> torch.export.ShapesCollection:
+        """Recover a ``torch.export`` shape specification from Dynamo metadata."""
+        fake_args, fake_kwargs, fake_mode = _extract_fake_inputs(
+            exported_gm, tuple(args), kwargs
+        )
+        shape_env = fake_mode.shape_env
+        assert shape_env is not None, "Dynamo FakeTensorMode does not have a ShapeEnv"
+
+        dimensions: dict[Hashable, torch.export.Dim] = {}
+        dynamic_shapes = torch.export.ShapesCollection()
+
+        def dimension(symbol: Hashable) -> torch.export.Dim:
+            result = dimensions.get(symbol)
+            if result is not None:
+                return result
+
+            value_range = shape_env.var_to_range.get(symbol)
+            options: dict[str, int] = {}
+            if value_range is not None:
+                if value_range.lower.is_Integer is True:
+                    options["min"] = operator.index(round(value_range.lower))
+                if value_range.upper.is_Integer is True:
+                    options["max"] = operator.index(round(value_range.upper))
+            result = torch.export.Dim(f"{symbol}", **options)
+            dimensions[symbol] = result
+            return result
+
+        def symbolic_dimension(
+            value: torch.SymInt, concrete_size: int
+        ) -> torch.export.Dim | None:
+            expression = value.node.expr
+            symbols = expression.free_symbols
+            if not symbols:
+                assert expression.is_Integer is True, (
+                    f"Dynamo dimension {expression} is neither static nor symbolic"
+                )
+                assert operator.index(round(expression)) == concrete_size, (
+                    f"Dynamo dimension {expression} does not match input size "
+                    f"{concrete_size}"
+                )
+                return None
+            assert len(symbols) == 1, (
+                f"cannot represent Dynamo dimension {expression} with torch.export.Dim"
+            )
+
+            [symbol] = symbols
+            coefficient = expression.coeff(symbol)
+            offset = expression.subs(symbol, 0)
+            assert (
+                coefficient.is_Integer is True
+                and coefficient > 0
+                and offset.is_Integer is True
+                and expression == coefficient * symbol + offset
+            ), f"cannot represent Dynamo dimension {expression} with torch.export.Dim"
+
+            result = dimension(symbol)
+            if coefficient != 1:
+                result = operator.index(round(coefficient)) * result
+            if offset != 0:
+                result = result + operator.index(round(offset))
+            return result
+
+        def register_shape(value: Any, fake_value: Any) -> None:
+            if isinstance(value, torch.Tensor):
+                assert isinstance(fake_value, torch.Tensor), (
+                    "Dynamo placeholder for a Tensor input does not contain "
+                    "FakeTensor metadata"
+                )
+                assert value.dim() == fake_value.dim(), (
+                    f"Dynamo FakeTensor has rank {fake_value.dim()}, but its input "
+                    f"has rank {value.dim()}"
+                )
+                dynamic_shapes[value] = {
+                    index: dimension_spec
+                    for index, size in enumerate(fake_value.shape)
+                    if isinstance(size, torch.SymInt)
+                    if (dimension_spec := symbolic_dimension(size, value.shape[index]))
+                    is not None
+                }
+
+        pytree.tree_map(
+            register_shape,
+            (tuple(args), kwargs),
+            (fake_args, fake_kwargs),
+        )
+        return dynamic_shapes

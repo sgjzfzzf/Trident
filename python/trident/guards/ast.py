@@ -10,6 +10,9 @@ from functools import reduce
 from itertools import chain, pairwise
 from typing import ClassVar, TypeAlias
 
+import torch
+import tvm_ffi as tvm_ffi_runtime
+
 from trident.core import ir
 from trident.core.dialects import arith, torchext, tvm_ffi
 from trident.input import InputTable
@@ -62,8 +65,12 @@ class ASTVisitor(ast.NodeVisitor):
         integer_operation: NumericOperationFn | None,
     ) -> GuardBuildFn:
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
-            lhs_value = ASTVisitor._value(lhs, tree, context)
-            rhs_value = ASTVisitor._value(rhs, tree, context)
+            lhs_value = ASTVisitor._to_native(
+                ASTVisitor._value(lhs, tree, context), context
+            )
+            rhs_value = ASTVisitor._to_native(
+                ASTVisitor._value(rhs, tree, context), context
+            )
             lhs_value, rhs_value, is_float = ASTVisitor._promote_numeric(
                 lhs_value, rhs_value, context
             )
@@ -72,7 +79,7 @@ class ASTVisitor(ast.NodeVisitor):
                 f"unsupported numeric operation for "
                 f"{'float' if is_float else 'integer'} guard operands"
             )
-            return operation(lhs_value, rhs_value)
+            return ASTVisitor._to_ffi(operation(lhs_value, rhs_value), context)
 
         return build
 
@@ -84,10 +91,10 @@ class ASTVisitor(ast.NodeVisitor):
         float_predicate: arith.CmpFPredicate,
     ) -> GuardBuildFn:
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
-            lhs_value = ASTVisitor._value(lhs, tree, context)
-            rhs_value = ASTVisitor._value(rhs, tree, context)
             lhs_value, rhs_value, is_float = ASTVisitor._promote_numeric(
-                lhs_value, rhs_value, context
+                ASTVisitor._to_native(ASTVisitor._value(lhs, tree, context), context),
+                ASTVisitor._to_native(ASTVisitor._value(rhs, tree, context), context),
+                context,
             )
             if is_float:
                 return arith.cmpf(float_predicate, lhs_value, rhs_value)
@@ -98,115 +105,24 @@ class ASTVisitor(ast.NodeVisitor):
     def __init__(self, text: str) -> None:
         self.text = text
 
-    @staticmethod
-    def _is_integer(value: ir.Value) -> bool:
-        return isinstance(value.type, ir.IntegerType)
-
-    @staticmethod
-    def _is_float(value: ir.Value) -> bool:
-        return isinstance(value.type, ir.FloatType)
-
-    @classmethod
-    def _promote_numeric(
-        cls,
-        lhs: ir.Value,
-        rhs: ir.Value,
-        context: ir.Context,
-    ) -> tuple[ir.Value, ir.Value, bool]:
-        assert cls._is_integer(lhs) or cls._is_float(lhs)
-        assert cls._is_integer(rhs) or cls._is_float(rhs)
-        if cls._is_float(lhs) or cls._is_float(rhs):
-            if cls._is_float(lhs) and cls._is_float(rhs):
-                target = lhs.type if lhs.type.width >= rhs.type.width else rhs.type
-            else:
-                target = lhs.type if cls._is_float(lhs) else rhs.type
-            return (
-                cls._cast_numeric(lhs, target),
-                cls._cast_numeric(rhs, target),
-                True,
-            )
-        width = max(lhs.type.width, rhs.type.width)
-        target = ir.IntegerType.get_signless(width, context)
-        return (
-            cls._cast_numeric(lhs, target),
-            cls._cast_numeric(rhs, target),
-            False,
-        )
-
-    @classmethod
-    def _cast_numeric(
-        cls,
-        value: ir.Value,
-        target: ir.Type,
-    ) -> ir.Value:
-        if value.type == target:
-            return value
-        if cls._is_integer(value) and cls._is_integer_value_type(target):
-            if value.type.width < target.width:
-                return arith.extsi(target, value)
-            return arith.trunci(target, value)
-        if cls._is_integer(value) and cls._is_float_type(target):
-            return arith.sitofp(target, value)
-        assert cls._is_float(value) and cls._is_float_type(target)
-        if value.type.width < target.width:
-            return arith.extf(target, value)
-        return arith.truncf(target, value)
-
-    @staticmethod
-    def _is_integer_value_type(value_type: ir.Type) -> bool:
-        return isinstance(value_type, ir.IntegerType)
-
-    @staticmethod
-    def _is_float_type(value_type: ir.Type) -> bool:
-        return isinstance(value_type, ir.FloatType)
-
     def _build_comparison(
         self,
         operation: ast.cmpop,
         lhs: GuardBuildFn,
         rhs: GuardBuildFn,
     ) -> GuardBuildFn:
+        if isinstance(operation, ast.Eq):
+            return lambda tree, context: tvm_ffi.eq(
+                ir.IntegerType.get_signless(1, context),
+                self._value(lhs, tree, context),
+                self._value(rhs, tree, context),
+            )
         predicates = self._compare_predicates.get(type(operation))
         assert predicates is not None
         integer_predicate, float_predicate = predicates
         return self._build_compare_template(
             lhs, rhs, integer_predicate, float_predicate
         )
-
-    @staticmethod
-    def _build_logical_and(lhs: ir.Value, rhs: ir.Value) -> ir.Value:
-        return arith.andi(lhs, rhs)
-
-    @staticmethod
-    def _build_logical_or(lhs: ir.Value, rhs: ir.Value) -> ir.Value:
-        return arith.ori(lhs, rhs)
-
-    @staticmethod
-    def _build_logical_not(value: ir.Value, context: ir.Context) -> ir.Value:
-        i1 = ir.IntegerType.get_signless(1, context)
-        true = arith.constant(i1, ir.IntegerAttr.get(i1, 1))
-        return arith.xori(value, true)
-
-    @staticmethod
-    def _build_select(
-        condition: ir.Value,
-        true_value: ir.Value,
-        false_value: ir.Value,
-    ) -> ir.Value:
-        return arith.select(condition, true_value, false_value)
-
-    @staticmethod
-    def _build_negate(value: ir.Value) -> ir.Value:
-        zero = arith.constant(
-            value.type,
-            ir.FloatAttr.get(value.type, 0.0)
-            if isinstance(value.type, ir.FloatType)
-            else ir.IntegerAttr.get(value.type, 0),
-        )
-        if isinstance(value.type, ir.FloatType):
-            return arith.subf(zero, value)
-        assert isinstance(value.type, ir.IntegerType)
-        return arith.subi(zero, value)
 
     def _build_identity(self, lhs: Local, rhs: Local) -> GuardBuildFn:
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
@@ -238,6 +154,34 @@ class ASTVisitor(ast.NodeVisitor):
 
         return build
 
+    @staticmethod
+    def _build_logical_and(lhs: ir.Value, rhs: ir.Value) -> ir.Value:
+        return arith.andi(lhs, rhs)
+
+    @staticmethod
+    def _build_logical_not(value: ir.Value, context: ir.Context) -> ir.Value:
+        i1 = ir.IntegerType.get_signless(1, context)
+        true = arith.constant(i1, ir.IntegerAttr.get(i1, 1))
+        return arith.xori(value, true)
+
+    @staticmethod
+    def _build_logical_or(lhs: ir.Value, rhs: ir.Value) -> ir.Value:
+        return arith.ori(lhs, rhs)
+
+    @staticmethod
+    def _build_negate(value: ir.Value, context: ir.Context) -> ir.Value:
+        value = ASTVisitor._to_native(value, context)
+        zero = arith.constant(
+            value.type,
+            ir.FloatAttr.get(value.type, 0.0)
+            if isinstance(value.type, ir.FloatType)
+            else ir.IntegerAttr.get(value.type, 0),
+        )
+        if isinstance(value.type, ir.FloatType):
+            return ASTVisitor._to_ffi(arith.subf(zero, value), context)
+        assert isinstance(value.type, ir.IntegerType)
+        return ASTVisitor._to_ffi(arith.subi(zero, value), context)
+
     def _build_not_sequence(self, source: Local) -> GuardBuildFn:
         def length(tree: InputTable, context: ir.Context) -> ir.Value:
             value = source.resolve(tree)
@@ -245,7 +189,22 @@ class ASTVisitor(ast.NodeVisitor):
             i64 = ir.IntegerType.get_signless(64, context)
             return tvm_ffi.array_length(i64, value)
 
-        return self._build_comparison(ast.Eq(), length, self._constant(0))
+        constant = self._constant_tvm_ffi(0)
+        assert constant is not None
+        return self._build_comparison(ast.Eq(), length, constant)
+
+    @staticmethod
+    def _build_select(
+        condition: ir.Value,
+        true_value: ir.Value,
+        false_value: ir.Value,
+    ) -> ir.Value:
+        context = condition.context
+        true_value = ASTVisitor._to_native(true_value, context)
+        false_value = ASTVisitor._to_native(false_value, context)
+        return ASTVisitor._to_ffi(
+            arith.select(condition, true_value, false_value), context
+        )
 
     def _build_tensor_indexed_metadata(
         self,
@@ -258,7 +217,7 @@ class ASTVisitor(ast.NodeVisitor):
             assert tensor is not None, f"guard source cannot be resolved: {self.text!r}"
             i64 = ir.IntegerType.get_signless(64, context)
             dimension = arith.constant(i64, ir.IntegerAttr.get(i64, index))
-            return operation(i64, tensor, dimension)
+            return ASTVisitor._to_ffi(operation(i64, tensor, dimension), context)
 
         return build
 
@@ -271,29 +230,123 @@ class ASTVisitor(ast.NodeVisitor):
             tensor = source.resolve(tree)
             assert tensor is not None, f"guard source cannot be resolved: {self.text!r}"
             i64 = ir.IntegerType.get_signless(64, context)
-            return operation(i64, tensor)
+            return ASTVisitor._to_ffi(operation(i64, tensor), context)
 
         return build
 
-    @staticmethod
-    def _constant(value: int) -> GuardBuildFn:
-        return lambda _, context: arith.constant(
-            (i64 := ir.IntegerType.get_signless(64, context)),
-            ir.IntegerAttr.get(i64, value),
-        )
+    @classmethod
+    def _cast_numeric(
+        cls,
+        value: ir.Value,
+        target: ir.Type,
+    ) -> ir.Value:
+        if value.type == target:
+            return value
+        if cls._is_integer(value) and cls._is_integer_value_type(target):
+            if value.type.width < target.width:
+                return arith.extsi(target, value)
+            return arith.trunci(target, value)
+        if cls._is_integer(value) and cls._is_float_type(target):
+            return arith.sitofp(target, value)
+        assert cls._is_float(value) and cls._is_float_type(target)
+        if value.type.width < target.width:
+            return arith.extf(target, value)
+        return arith.truncf(target, value)
 
     @staticmethod
-    def _constant_float(value: float) -> GuardBuildFn:
-        return lambda _, context: arith.constant(
-            (f64 := ir.F64Type.get(context)),
-            ir.FloatAttr.get(f64, value),
-        )
+    def _constant_tvm_ffi(value: object) -> GuardBuildFn | None:
+        if value is None:
+            return lambda _, context: tvm_ffi.constant_none(
+                ir.Type.parse("!tvm_ffi.none", context=context)
+            )
+        if isinstance(value, torch.device):
+            return lambda _, context: tvm_ffi.constant_device(
+                ir.Type.parse("!tvm_ffi.device", context=context),
+                ir.StringAttr.get(f"{value}", context=context),
+            )
+        if isinstance(value, torch.dtype):
+            dtype = tvm_ffi_runtime.convert(value)
+            return lambda _, context: tvm_ffi.constant_dtype(
+                ir.Type.parse("!tvm_ffi.dtype", context=context),
+                ir.ArrayAttr.get(
+                    [
+                        ir.IntegerAttr.get(
+                            ir.IntegerType.get_signless(64, context), component
+                        )
+                        for component in (dtype.type_code, dtype.bits, dtype.lanes)
+                    ]
+                ),
+            )
+        if isinstance(value, bool):
+            return lambda _, context: tvm_ffi.constant_bool(
+                ir.Type.parse("!tvm_ffi.bool", context=context),
+                ir.BoolAttr.get(value, context=context),
+            )
+        if isinstance(value, int):
+            return lambda _, context: tvm_ffi.constant_int(
+                ir.Type.parse("!tvm_ffi.int", context=context),
+                ir.IntegerAttr.get(ir.IntegerType.get_signless(64, context), value),
+            )
+        if isinstance(value, float):
+            return lambda _, context: tvm_ffi.constant_float(
+                ir.Type.parse("!tvm_ffi.float", context=context),
+                ir.FloatAttr.get(ir.F64Type.get(context), value),
+            )
+        if isinstance(value, str):
+            return lambda _, context: tvm_ffi.constant_raw_str(
+                ir.Type.parse("!tvm_ffi.raw_str", context=context),
+                ir.StringAttr.get(value, context),
+            )
+        return None
 
     def _error(self, message: str) -> GuardBuildFn:
         def build(_: InputTable, __: ir.Context) -> ir.Value:
             assert False, f"{message}: {self.text!r}"
 
         return build
+
+    @staticmethod
+    def _is_float(value: ir.Value) -> bool:
+        return isinstance(value.type, ir.FloatType)
+
+    @staticmethod
+    def _is_float_type(value_type: ir.Type) -> bool:
+        return isinstance(value_type, ir.FloatType)
+
+    @staticmethod
+    def _is_integer(value: ir.Value) -> bool:
+        return isinstance(value.type, ir.IntegerType)
+
+    @staticmethod
+    def _is_integer_value_type(value_type: ir.Type) -> bool:
+        return isinstance(value_type, ir.IntegerType)
+
+    @classmethod
+    def _promote_numeric(
+        cls,
+        lhs: ir.Value,
+        rhs: ir.Value,
+        context: ir.Context,
+    ) -> tuple[ir.Value, ir.Value, bool]:
+        assert cls._is_integer(lhs) or cls._is_float(lhs)
+        assert cls._is_integer(rhs) or cls._is_float(rhs)
+        if cls._is_float(lhs) or cls._is_float(rhs):
+            if cls._is_float(lhs) and cls._is_float(rhs):
+                target = lhs.type if lhs.type.width >= rhs.type.width else rhs.type
+            else:
+                target = lhs.type if cls._is_float(lhs) else rhs.type
+            return (
+                cls._cast_numeric(lhs, target),
+                cls._cast_numeric(rhs, target),
+                True,
+            )
+        width = max(lhs.type.width, rhs.type.width)
+        target = ir.IntegerType.get_signless(width, context)
+        return (
+            cls._cast_numeric(lhs, target),
+            cls._cast_numeric(rhs, target),
+            False,
+        )
 
     def _skip_base(self) -> GuardBuildFn:
         def build(_: InputTable, __: ir.Context) -> ir.Value:
@@ -306,6 +359,26 @@ class ASTVisitor(ast.NodeVisitor):
             raise _SkipBaseGuard
 
         return build
+
+    @staticmethod
+    def _to_ffi(value: ir.Value, context: ir.Context) -> ir.Value:
+        ffi_types = {
+            "i1": ir.Type.parse("!tvm_ffi.bool", context=context),
+            "i64": ir.Type.parse("!tvm_ffi.int", context=context),
+            "f64": ir.Type.parse("!tvm_ffi.float", context=context),
+        }
+        ffi_type = ffi_types.get(str(value.type))
+        return value if ffi_type is None else tvm_ffi.to(ffi_type, value)
+
+    @staticmethod
+    def _to_native(value: ir.Value, context: ir.Context) -> ir.Value:
+        native_types = {
+            "!tvm_ffi.bool": ir.IntegerType.get_signless(1, context),
+            "!tvm_ffi.float": ir.F64Type.get(context),
+            "!tvm_ffi.int": ir.IntegerType.get_signless(64, context),
+        }
+        native_type = native_types.get(str(value.type))
+        return value if native_type is None else tvm_ffi.get(native_type, value)
 
     @staticmethod
     def _true(context: ir.Context) -> ir.Value:
@@ -357,6 +430,12 @@ class ASTVisitor(ast.NodeVisitor):
         return None
 
     def visit_Attribute(self, node: ast.Attribute) -> GuardBuildFn | None:
+        if (
+            isinstance(node.value, ast.Name)
+            and node.value.id == "torch"
+            and isinstance(value := getattr(torch, node.attr, None), torch.dtype)
+        ):
+            return self._constant_tvm_ffi(value)
         if node.attr == "_base":
             return self._skip_base()
         if isinstance(node.value, ast.Attribute):
@@ -394,6 +473,23 @@ class ASTVisitor(ast.NodeVisitor):
         return build
 
     def visit_Call(self, node: ast.Call) -> GuardBuildFn | None:
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "device"
+            and not node.args
+        ):
+            try:
+                keywords = {
+                    keyword.arg: ast.literal_eval(keyword.value)
+                    for keyword in node.keywords
+                }
+                if len(keywords) != len(node.keywords):
+                    return None
+                value = torch.device(**keywords)
+            except (SyntaxError, TypeError, ValueError, RuntimeError):
+                return None
+            return self._constant_tvm_ffi(value)
+
         operations = {"min", "max"}
         if (
             isinstance(node.func, ast.Name)
@@ -438,6 +534,10 @@ class ASTVisitor(ast.NodeVisitor):
             if len(node.ops) != 1:
                 return self._error("identity guard comparison must be binary")
             [comparator] = node.comparators
+            if isinstance(comparator, ast.Constant) and comparator.value is None:
+                return self.visit_Compare(
+                    ast.Compare(node.left, [ast.Eq()], [comparator])
+                )
             lhs_local = Local.from_expression(node.left)
             rhs_local = Local.from_expression(comparator)
             if lhs_local is None or rhs_local is None or lhs_local == rhs_local:
@@ -474,10 +574,8 @@ class ASTVisitor(ast.NodeVisitor):
         return build
 
     def visit_Constant(self, node: ast.Constant) -> GuardBuildFn | None:
-        if isinstance(node.value, int) and not isinstance(node.value, bool):
-            return self._constant(node.value)
-        if isinstance(node.value, float):
-            return self._constant_float(node.value)
+        if node.value is None or isinstance(node.value, (bool, int, float, str)):
+            return self._constant_tvm_ffi(node.value)
         return None
 
     def visit_IfExp(self, node: ast.IfExp) -> GuardBuildFn | None:
@@ -558,5 +656,6 @@ class ASTVisitor(ast.NodeVisitor):
         if isinstance(node.op, ast.USub):
             return lambda tree, context: self._build_negate(
                 self._value(operand, tree, context),
+                context,
             )
         return None

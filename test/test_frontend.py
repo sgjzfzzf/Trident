@@ -14,6 +14,36 @@ from base import TridentTestCase
 
 
 class FrontendTest(TridentTestCase):
+    def test_device_argument(self) -> None:
+        @trident.jit
+        def empty_on_device(
+            x: torch.Tensor,
+            device: torch.device,
+        ) -> torch.Tensor:
+            return torch.empty_like(x, device=device).zero_()
+
+        x = torch.randn(4, device="cuda")
+        device = torch.device("cuda")
+        torch.testing.assert_close(empty_on_device(x, device), torch.zeros_like(x))
+        torch.testing.assert_close(empty_on_device(x, device), torch.zeros_like(x))
+        cpu_result = empty_on_device(x, torch.device("cpu"))
+        self.assertEqual(cpu_result.device, torch.device("cpu"))
+        torch.testing.assert_close(cpu_result, torch.zeros_like(cpu_result))
+
+    def test_dtype_argument(self) -> None:
+        @trident.jit
+        def empty_with_dtype(
+            x: torch.Tensor,
+            dtype: torch.dtype,
+        ) -> torch.Tensor:
+            return torch.empty_like(x, dtype=dtype).zero_()
+
+        x = torch.randn(4, device="cuda")
+        for dtype in (torch.float32, torch.float16):
+            result = empty_with_dtype(x, dtype)
+            self.assertEqual(result.dtype, dtype)
+            torch.testing.assert_close(result, torch.zeros_like(result))
+
     def test_writeback_runs_once_on_initial_compile(self) -> None:
         @trident.jit
         def increment_in_place(x: torch.Tensor) -> torch.Tensor:

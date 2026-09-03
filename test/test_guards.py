@@ -8,9 +8,7 @@ from __future__ import annotations
 import ast
 import unittest
 from dataclasses import dataclass
-from typing import Any
 
-import torch
 from base import TridentTestCase
 from torch._guards import GuardSource
 from trident.core import ir, register_all_dialects
@@ -146,17 +144,19 @@ class GuardParserTest(TridentTestCase):
                 self.assertIsNone(parsed.source)
 
     def test_constant_match_parses_supported_literals(self) -> None:
-        cases: list[tuple[str, Any]] = [
-            ("L['value'] is None", None),
-            ("L['value'] == True", True),
-            ("L['value'] == False", False),
-            ("L['value'] == -7", -7),
-            ("L['value'] == 1.5", 1.5),
-            ("L['value'] == 'constant'", "constant"),
-            ("L['value'] == ''", ""),
-            ("L['value'] == torch.float32", torch.float32),
+        cases = [
+            "L['value'] is None",
+            "L['value'] == True",
+            "L['value'] == False",
+            "L['value'] == -7",
+            "L['value'] == 1.5",
+            "L['value'] == 'constant'",
+            "L['value'] == ''",
+            "L['value'] == device(type='cpu')",
+            "L['value'] == device(type='cuda', index=1)",
+            "L['value'] == torch.float32",
         ]
-        for text, expected in cases:
+        for text in cases:
             with self.subTest(text=text):
                 parsed = self.assert_parsed(
                     FakeGuard("CONSTANT_MATCH", [text], "L['value']"),
@@ -165,8 +165,13 @@ class GuardParserTest(TridentTestCase):
                 )
                 code = parsed.codes[0].code
                 assert isinstance(code, ConstantCode)
-                self.assertEqual(code.value, expected)
-                self.assertIs(type(code.value), type(expected))
+                self.assertEqual(
+                    ast.dump(code.expression, include_attributes=False),
+                    ast.dump(
+                        ast.parse(text, mode="eval").body,
+                        include_attributes=False,
+                    ),
+                )
 
     def test_duplicate_input_parses_identity_guard(self) -> None:
         parsed = self.assert_parsed(
@@ -183,7 +188,18 @@ class GuardParserTest(TridentTestCase):
         assert isinstance(code, ASTCode)
 
     def test_constant_match_rejects_unsupported_literals(self) -> None:
-        for literal in ("b'constant'", "[1, 2]", "{'value': 1}", "not valid"):
+        for literal in (
+            "b'constant'",
+            "[1, 2]",
+            "{'value': 1}",
+            "device(**{'type': 'cpu'})",
+            "device('cpu')",
+            "device(type='cpu', extra=True)",
+            "device(type='cpu', type='cuda')",
+            "device(type='cuda', index=True)",
+            "device(type='not-a-device')",
+            "not valid",
+        ):
             with self.subTest(literal=literal):
                 self.assertIsNone(
                     Guard.parse(
@@ -191,6 +207,18 @@ class GuardParserTest(TridentTestCase):
                             "CONSTANT_MATCH", [f"L['value'] == {literal}"], "L['value']"
                         )
                     )
+                )
+
+        for text in (
+            "1 == L['value']",
+            "L['other'] == 1",
+            "L['value'] != 1",
+            "L['value'] == 1 == 1",
+            "L['value'] is True",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(
+                    Guard.parse(FakeGuard("CONSTANT_MATCH", [text], "L['value']"))
                 )
 
     def test_constant_match_requires_exactly_one_code(self) -> None:
@@ -496,7 +524,7 @@ class GuardParserTest(TridentTestCase):
                 with ir.InsertionPoint(block):
                     result = code.build(None, context)  # type: ignore[arg-type]
                     func.ReturnOp([])
-        self.assertEqual(str(result.type), "i64")
+        self.assertEqual(str(result.type), "!tvm_ffi.int")
         self.assertIn("arith.divsi", str(module))
 
     def test_bitwise_or_expression_builds_an_i1_value(self) -> None:
@@ -548,7 +576,6 @@ class GuardParserTest(TridentTestCase):
 
     def test_invalid_comparison_violates_guard_code_invariants(self) -> None:
         cases = [
-            ("True == 1", "guard comparison operand cannot be lowered"),
             (
                 "L['x'] is L['y'] is L['z']",
                 "identity guard comparison must be binary",

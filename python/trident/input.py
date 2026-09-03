@@ -22,13 +22,30 @@ from trident.core.dialects import tvm_ffi as tvm_ffi_d
 InputPath: TypeAlias = Sequence[int | str]
 
 
+pytree.register_pytree_node(
+    torch.device,
+    lambda value: ([], value),
+    lambda _, value: value,
+    flatten_with_keys_fn=lambda value: ([], value),
+    serialized_type_name="trident.torch.device",
+    to_dumpable_context=str,
+    from_dumpable_context=torch.device,
+)
+pytree.register_pytree_node(
+    torch.dtype,
+    lambda value: ([], value),
+    lambda _, value: value,
+    flatten_with_keys_fn=lambda value: ([], value),
+    serialized_type_name="trident.torch.dtype",
+    to_dumpable_context=str,
+    from_dumpable_context=lambda value: getattr(torch, value.removeprefix("torch.")),
+)
+
+
 class _InputNode(ABC):
     """A table-owned input node with a cached region-local value."""
 
-    __slots__ = (
-        "type",
-        "value",
-    )
+    __slots__ = ("type", "value")
 
     def __init__(
         self,
@@ -170,10 +187,7 @@ class InputTable:
 class InputNodeBuilder:
     """Static recipe for recursively building table-owned input nodes."""
 
-    __slots__ = (
-        "children",
-        "type",
-    )
+    __slots__ = ("children", "type")
 
     def __init__(
         self,
@@ -294,6 +308,12 @@ class InputTableBuilder:
         main_input_type_iter = iter(main_input_types)
 
         def build_node(node: pytree.TreeSpec, name: str) -> InputNodeBuilder:
+            if (
+                node.type in (torch.device, torch.dtype)
+                and not node.children()
+                and isinstance(value := node.context, (torch.device, torch.dtype))
+            ):
+                return InputNodeBuilder(value_type(value), children=[])
             if node.is_leaf():
                 input_spec, value = next(leaf_iter)
                 type = (

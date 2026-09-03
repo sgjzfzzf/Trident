@@ -4,19 +4,15 @@
 from __future__ import annotations
 
 import ast
-import re
 from collections.abc import Hashable
-from typing import Any, Final, Self, override
-
-import torch
-import tvm_ffi
+from typing import Final, Self, override
 
 from trident.core import ir
-from trident.core.dialects import tvm_ffi as tvm_ffi_d
 from trident.input import InputTable
 
+from ..ast import ASTVisitor
 from ..local import Local
-from .base import GuardCode
+from .base import GuardBuilder, GuardBuildFn, GuardCode
 
 
 class ConstantCode(GuardCode):
@@ -24,10 +20,11 @@ class ConstantCode(GuardCode):
         self,
         text: str,
         source: Local,
-        value: Any,
+        expression: ast.expr,
     ) -> None:
         super().__init__(text, source)
-        self.value: Final[Any] = value
+        self.expression: Final[ast.expr] = expression
+        self.build_fn: Final[GuardBuildFn | None] = ASTVisitor(text).visit(expression)
 
     @classmethod
     def parse(
@@ -37,35 +34,39 @@ class ConstantCode(GuardCode):
     ) -> Self | None:
         if source is None:
             return None
-        match = re.fullmatch(
-            rf"\s*{source.regex}\s*(?P<operation>==|is)\s*"
-            rf"(?P<literal>.+?)\s*",
-            text,
-        )
-        if match is None:
-            return None
-        literal = match.group("literal")
-        if match.group("operation") == "is" and literal != "None":
+        try:
+            expression = ast.parse(text.strip(), mode="eval").body
+        except SyntaxError:
             return None
         if (
-            dtype_match := re.fullmatch(r"torch\.([A-Za-z_][A-Za-z0-9_]*)", literal)
-        ) is not None:
-            (dtype,) = dtype_match.groups()
-            value = getattr(torch, dtype, None)
-            if not isinstance(value, torch.dtype):
-                return None
-        else:
-            try:
-                value = ast.literal_eval(literal)
-            except (SyntaxError, ValueError, TypeError):
-                return None
-        if not isinstance(value, (type(None), bool, int, float, str, torch.dtype)):
+            not isinstance(expression, ast.Compare)
+            or len(expression.ops) != 1
+            or len(expression.comparators) != 1
+            or Local.from_expression(expression.left) != source
+        ):
             return None
-        return cls(text, source, value)
+        [operation] = expression.ops
+        [comparator] = expression.comparators
+        if (
+            isinstance(operation, ast.Is)
+            and isinstance(comparator, ast.Constant)
+            and comparator.value is None
+        ) or (
+            isinstance(operation, ast.Eq)
+            and Local.from_expression(comparator) is None
+            and ASTVisitor(text).visit(comparator) is not None
+        ):
+            return cls(text, source, expression)
+        else:
+            return None
 
     @property
     def key(self) -> Hashable:
-        return ("constant", self.source, type(self.value), self.value)
+        return (
+            "constant",
+            self.source,
+            ast.dump(self.expression, include_attributes=False),
+        )
 
     @override
     def build(
@@ -73,55 +74,12 @@ class ConstantCode(GuardCode):
         tree: InputTable,
         context: ir.Context,
     ) -> ir.Value:
-        source = self.source
-        if source is None:
+        if self.build_fn is None:
             return super().build(tree, context)
-        value = self.value
-        if value is None:
-            expected_type = "!tvm_ffi.none"
-            constant_builder = tvm_ffi_d.constant_none
-            expected_attr = None
-        elif isinstance(value, torch.dtype):
-            expected_type = "!tvm_ffi.dtype"
-            constant_builder = tvm_ffi_d.constant_dtype
-            dtype = tvm_ffi.convert(value)
-            expected_attr = ir.ArrayAttr.get(
-                [
-                    ir.IntegerAttr.get(ir.IntegerType.get_signless(64, context), value)
-                    for value in (dtype.type_code, dtype.bits, dtype.lanes)
-                ]
-            )
-        elif isinstance(value, bool):
-            expected_type = "!tvm_ffi.bool"
-            constant_builder = tvm_ffi_d.constant_bool
-            expected_attr = ir.BoolAttr.get(value, context=context)
-        elif isinstance(value, int):
-            expected_type = "!tvm_ffi.int"
-            constant_builder = tvm_ffi_d.constant_int
-            expected_attr = ir.IntegerAttr.get(
-                ir.IntegerType.get_signless(64, context),
-                value,
-            )
-        elif isinstance(value, float):
-            expected_type = "!tvm_ffi.float"
-            constant_builder = tvm_ffi_d.constant_float
-            expected_attr = ir.FloatAttr.get(ir.F64Type.get(context), value)
-        else:
-            expected_type = "!tvm_ffi.raw_str"
-            constant_builder = tvm_ffi_d.constant_raw_str
-            expected_attr = ir.StringAttr.get(value, context)
+        return self.build_fn(tree, context)
 
-        actual = source.resolve(tree)
-        if actual is None:
-            return super().build(tree, context)
-        expected_ir_type = ir.Type.parse(expected_type, context=context)
-        expected = (
-            constant_builder(expected_ir_type)
-            if expected_attr is None
-            else constant_builder(expected_ir_type, expected_attr)
+    def to_builder(self) -> GuardBuilder:
+        assert self.build_fn is not None, (
+            f"guard expression cannot be lowered: {self.text!r}"
         )
-        return tvm_ffi_d.eq(
-            ir.IntegerType.get_signless(1, context),
-            actual,
-            expected,
-        )
+        return GuardBuilder(code=self, build_fn=self.build_fn)

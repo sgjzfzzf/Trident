@@ -179,6 +179,13 @@ SSA arguments, so tuple/list parameters do not overrun the FFI argument array.
   match the signature parameter order).
 - `ExportedProgram.call_spec.in_spec` is required. Export paths that do not
   provide it are rejected during signature reconstruction.
+- `torch.device` and `torch.dtype` are globally registered as zero-leaf pytree
+  nodes when the input module is imported. Their values are stored in the tree
+  specification, omitted from the `ExportedProgram` inputs, and retained in the
+  outer wrapper for guard-based specialization. Wrapper calls convert them to
+  native TVM FFI values.
+- Initial-call results are evaluated with the FX interpreter so generated
+  Python parameter names cannot shadow constructors such as `device`.
 
 When runtime inputs change and guards no longer match:
 
@@ -203,7 +210,9 @@ expressions except for `ASTCode`, which uses an AST because shape expressions
 can combine multiple sources, arithmetic, and comparisons. Shape expressions
  may use integer division and floating-point constants. Integer operands use
  integer arithmetic, while floating-point or mixed operands are promoted to a
- common floating-point type. Each parsed Code
+ common floating-point type. AST guard values use TVM FFI semantic scalar
+ types; arithmetic temporarily unwraps them to builtin MLIR numeric types and
+ wraps the result again. Each parsed Code
 object produces a delayed builder carrying its deduplication key, execution
 phase, and structural depth. The collection orders the builders and invokes
 them in `arithext.and_then` regions so they short-circuit before unsafe tensor

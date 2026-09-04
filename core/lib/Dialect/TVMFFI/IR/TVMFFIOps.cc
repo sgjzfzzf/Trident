@@ -63,7 +63,8 @@ mlir::LogicalResult ReturnOp::verify() {
 
 mlir::LogicalResult ConstantDTypeOp::verify() {
   if (mlir::ArrayAttr values = getValue();
-      values.size() == 3 && llvm::all_of(values, [](mlir::Attribute value) {
+      values.size() == 3 &&
+      llvm::all_of(values, [](mlir::Attribute value) -> bool {
         return mlir::isa<mlir::IntegerAttr>(value);
       })) {
     return mlir::success();

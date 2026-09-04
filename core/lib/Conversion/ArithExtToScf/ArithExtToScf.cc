@@ -73,7 +73,8 @@ public:
     const mlir::Value trueValue =
         mlir::arith::ConstantIntOp::create(rewriter, op.getLoc(), true, 1);
     const llvm::SmallVector<mlir::Region *> regions = llvm::map_to_vector(
-        op.getRegions(), [](mlir::Region &region) { return &region; });
+        op.getRegions(),
+        [](mlir::Region &region) -> mlir::Region * { return &region; });
     const mlir::Value result =
         buildAndThenChain(rewriter, op.getLoc(), regions, trueValue);
     rewriter.replaceOp(op, result);
@@ -81,7 +82,7 @@ public:
   }
 };
 
-class ConvertArithExtToScfPass
+class ConvertArithExtToScfPass final
     : public impl::ConvertArithExtToScfBase<ConvertArithExtToScfPass> {
 public:
   void runOnOperation() final {

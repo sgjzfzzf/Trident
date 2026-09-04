@@ -18,20 +18,19 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
-#include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <mlir/Conversion/LLVMCommon/TypeConverter.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/GPU/IR/GPUDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinDialect.h>
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/BuiltinTypeInterfaces.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Location.h>
 #include <mlir/IR/PatternMatch.h>
-#include <mlir/IR/SymbolTable.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -44,7 +43,7 @@ namespace trident::conversion {
 #include "trident/core/Conversion/Passes.h.inc"
 
 /// Converts torch_ext.trident_kernel_launch to gpu.launch_func.
-class ConvertTridentKernelLaunchOp
+class ConvertTridentKernelLaunchOp final
     : public mlir::OpConversionPattern<torchext::TridentKernelLaunchOp> {
 public:
   ConvertTridentKernelLaunchOp(mlir::TypeConverter &typeConverter,
@@ -157,7 +156,7 @@ public:
   }
 };
 
-class ConvertTorchExtToGPUPass
+class ConvertTorchExtToGPUPass final
     : public impl::ConvertTorchExtToGPUBase<ConvertTorchExtToGPUPass> {
 public:
   void runOnOperation() final {

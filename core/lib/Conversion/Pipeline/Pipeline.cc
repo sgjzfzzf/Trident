@@ -40,7 +40,7 @@ namespace trident::conversion {
 #define GEN_PASS_DEF_TRIDENTLOWERINGPIPELINE
 #include "trident/core/Conversion/Passes.h.inc"
 
-class TridentLoweringPipelinePass
+class TridentLoweringPipelinePass final
     : public impl::TridentLoweringPipelineBase<TridentLoweringPipelinePass> {
   void runOnOperation() final {
     mlir::PassManager pm(&getContext(), mlir::ModuleOp::getOperationName());

@@ -6,11 +6,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Dialect/DLPack/IR/DLPackDialect.h"
-#include "trident/core/Dialect/DLPack/IR/DLPackOps.h"
-#include "trident/core/Dialect/DLPack/IR/DLPackTypes.h"
-#include <llvm/ADT/TypeSwitch.h>
-#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
-#include <mlir/IR/DialectImplementation.h>
+#include "trident/core/Dialect/DLPack/IR/DLPackOps.h" // NOLINT(misc-include-cleaner)
+#include "trident/core/Dialect/DLPack/IR/DLPackTypes.h" // NOLINT(misc-include-cleaner)
+#include <llvm/ADT/TypeSwitch.h>             // NOLINT(misc-include-cleaner)
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h> // NOLINT(misc-include-cleaner)
+#include <mlir/IR/DialectImplementation.h>   // NOLINT(misc-include-cleaner)
 
 #include "trident/core/Dialect/DLPack/IR/DLPackDialect.cpp.inc"
 

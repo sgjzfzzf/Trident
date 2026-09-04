@@ -64,7 +64,7 @@ void populateTorchToTVMFFITypeConversions(mlir::TypeConverter &typeConverter) {
 /// TypeConverter used by this bridge.  Keeping the Torch-to-semantic mapping
 /// in a TypeConverter makes it reusable by conversion patterns and gives us
 /// the standard MLIR materialization path for the temporary boundary casts.
-class TorchFFITypeConverter : public mlir::TypeConverter {
+class TorchFFITypeConverter final : public mlir::TypeConverter {
 public:
   TorchFFITypeConverter() {
     addConversion([](mlir::Type type) -> std::optional<mlir::Type> {
@@ -261,7 +261,7 @@ private:
   const TorchFFITypeConverter &typeConverter;
 };
 
-struct TorchBoolConstantAttr {
+struct TorchBoolConstantAttr final {
   static mlir::IntegerAttr get(mlir::torch::Torch::ConstantBoolOp op,
                                mlir::Builder &) {
     return mlir::IntegerAttr::get(mlir::IntegerType::get(op.getContext(), 1),
@@ -269,14 +269,14 @@ struct TorchBoolConstantAttr {
   }
 };
 
-struct TorchDeviceConstantAttr {
+struct TorchDeviceConstantAttr final {
   static mlir::StringAttr get(mlir::torch::Torch::ConstantDeviceOp op,
                               mlir::Builder &builder) {
     return builder.getStringAttr(op.getValue());
   }
 };
 
-struct TorchFloatConstantAttr {
+struct TorchFloatConstantAttr final {
   static mlir::FloatAttr get(mlir::torch::Torch::ConstantFloatOp op,
                              mlir::Builder &builder) {
     return builder.getFloatAttr(mlir::Float64Type::get(op.getContext()),
@@ -284,7 +284,7 @@ struct TorchFloatConstantAttr {
   }
 };
 
-struct TorchIntConstantAttr {
+struct TorchIntConstantAttr final {
   static mlir::IntegerAttr get(mlir::torch::Torch::ConstantIntOp op,
                                mlir::Builder &builder) {
     return builder.getI64IntegerAttr(static_cast<int64_t>(op.getValue()));
@@ -696,29 +696,30 @@ class ConvertTorchToTVMFFIPass final
         tvm_ffi::ObjectIncRefOp, tvm_ffi::TensorCloneOp, tvm_ffi::TensorCopyOp,
         tvm_ffi::TensorLiteralOp, tvm_ffi::ToOp>();
     conversionTarget.addDynamicallyLegalOp<mlir::func::FuncOp>(
-        [&](mlir::func::FuncOp func) {
+        [&](mlir::func::FuncOp func) -> bool {
           return typeConverter.isSignatureLegal(func.getFunctionType());
         });
     conversionTarget.markOpRecursivelyLegal<mlir::func::FuncOp>(
-        [](mlir::func::FuncOp) { return false; });
+        [](mlir::func::FuncOp) -> bool { return false; });
     conversionTarget.addDynamicallyLegalOp<tvm_ffi::FuncOp>(
-        [&](tvm_ffi::FuncOp func) {
+        [&](tvm_ffi::FuncOp func) -> bool {
           return typeConverter.isSignatureLegal(func.getFunctionType());
         });
     conversionTarget.addDynamicallyLegalOp<mlir::func::ReturnOp>(
-        [&](mlir::func::ReturnOp ret) {
+        [&](mlir::func::ReturnOp ret) -> bool {
           return mlir::isLegalForReturnOpTypeConversionPattern(ret,
                                                                typeConverter);
         });
     conversionTarget.addDynamicallyLegalOp<mlir::func::CallOp>(
-        [&](mlir::func::CallOp call) {
+        [&](mlir::func::CallOp call) -> bool {
           return llvm::all_of(call.getOperandTypes(),
-                              [&](mlir::Type type) {
+                              [&](mlir::Type type) -> bool {
                                 return typeConverter.isLegal(type);
                               }) &&
-                 llvm::all_of(call.getResultTypes(), [&](mlir::Type type) {
-                   return typeConverter.isLegal(type);
-                 });
+                 llvm::all_of(call.getResultTypes(),
+                              [&](mlir::Type type) -> bool {
+                                return typeConverter.isLegal(type);
+                              });
         });
     mlir::cf::populateCFStructuralTypeConversionsAndLegality(
         typeConverter, conversionPatterns, conversionTarget);
@@ -730,10 +731,10 @@ class ConvertTorchToTVMFFIPass final
         tvm_ffi::TensorDTypeOp, tvm_ffi::TensorSizeOp,
         tvm_ffi::TensorStorageOffsetOp, tvm_ffi::TensorStrideOp,
         tvm_ffi::GetOp>(
-        [&](mlir::Operation *op) { return typeConverter.isLegal(op); });
+        [&](mlir::Operation *op) -> bool { return typeConverter.isLegal(op); });
     conversionTarget.addLegalOp<mlir::ModuleOp, tvm_ffi::ReturnOp>();
     conversionTarget.addDynamicallyLegalOp<mlir::torch::Torch::OperatorOp>(
-        [](mlir::torch::Torch::OperatorOp op) {
+        [](mlir::torch::Torch::OperatorOp op) -> bool {
           return !op.getName().starts_with("torch.aten.");
         });
     conversionTarget.addIllegalOp<mlir::torch::Torch::CopyToValueTensorOp,
@@ -747,7 +748,7 @@ class ConvertTorchToTVMFFIPass final
         torchext::TensorDTypeOp, torchext::TensorSizeOp,
         torchext::TensorStorageOffsetOp, torchext::TensorStrideOp>();
     conversionTarget.addDynamicallyLegalOp<torchext::TridentKernelLaunchOp>(
-        [&](mlir::Operation *op) { return typeConverter.isLegal(op); });
+        [&](mlir::Operation *op) -> bool { return typeConverter.isLegal(op); });
     conversionPatterns.add<
         ConvertTorchTensorGet, MaterializeTorchExtOperands<torchext::GetOp>,
         MaterializeTorchExtOperands<torchext::TridentKernelLaunchOp>>(

@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/Support/Casting.h>
-#include <mlir/Dialect/ControlFlow/IR/ControlFlow.h>
 #include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
@@ -17,7 +16,9 @@
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Location.h>
+#include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/IR/Value.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
@@ -28,7 +29,7 @@ namespace trident::conversion {
 #define GEN_PASS_DEF_CONVERTTORCHTOCF
 #include "trident/core/Conversion/Passes.h.inc"
 
-class ConvertRuntimeAssertOp
+class ConvertRuntimeAssertOp final
     : public mlir::OpRewritePattern<mlir::torch::Torch::RuntimeAssertOp> {
 public:
   using OpRewritePattern::OpRewritePattern;
@@ -55,7 +56,7 @@ public:
   }
 };
 
-class ConvertTorchToCfPass
+class ConvertTorchToCfPass final
     : public impl::ConvertTorchToCfBase<ConvertTorchToCfPass> {
 public:
   void runOnOperation() final {

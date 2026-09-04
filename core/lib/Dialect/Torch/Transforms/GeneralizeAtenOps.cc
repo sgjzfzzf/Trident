@@ -7,15 +7,11 @@
 
 #include "trident/core/Dialect/Torch/Transforms/GeneralizeAtenOps.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
-#include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include <llvm/ADT/StringRef.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/BuiltinDialect.h>
-#include <mlir/IR/BuiltinOps.h>
-#include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/OperationSupport.h>
@@ -24,8 +20,9 @@
 #include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/WalkPatternRewriteDriver.h>
+#include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
-#include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.h>
+#include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h>
 #include <utility>
 
 namespace trident::torch {
@@ -76,7 +73,7 @@ public:
         mlir::torch::TorchConversion::TorchConversionDialect,
         trident::tvm_ffi::TVMFFIDialect, trident::torchext::TorchExtDialect>();
     target.markUnknownOpDynamicallyLegal(
-        [](mlir::Operation *) { return true; });
+        [](mlir::Operation *) -> bool { return true; });
 
     mlir::RewritePatternSet specializedPatterns(&getContext());
     populateGeneratedPDLLPatterns(specializedPatterns);

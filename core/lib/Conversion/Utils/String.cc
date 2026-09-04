@@ -7,6 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/Utils/String.h"
+#include <cstdint>
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/StringRef.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
@@ -31,9 +33,10 @@ mlir::Value getString(mlir::OpBuilder &builder, mlir::Location loc,
   const mlir::Value stringPtr =
       mlir::LLVM::AllocaOp::create(builder, loc, ptrTy, i8Ty, length);
   for (auto [index, character] : llvm::enumerate(llvm::concat<int8_t>(
-           llvm::map_range(
-               content,
-               [](char character) { return static_cast<int8_t>(character); }),
+           llvm::map_range(content,
+                           [](char character) -> int8_t {
+                             return static_cast<int8_t>(character);
+                           }),
            llvm::ArrayRef<int8_t>{0}))) {
     const mlir::Value elementPtr = mlir::LLVM::GEPOp::create(
         builder, loc, ptrTy, i8Ty, stringPtr,

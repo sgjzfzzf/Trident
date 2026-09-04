@@ -21,8 +21,8 @@
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/STLFunctionalExtras.h>
-#include <llvm/ADT/TypeSwitch.h> // NOLINT(misc-include-cleaner)
-#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
+#include <llvm/ADT/TypeSwitch.h>             // NOLINT(misc-include-cleaner)
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h> // NOLINT(misc-include-cleaner)
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/Diagnostics.h>
@@ -71,9 +71,10 @@ UnionType::verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
 
 bool UnionType::contains(mlir::Type type) const {
   if (const UnionType unionType = mlir::dyn_cast<UnionType>(type)) {
-    return llvm::all_of(unionType.getTypes(), [&](const mlir::Type member) {
-      return llvm::is_contained(getTypes(), member);
-    });
+    return llvm::all_of(unionType.getTypes(),
+                        [&](const mlir::Type member) -> bool {
+                          return llvm::is_contained(getTypes(), member);
+                        });
   }
   return llvm::is_contained(getTypes(), type);
 }

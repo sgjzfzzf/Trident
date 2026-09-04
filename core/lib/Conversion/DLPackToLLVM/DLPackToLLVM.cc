@@ -9,18 +9,24 @@
 #include "trident/core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "trident/core/Dialect/DLPack/IR/DLPackOps.h"
 #include "trident/core/Dialect/DLPack/IR/DLPackTypes.h"
+#include <cstdint>
 #include <llvm/ADT/ArrayRef.h>
 #include <mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/Func/Transforms/FuncConversions.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinDialect.h>
-#include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/DialectRegistry.h>
 #include <mlir/IR/Location.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/IR/Types.h>
+#include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
+#include <optional>
+#include <utility>
 
 namespace trident::conversion {
 
@@ -204,11 +210,11 @@ public:
     target.addLegalDialect<mlir::BuiltinDialect, mlir::func::FuncDialect,
                            mlir::LLVM::LLVMDialect>();
     target.addDynamicallyLegalOp<mlir::func::FuncOp>(
-        [&](mlir::func::FuncOp op) {
+        [&](mlir::func::FuncOp op) -> bool {
           return typeConverter.isSignatureLegal(op.getFunctionType());
         });
     target.addDynamicallyLegalOp<mlir::func::ReturnOp>(
-        [&](mlir::func::ReturnOp op) {
+        [&](mlir::func::ReturnOp op) -> bool {
           return mlir::isLegalForReturnOpTypeConversionPattern(op,
                                                                typeConverter);
         });

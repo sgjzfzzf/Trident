@@ -6,6 +6,7 @@ Checks: >-
   bugprone-*,
   -bugprone-unchecked-optional-access,
   misc-*,
+  modernize-use-override,
   performance-*
 HeaderFilterRegex: '^(.*[/\\])(core|ffi)/(include|lib|python|tools)/.*'
 FormatStyle: file

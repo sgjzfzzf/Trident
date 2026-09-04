@@ -6,7 +6,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Dialect/DLPack/IR/DLPackTypes.h"
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 #include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/MLIRContext.h>
 
 namespace trident::dlpack {
 

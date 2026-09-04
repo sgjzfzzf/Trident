@@ -39,7 +39,7 @@ ObjectOperandOwnership ObjectIncRefOp::getObjectOperandOwnership(uint32_t) {
 
 namespace detail {
 
-struct FuncCallOwnershipModel
+struct FuncCallOwnershipModel final
     : ObjectOwnershipOpInterface::ExternalModel<FuncCallOwnershipModel,
                                                 mlir::func::CallOp> {};
 

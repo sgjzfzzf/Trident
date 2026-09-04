@@ -12,7 +12,8 @@ set(PYTHON_EXECUTABLE ${Python3_EXECUTABLE})
 set(_TRIDENT_LLVM_CONFIG
     ${CMAKE_BINARY_DIR}/install/llvm-project/lib/cmake/llvm/LLVMConfig.cmake)
 if(EXISTS "${_TRIDENT_LLVM_CONFIG}")
-  message(STATUS "Using prebuilt LLVM at ${CMAKE_BINARY_DIR}/install/llvm-project")
+  message(
+    STATUS "Using prebuilt LLVM at ${CMAKE_BINARY_DIR}/install/llvm-project")
   add_custom_target(llvm-project)
 else()
   ExternalProject_Add(

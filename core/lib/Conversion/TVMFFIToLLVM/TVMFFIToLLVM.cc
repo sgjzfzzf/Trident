@@ -64,9 +64,11 @@ namespace trident::conversion {
 #include "TVMFFIToLLVMPDLLPatterns.h.inc"
 #include "trident/core/Conversion/Passes.h.inc"
 
-static mlir::Value createConstantABI(mlir::ConversionPatternRewriter &rewriter,
-                                     mlir::Location loc, int32_t typeIndex,
-                                     mlir::Value payload) {
+namespace {
+
+mlir::Value createConstantABI(mlir::ConversionPatternRewriter &rewriter,
+                              mlir::Location loc, int32_t typeIndex,
+                              mlir::Value payload) {
   mlir::LLVM::LLVMStructType const anyTy =
       tvm_ffi::TVMFFIABIType::getLLVMType(rewriter.getContext());
   mlir::IntegerType const i32Ty = rewriter.getI32Type();
@@ -84,7 +86,7 @@ static mlir::Value createConstantABI(mlir::ConversionPatternRewriter &rewriter,
   return result;
 }
 
-class ConvertArrayLengthOp
+class ConvertArrayLengthOp final
     : public mlir::OpConversionPattern<tvm_ffi::ArrayLengthOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -122,7 +124,7 @@ public:
   }
 };
 
-class ConvertAsOp : public mlir::OpConversionPattern<tvm_ffi::AsOp> {
+class ConvertAsOp final : public mlir::OpConversionPattern<tvm_ffi::AsOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
 
@@ -144,7 +146,7 @@ public:
   }
 };
 
-class ConvertCallOp : public mlir::OpConversionPattern<tvm_ffi::CallOp> {
+class ConvertCallOp final : public mlir::OpConversionPattern<tvm_ffi::CallOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
 
@@ -207,7 +209,7 @@ public:
   }
 };
 
-class ConvertConstantDeviceOp
+class ConvertConstantDeviceOp final
     : public mlir::OpConversionPattern<tvm_ffi::ConstantDeviceOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -249,7 +251,7 @@ public:
   }
 };
 
-class ConvertConstantDTypeOp
+class ConvertConstantDTypeOp final
     : public mlir::OpConversionPattern<tvm_ffi::ConstantDTypeOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -271,7 +273,7 @@ public:
   }
 };
 
-class ConvertConstantRawStrOp
+class ConvertConstantRawStrOp final
     : public mlir::OpConversionPattern<tvm_ffi::ConstantRawStrOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -290,7 +292,7 @@ public:
   }
 };
 
-class ConvertEqOp : public mlir::OpConversionPattern<tvm_ffi::EqOp> {
+class ConvertEqOp final : public mlir::OpConversionPattern<tvm_ffi::EqOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
 
@@ -339,7 +341,7 @@ public:
   }
 };
 
-class ConvertExceptionOp
+class ConvertExceptionOp final
     : public mlir::OpConversionPattern<tvm_ffi::ExceptionOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -393,7 +395,7 @@ public:
   }
 };
 
-class ConvertFunctionCallOp
+class ConvertFunctionCallOp final
     : public mlir::OpConversionPattern<tvm_ffi::FunctionCallOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -457,7 +459,7 @@ public:
   }
 };
 
-class ConvertFunctionGetGlobalOp
+class ConvertFunctionGetGlobalOp final
     : public mlir::OpConversionPattern<tvm_ffi::FunctionGetGlobalOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -477,7 +479,7 @@ public:
   }
 };
 
-class ConvertGetOp : public mlir::OpConversionPattern<tvm_ffi::GetOp> {
+class ConvertGetOp final : public mlir::OpConversionPattern<tvm_ffi::GetOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
 
@@ -516,7 +518,7 @@ public:
 };
 
 template <typename Op, auto GetCallee>
-class ConvertRefOp : public mlir::OpConversionPattern<Op> {
+class ConvertRefOp final : public mlir::OpConversionPattern<Op> {
 public:
   using mlir::OpConversionPattern<Op>::OpConversionPattern;
   mlir::LogicalResult
@@ -573,7 +575,7 @@ public:
   }
 };
 
-class ConvertTensorCloneOp
+class ConvertTensorCloneOp final
     : public mlir::OpConversionPattern<tvm_ffi::TensorCloneOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -608,7 +610,7 @@ public:
   }
 };
 
-class ConvertTensorCopyOp
+class ConvertTensorCopyOp final
     : public mlir::OpConversionPattern<tvm_ffi::TensorCopyOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -644,7 +646,7 @@ public:
   }
 };
 
-class ConvertTensorLiteralOp
+class ConvertTensorLiteralOp final
     : public mlir::OpConversionPattern<tvm_ffi::TensorLiteralOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -862,7 +864,8 @@ public:
   }
 };
 
-class ConvertTVMFFICastOp : public mlir::OpConversionPattern<tvm_ffi::CastOp> {
+class ConvertTVMFFICastOp final
+    : public mlir::OpConversionPattern<tvm_ffi::CastOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
 
@@ -878,7 +881,7 @@ public:
   }
 };
 
-class ConvertToOp : public mlir::OpConversionPattern<tvm_ffi::ToOp> {
+class ConvertToOp final : public mlir::OpConversionPattern<tvm_ffi::ToOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
 
@@ -924,7 +927,7 @@ public:
 
 /// Lowers TVM FFI operations and Any ABI values in ordinary func.func
 /// operations. Control flow and function bodies are lowered by later passes.
-class ConvertTVMFFIToLLVMPass
+class ConvertTVMFFIToLLVMPass final
     : public impl::ConvertTVMFFIToLLVMBase<ConvertTVMFFIToLLVMPass> {
 public:
   void runOnOperation() final {
@@ -945,23 +948,24 @@ public:
         mlir::arith::ArithDialect, mlir::gpu::GPUDialect, mlir::scf::SCFDialect,
         mlir::cf::ControlFlowDialect, mlir::torch::Torch::TorchDialect>();
     target.addDynamicallyLegalOp<mlir::func::FuncOp>(
-        [&](mlir::func::FuncOp op) {
+        [&](mlir::func::FuncOp op) -> bool {
           return typeConverter.isSignatureLegal(op.getFunctionType());
         });
     target.markOpRecursivelyLegal<mlir::func::FuncOp>(
-        [](mlir::func::FuncOp) { return false; });
+        [](mlir::func::FuncOp) -> bool { return false; });
     target.addDynamicallyLegalOp<mlir::func::CallOp>(
-        [&](mlir::func::CallOp op) {
+        [&](mlir::func::CallOp op) -> bool {
           return llvm::all_of(op.getOperandTypes(),
-                              [&](mlir::Type type) {
+                              [&](mlir::Type type) -> bool {
                                 return typeConverter.isLegal(type);
                               }) &&
-                 llvm::all_of(op.getResultTypes(), [&](mlir::Type type) {
-                   return typeConverter.isLegal(type);
-                 });
+                 llvm::all_of(op.getResultTypes(),
+                              [&](mlir::Type type) -> bool {
+                                return typeConverter.isLegal(type);
+                              });
         });
     target.addDynamicallyLegalOp<mlir::func::ReturnOp>(
-        [&](mlir::func::ReturnOp op) {
+        [&](mlir::func::ReturnOp op) -> bool {
           return mlir::isLegalForReturnOpTypeConversionPattern(op,
                                                                typeConverter);
         });
@@ -973,7 +977,7 @@ public:
   }
 };
 
-struct TVMFFIToLLVMDialectInterface
+struct TVMFFIToLLVMDialectInterface final
     : public mlir::ConvertToLLVMPatternInterface {
   using ConvertToLLVMPatternInterface::ConvertToLLVMPatternInterface;
 
@@ -983,6 +987,8 @@ struct TVMFFIToLLVMDialectInterface
     populateTVMFFIToLLVMConversionPatterns(target, typeConverter, patterns);
   }
 };
+
+} // namespace
 
 void populateTVMFFIToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,

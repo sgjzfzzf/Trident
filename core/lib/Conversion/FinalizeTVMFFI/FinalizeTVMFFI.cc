@@ -6,15 +6,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/FinalizeTVMFFI/FinalizeTVMFFI.h"
-#include "trident/core/Dialect/DLPack/IR/DLPackDialect.h"
+#include "trident/core/Dialect/DLPack/IR/DLPackDialect.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/DLPack/IR/DLPackOps.h"
 #include "trident/core/Dialect/DLPack/IR/DLPackTypes.h"
-#include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include <mlir/IR/Builders.h>
+#include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/IR/Value.h>
+#include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include <utility>
 
 namespace trident::conversion {
 

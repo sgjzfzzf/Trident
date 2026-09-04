@@ -7,8 +7,8 @@
 
 #include "trident/core/Conversion/TorchToScf/TorchToScf.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include <mlir/Dialect/SCF/IR/SCF.h>
+#include <mlir/IR/PatternMatch.h>
 #include <mlir/IR/Region.h>
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>

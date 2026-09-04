@@ -38,15 +38,17 @@
 
 namespace trident::tvm_ffi {
 
-static bool isObjectCapableType(mlir::Type type) {
+namespace {
+
+bool isObjectCapableType(mlir::Type type) {
   return type.hasTrait<mlir::TypeTrait::Object>() ||
          mlir::isa<tvm_ffi::AnyType, tvm_ffi::UnionType>(type);
 }
 
-static void
-materializeReferences(mlir::OpBuilder &builder, mlir::Location loc,
-                      mlir::ValueRange retainedValues,
-                      const llvm::MapVector<mlir::Value, int64_t> &credits) {
+void materializeReferences(
+    mlir::OpBuilder &builder, mlir::Location loc,
+    mlir::ValueRange retainedValues,
+    const llvm::MapVector<mlir::Value, int64_t> &credits) {
   // Retain first because a retained value may alias a credit released below.
   for (const mlir::Value value : retainedValues) {
     tvm_ffi::ObjectIncRefOp::create(builder, loc, value);
@@ -58,7 +60,9 @@ materializeReferences(mlir::OpBuilder &builder, mlir::Location loc,
   }
 }
 
-class EdgePlan {
+} // namespace
+
+class EdgePlan final {
 public:
   explicit EdgePlan(uint32_t successorIndex, mlir::Block *target,
                     mlir::ValueRange forwardedOperands,
@@ -75,7 +79,7 @@ private:
   std::reference_wrapper<const llvm::MapVector<mlir::Value, int64_t>> credits;
 };
 
-class BlockPlan {
+class BlockPlan final {
 public:
   explicit BlockPlan(mlir::Block *block,
                      llvm::ArrayRef<mlir::Value> regionValues,
@@ -95,7 +99,7 @@ private:
   llvm::SmallVector<EdgePlan> edges;
 };
 
-class OwnershipDeallocator {
+class OwnershipDeallocator final {
 public:
   static OwnershipDeallocator build(mlir::FunctionOpInterface function);
   static mlir::LogicalResult runOn(mlir::Operation *operation);
@@ -111,7 +115,6 @@ private:
   mlir::Region &region;
   mlir::Liveness liveness;
   llvm::SmallVector<mlir::Value> regionValues;
-  llvm::SmallVector<BlockPlan> plans;
 };
 
 EdgePlan::EdgePlan(uint32_t successorIndex, mlir::Block *target,
@@ -123,14 +126,15 @@ EdgePlan::EdgePlan(uint32_t successorIndex, mlir::Block *target,
       credits(std::cref(credits)) {}
 
 void EdgePlan::materialize(mlir::Operation *terminator) const {
-  const llvm::SmallVector<mlir::Type> argumentTypes =
-      llvm::map_to_vector(forwardedOperands, [](const mlir::Value operand) {
+  const llvm::SmallVector<mlir::Type> argumentTypes = llvm::map_to_vector(
+      forwardedOperands, [](const mlir::Value operand) -> mlir::Type {
         return operand.getType();
       });
   const llvm::SmallVector<mlir::Location> argumentLocations =
-      llvm::map_to_vector(forwardedOperands, [](const mlir::Value operand) {
-        return operand.getLoc();
-      });
+      llvm::map_to_vector(forwardedOperands,
+                          [](const mlir::Value operand) -> mlir::Location {
+                            return operand.getLoc();
+                          });
   mlir::OpBuilder builder(terminator);
   // Put edge-specific reference operations in a dedicated trampoline block.
   mlir::Block *edgeBlock =
@@ -148,16 +152,17 @@ mlir::LogicalResult BlockPlan::analyze() {
     // Every object entering a block establishes one local ownership credit.
     const mlir::Liveness::ValueSetT &liveIn = liveness.get().getLiveIn(block);
     for (const mlir::Value value : llvm::concat<mlir::Value>(
-             llvm::make_filter_range(block->getArguments(),
-                                     [](const mlir::BlockArgument argument) {
-                                       return isObjectCapableType(
-                                           argument.getType());
-                                     }),
-             llvm::make_filter_range(regionValues, [&](mlir::Value value) {
-               return value.getParentBlock() != block &&
-                      liveIn.contains(value) &&
-                      isObjectCapableType(value.getType());
-             }))) {
+             llvm::make_filter_range(
+                 block->getArguments(),
+                 [](const mlir::BlockArgument argument) -> bool {
+                   return isObjectCapableType(argument.getType());
+                 }),
+             llvm::make_filter_range(
+                 regionValues, [&](mlir::Value value) -> bool {
+                   return value.getParentBlock() != block &&
+                          liveIn.contains(value) &&
+                          isObjectCapableType(value.getType());
+                 }))) {
       ++credits[value];
     }
   }
@@ -248,12 +253,12 @@ mlir::LogicalResult BlockPlan::analyze() {
     const llvm::SmallVector<mlir::Value> retainedValues =
         llvm::to_vector(llvm::concat<mlir::Value>(
             llvm::make_filter_range(forwardedOperands,
-                                    [](mlir::Value value) {
+                                    [](mlir::Value value) -> bool {
                                       return isObjectCapableType(
                                           value.getType());
                                     }),
             llvm::make_filter_range(
-                mlir::ValueRange(regionValues), [&](mlir::Value value) {
+                mlir::ValueRange(regionValues), [&](mlir::Value value) -> bool {
                   return liveOut.contains(value) &&
                          successorLiveIn.contains(value) &&
                          isObjectCapableType(value.getType());
@@ -298,9 +303,10 @@ void BlockPlan::materialize() const {
 
 mlir::LogicalResult OwnershipDeallocator::run() {
   // Analyze the original CFG completely before materializing new edge blocks.
-  for (mlir::Block &block : region) {
-    plans.emplace_back(&block, regionValues, liveness);
-  }
+  llvm::SmallVector<BlockPlan> plans =
+      llvm::map_to_vector(region, [&](mlir::Block &block) -> BlockPlan {
+        return BlockPlan(&block, regionValues, liveness);
+      });
   for (BlockPlan &plan : plans) {
     if (mlir::failed(plan.analyze())) {
       return mlir::failure();

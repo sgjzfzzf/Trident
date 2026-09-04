@@ -20,7 +20,8 @@ namespace trident::tvm_ffi {
 #define GEN_PASS_DEF_DECOMPOSETVMFFI
 #include "trident/core/Dialect/TVMFFI/Transforms/Passes.h.inc"
 
-class DecomposeArrayCreateOp : public mlir::OpRewritePattern<ArrayCreateOp> {
+class DecomposeArrayCreateOp final
+    : public mlir::OpRewritePattern<ArrayCreateOp> {
 public:
   using OpRewritePattern::OpRewritePattern;
 
@@ -36,7 +37,8 @@ public:
   }
 };
 
-class DecomposeArrayGetItemOp : public mlir::OpRewritePattern<ArrayGetItemOp> {
+class DecomposeArrayGetItemOp final
+    : public mlir::OpRewritePattern<ArrayGetItemOp> {
 public:
   using OpRewritePattern::OpRewritePattern;
 
@@ -54,7 +56,7 @@ public:
   }
 };
 
-class DecomposeTVMFFIPass
+class DecomposeTVMFFIPass final
     : public impl::DecomposeTVMFFIBase<DecomposeTVMFFIPass> {
 public:
   void runOnOperation() final {

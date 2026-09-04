@@ -43,13 +43,16 @@ namespace trident::conversion {
 #define GEN_PASS_DEF_CONVERTTVMFFITOFUNC
 #include "trident/core/Conversion/Passes.h.inc"
 
-static llvm::SmallVector<int32_t> getExpectedTypeIndices(mlir::Type type) {
+namespace {
+
+llvm::SmallVector<int32_t> getExpectedTypeIndices(mlir::Type type) {
   if (const tvm_ffi::UnionType unionType =
           mlir::dyn_cast<tvm_ffi::UnionType>(type)) {
-    return llvm::map_to_vector(unionType.getTypes(), [](mlir::Type member) {
-      return mlir::cast<tvm_ffi::TVMFFITypeIndexInterface>(member)
-          .getTypeIndex();
-    });
+    return llvm::map_to_vector(
+        unionType.getTypes(), [](mlir::Type member) -> int32_t {
+          return mlir::cast<tvm_ffi::TVMFFITypeIndexInterface>(member)
+              .getTypeIndex();
+        });
   }
   if (mlir::isa<tvm_ffi::AnyType>(type)) {
     return {};
@@ -83,6 +86,8 @@ static llvm::SmallVector<int32_t> getExpectedTypeIndices(mlir::Type type) {
   return {};
 }
 
+} // namespace
+
 class ConvertTVMFFIToFuncPass final
     : public impl::ConvertTVMFFIToFuncBase<ConvertTVMFFIToFuncPass> {
   void runOnOperation() final {
@@ -100,7 +105,9 @@ class ConvertTVMFFIToFuncPass final
         const llvm::SmallVector<mlir::Location> argumentLocations =
             llvm::map_to_vector(
                 sourceBlock.getArguments(),
-                [](mlir::BlockArgument argument) { return argument.getLoc(); });
+                [](mlir::BlockArgument argument) -> mlir::Location {
+                  return argument.getLoc();
+                });
         mlir::Block *targetBlock = builder.createBlock(
             &funcOp.getBody(), funcOp.getBody().end(),
             sourceBlock.getArgumentTypes(), argumentLocations);
@@ -120,7 +127,7 @@ class ConvertTVMFFIToFuncPass final
               return mlir::WalkResult::interrupt();
             }
             const llvm::SmallVector<mlir::Value> values = llvm::map_to_vector(
-                returnOp.getOperands(), [&](mlir::Value value) {
+                returnOp.getOperands(), [&](mlir::Value value) -> mlir::Value {
                   return mapping.lookupOrDefault(value);
                 });
             mlir::func::ReturnOp::create(builder, returnOp.getLoc(), values);
@@ -226,7 +233,7 @@ class ConvertTVMFFIToFuncPass final
                   builder, tvmffiFuncOp.getLoc(), i64Ty,
                   static_cast<int64_t>(results.size())));
           llvm::SmallVector<mlir::Value> const slotPtrs = llvm::map_to_vector(
-              llvm::enumerate(results), [&](auto indexedResult) {
+              llvm::enumerate(results), [&](auto indexedResult) -> mlir::Value {
                 auto [index, result] = indexedResult;
                 mlir::Value const value =
                     mlir::UnrealizedConversionCastOp::create(

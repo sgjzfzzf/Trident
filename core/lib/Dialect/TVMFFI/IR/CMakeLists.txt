@@ -15,7 +15,6 @@ add_mlir_dialect_library(
   MLIRControlFlowInterfaces
   MLIRFuncDialect
   MLIRIR
-  MLIRSCFDialect
   MLIRSideEffectInterfaces
   tvm_ffi::shared)
 

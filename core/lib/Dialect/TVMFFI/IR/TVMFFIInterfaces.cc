@@ -10,7 +10,6 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h" // NOLINT(misc-include-cleaner)
 #include <cstdint>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
-#include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/IR/DialectRegistry.h>
 #include <mlir/IR/MLIRContext.h>
 
@@ -44,10 +43,6 @@ struct FuncCallOwnershipModel
     : ObjectOwnershipOpInterface::ExternalModel<FuncCallOwnershipModel,
                                                 mlir::func::CallOp> {};
 
-struct SCFIfOwnershipModel
-    : ObjectOwnershipOpInterface::ExternalModel<SCFIfOwnershipModel,
-                                                mlir::scf::IfOp> {};
-
 } // namespace detail
 
 void registerTVMFFIObjectOwnershipExternalModels(
@@ -56,10 +51,6 @@ void registerTVMFFIObjectOwnershipExternalModels(
       +[](mlir::MLIRContext *context, mlir::func::FuncDialect *) {
         mlir::func::CallOp::attachInterface<detail::FuncCallOwnershipModel>(
             *context);
-      });
-  registry.addExtension(
-      +[](mlir::MLIRContext *context, mlir::scf::SCFDialect *) {
-        mlir::scf::IfOp::attachInterface<detail::SCFIfOwnershipModel>(*context);
       });
 }
 

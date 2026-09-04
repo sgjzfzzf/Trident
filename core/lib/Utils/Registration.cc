@@ -20,8 +20,8 @@
 #include "trident/core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.h"
-#include "trident/core/Dialect/TVMFFI/Transforms/ApplyObjectOwnership.h"
 #include "trident/core/Dialect/TVMFFI/Transforms/DecomposeTVMFFI.h"
+#include "trident/core/Dialect/TVMFFI/Transforms/OwnershipDeallocation.h"
 #include "trident/core/Dialect/Torch/IR/TorchInterfaces.h"
 #include "trident/core/Dialect/Torch/Transforms/GeneralizeAtenOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
@@ -65,7 +65,7 @@ void trident::conversion::registerAllPasses() {
   trident::conversion::registerConvertDLPackToLLVMPass();
   trident::conversion::registerFinalizeTVMFFIPass();
   trident::tvm_ffi::registerDecomposeTVMFFIPass();
-  trident::tvm_ffi::registerApplyObjectOwnershipPass();
+  trident::tvm_ffi::registerOwnershipDeallocationPass();
   trident::torch::registerGeneralizeAtenOpsPass();
   mlir::registerReconcileUnrealizedCastsPass();
   mlir::torch::registerTorchPasses();

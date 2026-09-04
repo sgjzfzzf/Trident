@@ -21,8 +21,6 @@ namespace trident::conversion {
 #define GEN_PASS_DEF_FINALIZETVMFFI
 #include "trident/core/Conversion/Passes.h.inc"
 
-namespace {
-
 template <typename SourceOp, typename TargetOp>
 class FinalizeIndexedTensorMetadataOp final
     : public mlir::OpRewritePattern<SourceOp> {
@@ -62,8 +60,6 @@ public:
     return mlir::success();
   }
 };
-
-} // namespace
 
 void populateFinalizeTVMFFIPatterns(mlir::RewritePatternSet &patterns) {
   patterns.add<

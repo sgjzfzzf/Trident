@@ -5,7 +5,7 @@ add_mlir_conversion_library(
   MLIRConversionPassIncGen
   LINK_LIBS
   PUBLIC
-  ApplyObjectOwnership
+  OwnershipDeallocation
   ArithExtToScf
   DecomposeTVMFFI
   DLPackToLLVM

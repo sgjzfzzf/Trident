@@ -304,13 +304,15 @@ launches. Its lowering is split across two passes in `trident-lowering-pipeline`
 
 Reference counting for Torch objects (tensors, lists, tuples, optionals)
 backed by manually-managed resources is handled inside `ConvertTorchToTVMFFI`.
-TVMFFI operations expose owned, borrowed, forwarded, and consumed values
-through an ownership interface. After conversion, a region-local ownership
-analysis tracks a separate reference-credit balance for every SSA value. It emits
-`TVMFFIObjectIncRef` for terminator operands and releases the remaining local
-credits with `TVMFFIObjectDecRef`. Escaping increments are emitted before local
-decrements so a returned owned object remains live while ownership transfers to
-the caller.
+TVMFFI operations expose owned, borrowed, retained, and consumed values through
+an ownership interface. After conversion, structured control flow is lowered
+to CF and `OwnershipDeallocation` tracks a separate reference-credit balance
+for every SSA value in each function CFG block. Every taken CFG edge retains
+the object values needed by its successor before releasing the source block's
+remaining credits. Multi-successor terminators use edge-specific trampoline
+blocks, and backedges follow the same protocol. Function returns likewise
+retain escaping objects before releasing local credits, so ownership transfers
+without making a returned owned object temporarily unreachable.
 
 ## LLVM Dispatcher Semantics
 

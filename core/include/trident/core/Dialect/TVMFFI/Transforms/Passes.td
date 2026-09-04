@@ -13,11 +13,13 @@ def DecomposeTVMFFI : Pass<"decompose-tvm-ffi", "mlir::ModuleOp"> {
   let dependentDialects = ["trident::tvm_ffi::TVMFFIDialect"];
 }
 
-def ApplyObjectOwnership : Pass<"apply-object-ownership", "mlir::ModuleOp"> {
-  let summary = "Materialize TVM FFI object ownership operations";
+def OwnershipDeallocation : Pass<"ownership-deallocation", "mlir::ModuleOp"> {
+  let summary = "Materialize TVM FFI object ownership in CFGs";
   let description = [{
-    Analyze object ownership and insert the required ObjectIncRef and
-    ObjectDecRef operations before region terminators.
+    Analyze object ownership and liveness in function CFGs and insert the
+    required ObjectIncRef and ObjectDecRef operations on exits and CFG edges.
   }];
-  let dependentDialects = ["trident::tvm_ffi::TVMFFIDialect"];
+  let dependentDialects = [
+    "mlir::cf::ControlFlowDialect", "trident::tvm_ffi::TVMFFIDialect"
+  ];
 }

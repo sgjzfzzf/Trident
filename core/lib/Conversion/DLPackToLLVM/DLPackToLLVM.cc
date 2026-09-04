@@ -27,8 +27,6 @@ namespace trident::conversion {
 #define GEN_PASS_DEF_CONVERTDLPACKTOLLVM
 #include "trident/core/Conversion/Passes.h.inc"
 
-namespace {
-
 class ConvertTensorDeviceOp final
     : public mlir::OpConversionPattern<dlpack::TensorDeviceOp> {
 public:
@@ -154,8 +152,6 @@ public:
     return mlir::success();
   }
 };
-
-} // namespace
 
 void populateDLPackToLLVMConversionPatterns(
     mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,

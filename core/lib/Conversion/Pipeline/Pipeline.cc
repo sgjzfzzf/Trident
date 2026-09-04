@@ -15,8 +15,8 @@
 #include "trident/core/Conversion/TorchToCf/TorchToCf.h"
 #include "trident/core/Conversion/TorchToScf/TorchToScf.h"
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
-#include "trident/core/Dialect/TVMFFI/Transforms/ApplyObjectOwnership.h"
 #include "trident/core/Dialect/TVMFFI/Transforms/DecomposeTVMFFI.h"
+#include "trident/core/Dialect/TVMFFI/Transforms/OwnershipDeallocation.h"
 #include "trident/core/Dialect/Torch/Transforms/GeneralizeAtenOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h" // NOLINT(misc-include-cleaner)
 #include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
@@ -50,7 +50,8 @@ class TridentLoweringPipelinePass
     pm.addPass(createConvertTorchToScf());
     pm.addPass(createConvertTorchExtToGPU());
     pm.addPass(createConvertTorchToTVMFFI());
-    pm.addPass(tvm_ffi::createApplyObjectOwnership());
+    pm.addPass(mlir::createSCFToControlFlowPass());
+    pm.addPass(tvm_ffi::createOwnershipDeallocation());
     pm.addPass(tvm_ffi::createDecomposeTVMFFI());
     pm.addPass(createFinalizeTVMFFI());
     pm.addPass(createConvertTVMFFIToFunc());

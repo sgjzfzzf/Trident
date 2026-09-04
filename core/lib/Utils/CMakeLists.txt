@@ -3,7 +3,7 @@ add_mlir_library(
   Registration.cc
   LINK_LIBS
   PUBLIC
-  ApplyObjectOwnership
+  OwnershipDeallocation
   ArithExtDialect
   ArithExtToScf
   DecomposeTVMFFI

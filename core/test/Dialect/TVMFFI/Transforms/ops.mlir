@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: trident-core-opt %s -split-input-file -decompose-tvm-ffi | FileCheck %s --check-prefix=DECOMPOSE
-// RUN: trident-core-opt %s -split-input-file -apply-object-ownership | FileCheck %s --check-prefix=OWNERSHIP
+// RUN: trident-core-opt %s -split-input-file -convert-arith-ext-to-scf -convert-scf-to-cf -ownership-deallocation | FileCheck %s --check-prefix=OWNERSHIP
 
 // Array construction and indexed access are decomposed into runtime calls.
 // DECOMPOSE-LABEL: tvm_ffi.func @create(
@@ -39,13 +39,11 @@ tvm_ffi.func @return_tensor(%arg: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
   tvm_ffi.return %arg : !tvm_ffi.tensor
 }
 
-// Object-valued results in non-object regions still need to be released at
-// the region terminator.
+// Object-valued results in control flow are released on the outgoing CFG edge.
 // OWNERSHIP-LABEL: func.func @object_result_in_guard(
 // OWNERSHIP: %[[ITEM:[a-zA-Z0-9_]+]] = tvm_ffi.array.get_item %arg0[%arg1] as !tvm_ffi.tensor
-// OWNERSHIP: %[[KEEP:[a-zA-Z0-9_]+]] = arith.constant true
 // OWNERSHIP: tvm_ffi.ObjectDecRef %[[ITEM]] : !tvm_ffi.tensor
-// OWNERSHIP-NEXT: arithext.and_then.yield %[[KEEP]] : i1
+// OWNERSHIP: return
 func.func @object_result_in_guard(%arg0: !tvm_ffi.array, %arg1: !tvm_ffi.int) -> i1 {
   %result = "arithext.and_then"() ({
     %item = tvm_ffi.array.get_item %arg0[%arg1]

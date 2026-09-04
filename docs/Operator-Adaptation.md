@@ -281,11 +281,13 @@ kernel launches. Its lowering is split across two passes:
 | `ConvertTorchExtToGPU` | Lowers `torchext.trident_kernel_launch` (Triton kernel → `gpu.launch_func` with I64 grid/block dimensions, uses TVMFFI stream API); scalar `torch_c.to_i1/to_i64/to_f64` lowering is handled by `ConvertTorchToTVMFFI` and produces `tvm_ffi.get` |
 | `ConvertTorchExtToLLVM` | Lowers any remaining TorchExt ops to LLVM |
 
-Reference counting for Torch objects is handled inside `ConvertTorchToTVMFFI`
-by scanning each region (see `TorchToTVMFFI.cc::insertRegionRefCounts`): escaping
-values get a `tvm_ffi.ObjectIncRef`, and locally-produced object values get a
-`tvm_ffi.ObjectDecRef`. The legacy `RAAI` / `EliminateRefCounter` passes have
-been removed.
+After `ConvertTorchToTVMFFI` assigns ownership contracts to semantic TVMFFI
+operations, structured control flow is lowered to CF. The
+`OwnershipDeallocation` pass uses CFG liveness to retain objects on the edge
+where they remain live and to release each source block's remaining ownership
+credits. It supports merges and backedges; multi-successor branches receive
+edge-specific trampoline blocks. The legacy `RAAI` / `EliminateRefCounter`
+passes have been removed.
 
 ### Adding A New `torchext` Op
 

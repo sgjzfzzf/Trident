@@ -1,11 +1,13 @@
 add_mlir_library(
-  ApplyObjectOwnership
-  ApplyObjectOwnership.cc
+  OwnershipDeallocation
+  OwnershipDeallocation.cc
   DEPENDS
   MLIRTVMFFITransformsPassIncGen
   LINK_LIBS
   PUBLIC
   MLIRAnalysis
+  MLIRControlFlowDialect
+  MLIRControlFlowInterfaces
   MLIRIR
   MLIRPass
   TVMFFIDialect)

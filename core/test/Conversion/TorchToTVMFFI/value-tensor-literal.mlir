@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s -generalize-aten-ops -convert-torch-to-tvm-ffi -apply-object-ownership | FileCheck %s
+// RUN: trident-core-opt %s -generalize-aten-ops -convert-torch-to-tvm-ffi -convert-scf-to-cf -ownership-deallocation | FileCheck %s
 
 // Torch-to-TVMFFI preserves the literal as a semantic TVMFFI operation. Its
 // runtime allocation is deliberately deferred to TVMFFI-to-LLVM.

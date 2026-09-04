@@ -8,7 +8,7 @@ import operator
 import threading
 from collections.abc import Callable
 from types import TracebackType
-from typing import Any, ClassVar, Final, Self, TypeAlias, cast
+from typing import ClassVar, Final, Self, TypeAlias, cast
 
 import torch
 import triton
@@ -23,9 +23,6 @@ from trident.core.dialects import (
 )
 from trident.core.dialects import (
     torch as torch_d,
-)
-from trident.core.dialects import (
-    tvm_ffi as tvm_ffi_d,
 )
 from trident.core.extras import fx_importer
 from trident.core.extras.fx_importer import GraphNodeImporter
@@ -51,9 +48,9 @@ class GraphNodeImporterTritonHopPatchState:
 
     def __init__(self, specialization_id: int = 0) -> None:
         self.specialization_id: int = specialization_id
-        self.original_attrs: dict[str, Any] = {}
-        self.original_scalar_type_map: dict[type[Any], str] | None = None
-        self.original_builtin_ops: dict[Any, OpOverloadPacket] | None = None
+        self.original_attrs: dict[str, object] = {}
+        self.original_scalar_type_map: dict[type[object], str] | None = None
+        self.original_builtin_ops: dict[object, OpOverloadPacket] | None = None
 
     @staticmethod
     def _symbolic_builtin_ops() -> dict[str, OpOverloadPacket]:
@@ -265,7 +262,7 @@ def _import_hop_triton_kernel_wrapper(
     self: GraphNodeImporter,
     loc: ir.Location,
     node: torch.fx.Node,
-    hop: Any,
+    hop: object,
 ) -> None:
     knodes = cast(dict[str, KernelArgument], node.kwargs["kwargs"])
     kvalues: dict[str, ir.Value] = {
@@ -452,7 +449,7 @@ def _import_hop_triton_kernel_wrapper_functional(
     self: GraphNodeImporter,
     loc: ir.Location,
     node: torch.fx.Node,
-    hop: Any,
+    hop: object,
 ) -> None:
     _import_hop_triton_kernel_wrapper(self, loc, node, hop)
 
@@ -461,7 +458,7 @@ def _import_hop_triton_kernel_wrapper_mutation(
     self: GraphNodeImporter,
     loc: ir.Location,
     node: torch.fx.Node,
-    hop: Any,
+    hop: object,
 ) -> None:
     _import_hop_triton_kernel_wrapper(self, loc, node, hop)
 
@@ -470,7 +467,7 @@ def return_node_values(
     self: GraphNodeImporter,
     loc: ir.Location,
     nodes: list[torch.fx.Node | None],
-    constants: dict[int, Any],
+    constants: dict[int, KernelValue],
 ) -> None:
     """Fix constant output indices before delegating to the FX importer."""
     active_state = _patch_manager.active_state

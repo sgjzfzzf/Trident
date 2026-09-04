@@ -8,7 +8,7 @@ import gc
 import inspect
 import operator
 from collections.abc import Callable, Hashable, Sequence
-from typing import Any, Final
+from typing import Final, TypeAlias
 
 import torch
 import tvm_ffi
@@ -45,6 +45,11 @@ from trident.ffi import Exception
 from .guards import parse_guards
 from .input import InputTableBuilder
 from .patch import apply_patch
+
+RuntimeValue: TypeAlias = object
+RuntimeArguments: TypeAlias = tuple[RuntimeValue, ...]
+RuntimeKeywords: TypeAlias = dict[str, RuntimeValue]
+RuntimeCallable: TypeAlias = Callable[..., RuntimeValue]
 
 
 class TridentGraphModule:
@@ -85,24 +90,24 @@ class TridentGraphModule:
 
     def __init__(
         self,
-        fn: Callable[..., Any],
+        fn: RuntimeCallable,
         *,
         dynamic: bool = True,
     ) -> None:
         super().__init__()
-        self.fn: Final[Callable[..., Any]] = fn
+        self.fn: Final[RuntimeCallable] = fn
         self.dynamic: Final[bool] = dynamic
         self.ctx: Final[ir.Context] = ir.Context()
         register_all_dialects(self.ctx)
         register_all_passes()
         self._sub_modules: list[ir.Module] = []
-        self.executor: Callable[..., Any] = self.stub_compile()
+        self.executor: RuntimeCallable = self.stub_compile()
 
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
 
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+    def __call__(self, *args: RuntimeValue, **kwargs: RuntimeValue) -> RuntimeValue:
         result = self.executor(*args, **kwargs)
         if isinstance(result, Exception):
             # The dispatcher returned an Exception ObjectRef
@@ -117,7 +122,7 @@ class TridentGraphModule:
     def __name__(self) -> str:
         return self.fn.__name__
 
-    def compile(self, *args: Any, **kwargs: Any) -> Any:
+    def compile(self, *args: RuntimeValue, **kwargs: RuntimeValue) -> RuntimeValue:
         """Build a new sub-module for *args* and rebuild the combined
         module + dispatcher.  Called automatically from ``__call__`` when a
         ``GuardMatchException`` is raised."""
@@ -127,7 +132,7 @@ class TridentGraphModule:
     # Internal: orchestration
     # ------------------------------------------------------------------ #
 
-    def stub_compile(self) -> Callable[..., Any]:
+    def stub_compile(self) -> RuntimeCallable:
         """Build the combined module, lower it, add the LLVM dispatcher,
         JIT-compile, and return a callable executor.
 
@@ -167,7 +172,7 @@ class TridentGraphModule:
             keep_alive_object=engine,
         )
 
-        wrapped: Callable[..., Any] = (
+        wrapped: RuntimeCallable = (
             tvm_ffi.utils.kwargs_wrapper.make_kwargs_wrapper_from_signature(
                 fn, inspect.signature(self.fn)
             )
@@ -175,7 +180,7 @@ class TridentGraphModule:
 
         signature = inspect.signature(self.fn)
 
-        def normalize(value: Any) -> Any:
+        def normalize(value: RuntimeValue) -> RuntimeValue:
             if isinstance(value, torch.device):
                 return tvm_ffi.device(f"{value}")
             if isinstance(value, tuple):
@@ -186,7 +191,7 @@ class TridentGraphModule:
                 return {key: normalize(element) for key, element in value.items()}
             return value
 
-        def f(*args: Any, **kwargs: Any) -> Any:
+        def f(*args: RuntimeValue, **kwargs: RuntimeValue) -> RuntimeValue:
             bound = signature.bind(*args, **kwargs)
             bound.apply_defaults()
             bound.arguments = {
@@ -636,9 +641,9 @@ class TridentGraphModule:
 
     def _build_sub_module(
         self,
-        args: list[Any],
-        kwargs: dict[str, Any],
-    ) -> Any:
+        args: list[RuntimeValue],
+        kwargs: RuntimeKeywords,
+    ) -> RuntimeValue:
         """Export -> import -> wrap a single sub-module for *args*.
 
         Each sub-module's ``func.func`` is named ``main_{index}`` and its
@@ -650,7 +655,7 @@ class TridentGraphModule:
         index = len(self._sub_modules)
 
         signature: inspect.Signature = inspect.signature(self.fn)
-        trace_args: tuple[Any, ...] = tuple(args)
+        trace_args: RuntimeArguments = tuple(args)
         bound: inspect.BoundArguments = signature.bind(*trace_args, **kwargs)
         bound.apply_defaults()
         exported_gm, gs = torch._dynamo.export(
@@ -887,8 +892,8 @@ class TridentGraphModule:
     @staticmethod
     def _retrieve_dynamic_shapes(
         exported_gm: torch.fx.GraphModule,
-        args: Sequence[Any],
-        kwargs: dict[str, Any],
+        args: Sequence[RuntimeValue],
+        kwargs: RuntimeKeywords,
     ) -> torch.export.ShapesCollection:
         """Recover a ``torch.export`` shape specification from Dynamo metadata."""
         fake_args, fake_kwargs, fake_mode = _extract_fake_inputs(
@@ -951,7 +956,7 @@ class TridentGraphModule:
                 result = result + operator.index(round(offset))
             return result
 
-        def register_shape(value: Any, fake_value: Any) -> None:
+        def register_shape(value: object, fake_value: object) -> None:
             if isinstance(value, torch.Tensor):
                 assert isinstance(fake_value, torch.Tensor), (
                     "Dynamo placeholder for a Tensor input does not contain "

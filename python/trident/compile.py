@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, ParamSpec, TypeVar, overload
+from typing import ParamSpec, TypeVar, cast, overload
 
 from .backend import TridentGraphModule
 
@@ -12,11 +12,11 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def compile(fn: Callable[P, R]) -> Callable[P, Any]:
-    def f(*args: P.args, **kwargs: P.kwargs) -> Any:
+def compile(fn: Callable[P, R]) -> Callable[P, R]:
+    def f(*args: P.args, **kwargs: P.kwargs) -> R:
         gm: TridentGraphModule = TridentGraphModule(fn)
         gm.compile(*args, **kwargs)
-        return gm.gm
+        return cast(Callable[P, R], gm)
 
     return f
 

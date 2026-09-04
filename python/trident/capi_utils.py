@@ -70,10 +70,12 @@ def find_runtime_libraries() -> list[str]:
     Raises:
         RuntimeError: If any runtime library is not found
     """
+    torch_library: str | None = torch._C.__file__
+    assert torch_library is not None, "PyTorch C extension has no library path"
     return [
         find_ffi_exception_library(),
         find_aten_ffi_library(),
         find_mlir_cuda_runtime_library(),
-        torch._C.__file__,
+        torch_library,
         tvm_ffi.libinfo.find_libtvm_ffi(),
     ]

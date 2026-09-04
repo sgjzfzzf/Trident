@@ -6,7 +6,7 @@ from __future__ import annotations
 import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from typing import Any, Final, Self, TypeAlias, override
+from typing import Final, Self, TypeAlias, override
 
 import torch
 import torch.utils._pytree as pytree
@@ -20,6 +20,7 @@ from trident.core import ir
 from trident.core.dialects import tvm_ffi as tvm_ffi_d
 
 InputPath: TypeAlias = Sequence[int | str]
+InputValue: TypeAlias = object
 
 
 pytree.register_pytree_node(
@@ -229,9 +230,9 @@ class InputTableBuilder:
         cls,
         exported_program: torch.export.ExportedProgram,
         signature: inspect.Signature,
-        bound_arguments: Mapping[str, Any],
+        bound_arguments: Mapping[str, InputValue],
         main_input_types: Sequence[ir.Type],
-        value_type: Callable[[Any], ir.Type],
+        value_type: Callable[[InputValue], ir.Type],
         context: ir.Context,
     ) -> Self:
         array_type = ir.Type.parse("!tvm_ffi.array", context=context)

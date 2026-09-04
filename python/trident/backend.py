@@ -917,7 +917,7 @@ class TridentGraphModule:
                     options["min"] = operator.index(round(value_range.lower))
                 if value_range.upper.is_Integer is True:
                     options["max"] = operator.index(round(value_range.upper))
-            result = torch.export.Dim(f"{symbol}", **options)
+            result = torch.export.Dim.AUTO(**options)
             dimensions[symbol] = result
             return result
 

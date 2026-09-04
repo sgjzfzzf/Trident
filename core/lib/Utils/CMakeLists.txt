@@ -18,9 +18,9 @@ add_mlir_library(
   MLIRToLLVMIRTranslationRegistration
   TorchExtToGPU
   TorchMLIRCAPI
-  TorchMLIRConversionUtils
   TorchMLIRTorchConversionDialect
   TorchMLIRTorchOnnxToTorch
+  TorchMLIRConversionUtils
   TorchPipeline
   TorchToCf
   TorchToTVMFFI

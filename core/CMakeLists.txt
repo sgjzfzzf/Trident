@@ -63,11 +63,17 @@ set(TORCH_MLIR_ENABLE_TOSA
     OFF
     CACHE BOOL "Disable TOSA in torch-mlir" FORCE)
 
-FetchContent_Declare(
-  torch-mlir
-  GIT_REPOSITORY https://github.com/llvm/torch-mlir.git
-  GIT_TAG 68213efa76ab3944445b0a0d6073efe7b7b3d039
-  GIT_SUBMODULES "")
+set(_TRIDENT_TORCH_MLIR_SRC "${CMAKE_SOURCE_DIR}/../third_party/torch-mlir")
+if(EXISTS "${_TRIDENT_TORCH_MLIR_SRC}/CMakeLists.txt")
+  message(STATUS "Using local torch-mlir at ${_TRIDENT_TORCH_MLIR_SRC}")
+  FetchContent_Declare(torch-mlir SOURCE_DIR "${_TRIDENT_TORCH_MLIR_SRC}")
+else()
+  FetchContent_Declare(
+    torch-mlir
+    GIT_REPOSITORY https://github.com/llvm/torch-mlir.git
+    GIT_TAG 68213efa76ab3944445b0a0d6073efe7b7b3d039
+    GIT_SUBMODULES "")
+endif()
 FetchContent_MakeAvailable(torch-mlir)
 
 unset(TORCH_MLIR_ENABLE_STABLEHLO)

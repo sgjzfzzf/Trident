@@ -6,7 +6,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h" // NOLINT(misc-include-cleaner)
-#include "trident/core/Dialect/ArithExt/IR/ArithExtDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/Torch/IR/TorchInterfaces.h"
@@ -685,7 +684,7 @@ class ConvertTorchToTVMFFIPass final
     mlir::ConversionTarget conversionTarget(getContext());
     conversionTarget
         .addLegalDialect<mlir::arith::ArithDialect, mlir::BuiltinDialect,
-                         arithext::ArithExtDialect, mlir::LLVM::LLVMDialect>();
+                         mlir::LLVM::LLVMDialect>();
     conversionTarget.addLegalOp<
         tvm_ffi::ArrayCreateOp, tvm_ffi::CallOp, tvm_ffi::ConstantBoolOp,
         tvm_ffi::ConstantDeviceOp, tvm_ffi::ConstantDTypeOp,

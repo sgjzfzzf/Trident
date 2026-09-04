@@ -4,8 +4,6 @@ add_mlir_library(
   LINK_LIBS
   PUBLIC
   OwnershipDeallocation
-  ArithExtDialect
-  ArithExtToScf
   DecomposeTVMFFI
   DLPackDialect
   DLPackToLLVM

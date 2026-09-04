@@ -10,7 +10,7 @@ import torch._guards
 from torch._guards import GuardSource
 
 from trident.core import ir
-from trident.core.dialects import arithext
+from trident.core.dialects import cf
 from trident.input import InputTable
 
 from .codes import GuardBuilder
@@ -38,7 +38,8 @@ class Guards:
         self,
         table_factory: Callable[[], InputTable],
         context: ir.Context,
-    ) -> ir.Value:
+        entry_block: ir.Block,
+    ) -> tuple[ir.Block, ir.Block]:
         codes: list[GuardBuilder] = []
         for guard in self.guards:
             # Export has already resolved captured globals/defaults into the
@@ -64,12 +65,24 @@ class Guards:
             ),
         )
 
-        i1 = ir.IntegerType.get_signless(1, context)
-        and_then = arithext.AndThenOp(i1, len(ordered))
-        for region, code in zip(and_then.regions_, ordered):
-            block = ir.Block.create_at_start(region, [])
-            with ir.InsertionPoint(block):
+        failure_block = ir.Block.create_after(entry_block)
+        success_block = ir.Block.create_after(failure_block)
+        current_block = entry_block
+        for code in ordered:
+            with ir.InsertionPoint(current_block):
                 table = table_factory()
                 result = code.build(table, context)
-                arithext.and_then_yield(result)
-        return and_then.result
+            next_block = ir.Block.create_after(current_block)
+            with ir.InsertionPoint(current_block):
+                cf.CondBranchOp(
+                    result,
+                    [],
+                    [],
+                    next_block,
+                    failure_block,
+                )
+            current_block = next_block
+
+        with ir.InsertionPoint(current_block):
+            cf.BranchOp([], success_block)
+        return success_block, failure_block

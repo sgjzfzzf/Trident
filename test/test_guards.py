@@ -69,7 +69,7 @@ class AmbiguousTestGuard(Guard):
 
 
 class GuardParserTest(TridentTestCase):
-    def test_build_creates_a_table_for_each_guard_region(self) -> None:
+    def test_build_creates_a_table_for_each_guard_block(self) -> None:
         guards = Guards(
             [
                 FakeGuard(
@@ -102,7 +102,12 @@ class GuardParserTest(TridentTestCase):
                 )
                 block = function.add_entry_block()
                 with ir.InsertionPoint(block):
-                    guards.build(table_factory, context)
+                    success_block, failure_block = guards.build(
+                        table_factory, context, block
+                    )
+                with ir.InsertionPoint(success_block):
+                    func.ReturnOp([])
+                with ir.InsertionPoint(failure_block):
                     func.ReturnOp([])
 
         self.assertEqual(table_count, 2)

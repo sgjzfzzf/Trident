@@ -7,18 +7,6 @@
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertArithExtToScf : Pass<"convert-arith-ext-to-scf", "mlir::ModuleOp"> {
-  let summary = "Lower ArithExt operations to nested SCF operations";
-  let description = [{
-    Lower arithext.and_then to nested scf.if operations.
-  }];
-  let dependentDialects = [
-    "trident::arithext::ArithExtDialect",
-    "mlir::arith::ArithDialect",
-    "mlir::scf::SCFDialect"
-  ];
-}
-
 def ConvertDLPackToLLVM : Pass<"convert-dlpack-to-llvm", "mlir::ModuleOp"> {
   let summary = "Lower DLPack tensor metadata operations to LLVM dialect";
   let description = [{Lower DLPack tensor metadata operations to LLVM dialect.}];
@@ -102,7 +90,7 @@ def TridentLoweringPipeline
   let summary = "Lower Torch dialect operations to LLVM dialect";
   let description = [{Lower Torch dialect operations to LLVM dialect.}];
   let dependentDialects = [
-    "trident::arithext::ArithExtDialect", "trident::torchext::TorchExtDialect",
+    "trident::torchext::TorchExtDialect",
     "mlir::arith::ArithDialect", "mlir::LLVM::LLVMDialect",
     "mlir::scf::SCFDialect",
     "mlir::torch::Torch::TorchDialect",

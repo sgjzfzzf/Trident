@@ -28,7 +28,6 @@ from trident.core import (
 from trident.core.dialects import (
     func,
     llvm,
-    scf,
     torchext,
     transform,
 )
@@ -738,21 +737,16 @@ class TridentGraphModule:
             )
             entry_block: ir.Block = ir.Block.create_at_start(ffi_func.body, param_types)
             with ir.InsertionPoint(entry_block):
-                guard_result: ir.Value = parse_guards(gs).build(
+                success_block, failure_block = parse_guards(gs).build(
                     lambda: input_builder.build(entry_block.arguments),
                     self.ctx,
+                    entry_block,
                 )
                 # main_* is an ordinary func.func. Only the surrounding
-                # tvm_ffi.func is exposed through the TVM FFI ABI.
-                # Materialize guard success and guard failure as one ABI
-                # value.  This keeps both scf.yield operations type-identical
-                # while preserving the dispatcher convention that a
-                # GuardMatch exception is returned from the wrapper.
-                guard_if: scf.IfOp = scf.IfOp(
-                    guard_result, [wrapper_result_type], has_else=True
-                )
-                then_block: ir.Block = guard_if.then_block
-                with ir.InsertionPoint(then_block):
+                # tvm_ffi.func is exposed through the TVM FFI ABI. Guards are
+                # already represented as CFG blocks, so ownership analysis can
+                # see their short-circuit edges directly.
+                with ir.InsertionPoint(success_block):
                     main_table = input_builder.build(entry_block.arguments)
                     input_specs = exported_program.graph_signature.input_specs
                     flat_inputs = main_table.flatten_inputs()
@@ -801,20 +795,15 @@ class TridentGraphModule:
                             call_result,
                         )
                     normal_value = tvm_ffi_d.cast(wrapper_result_type, result)
-                    scf.yield_([normal_value])
+                    tvm_ffi_d.return_([normal_value])
 
-                else_block: ir.Block | None = guard_if.else_block
-                assert else_block is not None
-                with ir.InsertionPoint(else_block):
+                with ir.InsertionPoint(failure_block):
                     exception_type = ir.Type.parse(
                         "!tvm_ffi.exception", context=self.ctx
                     )
                     exception = tvm_ffi_d.exception(exception_type, "GuardMatch")
                     error_value = tvm_ffi_d.cast(wrapper_result_type, exception)
-                    scf.yield_([error_value])
-
-                with ir.InsertionPoint.after(guard_if.operation):
-                    tvm_ffi_d.return_(guard_if.results)
+                    tvm_ffi_d.return_([error_value])
 
         self._sub_modules.append(module)
         self.executor = self.stub_compile()

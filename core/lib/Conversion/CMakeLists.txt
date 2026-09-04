@@ -1,4 +1,3 @@
-add_subdirectory(ArithExtToScf)
 add_subdirectory(DLPackToLLVM)
 add_subdirectory(FinalizeTVMFFI)
 add_subdirectory(Pipeline)

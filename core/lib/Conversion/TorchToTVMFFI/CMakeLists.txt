@@ -6,7 +6,6 @@ add_mlir_conversion_library(
   MLIRTridentTorchTypeInterfacesIncGen
   LINK_LIBS
   PUBLIC
-  ArithExtDialect
   MLIRAnalysis
   MLIRArithDialect
   MLIRIR

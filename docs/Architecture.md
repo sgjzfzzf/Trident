@@ -214,9 +214,11 @@ can combine multiple sources, arithmetic, and comparisons. Shape expressions
  types; arithmetic temporarily unwraps them to builtin MLIR numeric types and
  wraps the result again. Each parsed Code
 object produces a delayed builder carrying its deduplication key, execution
-phase, and structural depth. The collection orders the builders and invokes
-them in `arithext.and_then` regions so they short-circuit before unsafe tensor
-or container metadata access:
+phase, and structural depth. The collection orders the builders and emits them
+in sequential CFG blocks with `cf.cond_br`, so they short-circuit before unsafe
+tensor or container metadata access. A failed branch returns the guard-match
+exception directly, while the final successful block invokes the compiled
+function.
 
 | Dynamo create function | Selected Code classes |
 |---|---|

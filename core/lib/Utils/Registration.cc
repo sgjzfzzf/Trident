@@ -6,7 +6,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Utils/Registration.h"
-#include "trident/core/Conversion/ArithExtToScf/ArithExtToScf.h"
 #include "trident/core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
 #include "trident/core/Conversion/FinalizeTVMFFI/FinalizeTVMFFI.h"
 #include "trident/core/Conversion/Pipeline/Pipeline.h"
@@ -16,7 +15,6 @@
 #include "trident/core/Conversion/TorchToCf/TorchToCf.h"
 #include "trident/core/Conversion/TorchToScf/TorchToScf.h"
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
-#include "trident/core/Dialect/ArithExt/IR/ArithExtDialect.h"
 #include "trident/core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.h"
@@ -38,11 +36,11 @@
 
 void trident::conversion::registerAllDialects(mlir::DialectRegistry &registry) {
   mlir::registerAllDialects(registry);
-  registry.insert<
-      mlir::torch::Torch::TorchDialect,
-      mlir::torch::TorchConversion::TorchConversionDialect,
-      trident::arithext::ArithExtDialect, trident::dlpack::DLPackDialect,
-      trident::torchext::TorchExtDialect, trident::tvm_ffi::TVMFFIDialect>();
+  registry.insert<mlir::torch::Torch::TorchDialect,
+                  mlir::torch::TorchConversion::TorchConversionDialect,
+                  trident::dlpack::DLPackDialect,
+                  trident::torchext::TorchExtDialect,
+                  trident::tvm_ffi::TVMFFIDialect>();
   mlir::registerAllExtensions(registry);
   mlir::arith::registerConvertArithToLLVMInterface(registry);
   mlir::registerConvertFuncToLLVMInterface(registry);
@@ -55,7 +53,6 @@ void trident::conversion::registerAllDialects(mlir::DialectRegistry &registry) {
 
 void trident::conversion::registerAllPasses() {
   mlir::registerAllPasses();
-  trident::conversion::registerConvertArithExtToScfPass();
   trident::conversion::registerConvertTorchExtToGPUPass();
   trident::conversion::registerConvertTorchToCfPass();
   trident::conversion::registerConvertTorchToScfPass();

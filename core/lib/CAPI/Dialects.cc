@@ -6,13 +6,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident-c/core/Dialects.h" // NOLINT(misc-include-cleaner)
-#include "trident/core/Dialect/ArithExt/IR/ArithExtDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include <mlir/CAPI/Registration.h>
 
-MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(ArithExt, arithext,
-                                      trident::arithext::ArithExtDialect)
 MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(TorchExt, torchext,
                                       trident::torchext::TorchExtDialect)
 MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(TVMFFI, tvmffi,

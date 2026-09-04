@@ -6,7 +6,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/Pipeline/Pipeline.h" // NOLINT(misc-include-cleaner)
-#include "trident/core/Conversion/ArithExtToScf/ArithExtToScf.h"
 #include "trident/core/Conversion/DLPackToLLVM/DLPackToLLVM.h"
 #include "trident/core/Conversion/FinalizeTVMFFI/FinalizeTVMFFI.h"
 #include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h"
@@ -45,7 +44,6 @@ class TridentLoweringPipelinePass final
   void runOnOperation() final {
     mlir::PassManager pm(&getContext(), mlir::ModuleOp::getOperationName());
     pm.addPass(torch::createGeneralizeAtenOps());
-    pm.addPass(createConvertArithExtToScf());
     pm.addPass(createConvertTorchToCf());
     pm.addPass(createConvertTorchToScf());
     pm.addPass(createConvertTorchExtToGPU());

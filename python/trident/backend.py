@@ -179,24 +179,42 @@ class TridentGraphModule:
 
         signature = inspect.signature(self.fn)
 
-        def normalize(value: RuntimeValue) -> RuntimeValue:
-            if isinstance(value, torch.device):
-                return tvm_ffi.device(f"{value}")
+        def normalize(
+            value: RuntimeValue,
+            convert: Callable[[RuntimeValue], RuntimeValue],
+        ) -> RuntimeValue:
             if isinstance(value, tuple):
-                return tuple(normalize(element) for element in value)
+                return tuple(normalize(element, convert) for element in value)
             if isinstance(value, list):
-                return [normalize(element) for element in value]
+                return [normalize(element, convert) for element in value]
             if isinstance(value, dict):
-                return {key: normalize(element) for key, element in value.items()}
-            return value
+                return {
+                    key: normalize(element, convert) for key, element in value.items()
+                }
+            return convert(value)
 
         def f(*args: RuntimeValue, **kwargs: RuntimeValue) -> RuntimeValue:
             bound = signature.bind(*args, **kwargs)
             bound.apply_defaults()
             bound.arguments = {
-                name: normalize(value) for name, value in bound.arguments.items()
+                name: normalize(
+                    value,
+                    lambda element: (
+                        tvm_ffi.device(f"{element}")
+                        if isinstance(element, torch.device)
+                        else element
+                    ),
+                )
+                for name, value in bound.arguments.items()
             }
-            return wrapped(*bound.args, **bound.kwargs)
+            return normalize(
+                wrapped(*bound.args, **bound.kwargs),
+                lambda value: (
+                    torch.from_dlpack(value)
+                    if isinstance(value, tvm_ffi.Tensor)
+                    else value
+                ),
+            )
 
         return f
 

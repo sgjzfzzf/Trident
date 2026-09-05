@@ -101,7 +101,7 @@ Users typically decorate Python functions with `@trident.jit`. The call path is:
 flowchart TD
   A["user calls jitted function"] --> B["TridentGraphModule.__call__"]
   B --> C{"executor returns Exception ObjectRef?"}
-  C -- "no" --> D["return result directly"]
+  C -- "no" --> D["return normalized result"]
   C -- "yes" --> E["compile(*args, **kwargs)"]
   E --> F["torch._dynamo.export builds FX graph and guards"]
   F --> G["FxImporter imports FX into MLIR"]
@@ -115,7 +115,7 @@ flowchart TD
   N --> O["raw_lookup resolves __tvm_ffi_&lt;fn&gt;"]
   O --> P["wrap as kwargs-aware callable"]
   P --> B
-  D --> Q["return Tensor/container results"]
+  D --> Q["return Torch Tensor/container results"]
 ```
 
 ### `compile` vs `jit`
@@ -138,6 +138,15 @@ Trident exposes two entry points (`python/trident/compile.py`):
 
 Use `compile` for one-shot compilation when inputs are known and stable.
 Use `jit` when inputs may vary across calls.
+
+The executor wrapper uses one recursive container normalizer with separate
+leaf converters for the Python-to-TVM-FFI input direction and the
+TVM-FFI-to-Python result direction. Result normalization converts a directly
+returned `tvm_ffi.Tensor` to a `torch.Tensor` through DLPack. TVM FFI normally
+infers the desired tensor environment from Tensor inputs, but factory functions
+such as `arange` have no Tensor input from which to infer Torch. Explicit result
+conversion keeps the first compilation result and later cached results
+consistent without copying the tensor data.
 
 ## Specialization And Guard Strategy
 

@@ -44,6 +44,21 @@ class FrontendTest(TridentTestCase):
             self.assertEqual(result.dtype, dtype)
             torch.testing.assert_close(result, torch.zeros_like(result))
 
+    def test_factory_result_type_on_cache_hit(self) -> None:
+        @trident.jit
+        def create_arange() -> torch.Tensor:
+            return torch.arange(0, 64, 2, dtype=torch.float32, device="cuda")
+
+        expected = torch.arange(0, 64, 2, dtype=torch.float32, device="cuda")
+        first = create_arange()
+        second = create_arange()
+
+        self.assertEqual(len(create_arange._sub_modules), 1)
+        self.assertIsInstance(first, torch.Tensor)
+        self.assertIsInstance(second, torch.Tensor)
+        torch.testing.assert_close(first, expected)
+        torch.testing.assert_close(second.cpu(), expected.cpu())
+
     def test_writeback_runs_once_on_initial_compile(self) -> None:
         @trident.jit
         def increment_in_place(x: torch.Tensor) -> torch.Tensor:

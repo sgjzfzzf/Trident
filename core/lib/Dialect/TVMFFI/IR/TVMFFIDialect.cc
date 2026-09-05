@@ -34,6 +34,7 @@
 #include <mlir/IR/Value.h>
 #include <mlir/Interfaces/FunctionImplementation.h>
 #include <mlir/Support/LLVM.h>
+#include <mlir/Transforms/InliningUtils.h>
 #include <string>
 #include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
 
@@ -46,6 +47,24 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFI.cpp.inc"
 
 namespace trident::tvm_ffi {
+
+namespace {
+
+struct TVMFFIInlinerInterface final : mlir::DialectInlinerInterface {
+  using mlir::DialectInlinerInterface::DialectInlinerInterface;
+
+  bool isLegalToInline(mlir::Operation *, mlir::Region *, bool,
+                       mlir::IRMapping &) const final {
+    return true;
+  }
+
+  bool isLegalToInline(mlir::Region *, mlir::Region *, bool,
+                       mlir::IRMapping &) const final {
+    return true;
+  }
+};
+
+} // namespace
 
 mlir::LogicalResult
 UnionType::verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
@@ -80,6 +99,7 @@ bool UnionType::contains(mlir::Type type) const {
 }
 
 void TVMFFIDialect::initialize() {
+  addInterfaces<TVMFFIInlinerInterface>();
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.cpp.inc"

@@ -288,6 +288,12 @@ launch operands are still Torch values. Each operand carries a
 native Triton ABI type. The conversion uses this metadata rather than inferring
 scalar widths from `!torch.int` or `!torch.float`; its `divisibility` field
 defaults to `1`, so callers only spell it when requesting a runtime guard.
+Private imported functions are first inlined into the `tvm_ffi.func` wrapper,
+allowing failed divisibility checks to return the wrapper's guard-match
+exception before the kernel launch.
+Tensor `_base` metadata is unavailable through the TVM-FFI tensor ABI, so a
+guard involving `_base` conservatively misses rather than permitting unsafe
+specialization reuse.
 After those Torch-phase conversions, `ConvertTorchToTVMFFI` assigns ownership
 contracts to semantic TVMFFI operations and structured control flow is lowered
 to CF. The `OwnershipDeallocation` pass uses CFG liveness to retain objects on

@@ -101,40 +101,23 @@ class ConvertTVMFFIToFuncPass final
         funcOp.setSymVisibilityAttr(tvmffiFuncOp.getSymVisibilityAttr());
       }
       mlir::IRMapping mapping;
-      for (mlir::Block &sourceBlock : tvmffiFuncOp.getBody()) {
-        const llvm::SmallVector<mlir::Location> argumentLocations =
-            llvm::map_to_vector(
-                sourceBlock.getArguments(),
-                [](mlir::BlockArgument argument) -> mlir::Location {
-                  return argument.getLoc();
-                });
-        mlir::Block *targetBlock = builder.createBlock(
-            &funcOp.getBody(), funcOp.getBody().end(),
-            sourceBlock.getArgumentTypes(), argumentLocations);
-        mapping.map(&sourceBlock, targetBlock);
-        mapping.map(sourceBlock.getArguments(), targetBlock->getArguments());
-      }
-      for (mlir::Block &sourceBlock : tvmffiFuncOp.getBody()) {
-        mlir::Block *targetBlock = mapping.lookup(&sourceBlock);
-        builder.setInsertionPointToEnd(targetBlock);
-        for (mlir::Operation &sourceOperation : sourceBlock) {
-          if (tvm_ffi::ReturnOp returnOp =
-                  mlir::dyn_cast<tvm_ffi::ReturnOp>(&sourceOperation)) {
+      tvmffiFuncOp.getBody().cloneInto(&funcOp.getBody(), mapping);
+      const mlir::WalkResult returnConversionResult =
+          funcOp.walk([&](tvm_ffi::ReturnOp returnOp) -> mlir::WalkResult {
             if (returnOp.getNumOperands() != targetType.getNumResults()) {
               returnOp.emitError("return value count does not match the "
                                  "converted function signature");
-              signalPassFailure();
               return mlir::WalkResult::interrupt();
             }
-            const llvm::SmallVector<mlir::Value> values = llvm::map_to_vector(
-                returnOp.getOperands(), [&](mlir::Value value) -> mlir::Value {
-                  return mapping.lookupOrDefault(value);
-                });
-            mlir::func::ReturnOp::create(builder, returnOp.getLoc(), values);
-          } else {
-            builder.clone(sourceOperation, mapping);
-          }
-        }
+            builder.setInsertionPoint(returnOp);
+            mlir::func::ReturnOp::create(builder, returnOp.getLoc(),
+                                         returnOp.getOperands());
+            returnOp.erase();
+            return mlir::WalkResult::advance();
+          });
+      if (returnConversionResult.wasInterrupted()) {
+        signalPassFailure();
+        return mlir::WalkResult::interrupt();
       }
       if (tvmffiFuncOp.getEmitTvmFfiAbi()) {
         mlir::MLIRContext *context = builder.getContext();

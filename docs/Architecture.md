@@ -262,6 +262,8 @@ in `python/trident/patch.py` to inject this support at import time:
   Triton JIT/Autotune results, sets `"gpu.container_module"` on the top-level
   module, materializes each kernel's cubin into a `gpu.binary` op, and emits
   `torchext.TritonKernelLaunchOp` referencing the `gpu.binary` symbol.
+- Triton's binder returns a `(signature type, specialization descriptor)` pair
+  per parameter. The importer preserves `D` descriptors as divisibility guards.
 - Launch operands remain Torch scalar or tensor values. Every runtime argument
   receives a `#torchext.specialization` attribute whose `kind` TypeAttr records
   the exact native Triton ABI type; `ConvertTorchExtToGPU` uses it to distinguish
@@ -272,6 +274,15 @@ in `python/trident/patch.py` to inject this support at import time:
 
 This integrates Triton kernel launches into the MLIR workflow without modifying
 torch-mlir source.
+
+Before `ConvertTorchExtToGPU`, the standard inliner moves private imported
+`main_*` bodies into their `tvm_ffi.func` wrappers. The TVMFFI dialect permits
+this inlining so specialization failures can return the wrapper's guard-match
+exception before an incompatible kernel is launched.
+
+Tensor `_base` metadata is not exposed by the TVM-FFI tensor ABI. If Dynamo
+emits a guard that depends on `_base`, Trident forces a conservative
+specialization miss instead of treating the unverifiable condition as true.
 
 ## ATen Operator Dispatch (atengen)
 

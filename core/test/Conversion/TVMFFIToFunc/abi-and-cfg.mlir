@@ -102,6 +102,27 @@ tvm_ffi.func @switch_argument(
 
 // -----
 
+// Values defined in a textually later block must be remapped before an earlier
+// cleanup block is cloned.
+// INTERMEDIATE-LABEL: func.func @forward_block_use(
+// INTERMEDIATE: tvm_ffi.ObjectDecRef [[ARRAY:%[a-zA-Z0-9_]+]] : !tvm_ffi.array
+// INTERMEDIATE: [[ARRAY]] = "tvm_ffi.array.create"
+tvm_ffi.func @forward_block_use() {
+  cf.br ^definition
+
+^cleanup:
+  tvm_ffi.ObjectDecRef %array : !tvm_ffi.array
+  tvm_ffi.return
+
+^definition:
+  %one = tvm_ffi.constant.int 1
+  %array = "tvm_ffi.array.create"(%one)
+      : (!tvm_ffi.int) -> !tvm_ffi.array
+  cf.br ^cleanup
+}
+
+// -----
+
 // A wrapper is opt-in. Without the attribute, only the original function
 // converted to func.func is generated.
 // FUNC-LABEL: func.func @no_wrapper

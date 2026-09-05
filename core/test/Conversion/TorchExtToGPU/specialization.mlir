@@ -5,9 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s --convert-torchext-to-gpu | FileCheck %s
+// RUN: trident-core-opt %s --inline --convert-torchext-to-gpu | FileCheck %s
 
 // CHECK-LABEL: tvm_ffi.func @validate
+// CHECK-NOT:     call @launch
 // CHECK:         llvm.ptrtoint
 // CHECK:         %[[CAST:[a-zA-Z0-9_]+]] = builtin.unrealized_conversion_cast %[[FLOAT:[a-zA-Z0-9_]+]] : f32 to i64
 // CHECK:         llvm.urem
@@ -25,14 +26,22 @@
 module attributes {gpu.container_module} {
   gpu.binary @kernel [#gpu.object<#nvvm.target, "">]
 
-  tvm_ffi.func @validate(%tensor: !torch.vtensor<[4],f32>, %value: !torch.float)
-      -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception> {
+  func.func private @launch(
+      %tensor: !torch.vtensor<[4],f32>, %value: !torch.float)
+      -> !tvm_ffi.int {
     %one = arith.constant 1 : i64
     torchext.trident_kernel_launch @kernel::@entry
         blocks in (%one, %one, %one) : i64
         threads in (%one, %one, %one)
         args (%tensor : !torch.vtensor<[4],f32> {triton.specialization = #torchext.specialization<kind = !llvm.ptr, divisibility = 16>}, %value : !torch.float {triton.specialization = #torchext.specialization<kind = f32, divisibility = 16>})
     %result = tvm_ffi.constant.int 0
+    return %result : !tvm_ffi.int
+  }
+
+  tvm_ffi.func @validate(%tensor: !torch.vtensor<[4],f32>, %value: !torch.float)
+      -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception> {
+    %result = func.call @launch(%tensor, %value)
+        : (!torch.vtensor<[4],f32>, !torch.float) -> !tvm_ffi.int
     %success = tvm_ffi.cast %result : !tvm_ffi.int -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception>
     tvm_ffi.return %success : !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception>
   }

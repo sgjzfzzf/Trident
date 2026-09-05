@@ -472,7 +472,7 @@ class GuardParserTest(TridentTestCase):
             result = code.build(None, context)  # type: ignore[arg-type]
         self.assertEqual(str(result.type), "i1")
 
-    def test_expression_with_base_is_skipped_with_warning(self) -> None:
+    def test_expression_with_base_forces_miss_with_warning(self) -> None:
         cases = [
             "L['x']._base.size()[0] == 1",
             "L['x']._base.stride()[0] == 1",
@@ -488,11 +488,14 @@ class GuardParserTest(TridentTestCase):
                     ir.Location.unknown(context),
                     self.assertWarnsRegex(
                         RuntimeWarning,
-                        "Skipping unsupported Tensor\\._base guard",
+                        "Unsupported Tensor\\._base guard forces a specialization miss",
                     ),
                 ):
                     result = code.build(None, context)  # type: ignore[arg-type]
                 self.assertEqual(str(result.type), "i1")
+                self.assertEqual(
+                    str(result.owner).strip(), "%false = arith.constant false"
+                )
 
     def test_chained_comparison_builds_an_i1_value(self) -> None:
         text = "1 == 1 <= 3"

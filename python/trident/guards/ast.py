@@ -351,8 +351,7 @@ class ASTVisitor(ast.NodeVisitor):
     def _skip_base(self) -> GuardBuildFn:
         def build(_: InputTable, __: ir.Context) -> ir.Value:
             warnings.warn(
-                "Skipping unsupported Tensor._base guard; view metadata will "
-                f"not be validated: {self.text!r}",
+                f"Unsupported Tensor._base guard forces a specialization miss: {self.text!r}",
                 RuntimeWarning,
                 stacklevel=2,
             )
@@ -379,6 +378,11 @@ class ASTVisitor(ast.NodeVisitor):
         }
         native_type = native_types.get(str(value.type))
         return value if native_type is None else tvm_ffi.get(native_type, value)
+
+    @staticmethod
+    def _false(context: ir.Context) -> ir.Value:
+        i1 = ir.IntegerType.get_signless(1, context)
+        return arith.constant(i1, ir.IntegerAttr.get(i1, 0))
 
     @staticmethod
     def _true(context: ir.Context) -> ir.Value:
@@ -422,7 +426,7 @@ class ASTVisitor(ast.NodeVisitor):
             try:
                 return build_fn(tree, context)
             except _SkipBaseGuard:
-                return self._true(context)
+                return self._false(context)
 
         return build
 

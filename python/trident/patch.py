@@ -311,9 +311,11 @@ def _import_hop_triton_kernel_wrapper(
         for arg_name, triton_type in kernel.src.signature.items()
         if triton_type != "constexpr"
     ]
-    specialization_by_name = {
-        parameter.name: value
-        for parameter, value in zip(function.params, specialization, strict=True)
+    specialization_descriptor_by_name = {
+        parameter.name: descriptor
+        for parameter, (_, descriptor) in zip(
+            function.params, specialization, strict=True
+        )
     }
     integer_types = {
         "i1",
@@ -364,7 +366,7 @@ def _import_hop_triton_kernel_wrapper(
                     "triton.specialization": ir.Attribute.parse(
                         "#torchext.specialization<"
                         f"kind = {native_type}"
-                        f"{', divisibility = 16' if specialization_by_name[name] == 'D' else ''}>"
+                        f"{', divisibility = 16' if specialization_descriptor_by_name[name] == 'D' else ''}>"
                     )
                 }
             )

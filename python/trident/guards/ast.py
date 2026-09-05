@@ -25,7 +25,10 @@ TensorIndexedMetadataFn: TypeAlias = Callable[[ir.Type, ir.Value, ir.Value], ir.
 NumericOperationFn: TypeAlias = Callable[[ir.Value, ir.Value], ir.Value]
 
 
-class _SkipBaseGuard(Exception): ...
+class _SkipGuard(Exception):
+    def __init__(self, result: bool):
+        super().__init__(result)
+        self.result = result
 
 
 class ASTVisitor(ast.NodeVisitor):
@@ -355,7 +358,17 @@ class ASTVisitor(ast.NodeVisitor):
                 RuntimeWarning,
                 stacklevel=2,
             )
-            raise _SkipBaseGuard
+            raise _SkipGuard(False)
+
+        return build
+
+    def _skip_storage_offset(self) -> GuardBuildFn:
+        def build(_: InputTable, __: ir.Context) -> ir.Value:
+            # Python Tensor arguments reach the packed TVM FFI function via
+            # DLPack. That boundary exposes the logical data pointer and
+            # canonicalizes byte_offset to zero, so the original PyTorch
+            # storage_offset is neither observable nor needed for addressing.
+            raise _SkipGuard(True)
 
         return build
 
@@ -408,9 +421,10 @@ class ASTVisitor(ast.NodeVisitor):
         source = Local.from_expression(node.func.value)
         if source is None:
             return None
+        if node.func.attr == "storage_offset":
+            return self._skip_storage_offset()
         operations = {
             "ndimension": torchext.tensor_dim,
-            "storage_offset": torchext.tensor_storage_offset,
         }
         operation = operations.get(node.func.attr)
         return self._build_tensor_metadata(source, operation) if operation else None
@@ -425,8 +439,8 @@ class ASTVisitor(ast.NodeVisitor):
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
             try:
                 return build_fn(tree, context)
-            except _SkipBaseGuard:
-                return self._false(context)
+            except _SkipGuard as skip:
+                return self._true(context) if skip.result else self._false(context)
 
         return build
 

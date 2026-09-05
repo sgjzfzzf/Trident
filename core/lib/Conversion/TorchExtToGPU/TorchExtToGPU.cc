@@ -182,52 +182,94 @@ public:
         [](mlir::torch::Torch::ValueTensorType type) -> mlir::Type {
           return mlir::LLVM::LLVMPointerType::get(type.getContext());
         });
-    typeConverter.addTargetMaterialization(
-        [](mlir::OpBuilder &builder, mlir::Type resultType,
-           mlir::ValueRange inputs, mlir::Location loc) -> mlir::Value {
-          mlir::Value const input = inputs.front();
-          mlir::Type const inputType = input.getType();
-          if (mlir::isa<mlir::torch::Torch::BaseTensorType>(inputType) &&
-              mlir::isa<mlir::LLVM::LLVMPointerType>(resultType)) {
-            mlir::LLVM::LLVMPointerType const pointerType =
-                mlir::cast<mlir::LLVM::LLVMPointerType>(resultType);
-            mlir::Value const object = torchext::GetOp::create(
-                builder, loc,
-                tvm_ffi::ObjectType::get(pointerType.getContext()), input);
-            mlir::Value const tensor = tvm_ffi::AsOp::create(
-                builder, loc,
-                dlpack::DLTensorType::get(pointerType.getContext()), object);
-            return dlpack::TensorDataOp::create(builder, loc, pointerType,
-                                                tensor)
-                .getResult();
-          } else if (mlir::isa<mlir::torch::Torch::BoolType>(inputType) &&
-                     resultType.isSignlessInteger()) {
-            return torchext::GetOp::create(builder, loc, resultType, input)
-                .getResult();
-          } else if (mlir::isa<mlir::torch::Torch::IntType>(inputType) &&
-                     resultType.isSignlessInteger()) {
-            return mlir::LLVM::TruncOp::create(
-                       builder, loc, resultType,
-                       torchext::GetOp::create(
-                           builder, loc,
-                           mlir::IntegerType::get(inputType.getContext(), 64),
-                           input))
-                .getResult();
-          } else if (mlir::isa<mlir::torch::Torch::FloatType>(inputType) &&
-                     mlir::isa<mlir::FloatType>(resultType)) {
-            return mlir::LLVM::FPTruncOp::create(
-                       builder, loc, resultType,
-                       torchext::GetOp::create(
-                           builder, loc,
-                           mlir::Float64Type::get(inputType.getContext()),
-                           input))
-                .getResult();
-          } else {
-            return mlir::UnrealizedConversionCastOp::create(
-                       builder, loc, mlir::TypeRange(resultType), input)
-                .getResult(0);
-          }
-        });
+    typeConverter.addConversion([](tvm_ffi::BoolType type) -> mlir::Type {
+      return mlir::IntegerType::get(type.getContext(), 1);
+    });
+    typeConverter.addConversion([](tvm_ffi::FloatType type) -> mlir::Type {
+      return mlir::Float32Type::get(type.getContext());
+    });
+    typeConverter.addConversion([](tvm_ffi::IntType type) -> mlir::Type {
+      return mlir::IntegerType::get(type.getContext(), 32);
+    });
+    typeConverter.addConversion([](tvm_ffi::TensorType type) -> mlir::Type {
+      return mlir::LLVM::LLVMPointerType::get(type.getContext());
+    });
+    typeConverter.addTargetMaterialization([](mlir::OpBuilder &builder,
+                                              mlir::Type resultType,
+                                              mlir::ValueRange inputs,
+                                              mlir::Location loc)
+                                               -> mlir::Value {
+      mlir::Value const input = inputs.front();
+      mlir::Type const inputType = input.getType();
+      if (mlir::isa<mlir::torch::Torch::BaseTensorType>(inputType) &&
+          mlir::isa<mlir::LLVM::LLVMPointerType>(resultType)) {
+        mlir::LLVM::LLVMPointerType const pointerType =
+            mlir::cast<mlir::LLVM::LLVMPointerType>(resultType);
+        mlir::Value const object = torchext::GetOp::create(
+            builder, loc, tvm_ffi::ObjectType::get(pointerType.getContext()),
+            input);
+        mlir::Value const tensor = tvm_ffi::AsOp::create(
+            builder, loc, dlpack::DLTensorType::get(pointerType.getContext()),
+            object);
+        return dlpack::TensorDataOp::create(builder, loc, pointerType, tensor)
+            .getResult();
+      } else if (mlir::isa<tvm_ffi::TensorType>(inputType) &&
+                 mlir::isa<mlir::LLVM::LLVMPointerType>(resultType)) {
+        mlir::LLVM::LLVMPointerType const pointerType =
+            mlir::cast<mlir::LLVM::LLVMPointerType>(resultType);
+        mlir::Value const object = tvm_ffi::GetOp::create(
+            builder, loc, tvm_ffi::ObjectType::get(pointerType.getContext()),
+            input);
+        mlir::Value const tensor = tvm_ffi::AsOp::create(
+            builder, loc, dlpack::DLTensorType::get(pointerType.getContext()),
+            object);
+        return dlpack::TensorDataOp::create(builder, loc, pointerType, tensor)
+            .getResult();
+      } else if (mlir::isa<mlir::torch::Torch::BoolType>(inputType) &&
+                 resultType.isSignlessInteger()) {
+        return torchext::GetOp::create(builder, loc, resultType, input)
+            .getResult();
+      } else if (mlir::isa<mlir::torch::Torch::IntType>(inputType) &&
+                 resultType.isSignlessInteger()) {
+        return mlir::LLVM::TruncOp::create(
+                   builder, loc, resultType,
+                   torchext::GetOp::create(
+                       builder, loc,
+                       mlir::IntegerType::get(inputType.getContext(), 64),
+                       input))
+            .getResult();
+      } else if (mlir::isa<mlir::torch::Torch::FloatType>(inputType) &&
+                 mlir::isa<mlir::FloatType>(resultType)) {
+        return mlir::LLVM::FPTruncOp::create(
+                   builder, loc, resultType,
+                   torchext::GetOp::create(
+                       builder, loc,
+                       mlir::Float64Type::get(inputType.getContext()), input))
+            .getResult();
+      } else if (mlir::isa<tvm_ffi::BoolType>(inputType) &&
+                 resultType.isSignlessInteger()) {
+        return tvm_ffi::GetOp::create(builder, loc, resultType, input)
+            .getResult();
+      } else if (mlir::isa<tvm_ffi::IntType>(inputType) &&
+                 resultType.isSignlessInteger()) {
+        mlir::Value const native = tvm_ffi::GetOp::create(
+            builder, loc, mlir::IntegerType::get(inputType.getContext(), 64),
+            input);
+        return mlir::LLVM::TruncOp::create(builder, loc, resultType, native)
+            .getResult();
+      } else if (mlir::isa<tvm_ffi::FloatType>(inputType) &&
+                 mlir::isa<mlir::FloatType>(resultType)) {
+        mlir::Value const native = tvm_ffi::GetOp::create(
+            builder, loc, mlir::Float64Type::get(inputType.getContext()),
+            input);
+        return mlir::LLVM::FPTruncOp::create(builder, loc, resultType, native)
+            .getResult();
+      } else {
+        return mlir::UnrealizedConversionCastOp::create(
+                   builder, loc, mlir::TypeRange(resultType), input)
+            .getResult(0);
+      }
+    });
 
     typeConverter.addConversion(
         [](mlir::Type type) -> std::optional<mlir::Type> {

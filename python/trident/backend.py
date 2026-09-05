@@ -683,6 +683,8 @@ class TridentGraphModule:
             main_func: func.FuncOp = importer.import_program(
                 exported_program, func_name=main_func_name
             )
+            with self.ctx:
+                main_func.attributes["sym_visibility"] = ir.StringAttr.get("private")
             module: ir.Module = importer.module
 
         torch._dynamo.reset()

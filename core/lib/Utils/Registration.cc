@@ -23,6 +23,7 @@
 #include "trident/core/Dialect/Torch/IR/TorchInterfaces.h"
 #include "trident/core/Dialect/Torch/Transforms/GeneralizeAtenOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "trident/core/Dialect/TorchExt/Transforms/DecomposeSpecialization.h"
 #include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
 #include <mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h>
 #include <mlir/Conversion/GPUCommon/GPUToLLVM.h>
@@ -54,6 +55,7 @@ void trident::conversion::registerAllDialects(mlir::DialectRegistry &registry) {
 void trident::conversion::registerAllPasses() {
   mlir::registerAllPasses();
   trident::conversion::registerConvertTorchExtToGPUPass();
+  trident::torchext::registerDecomposeSpecializationPass();
   trident::conversion::registerConvertTorchToCfPass();
   trident::conversion::registerConvertTorchToScfPass();
   trident::conversion::registerConvertTorchToTVMFFIPass();

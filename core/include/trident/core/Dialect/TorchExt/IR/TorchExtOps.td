@@ -16,6 +16,7 @@ include "mlir/Interfaces/CastInterfaces.td"
 include "torch-mlir/Dialect/Torch/IR/TorchTypes.td"
 
 include "trident/core/Dialect/TorchExt/IR/TorchExtBase.td"
+include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.td"
 include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.td"
 
@@ -147,12 +148,23 @@ let arguments = (ins SymbolRefAttr:$kernel,
                    Optional<I64>:$clusterSizeY,
                    Optional<I64>:$clusterSizeZ,
                    Optional<I32>:$dynamicSharedMemorySize,
-                   Variadic<TorchExt_KernelOperandType>:$kernelOperands);
+                   Variadic<TorchExt_KernelOperandType>:$kernelOperands,
+                   OptionalAttr<DictArrayAttr>:$arg_attrs);
 let results = (outs);
 
 let extraClassDeclaration = [{
     /// Returns true if cluster size is specified.
     bool hasClusterSize();
+    static ::mlir::ParseResult parseKernelArguments(
+        ::mlir::OpAsmParser &parser,
+        ::llvm::SmallVectorImpl<::mlir::OpAsmParser::UnresolvedOperand> &operands,
+        ::llvm::SmallVectorImpl<::mlir::Type> &types,
+        ::mlir::ArrayAttr &argAttrs);
+    static void printKernelArguments(
+        ::mlir::OpAsmPrinter &printer,
+        ::mlir::Operation *op [[maybe_unused]],
+        ::mlir::OperandRange operands, ::mlir::TypeRange types,
+        ::mlir::ArrayAttr argAttrs);
   }];
 
   let assemblyFormat = [{
@@ -162,8 +174,8 @@ let extraClassDeclaration = [{
     `:` type($gridSizeX)
     `threads` `in` `(` $blockSizeX `,` $blockSizeY `,` $blockSizeZ `)`
     (`dynamic_shared_memory_size` $dynamicSharedMemorySize^)?
-    (`args` `(` $kernelOperands^ `:` type($kernelOperands) `)`)?
-    attr-dict
+    (`args` `(` custom<KernelArguments>($kernelOperands, type($kernelOperands), $arg_attrs)^ `)`)?
+    prop-dict attr-dict
 }];
 }
 

@@ -22,6 +22,7 @@
 #include <mlir/IR/BuiltinTypes.h>          // NOLINT(misc-include-cleaner)
 #include <mlir/IR/DialectImplementation.h> // NOLINT(misc-include-cleaner)
 #include <mlir/Support/LLVM.h>             // NOLINT(misc-include-cleaner)
+#include <mlir/Transforms/InliningUtils.h> // NOLINT(misc-include-cleaner)
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h> // NOLINT(misc-include-cleaner)
 
 using llvm::isa;
@@ -29,6 +30,8 @@ using llvm::isa;
 // The ODS-generated definitions below use declarations from these headers
 // directly, so include-cleaner cannot infer their dependency from this file.
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.cpp.inc"
+#define GET_ATTRDEF_CLASSES
+#include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.cpp.inc"
 #define GET_OP_CLASSES
 #include "trident/core/Dialect/TorchExt/IR/TorchExt.cpp.inc"
 #define GET_TYPEDEF_CLASSES
@@ -36,7 +39,28 @@ using llvm::isa;
 
 namespace trident::torchext {
 
+namespace {
+struct TorchExtInlinerInterface final : mlir::DialectInlinerInterface {
+  using mlir::DialectInlinerInterface::DialectInlinerInterface;
+
+  bool isLegalToInline(mlir::Operation *, mlir::Region *, bool,
+                       mlir::IRMapping &) const final {
+    return true;
+  }
+
+  bool isLegalToInline(mlir::Region *, mlir::Region *, bool,
+                       mlir::IRMapping &) const final {
+    return true;
+  }
+};
+} // namespace
+
 void TorchExtDialect::initialize() {
+  addInterfaces<TorchExtInlinerInterface>();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.cpp.inc"
+      >();
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.cpp.inc"

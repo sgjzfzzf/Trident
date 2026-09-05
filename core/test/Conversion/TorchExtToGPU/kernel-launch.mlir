@@ -53,7 +53,7 @@ module attributes { gpu.container_module } {
     torchext.trident_kernel_launch @kernel::@entry
       blocks in (%c32, %c16, %c1) : i64 threads in (%c128, %c1, %c1)
       dynamic_shared_memory_size %shmem
-      args (%tensor, %scalar : !torch.vtensor<[4],f32>, !torch.int)
+      args (%tensor : !torch.vtensor<[4],f32> {triton.specialization = #torchext.specialization<divisibility = 16>}, %scalar : !torch.int {triton.specialization = #torchext.specialization<divisibility = 16>})
     func.return
   }
 }

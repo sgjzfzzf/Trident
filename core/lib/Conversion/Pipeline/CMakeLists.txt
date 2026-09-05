@@ -3,6 +3,7 @@ add_mlir_conversion_library(
   Pipeline.cc
   DEPENDS
   MLIRConversionPassIncGen
+  MLIRTorchExtTransformsPassIncGen
   LINK_LIBS
   PUBLIC
   OwnershipDeallocation
@@ -15,8 +16,10 @@ add_mlir_conversion_library(
   MLIRFuncToLLVM
   MLIRGPUToGPURuntimeTransforms
   MLIRPass
+  MLIRTransforms
   MLIRSCFToControlFlow
   TorchExtToGPU
+  TorchExtTransforms
   TorchToCf
   TorchToScf
   TorchToTVMFFI

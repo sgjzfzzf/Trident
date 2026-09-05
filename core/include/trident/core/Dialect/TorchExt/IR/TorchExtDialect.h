@@ -10,6 +10,7 @@
 
 #include <mlir/IR/Dialect.h>
 
+#include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h.inc"

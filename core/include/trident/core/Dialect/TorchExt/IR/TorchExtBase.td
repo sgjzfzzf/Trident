@@ -15,6 +15,7 @@ def TorchExt_Dialect : Dialect {
   let cppNamespace = "::trident::torchext";
   let dependentDialects = ["::trident::tvm_ffi::TVMFFIDialect"];
   let useDefaultTypePrinterParser = 1;
+  let useDefaultAttributePrinterParser = 1;
   let summary = "TorchExt dialect";
   let description = [{
     The TorchExt dialect models the stable C API defined in

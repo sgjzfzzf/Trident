@@ -18,6 +18,7 @@
 #include "trident/core/Dialect/TVMFFI/Transforms/OwnershipDeallocation.h"
 #include "trident/core/Dialect/Torch/Transforms/GeneralizeAtenOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h" // NOLINT(misc-include-cleaner)
+#include "trident/core/Dialect/TorchExt/Transforms/DecomposeSpecialization.h"
 #include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
 #include <mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h>
 #include <mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h>
@@ -46,7 +47,6 @@ class TridentLoweringPipelinePass final
     pm.addPass(torch::createGeneralizeAtenOps());
     pm.addPass(createConvertTorchToCf());
     pm.addPass(createConvertTorchToScf());
-    pm.addPass(createConvertTorchExtToGPU());
     pm.addPass(createConvertTorchToTVMFFI());
     pm.addPass(mlir::createSCFToControlFlowPass());
     pm.addPass(tvm_ffi::createOwnershipDeallocation());
@@ -54,6 +54,10 @@ class TridentLoweringPipelinePass final
     pm.addPass(createFinalizeTVMFFI());
     pm.addPass(createConvertTVMFFIToFunc());
     pm.addPass(mlir::createSCFToControlFlowPass());
+    pm.addPass(mlir::createInlinerPass());
+    pm.addPass(torchext::createDecomposeSpecialization());
+    pm.addPass(createConvertTorchExtToGPU());
+    pm.addPass(mlir::createSymbolDCEPass());
     pm.addPass(createConvertTVMFFIToLLVM());
     pm.addPass(createConvertDLPackToLLVM());
     pm.addPass(mlir::createArithToLLVMConversionPass());

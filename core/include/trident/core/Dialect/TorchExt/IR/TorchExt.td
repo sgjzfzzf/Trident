@@ -11,6 +11,7 @@
 include "mlir/IR/OpBase.td"
 
 include "trident/core/Dialect/TorchExt/IR/TorchExtBase.td"
+include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.td"
 include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.td"
 include "trident/core/Dialect/TorchExt/IR/TorchExtOps.td"
 

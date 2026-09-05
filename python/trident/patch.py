@@ -312,6 +312,22 @@ def _import_hop_triton_kernel_wrapper(
         for arg_name, triton_type in kernel.src.signature.items()
         if triton_type != "constexpr"
     ]
+    specialization_by_name = {
+        parameter.name: value
+        for parameter, value in zip(function.params, specialization, strict=True)
+    }
+    arg_attrs: list[ir.DictAttr] = [
+        ir.DictAttr.get(
+            {
+                "triton.specialization": ir.Attribute.parse(
+                    "#torchext.specialization<divisibility = 16>"
+                )
+            }
+        )
+        if specialization_by_name[name] == "D"
+        else ir.DictAttr.get()
+        for name, _ in runtime_parameters
+    ]
     call_arguments: dict[str, ir.Value] = {}
     for name, triton_type in runtime_parameters:
         if name in kvalues:
@@ -419,7 +435,7 @@ def _import_hop_triton_kernel_wrapper(
     i32_type = ir.IntegerType.get_signless(32)
     grid_x, grid_y, grid_z = grid
 
-    torchext.trident_kernel_launch(
+    launch = torchext.trident_kernel_launch(
         ir.Attribute.parse(f"@{binary_name}::@{kernel.metadata.name}"),
         GraphNodeImporterTritonHopPatchState._import_kernel_value(self, loc, grid_x),
         GraphNodeImporterTritonHopPatchState._import_kernel_value(self, loc, grid_y),
@@ -437,6 +453,8 @@ def _import_hop_triton_kernel_wrapper(
         ),
         loc=loc,
     )
+    if any(len(arg_attr) != 0 for arg_attr in arg_attrs):
+        launch.attributes["arg_attrs"] = ir.ArrayAttr.get(arg_attrs)
 
     self._multi_result_nodes.add(node)
 

@@ -252,7 +252,13 @@ in `python/trident/patch.py` to inject this support at import time:
 - The patched import retrieves compiled kernels and runtime parameters from
   Triton JIT/Autotune results, sets `"gpu.container_module"` on the top-level
   module, materializes each kernel's cubin into a `gpu.binary` op, and emits
-  `torchext.TridentKernelLaunchOp` referencing the `gpu.binary` symbol.
+  `torchext.TritonKernelLaunchOp` referencing the `gpu.binary` symbol.
+- Launch operands remain Torch scalar or tensor values. Every runtime argument
+  receives a `#torchext.specialization` attribute whose `kind` TypeAttr records
+  the exact native Triton ABI type; `ConvertTorchExtToGPU` uses it to distinguish
+  widths such as i32/i64 and f32/f64 while materializing kernel operands. The
+  attribute's `divisibility` field defaults to `1` and is written explicitly
+  only when Triton requires a runtime divisibility guard.
 - For autotune paths, computes/selects launch grids based on `best_config`.
 
 This integrates Triton kernel launches into the MLIR workflow without modifying
@@ -302,7 +308,7 @@ launches. Its lowering is split across two passes in `trident-lowering-pipeline`
 | Op | Lowered By | Purpose |
 |---|---|---|
 | `torch_c.to_i1`, `torch_c.to_i64`, `torch_c.to_f64` | `ConvertTorchToTVMFFI` | Custom-lowers Torch scalar conversion ops to `tvm_ffi.get` for typed scalar passing to Triton kernels. |
-| `torchext.trident_kernel_launch` | `ConvertTorchExtToGPU` | Launches Triton kernels with explicit grid/block dimensions (I64); unpacks tensor/scalar args from TVMFFIAny into kernel parameters and emits `gpu.launch_func`. Uses TVMFFI stream API for CUDA stream management. |
+| `torchext.trident_kernel_launch` | `ConvertTorchExtToGPU` | Runs in the Torch phase before `ConvertTorchToTVMFFI`; accepts only Torch tensor/scalar arguments, converts each argument to the native type recorded by its specialization `kind`, and emits `gpu.launch_func`. Uses the TVMFFI stream API for CUDA stream management. |
 
 Reference counting for Torch objects (tensors, lists, tuples, optionals)
 backed by manually-managed resources is handled inside `ConvertTorchToTVMFFI`.

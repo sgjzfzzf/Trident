@@ -5,7 +5,10 @@ add_mlir_conversion_library(
   MLIRConversionPassIncGen
   LINK_LIBS
   PUBLIC
+  MLIRArithDialect
+  MLIRControlFlowDialect
   MLIRGPUDialect
   MLIRPass
   TorchExtDialect
+  TorchMLIRTorchConversionDialect
   TVMFFIDialect)

@@ -44,10 +44,9 @@ def TorchExt_GetResultType
 
 def TorchExt_KernelOperandType
     : AnyTypeOf<[
-      AnyFloat, AnyInteger, AnyTorchType, TVMFFI_BoolType, TVMFFI_FloatType,
-      TVMFFI_IntType, TVMFFI_TensorType
+      Torch_BoolType, Torch_FloatType, Torch_IntType, AnyTorchTensorType
     ],
-                "Operand accepted by a Trident kernel launch">;
+                "Torch scalar or tensor accepted by a Triton kernel launch">;
 
 def TorchExt_ConvertOp
     : TorchExt_Op<"convert", [Pure]> {
@@ -118,7 +117,7 @@ def TorchExt_TensorStrideOp
   let summary = "Read a Torch tensor dimension stride";
 }
 
-def TorchExt_TridentKernelLaunchOp
+def TorchExt_TritonKernelLaunchOp
     : TorchExt_Op<"trident_kernel_launch", [
   AttrSizedOperandSegments, AllTypesMatch<[
     "gridSizeX", "gridSizeY", "gridSizeZ", "blockSizeX", "blockSizeY",
@@ -128,8 +127,9 @@ def TorchExt_TridentKernelLaunchOp
   let summary = "Launch a Torch kernel entry point";
   let description = [{
     Models launching a Torch kernel symbol with explicit grid/block sizes.
-    Kernel operands may be Torch-MLIR tensor types or native scalar types
-    (f64, i64) produced by `torch_c.to_f64` or `torch_c.to_i64`.
+    Kernel operands use Torch-MLIR scalar and tensor types. Each operand's
+    specialization attribute records the exact native type required by the
+    compiled Triton kernel.
 
     Optionally supports cluster-level parallelism via `clusterSizeX`,
     `clusterSizeY`, and `clusterSizeZ` arguments. When present, the kernel
@@ -151,6 +151,7 @@ let arguments = (ins SymbolRefAttr:$kernel,
                    Variadic<TorchExt_KernelOperandType>:$kernelOperands,
                    OptionalAttr<DictArrayAttr>:$arg_attrs);
 let results = (outs);
+let hasVerifier = 1;
 
 let extraClassDeclaration = [{
     /// Returns true if cluster size is specified.

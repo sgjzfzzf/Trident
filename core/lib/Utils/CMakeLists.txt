@@ -2,7 +2,6 @@ add_mlir_library(
   TridentUtilsRegistration
   Registration.cc
   DEPENDS
-  MLIRTorchExtTransformsPassIncGen
   LINK_LIBS
   PUBLIC
   OwnershipDeallocation
@@ -17,7 +16,6 @@ add_mlir_library(
   MLIRSCFDialect
   MLIRToLLVMIRTranslationRegistration
   TorchExtToGPU
-  TorchExtTransforms
   TorchMLIRCAPI
   TorchMLIRTorchConversionDialect
   TorchMLIRTorchOnnxToTorch

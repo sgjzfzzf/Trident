@@ -18,7 +18,6 @@ from trident.core import ir
 from trident.core.dialects import (
     arith,
     gpu,
-    llvm,
     torchext,
 )
 from trident.core.dialects import (
@@ -316,81 +315,39 @@ def _import_hop_triton_kernel_wrapper(
         parameter.name: value
         for parameter, value in zip(function.params, specialization, strict=True)
     }
-    arg_attrs: list[ir.DictAttr] = [
-        ir.DictAttr.get(
-            {
-                "triton.specialization": ir.Attribute.parse(
-                    "#torchext.specialization<divisibility = 16>"
-                )
-            }
-        )
-        if specialization_by_name[name] == "D"
-        else ir.DictAttr.get()
-        for name, _ in runtime_parameters
-    ]
-    call_arguments: dict[str, ir.Value] = {}
+    integer_types = {
+        "i1",
+        "u1",
+        "i8",
+        "u8",
+        "i16",
+        "u16",
+        "i32",
+        "u32",
+        "i64",
+        "u64",
+    }
+    arg_attrs: list[ir.DictAttr] = []
+    operands: list[ir.Value] = []
     for name, triton_type in runtime_parameters:
+        if triton_type.startswith("*"):
+            native_type = "!llvm.ptr"
+        elif triton_type in integer_types:
+            native_type = f"i{ast.literal_eval(triton_type[1:])}"
+        elif triton_type in {"fp32", "fp64"}:
+            native_type = f"f{triton_type[2:]}"
+        else:
+            raise RuntimeError(f"unsupported Triton argument type: {triton_type}")
+
         if name in kvalues:
-            call_arguments[name] = kvalues[name]
+            operand = kvalues[name]
         elif name in constant_args:
             value = constant_args[name]
             with loc:
-                if triton_type.startswith("*") and value is None:
-                    call_arguments[name] = self._make_null_ptr()
-                elif triton_type in (
-                    "i1",
-                    "u1",
-                    "i8",
-                    "u8",
-                    "i16",
-                    "u16",
-                    "i32",
-                    "u32",
-                    "i64",
-                    "u64",
-                ):
-                    const_val = torch_d.constant_int(value)
-                    target = ir.IntegerType.get_signless(
-                        ast.literal_eval(triton_type[1:])
-                    )
-                    [native] = ir.Operation.create(
-                        "torch_c.to_i64",
-                        results=[ir.IntegerType.get_signless(64)],
-                        operands=[const_val],
-                        loc=loc,
-                    ).results
-                    call_arguments[name] = (
-                        native
-                        if target.width == 64
-                        else llvm.trunc(
-                            res=target,
-                            arg=native,
-                            overflow_flags=ir.Attribute.parse("#llvm.overflow<none>"),
-                        )
-                    )
-                elif triton_type == "fp32":
-                    const_val = torch_d.constant_float(value)
-                    target = ir.F32Type.get()
-                    [native] = ir.Operation.create(
-                        "torch_c.to_f64",
-                        results=[ir.F64Type.get()],
-                        operands=[const_val],
-                        loc=loc,
-                    ).results
-                    call_arguments[name] = llvm.fptrunc(
-                        res=target,
-                        arg=native,
-                    )
-                elif triton_type == "fp64":
-                    const_val = torch_d.constant_float(value)
-                    target = ir.F64Type.get()
-                    [native] = ir.Operation.create(
-                        "torch_c.to_f64",
-                        results=[target],
-                        operands=[const_val],
-                        loc=loc,
-                    ).results
-                    call_arguments[name] = native
+                if triton_type in integer_types:
+                    operand = torch_d.constant_int(value)
+                elif triton_type in {"fp32", "fp64"}:
+                    operand = torch_d.constant_float(value)
                 else:
                     raise RuntimeError(
                         f"unsupported constant argument type: {triton_type}"
@@ -399,7 +356,19 @@ def _import_hop_triton_kernel_wrapper(
             raise RuntimeError(
                 f"missing runtime argument for {name} of type {triton_type}"
             )
-    operands: list[ir.Value] = [call_arguments[name] for name, _ in runtime_parameters]
+
+        operands.append(operand)
+        arg_attrs.append(
+            ir.DictAttr.get(
+                {
+                    "triton.specialization": ir.Attribute.parse(
+                        "#torchext.specialization<"
+                        f"kind = {native_type}"
+                        f"{', divisibility = 16' if specialization_by_name[name] == 'D' else ''}>"
+                    )
+                }
+            )
+        )
     grids: list[tuple[int, int, int]] = node.kwargs["grid"]
     if len(configs) > 0 and best_config is not None:
         i: Final[int] = configs.index(best_config)
@@ -430,7 +399,7 @@ def _import_hop_triton_kernel_wrapper(
                 ir.ArrayAttr.get([gpu_object]),
                 offloading_handler=ir.Attribute.parse("#gpu.select_object"),
                 loc=loc,
-            ).attributes["sym_visibility"] = ir.StringAttr.get("private")
+            )
     i64_type = ir.IntegerType.get_signless(64)
     i32_type = ir.IntegerType.get_signless(32)
     grid_x, grid_y, grid_z = grid
@@ -453,14 +422,13 @@ def _import_hop_triton_kernel_wrapper(
         ),
         loc=loc,
     )
-    if any(len(arg_attr) != 0 for arg_attr in arg_attrs):
-        launch.attributes["arg_attrs"] = ir.ArrayAttr.get(arg_attrs)
+    launch.attributes["arg_attrs"] = ir.ArrayAttr.get(arg_attrs)
 
     self._multi_result_nodes.add(node)
 
-    for output_name in output_names:
-        if output_name in call_arguments:
-            self.bind_node_value(node, call_arguments[output_name], output_name)
+    for (name, _), operand in zip(runtime_parameters, operands, strict=True):
+        if name in output_names:
+            self.bind_node_value(node, operand, name)
 
 
 def _import_hop_triton_kernel_wrapper_functional(

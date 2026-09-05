@@ -209,7 +209,7 @@ module {
   // CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "test.make_tensor" : !tvm_ffi.function
   // CHECK-NEXT: %[[VALUE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[HANDLE]]() : () -> !tvm_ffi.tensor
   // CHECK-NOT: tvm_ffi.ObjectDecRef %[[HANDLE]]
-  // CHECK: tvm_ffi.ObjectIncRef %[[VALUE]] : !tvm_ffi.tensor
+  // CHECK-NEXT: tvm_ffi.ObjectIncRef %[[VALUE]] : !tvm_ffi.tensor
   // CHECK-NEXT: tvm_ffi.ObjectDecRef %[[VALUE]] : !tvm_ffi.tensor
   // CHECK-NEXT: return %[[VALUE]] : !tvm_ffi.tensor
   func.func @consumed_function_handle() -> !tvm_ffi.tensor {

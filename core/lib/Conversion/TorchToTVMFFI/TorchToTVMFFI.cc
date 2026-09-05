@@ -9,6 +9,7 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/Torch/IR/TorchInterfaces.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 #include <cstdint>
@@ -37,8 +38,10 @@
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 #include <optional>
 #include <string>
+#include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
+#include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h>
 #include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.h>
 #include <utility>
 
@@ -732,25 +735,15 @@ class ConvertTorchToTVMFFIPass final
         tvm_ffi::GetOp>(
         [&](mlir::Operation *op) -> bool { return typeConverter.isLegal(op); });
     conversionTarget.addLegalOp<mlir::ModuleOp, tvm_ffi::ReturnOp>();
-    conversionTarget.addDynamicallyLegalOp<mlir::torch::Torch::OperatorOp>(
-        [](mlir::torch::Torch::OperatorOp op) -> bool {
-          return !op.getName().starts_with("torch.aten.");
-        });
-    conversionTarget.addIllegalOp<mlir::torch::Torch::CopyToValueTensorOp,
-                                  mlir::torch::Torch::OverwriteTensorContentsOp,
-                                  mlir::torch::Torch::ValueTensorLiteralOp>();
-    conversionTarget.addIllegalOp<mlir::torch::TorchConversion::FromF64Op,
-                                  mlir::torch::TorchConversion::FromI1Op,
-                                  mlir::torch::TorchConversion::FromI64Op>();
-    conversionTarget.addIllegalOp<
-        torchext::GetOp, torchext::TensorDeviceOp, torchext::TensorDimOp,
-        torchext::TensorDTypeOp, torchext::TensorSizeOp,
-        torchext::TensorStorageOffsetOp, torchext::TensorStrideOp>();
-    conversionTarget.addDynamicallyLegalOp<torchext::TridentKernelLaunchOp>(
-        [&](mlir::Operation *op) -> bool { return typeConverter.isLegal(op); });
-    conversionPatterns.add<
-        ConvertTorchTensorGet, MaterializeTorchExtOperands<torchext::GetOp>,
-        MaterializeTorchExtOperands<torchext::TridentKernelLaunchOp>>(
+    // Torch, TorchConversion, and TorchExt operations must all be lowered
+    // before this conversion completes. In particular, a Triton kernel launch
+    // must have been converted to gpu.launch_func by ConvertTorchExtToGPU.
+    conversionTarget
+        .addIllegalDialect<mlir::torch::Torch::TorchDialect,
+                           mlir::torch::TorchConversion::TorchConversionDialect,
+                           torchext::TorchExtDialect>();
+    conversionPatterns.add<ConvertTorchTensorGet,
+                           MaterializeTorchExtOperands<torchext::GetOp>>(
         typeConverter, &getContext());
     if (mlir::failed(mlir::applyPartialConversion(
             getOperation(), conversionTarget, std::move(conversionPatterns)))) {

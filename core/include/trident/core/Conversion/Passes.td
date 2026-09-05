@@ -20,8 +20,11 @@ def ConvertTorchExtToGPU : Pass<"convert-torchext-to-gpu", "mlir::ModuleOp"> {
   let summary = "Lower Torch Ext dialect operations to GPU dialect ";
   let description = [{Lower TorchExt dialect operations to GPU dialect.}];
   let dependentDialects = [
-    "trident::dlpack::DLPackDialect", "mlir::gpu::GPUDialect",
-    "mlir::LLVM::LLVMDialect"
+    "mlir::arith::ArithDialect", "mlir::cf::ControlFlowDialect",
+    "trident::dlpack::DLPackDialect", "mlir::func::FuncDialect",
+    "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect",
+    "mlir::torch::TorchConversion::TorchConversionDialect",
+    "trident::torchext::TorchExtDialect", "trident::tvm_ffi::TVMFFIDialect"
   ];
 }
 

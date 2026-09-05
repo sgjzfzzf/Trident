@@ -36,16 +36,6 @@ func.func @clone_contiguous(%arg0: !torch.vtensor<[32,2],f32>)
   return %0 : !torch.vtensor<[32,2],f32>
 }
 
-// Non-ATen opaque operators are already legal for this conversion and must
-// remain untouched.  ConvertAtenCall only handles generalized ATen names.
-// CHECK-LABEL: func.func @opaque_operator() {
-// CHECK-NEXT: torch.operator "torch.foo"() : () -> ()
-// CHECK-NEXT: return
-func.func @opaque_operator() {
-  torch.operator "torch.foo"() : () -> ()
-  return
-}
-
 // Multiple ATen results are represented by an FFI array and extracted in
 // result order.  This is the semantic counterpart of the single-result ABI
 // packing performed by the later TVMFFI transforms and TVMFFIToLLVM passes.

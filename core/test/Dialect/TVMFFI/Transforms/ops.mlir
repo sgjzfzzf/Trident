@@ -30,7 +30,8 @@ tvm_ffi.func @get_item(%arg0: !tvm_ffi.array, %arg1: !tvm_ffi.int) -> !tvm_ffi.i
   tvm_ffi.return %item : !tvm_ffi.int
 }
 
-// The ownership pass retains object-valued return operands for the caller.
+// Object-valued return operands are retained for the caller before local
+// ownership credits are released.
 // OWNERSHIP-LABEL: tvm_ffi.func @return_tensor(
 // OWNERSHIP-SAME: [[RETURN_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
 // OWNERSHIP-NEXT: tvm_ffi.ObjectIncRef [[RETURN_ARG]] : !tvm_ffi.tensor

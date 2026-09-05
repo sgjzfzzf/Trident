@@ -281,13 +281,25 @@ kernel launches. Its lowering is split across two passes:
 | `ConvertTorchExtToGPU` | Lowers `torchext.trident_kernel_launch` (Triton kernel → `gpu.launch_func` with I64 grid/block dimensions, uses TVMFFI stream API); scalar `torch_c.to_i1/to_i64/to_f64` lowering is handled by `ConvertTorchToTVMFFI` and produces `tvm_ffi.get` |
 | `ConvertTorchExtToLLVM` | Lowers any remaining TorchExt ops to LLVM |
 
-After `ConvertTorchToTVMFFI` assigns ownership contracts to semantic TVMFFI
-operations, structured control flow is lowered to CF. The
-`OwnershipDeallocation` pass uses CFG liveness to retain objects on the edge
-where they remain live and to release each source block's remaining ownership
-credits. It supports merges and backedges; multi-successor branches receive
-edge-specific trampoline blocks. The legacy `RAAI` / `EliminateRefCounter`
-passes have been removed.
+Specialization decomposition is performed by `ConvertTorchExtToGPU` before it
+rewrites launches, and both operations run before `ConvertTorchToTVMFFI`, while
+launch operands are still Torch values. Each operand carries a
+`#torchext.specialization` attribute with a `kind` TypeAttr that names its exact
+native Triton ABI type. The conversion uses this metadata rather than inferring
+scalar widths from `!torch.int` or `!torch.float`; its `divisibility` field
+defaults to `1`, so callers only spell it when requesting a runtime guard.
+After those Torch-phase conversions, `ConvertTorchToTVMFFI` assigns ownership
+contracts to semantic TVMFFI operations and structured control flow is lowered
+to CF. The `OwnershipDeallocation` pass uses CFG liveness to retain objects on
+the edge where they remain live and to release each source block's remaining
+ownership credits. It supports merges and backedges; multi-successor branches
+receive edge-specific trampoline blocks. The legacy `RAAI` /
+`EliminateRefCounter` passes have been removed.
+
+`ConvertTorchExtToGPU` lowers Triton kernel launches before ownership
+deallocation. `TritonKernelLaunchOp` accepts only Torch scalar and tensor
+operands; native and TVMFFI operand types are not accepted. The pass converts
+those operands directly to the `kind` recorded for each GPU kernel parameter.
 
 ### Adding A New `torchext` Op
 
@@ -311,11 +323,13 @@ Architecture.md FX Import And Triton Kernel Handling section). The patched impor
 1. Sets `"gpu.container_module"` on the top-level MLIR module.
 2. Materializes each kernel's cubin as a `gpu.binary` op.
 3. Computes launch grid/block (as I64) from autotune `best_config` or kernel metadata.
-4. Emits `torchext.trident_kernel_launch` ops referencing the `gpu.binary` symbol.
+4. Emits `torchext.trident_kernel_launch` ops referencing the `gpu.binary`
+   symbol, retaining Torch operands and attaching each Triton signature type as
+   the specialization attribute's `kind` TypeAttr.
 
 The CUDA stream for kernel launches is managed through the TVMFFI stream API —
 the backend no longer handles stream creation/destruction manually in Python.
-3. Emits `torchext.TridentKernelLaunchOp` with kernel parameters and
+3. Emits `torchext.TritonKernelLaunchOp` with kernel parameters and
    launch grid configuration.
 
 The kernel launch is then lowered through

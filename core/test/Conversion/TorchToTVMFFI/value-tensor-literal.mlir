@@ -11,8 +11,6 @@
 // runtime allocation is deliberately deferred to TVMFFI-to-LLVM.
 // CHECK-LABEL: func.func @literal_standalone() -> !tvm_ffi.tensor {
 // CHECK: %[[TENSOR:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.literal dense<1.250000e+00> : tensor<2x3xf32> : !tvm_ffi.tensor
-// CHECK-NEXT: tvm_ffi.ObjectIncRef %[[TENSOR]] : !tvm_ffi.tensor
-// CHECK-NEXT: tvm_ffi.ObjectDecRef %[[TENSOR]] : !tvm_ffi.tensor
 // CHECK: return %[[TENSOR]] : !tvm_ffi.tensor
 func.func @literal_standalone() -> !torch.vtensor<[2,3],f32> {
   %literal = torch.vtensor.literal(

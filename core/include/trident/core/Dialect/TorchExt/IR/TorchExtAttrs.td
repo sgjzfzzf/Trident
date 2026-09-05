@@ -16,9 +16,12 @@ def TorchExt_SpecializationAttr
   let mnemonic = "specialization";
   let summary = "Triton kernel specialization assumption";
   let parameters = (ins
-    "int64_t":$divisibility
+    "::mlir::TypeAttr":$kind,
+    DefaultValuedParameter<"uint64_t", "1">:$divisibility
   );
-  let assemblyFormat = "`<` struct(params) `>`";
+  let assemblyFormat = [{
+    `<` `kind` `=` $kind (`,` `divisibility` `=` $divisibility^)? `>`
+  }];
 }
 
 #endif // TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTATTRS_TD_

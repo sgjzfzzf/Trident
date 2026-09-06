@@ -38,6 +38,17 @@ func.func @int_bool(%arg0: !torch.bool) -> !torch.int {
   return %result : !torch.int
 }
 
+// CHECK-LABEL: func.func @mul_int
+// CHECK: %[[MUL_A:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg0
+// CHECK: %[[MUL_B:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg1
+// CHECK: %[[MUL_RESULT:[a-zA-Z0-9_]+]] = arith.muli %[[MUL_A]], %[[MUL_B]] : i64
+// CHECK: %[[MUL_INT:[a-zA-Z0-9_]+]] = torch_c.from_i64 %[[MUL_RESULT]]
+func.func @mul_int(%arg0: !torch.int, %arg1: !torch.int) -> !torch.int {
+  %result = torch.aten.mul.int %arg0, %arg1
+      : !torch.int, !torch.int -> !torch.int
+  return %result : !torch.int
+}
+
 // CHECK-LABEL: func.func @size_int
 // CHECK: %[[DIM_NATIVE:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg1
 // CHECK: %[[SIZE:[a-zA-Z0-9_]+]] = torchext.tensor.size %arg0[%[[DIM_NATIVE]]] : !torch.vtensor<[?,?],f32>

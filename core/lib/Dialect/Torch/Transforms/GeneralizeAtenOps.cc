@@ -65,8 +65,8 @@ public:
     mlir::ConversionTarget target(getContext());
     target.addIllegalOp<
         mlir::torch::Torch::AtenAddIntOp, mlir::torch::Torch::AtenFloordivIntOp,
-        mlir::torch::Torch::AtenIntBoolOp, mlir::torch::Torch::AtenSizeIntOp,
-        mlir::torch::Torch::AtenSubIntOp>();
+        mlir::torch::Torch::AtenIntBoolOp, mlir::torch::Torch::AtenMulIntOp,
+        mlir::torch::Torch::AtenSizeIntOp, mlir::torch::Torch::AtenSubIntOp>();
     target.addLegalDialect<
         mlir::BuiltinDialect, mlir::func::FuncDialect,
         mlir::arith::ArithDialect, mlir::torch::Torch::TorchDialect,

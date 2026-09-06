@@ -116,7 +116,6 @@ class ASTVisitor(ast.NodeVisitor):
     ) -> GuardBuildFn:
         if isinstance(operation, ast.Eq):
             return lambda tree, context: tvm_ffi.eq(
-                ir.IntegerType.get_signless(1, context),
                 self._value(lhs, tree, context),
                 self._value(rhs, tree, context),
             )
@@ -145,8 +144,7 @@ class ASTVisitor(ast.NodeVisitor):
             if not all(
                 value.type.typeid in tensor_type_ids for value in (lhs_value, rhs_value)
             ):
-                i1 = ir.IntegerType.get_signless(1, context)
-                return tvm_ffi.eq(i1, lhs_value, rhs_value)
+                return tvm_ffi.eq(lhs_value, rhs_value)
             warnings.warn(
                 "Skipping unsupported Tensor identity guard; object identity "
                 f"will not be validated: {self.text!r}",
@@ -189,8 +187,7 @@ class ASTVisitor(ast.NodeVisitor):
         def length(tree: InputTable, context: ir.Context) -> ir.Value:
             value = source.resolve(tree)
             assert value is not None, f"guard source cannot be resolved: {self.text!r}"
-            i64 = ir.IntegerType.get_signless(64, context)
-            return tvm_ffi.array_length(i64, value)
+            return tvm_ffi.array_length(value)
 
         constant = self._constant_tvm_ffi(0)
         assert constant is not None
@@ -220,7 +217,7 @@ class ASTVisitor(ast.NodeVisitor):
             assert tensor is not None, f"guard source cannot be resolved: {self.text!r}"
             i64 = ir.IntegerType.get_signless(64, context)
             dimension = arith.constant(i64, ir.IntegerAttr.get(i64, index))
-            return ASTVisitor._to_ffi(operation(i64, tensor, dimension), context)
+            return ASTVisitor._to_ffi(operation(tensor, dimension), context)
 
         return build
 
@@ -232,8 +229,7 @@ class ASTVisitor(ast.NodeVisitor):
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
             tensor = source.resolve(tree)
             assert tensor is not None, f"guard source cannot be resolved: {self.text!r}"
-            i64 = ir.IntegerType.get_signless(64, context)
-            return ASTVisitor._to_ffi(operation(i64, tensor), context)
+            return ASTVisitor._to_ffi(operation(tensor), context)
 
         return build
 
@@ -259,18 +255,14 @@ class ASTVisitor(ast.NodeVisitor):
     @staticmethod
     def _constant_tvm_ffi(value: object) -> GuardBuildFn | None:
         if value is None:
-            return lambda _, context: tvm_ffi.constant_none(
-                ir.Type.parse("!tvm_ffi.none", context=context)
-            )
+            return lambda _, context: tvm_ffi.constant_none()
         if isinstance(value, torch.device):
             return lambda _, context: tvm_ffi.constant_device(
-                ir.Type.parse("!tvm_ffi.device", context=context),
                 ir.StringAttr.get(f"{value}", context=context),
             )
         if isinstance(value, torch.dtype):
             dtype = tvm_ffi_runtime.convert(value)
             return lambda _, context: tvm_ffi.constant_dtype(
-                ir.Type.parse("!tvm_ffi.dtype", context=context),
                 ir.ArrayAttr.get(
                     [
                         ir.IntegerAttr.get(
@@ -278,26 +270,22 @@ class ASTVisitor(ast.NodeVisitor):
                         )
                         for component in (dtype.type_code, dtype.bits, dtype.lanes)
                     ]
-                ),
+                )
             )
         if isinstance(value, bool):
             return lambda _, context: tvm_ffi.constant_bool(
-                ir.Type.parse("!tvm_ffi.bool", context=context),
                 ir.BoolAttr.get(value, context=context),
             )
         if isinstance(value, int):
             return lambda _, context: tvm_ffi.constant_int(
-                ir.Type.parse("!tvm_ffi.int", context=context),
                 ir.IntegerAttr.get(ir.IntegerType.get_signless(64, context), value),
             )
         if isinstance(value, float):
             return lambda _, context: tvm_ffi.constant_float(
-                ir.Type.parse("!tvm_ffi.float", context=context),
                 ir.FloatAttr.get(ir.F64Type.get(context), value),
             )
         if isinstance(value, str):
             return lambda _, context: tvm_ffi.constant_raw_str(
-                ir.Type.parse("!tvm_ffi.raw_str", context=context),
                 ir.StringAttr.get(value, context),
             )
         return None
@@ -380,7 +368,7 @@ class ASTVisitor(ast.NodeVisitor):
             "f64": ir.Type.parse("!tvm_ffi.float", context=context),
         }
         ffi_type = ffi_types.get(str(value.type))
-        return value if ffi_type is None else tvm_ffi.to(ffi_type, value)
+        return value if ffi_type is None else tvm_ffi.to(value)
 
     @staticmethod
     def _to_native(value: ir.Value, context: ir.Context) -> ir.Value:
@@ -390,7 +378,7 @@ class ASTVisitor(ast.NodeVisitor):
             "!tvm_ffi.int": ir.IntegerType.get_signless(64, context),
         }
         native_type = native_types.get(str(value.type))
-        return value if native_type is None else tvm_ffi.get(native_type, value)
+        return value if native_type is None else tvm_ffi.get(value)
 
     @staticmethod
     def _false(context: ir.Context) -> ir.Value:

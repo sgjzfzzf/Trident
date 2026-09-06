@@ -42,6 +42,16 @@ Pattern AtenIntBool with benefit(1) {
   };
 }
 
+Pattern AtenMulInt with benefit(1) {
+  let root = op<torch.aten.mul.int>(a: Value, b: Value) -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
+    let nativeResult = op<arith.muli>(nativeA, nativeB) -> (type<"i64">);
+    replace root with op<torch_c.from_i64>(nativeResult) -> (types);
+  };
+}
+
 Pattern AtenSizeInt with benefit(1) {
   let root = op<torch.aten.size.int>(self: Value, dim: Value)
       -> (types: TypeRange);

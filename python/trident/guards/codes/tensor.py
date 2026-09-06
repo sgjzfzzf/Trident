@@ -70,12 +70,7 @@ class TensorDTypeCode(GuardCode):
         tensor = source.resolve(tree)
         if tensor is None:
             return super().build(tree, context)
-        result_types = (
-            ir.IntegerType.get_signless(8, context),
-            ir.IntegerType.get_signless(8, context),
-            ir.IntegerType.get_signless(16, context),
-        )
-        metadata = torchext.tensor_dtype(*result_types, tensor)
+        metadata = torchext.tensor_dtype(tensor)
         i1 = ir.IntegerType.get_signless(1, context)
         return reduce(
             arith.andi,
@@ -84,14 +79,13 @@ class TensorDTypeCode(GuardCode):
                     arith.CmpIPredicate.eq,
                     actual,
                     arith.constant(
-                        expected_type,
-                        ir.IntegerAttr.get(expected_type, expected_value),
+                        actual.type,
+                        ir.IntegerAttr.get(actual.type, expected_value),
                     ),
                 )
-                for actual, expected_value, expected_type in zip(
+                for actual, expected_value in zip(
                     metadata,
                     (self.dtype.type_code, self.dtype.bits, self.dtype.lanes),
-                    result_types,
                 )
             ],
             arith.constant(i1, ir.IntegerAttr.get(i1, 1)),
@@ -149,7 +143,7 @@ class TensorDeviceCode(GuardCode):
         if tensor is None:
             return super().build(tree, context)
         i32 = ir.IntegerType.get_signless(32, context)
-        metadata = torchext.tensor_device(i32, i32, tensor)
+        metadata = torchext.tensor_device(tensor)
         i1 = ir.IntegerType.get_signless(1, context)
         return reduce(
             arith.andi,
@@ -224,10 +218,7 @@ class TensorRankCode(GuardCode):
         tensor = source.resolve(tree)
         if tensor is None:
             return super().build(tree, context)
-        actual = torchext.tensor_dim(
-            i64,
-            tensor,
-        )
+        actual = torchext.tensor_dim(tensor)
         return arith.cmpi(
             arith.CmpIPredicate.eq,
             actual,

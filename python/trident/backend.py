@@ -788,7 +788,7 @@ class TridentGraphModule:
                         f"got {len(main_inputs)}, expected {len(flat_types)}"
                     )
                     main_args: list[ir.Value] = [
-                        torchext.convert(flat_type, main_arg)
+                        torchext.convert(main_arg)
                         if main_arg.type == dtype_type
                         else main_arg
                         for flat_type, main_arg in zip(flat_types, main_inputs)
@@ -818,10 +818,7 @@ class TridentGraphModule:
                     tvm_ffi_d.return_([normal_value])
 
                 with ir.InsertionPoint(failure_block):
-                    exception_type = ir.Type.parse(
-                        "!tvm_ffi.exception", context=self.ctx
-                    )
-                    exception = tvm_ffi_d.exception(exception_type, "GuardMatch")
+                    exception = tvm_ffi_d.exception("GuardMatch")
                     error_value = tvm_ffi_d.cast(wrapper_result_type, exception)
                     tvm_ffi_d.return_([error_value])
 

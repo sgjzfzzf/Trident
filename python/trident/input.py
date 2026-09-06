@@ -116,7 +116,6 @@ class _InputNonLeafNode(_InputNode):
                 child.type,
                 parent,
                 tvm_ffi_d.constant_int(
-                    ir.Type.parse("!tvm_ffi.int", context=parent.context),
                     ir.IntegerAttr.get(
                         ir.IntegerType.get_signless(64, parent.context), index
                     ),

@@ -121,6 +121,21 @@ class GraphNodeImporterTritonHopPatchState:
     ) -> ir.Value | None:
         i64_type = ir.IntegerType.get_signless(64)
         if isinstance(value, torch.fx.Node):
+            if value.target is torch.sym_sum:
+                arguments = value.args
+                if len(arguments) == 1 and all(
+                    isinstance(argument, (list, tuple)) for argument in arguments
+                ):
+                    [arguments] = arguments
+                result = arith.constant(i64_type, 0, loc=loc)
+                for argument in arguments:
+                    operand = GraphNodeImporterTritonHopPatchState._import_kernel_value(
+                        importer, loc, argument
+                    )
+                    assert operand is not None
+                    result = arith.addi(result, operand, loc=loc)
+                return result
+
             arithmetic_ops = {
                 operator.add: arith.addi,
                 operator.sub: arith.subi,
@@ -135,12 +150,12 @@ class GraphNodeImporterTritonHopPatchState:
                 [tensor, index] = value.args
                 tensor = importer._import_argument(loc, tensor)
                 index = arith.constant(i64_type, index, loc=loc)
-                return torchext.tensor_size(i64_type, tensor, index, loc=loc)
+                return torchext.tensor_size(tensor, index, loc=loc)
             if value.target == torch.ops.aten.sym_stride.int:
                 [tensor, index] = value.args
                 tensor = importer._import_argument(loc, tensor)
                 index = arith.constant(i64_type, index, loc=loc)
-                return torchext.tensor_stride(i64_type, tensor, index, loc=loc)
+                return torchext.tensor_stride(tensor, index, loc=loc)
             if value.target == operator.pow:
                 [base, exponent] = value.args
                 base = GraphNodeImporterTritonHopPatchState._import_kernel_value(
@@ -225,6 +240,7 @@ class _GraphNodeImporterPatchManager:
                 *state.original_symbolic_torch_ops,
                 torch.sym_max,
                 torch.sym_min,
+                torch.sym_sum,
             }
             self.active_state = state
             self.refcount = 1
@@ -276,13 +292,39 @@ def _import_symbolic_torch_op(
     node: torch.fx.Node,
     target: object,
 ) -> None:
-    if target in (torch.sym_max, torch.sym_min):
+    if target is operator.pow and isinstance(node.meta.get("val"), torch.SymInt):
+        base, exponent = node.args
+        assert isinstance(exponent, int) and exponent >= 0
+        base = self._import_argument(loc, base)
+        result = torch_d.constant_int(1, loc=loc)
+        for _ in range(exponent):
+            result = torch_d.aten_mul_int(
+                result,
+                base,
+                loc=loc,
+            )
+        self.bind_node_value(node, result)
+    elif target is torch.sym_sum:
+        arguments = node.args
+        if len(arguments) == 1 and all(
+            isinstance(argument, (list, tuple)) for argument in arguments
+        ):
+            [arguments] = arguments
+        operands = [self._import_argument(loc, argument) for argument in arguments]
+        result = torch_d.constant_int(0, loc=loc)
+        for operand in operands:
+            result = torch_d.aten_add_int(
+                result,
+                operand,
+                loc=loc,
+            )
+        self.bind_node_value(node, result)
+    elif target in (torch.sym_max, torch.sym_min):
         lhs, rhs = (self._import_argument(loc, argument) for argument in node.args)
-        result_type = self._cc.node_val_to_type(node)
         operation = (
             torch_d.prim_max_int if target is torch.sym_max else torch_d.prim_min_int
         )
-        result = operation(lhs, rhs, results=[result_type], loc=loc)
+        result = operation(lhs, rhs, loc=loc)
         self.bind_node_value(node, result)
     else:
         _patch_manager.active_state.original_attrs["_import_symbolic_torch_op"](

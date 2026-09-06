@@ -265,11 +265,17 @@ in `python/trident/patch.py` to inject this support at import time:
   `torchext.TritonKernelLaunchOp` referencing the `gpu.binary` symbol.
 - Triton's binder returns a `(signature type, specialization descriptor)` pair
   per parameter. The importer preserves `D` descriptors as divisibility guards.
-- Dynamic integer heuristic expressions may contain `torch.sym_min` and
-  `torch.sym_max`. The scoped importer patch represents these as
-  `torch.prim.min.int` and `torch.prim.max.int`; the Torch-to-TVMFFI conversion
-  unwraps their semantic integer operands, applies `arith.minsi` or
-  `arith.maxsi`, and wraps the result back into a semantic integer.
+- Dynamic integer expressions may contain `torch.sym_min`, `torch.sym_max`,
+  and `torch.sym_sum`. The scoped importer patch represents min/max as
+  `torch.prim.min.int` and `torch.prim.max.int`, and expands a symbolic sum into
+  a sequence of `torch.aten.add.int` operations. The Torch-to-TVMFFI conversion
+  lowers these operations without resolving symbolic dimensions to trace-time
+  values. Symbolic integer multiplication, including products introduced by
+  dynamic `numel`, is likewise lowered directly to `arith.muli` instead of
+  relying on an ATen dispatcher wrapper. A symbolic integer power with a
+  nonnegative constant exponent is expanded into the same integer
+  multiplication sequence because `aten::pow.int` has floating-point runtime
+  semantics and cannot represent a `SymInt` result.
 - Launch operands remain Torch scalar or tensor values. Every runtime argument
   receives a `#torchext.specialization` attribute whose `kind` TypeAttr records
   the exact native Triton ABI type; `ConvertTorchExtToGPU` uses it to distinguish

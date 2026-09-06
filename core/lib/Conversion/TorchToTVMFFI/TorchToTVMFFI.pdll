@@ -1,0 +1,99 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
+#include "mlir/Dialect/Arith/IR/ArithOps.td"
+#include "torch-mlir/Dialect/Torch/IR/TorchOps.td"
+#include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.td"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.td"
+
+Pattern ConvertTorchConstantBool with benefit(1) {
+  let root = op<torch.constant.bool> {value = value: Attr}
+      -> (rootType: Type);
+  rewrite root with {
+    replace root with op<tvm_ffi.constant.bool> {value = value};
+  };
+}
+
+Pattern ConvertTorchConstantDevice with benefit(1) {
+  let root = op<torch.constant.device> {value = value: Attr}
+      -> (rootType: Type);
+  rewrite root with {
+    replace root with op<tvm_ffi.constant.device> {value = value};
+  };
+}
+
+Pattern ConvertTorchConstantFloat with benefit(1) {
+  let root = op<torch.constant.float> {value = value: Attr}
+      -> (rootType: Type);
+  rewrite root with {
+    replace root with op<tvm_ffi.constant.float> {value = value};
+  };
+}
+
+Pattern ConvertTorchConstantInt with benefit(1) {
+  let root = op<torch.constant.int> {value = value: Attr}
+      -> (rootType: Type);
+  rewrite root with {
+    replace root with op<tvm_ffi.constant.int> {value = value};
+  };
+}
+
+Pattern ConvertTorchConstantNone with benefit(1) {
+  let root = op<torch.constant.none> -> (rootType: Type);
+  rewrite root with {
+    replace root with op<tvm_ffi.constant.none>;
+  };
+}
+
+Pattern ConvertTorchConstantStr with benefit(1) {
+  let root = op<torch.constant.str> {value = value: Attr}
+      -> (rootType: Type);
+  rewrite root with {
+    replace root with op<tvm_ffi.constant.raw_str> {value = value};
+  };
+}
+
+Pattern ConvertTorchConversionFromF64 with benefit(1) {
+  let root = op<torch_c.from_f64>(value: Value) -> (rootType: Type);
+  rewrite root with {
+    replace root with op<tvm_ffi.to>(value);
+  };
+}
+
+Pattern ConvertTorchConversionFromI1 with benefit(1) {
+  let root = op<torch_c.from_i1>(value: Value) -> (rootType: Type);
+  rewrite root with {
+    replace root with op<tvm_ffi.to>(value);
+  };
+}
+
+Pattern ConvertTorchConversionFromI64 with benefit(1) {
+  let root = op<torch_c.from_i64>(value: Value) -> (rootType: Type);
+  rewrite root with {
+    replace root with op<tvm_ffi.to>(value);
+  };
+}
+
+Pattern ConvertTorchPrimMaxInt with benefit(1) {
+  let root = op<torch.prim.max.int>(a: Value, b: Value) -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
+    let nativeResult = op<arith.maxsi>(nativeA, nativeB) -> (type<"i64">);
+    replace root with op<torch_c.from_i64>(nativeResult) -> (types);
+  };
+}
+
+Pattern ConvertTorchPrimMinInt with benefit(1) {
+  let root = op<torch.prim.min.int>(a: Value, b: Value) -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
+    let nativeResult = op<arith.minsi>(nativeA, nativeB) -> (type<"i64">);
+    replace root with op<torch_c.from_i64>(nativeResult) -> (types);
+  };
+}

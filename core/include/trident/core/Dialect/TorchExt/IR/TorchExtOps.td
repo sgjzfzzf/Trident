@@ -13,6 +13,7 @@ include "mlir/IR/CommonTypeConstraints.td"
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/CastInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "torch-mlir/Dialect/Torch/IR/TorchTypes.td"
 
 include "trident/core/Dialect/TorchExt/IR/TorchExtBase.td"
@@ -24,7 +25,8 @@ class TorchExt_Op<string mnemonic, list<Trait> traits = []>
     : Op<TorchExt_Dialect, mnemonic, traits>;
 
 class TorchExt_TensorIndexedMetadataOp<string mnemonic>
-    : TorchExt_Op<mnemonic, [Pure]> {
+    : TorchExt_Op<mnemonic, [Pure,
+        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins AnyTorchTensorType:$tensor, I64:$index);
   let results = (outs I64:$result);
   let assemblyFormat = "$tensor `[` $index `]` attr-dict `:` type($tensor)";
@@ -49,7 +51,8 @@ def TorchExt_KernelOperandType
                 "Torch scalar or tensor accepted by a Triton kernel launch">;
 
 def TorchExt_ConvertOp
-    : TorchExt_Op<"convert", [Pure]> {
+    : TorchExt_Op<"convert", [Pure,
+        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Convert a wrapper dtype to a Torch ScalarType integer";
   let description = [{
     Converts a `!torchext.dtype` wrapper value to `!torch.int` for calling
@@ -68,7 +71,8 @@ def TorchExt_ConvertOp
 }
 
 def TorchExt_GetOp
-    : TorchExt_Op<"get", [Pure]> {
+    : TorchExt_Op<"get", [Pure,
+        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Extract a native value from a Torch or TVM FFI value";
   let arguments = (ins TorchExt_GetOperandType:$operand);
   let results = (outs TorchExt_GetResultType:$result);
@@ -78,21 +82,24 @@ def TorchExt_GetOp
   }];
 }
 
-def TorchExt_TensorDeviceOp : TorchExt_Op<"tensor.device", [Pure]> {
+def TorchExt_TensorDeviceOp : TorchExt_Op<"tensor.device", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read DLPack device fields from a Torch tensor";
   let arguments = (ins AnyTorchTensorType:$tensor);
   let results = (outs I32:$device_type, I32:$device_index);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
 }
 
-def TorchExt_TensorDimOp : TorchExt_Op<"tensor.dim", [Pure]> {
+def TorchExt_TensorDimOp : TorchExt_Op<"tensor.dim", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read the rank of a Torch tensor";
   let arguments = (ins AnyTorchTensorType:$tensor);
   let results = (outs I64:$result);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
 }
 
-def TorchExt_TensorDTypeOp : TorchExt_Op<"tensor.dtype", [Pure]> {
+def TorchExt_TensorDTypeOp : TorchExt_Op<"tensor.dtype", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read DLPack dtype fields from a Torch tensor";
   let arguments = (ins AnyTorchTensorType:$tensor);
   let results = (outs I8:$code, I8:$bits, I16:$lanes);
@@ -105,7 +112,8 @@ def TorchExt_TensorSizeOp
 }
 
 def TorchExt_TensorStorageOffsetOp
-    : TorchExt_Op<"tensor.storage_offset", [Pure]> {
+    : TorchExt_Op<"tensor.storage_offset", [Pure,
+        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read a Torch tensor storage offset";
   let arguments = (ins AnyTorchTensorType:$tensor);
   let results = (outs I64:$result);

@@ -23,6 +23,7 @@
 #include <mlir/IR/Types.h>
 #include <mlir/IR/ValueRange.h>
 #include <mlir/Support/LLVM.h>
+#include <optional>
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 namespace trident::torchext {
@@ -122,6 +123,28 @@ mlir::LogicalResult GetOp::verify() {
     return mlir::success();
   }
   return emitOpError("unsupported get from ") << input << " to " << output;
+}
+
+mlir::LogicalResult GetOp::inferReturnTypes(
+    mlir::MLIRContext *, std::optional<mlir::Location>,
+    mlir::ValueRange operands, mlir::DictionaryAttr, mlir::OpaqueProperties,
+    mlir::RegionRange, llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
+  if (operands.size() != 1) {
+    return mlir::failure();
+  }
+  mlir::Type inputType = operands.front().getType();
+  if (auto torchTypeInterface =
+          mlir::dyn_cast<trident::torch::TorchToTVMFFITypeInterface>(
+              inputType)) {
+    inputType = torchTypeInterface.getTVMFFIType();
+  }
+  auto nativeTypeInterface =
+      mlir::dyn_cast<tvm_ffi::TVMFFINativeTypeInterface>(inputType);
+  if (!nativeTypeInterface) {
+    return mlir::failure();
+  }
+  inferredReturnTypes.push_back(nativeTypeInterface.getNativeType());
+  return mlir::success();
 }
 
 mlir::LogicalResult TritonKernelLaunchOp::verify() {

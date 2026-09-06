@@ -16,6 +16,7 @@ include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/CastInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIBase.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.td"
@@ -25,14 +26,17 @@ class TVMFFI_Op<string mnemonic, list<Trait> traits = []>
     : Op<TVMFFI_Dialect, mnemonic, traits>;
 
 class TVMFFI_TensorIndexedMetadataOp<string mnemonic>
-    : TVMFFI_Op<mnemonic, [Pure]> {
+    : TVMFFI_Op<mnemonic, [Pure,
+        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins TVMFFI_TensorType : $tensor, I64 : $index);
   let results = (outs I64 : $result);
   let assemblyFormat = "$tensor `[` $index `]` attr-dict `:` type($tensor)";
 }
 
 def TVMFFI_ArrayCreateOp
-    : TVMFFI_Op<"array.create", [TVMFFI_ObjectOwnershipOpInterface]> {
+    : TVMFFI_Op<"array.create", [
+        DeclareOpInterfaceMethods<InferTypeOpInterface>,
+        TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Create a TVM FFI Array from semantic values";
   let arguments = (ins Variadic<AnyTVMFFISemanticType> : $elements);
   let results = (outs TVMFFI_ArrayType : $result);
@@ -53,7 +57,8 @@ def TVMFFI_ArrayGetItemOp : TVMFFI_Op<"array.get_item", [
   let hasVerifier = 1;
 }
 
-def TVMFFI_ArrayLengthOp : TVMFFI_Op<"array.length", [Pure]> {
+def TVMFFI_ArrayLengthOp : TVMFFI_Op<"array.length", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read the length of a runtime TVM FFI array";
   let arguments = (ins AnyTVMFFIArrayOrTorchType : $array);
   let results = (outs I64 : $result);
@@ -93,7 +98,9 @@ def TVMFFI_CastOp
 }
 
 class TVMFFI_ConstantOp<string mnemonic, Type resultType, Attr valueType>
-    : TVMFFI_Op<mnemonic, [TVMFFI_ObjectOwnershipOpInterface]> {
+    : TVMFFI_Op<mnemonic, [
+        DeclareOpInterfaceMethods<InferTypeOpInterface>,
+        TVMFFI_ObjectOwnershipOpInterface]> {
   let arguments = (ins valueType:$value);
   let results = (outs resultType:$result);
   let assemblyFormat = "$value attr-dict";
@@ -126,7 +133,9 @@ def TVMFFI_ConstantIntOp
 }
 
 def TVMFFI_ConstantNoneOp
-    : TVMFFI_Op<"constant.none", [TVMFFI_ObjectOwnershipOpInterface]> {
+    : TVMFFI_Op<"constant.none", [
+        DeclareOpInterfaceMethods<InferTypeOpInterface>,
+        TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Create a TVM FFI None constant";
   let results = (outs TVMFFI_NoneType:$result);
   let assemblyFormat = "attr-dict";
@@ -137,7 +146,8 @@ def TVMFFI_ConstantRawStrOp
   let summary = "Create a TVM FFI raw string constant";
 }
 
-def TVMFFI_EqOp : TVMFFI_Op<"eq", [Pure]> {
+def TVMFFI_EqOp : TVMFFI_Op<"eq", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Compare the ABI representation of two TVM FFI values";
   let arguments = (ins AnyTVMFFIAnyABIOrTorchType
                    : $lhs, AnyTVMFFIAnyABIOrTorchType
@@ -147,7 +157,9 @@ def TVMFFI_EqOp : TVMFFI_Op<"eq", [Pure]> {
 }
 
 def TVMFFI_ExceptionOp
-    : TVMFFI_Op<"exception", [TVMFFI_ObjectOwnershipOpInterface]> {
+    : TVMFFI_Op<"exception", [
+        DeclareOpInterfaceMethods<InferTypeOpInterface>,
+        TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Create a Trident FFI exception object";
   let arguments = (ins StrAttr : $kind);
   let results = (outs TVMFFI_ExceptionType : $result);
@@ -206,14 +218,17 @@ def TVMFFI_FunctionCallOp : TVMFFI_Op<"FunctionCall", [
 }
 
 def TVMFFI_FunctionGetGlobalOp
-    : TVMFFI_Op<"FunctionGetGlobal", [TVMFFI_ObjectOwnershipOpInterface]> {
+    : TVMFFI_Op<"FunctionGetGlobal", [
+        DeclareOpInterfaceMethods<InferTypeOpInterface>,
+        TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Get a TVM FFI global function by name";
   let arguments = (ins StrAttr:$name);
   let results = (outs TVMFFI_FunctionType:$result);
   let assemblyFormat = "$name attr-dict `:` type($result)";
 }
 
-def TVMFFI_GetOp : TVMFFI_Op<"get", [Pure]> {
+def TVMFFI_GetOp : TVMFFI_Op<"get", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Extract a native value from a TVM FFI value";
   let arguments = (ins AnyTVMFFIGetOperandType:$operand);
   let results = (outs AnyTVMFFIGetResultType:$result);
@@ -260,7 +275,9 @@ def TVMFFI_ReturnOp
 }
 
 def TVMFFI_TensorCloneOp
-    : TVMFFI_Op<"tensor.clone", [TVMFFI_ObjectOwnershipOpInterface]> {
+    : TVMFFI_Op<"tensor.clone", [
+        DeclareOpInterfaceMethods<InferTypeOpInterface>,
+        TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Create an independent tensor copy preserving the layout";
   let arguments = (ins TVMFFI_TensorType:$tensor);
   let results = (outs TVMFFI_TensorType:$result);
@@ -275,21 +292,24 @@ def TVMFFI_TensorCopyOp
   let assemblyFormat = "$destination `,` $source attr-dict `:` type($destination)";
 }
 
-def TVMFFI_TensorDeviceOp : TVMFFI_Op<"tensor.device", [Pure]> {
+def TVMFFI_TensorDeviceOp : TVMFFI_Op<"tensor.device", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read DLPack device fields from a runtime tensor";
   let arguments = (ins TVMFFI_TensorType:$tensor);
   let results = (outs I32:$device_type, I32:$device_index);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
 }
 
-def TVMFFI_TensorDimOp : TVMFFI_Op<"tensor.dim", [Pure]> {
+def TVMFFI_TensorDimOp : TVMFFI_Op<"tensor.dim", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read the rank of a runtime tensor";
   let arguments = (ins TVMFFI_TensorType:$tensor);
   let results = (outs I64:$result);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
 }
 
-def TVMFFI_TensorDTypeOp : TVMFFI_Op<"tensor.dtype", [Pure]> {
+def TVMFFI_TensorDTypeOp : TVMFFI_Op<"tensor.dtype", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read DLPack dtype fields from a runtime tensor";
   let arguments = (ins TVMFFI_TensorType:$tensor);
   let results = (outs I8:$code, I8:$bits, I16:$lanes);
@@ -297,7 +317,9 @@ def TVMFFI_TensorDTypeOp : TVMFFI_Op<"tensor.dtype", [Pure]> {
 }
 
 def TVMFFI_TensorLiteralOp
-    : TVMFFI_Op<"tensor.literal", [TVMFFI_ObjectOwnershipOpInterface]> {
+    : TVMFFI_Op<"tensor.literal", [
+        DeclareOpInterfaceMethods<InferTypeOpInterface>,
+        TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Create an owned TVM FFI tensor from a dense literal";
   let arguments = (ins ElementsAttr:$value);
   let results = (outs TVMFFI_TensorType:$result);
@@ -311,7 +333,8 @@ def TVMFFI_TensorSizeOp
 }
 
 def TVMFFI_TensorStorageOffsetOp
-    : TVMFFI_Op<"tensor.storage_offset", [Pure]> {
+    : TVMFFI_Op<"tensor.storage_offset", [Pure,
+        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read a runtime tensor storage offset";
   let arguments = (ins TVMFFI_TensorType:$tensor);
   let results = (outs I64:$result);
@@ -323,7 +346,9 @@ def TVMFFI_TensorStrideOp
   let summary = "Read a runtime tensor stride";
 }
 
-def TVMFFI_ToOp : TVMFFI_Op<"to", [Pure]> {
+def TVMFFI_ToOp
+    : TVMFFI_Op<"to", [Pure,
+        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Convert a native scalar to a TVM FFI semantic value";
   let arguments = (ins AnyTypeOf<[I1, I64, F64]> : $value);
   let results = (outs AnyTypeOf<[TVMFFI_BoolType, TVMFFI_IntType,

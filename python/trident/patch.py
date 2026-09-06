@@ -50,6 +50,7 @@ class GraphNodeImporterTritonHopPatchState:
         self.original_attrs: dict[str, object] = {}
         self.original_scalar_type_map: dict[type[object], str] | None = None
         self.original_builtin_ops: dict[object, OpOverloadPacket] | None = None
+        self.original_symbolic_torch_ops: set[object] | None = None
 
     @staticmethod
     def _symbolic_builtin_ops() -> dict[str, OpOverloadPacket]:
@@ -127,6 +128,8 @@ class GraphNodeImporterTritonHopPatchState:
                 operator.floordiv: arith.floordivsi,
                 operator.or_: arith.ori,
                 operator.rshift: arith.shrsi,
+                torch.sym_max: arith.maxsi,
+                torch.sym_min: arith.minsi,
             }
             if value.target == torch.ops.aten.sym_size.int:
                 [tensor, index] = value.args
@@ -194,6 +197,7 @@ class _GraphNodeImporterPatchManager:
             importer_patches: tuple[Callable[..., None], ...] = (
                 _import_hop_triton_kernel_wrapper_functional,
                 _import_hop_triton_kernel_wrapper_mutation,
+                _import_symbolic_torch_op,
                 return_node_values,
             )
             for importer_patch in importer_patches:
@@ -216,6 +220,12 @@ class _GraphNodeImporterPatchManager:
                 **state.original_builtin_ops,
                 **builtin_ops,
             }
+            state.original_symbolic_torch_ops = fx_importer.SYMBOLIC_TORCH_OPS
+            fx_importer.SYMBOLIC_TORCH_OPS = {
+                *state.original_symbolic_torch_ops,
+                torch.sym_max,
+                torch.sym_min,
+            }
             self.active_state = state
             self.refcount = 1
 
@@ -232,6 +242,7 @@ class _GraphNodeImporterPatchManager:
             importer_patches: tuple[Callable[..., None], ...] = (
                 _import_hop_triton_kernel_wrapper_functional,
                 _import_hop_triton_kernel_wrapper_mutation,
+                _import_symbolic_torch_op,
                 return_node_values,
             )
             for importer_patch in importer_patches:
@@ -251,10 +262,32 @@ class _GraphNodeImporterPatchManager:
             )
             assert active_state.original_builtin_ops is not None
             fx_importer.PY_BUILTIN_TO_TORCH_OP = active_state.original_builtin_ops
+            assert active_state.original_symbolic_torch_ops is not None
+            fx_importer.SYMBOLIC_TORCH_OPS = active_state.original_symbolic_torch_ops
             self.active_state = None
 
 
 _patch_manager = _GraphNodeImporterPatchManager()
+
+
+def _import_symbolic_torch_op(
+    self: GraphNodeImporter,
+    loc: ir.Location,
+    node: torch.fx.Node,
+    target: object,
+) -> None:
+    if target in (torch.sym_max, torch.sym_min):
+        lhs, rhs = (self._import_argument(loc, argument) for argument in node.args)
+        result_type = self._cc.node_val_to_type(node)
+        operation = (
+            torch_d.prim_max_int if target is torch.sym_max else torch_d.prim_min_int
+        )
+        result = operation(lhs, rhs, results=[result_type], loc=loc)
+        self.bind_node_value(node, result)
+    else:
+        _patch_manager.active_state.original_attrs["_import_symbolic_torch_op"](
+            self, loc, node, target
+        )
 
 
 def _import_hop_triton_kernel_wrapper(

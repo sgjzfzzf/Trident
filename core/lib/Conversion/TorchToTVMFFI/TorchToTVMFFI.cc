@@ -32,6 +32,7 @@
 #include <mlir/IR/Region.h>
 #include <mlir/IR/Value.h>
 #include <mlir/IR/ValueRange.h>
+#include <mlir/Parser/Parser.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -46,6 +47,8 @@
 #include <utility>
 
 namespace trident::conversion {
+#include "TorchToTVMFFIPDLLPatterns.h.inc"
+
 #define GEN_PASS_DEF_CONVERTTORCHTOTVMFFI
 #include "trident/core/Conversion/Passes.h.inc"
 
@@ -80,6 +83,11 @@ public:
     addTargetMaterialization([](mlir::OpBuilder &builder, mlir::Type type,
                                 mlir::ValueRange inputs,
                                 mlir::Location loc) -> mlir::Value {
+      if (inputs.size() == 1 &&
+          mlir::isa<tvm_ffi::TVMFFIABIType>(inputs.front().getType()) &&
+          mlir::isa<tvm_ffi::AnyType, tvm_ffi::UnionType>(type)) {
+        return tvm_ffi::CastOp::create(builder, loc, type, inputs.front());
+      }
       return mlir::UnrealizedConversionCastOp::create(
                  builder, loc, mlir::TypeRange(type), inputs)
           .getResult(0);
@@ -261,124 +269,6 @@ public:
 
 private:
   const TorchFFITypeConverter &typeConverter;
-};
-
-struct TorchBoolConstantAttr final {
-  static mlir::IntegerAttr get(mlir::torch::Torch::ConstantBoolOp op,
-                               mlir::Builder &) {
-    return mlir::IntegerAttr::get(mlir::IntegerType::get(op.getContext(), 1),
-                                  op.getValue());
-  }
-};
-
-struct TorchDeviceConstantAttr final {
-  static mlir::StringAttr get(mlir::torch::Torch::ConstantDeviceOp op,
-                              mlir::Builder &builder) {
-    return builder.getStringAttr(op.getValue());
-  }
-};
-
-struct TorchFloatConstantAttr final {
-  static mlir::FloatAttr get(mlir::torch::Torch::ConstantFloatOp op,
-                             mlir::Builder &builder) {
-    return builder.getFloatAttr(mlir::Float64Type::get(op.getContext()),
-                                op.getValue());
-  }
-};
-
-struct TorchIntConstantAttr final {
-  static mlir::IntegerAttr get(mlir::torch::Torch::ConstantIntOp op,
-                               mlir::Builder &builder) {
-    return builder.getI64IntegerAttr(static_cast<int64_t>(op.getValue()));
-  }
-};
-
-template <typename ConstantOp, typename TVMFFIConstantOp,
-          typename ConstantAttrBuilder>
-class ConvertTorchConstant final
-    : public mlir::OpConversionPattern<ConstantOp> {
-public:
-  explicit ConvertTorchConstant(const TorchFFITypeConverter &typeConverter,
-                                mlir::MLIRContext *ctx)
-      : mlir::OpConversionPattern<ConstantOp>(typeConverter, ctx, 1),
-        typeConverter(typeConverter) {}
-
-  mlir::LogicalResult
-  matchAndRewrite(ConstantOp op, typename ConstantOp::Adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Type const targetType =
-        typeConverter.convertType(op.getResult().getType());
-    if (!targetType) {
-      return mlir::failure();
-    }
-    auto const value = ConstantAttrBuilder::get(op, rewriter);
-    rewriter.replaceOpWithNewOp<TVMFFIConstantOp>(op, targetType, value);
-    return mlir::success();
-  }
-
-private:
-  const TorchFFITypeConverter &typeConverter;
-};
-
-class ConvertTorchConstantNone final
-    : public mlir::OpConversionPattern<mlir::torch::Torch::ConstantNoneOp> {
-public:
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(mlir::torch::Torch::ConstantNoneOp op,
-                  mlir::torch::Torch::ConstantNoneOpAdaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<tvm_ffi::ConstantNoneOp>(
-        op, tvm_ffi::NoneType::get(op.getContext()));
-    return mlir::success();
-  }
-};
-
-class ConvertTorchConstantStr final
-    : public mlir::OpConversionPattern<mlir::torch::Torch::ConstantStrOp> {
-public:
-  explicit ConvertTorchConstantStr(const TorchFFITypeConverter &typeConverter,
-                                   mlir::MLIRContext *ctx)
-      : OpConversionPattern(typeConverter, ctx), typeConverter(typeConverter) {}
-
-  mlir::LogicalResult
-  matchAndRewrite(mlir::torch::Torch::ConstantStrOp op,
-                  mlir::torch::Torch::ConstantStrOpAdaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    tvm_ffi::ConstantRawStrOp raw = tvm_ffi::ConstantRawStrOp::create(
-        rewriter, op.getLoc(), tvm_ffi::RawStrType::get(op.getContext()),
-        op.getValue());
-    tvm_ffi::FunctionGetGlobalOp getGlobal =
-        tvm_ffi::FunctionGetGlobalOp::create(
-            rewriter, op.getLoc(), tvm_ffi::FunctionType::get(op.getContext()),
-            "ffi.String");
-    tvm_ffi::FunctionCallOp string = tvm_ffi::FunctionCallOp::create(
-        rewriter, op.getLoc(),
-        mlir::TypeRange{mlir::cast<trident::torch::TorchToTVMFFITypeInterface>(
-                            op.getResult().getType())
-                            .getTVMFFIType()},
-        getGlobal.getResult(), mlir::ValueRange{raw.getResult()});
-    rewriter.replaceOp(op, string.getResult(0));
-    return mlir::success();
-  }
-
-private:
-  const TorchFFITypeConverter &typeConverter;
-};
-
-template <typename Op, typename ResultType>
-class ConvertTorchConversionFrom final : public mlir::OpConversionPattern<Op> {
-public:
-  using mlir::OpConversionPattern<Op>::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(Op op, typename Op::Adaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<tvm_ffi::ToOp>(
-        op, ResultType::get(rewriter.getContext()), adaptor.getOperand());
-    return mlir::success();
-  }
 };
 
 /// Convert a TorchExt dtype wrapper to the TVM FFI integer consumed by Torch
@@ -630,27 +520,13 @@ class ConvertTorchToTVMFFIPass final
         conversionPatterns, typeConverter);
     mlir::populateReturnOpTypeConversionPattern(conversionPatterns,
                                                 typeConverter);
+    populateGeneratedPDLLPatterns(conversionPatterns,
+                                  mlir::PDLConversionConfig(&typeConverter));
     conversionPatterns.add<
         ConvertArrayGetItem, ConvertAtenCall,
-        ConvertTorchConversionFrom<mlir::torch::TorchConversion::FromF64Op,
-                                   tvm_ffi::FloatType>,
-        ConvertTorchConversionFrom<mlir::torch::TorchConversion::FromI1Op,
-                                   tvm_ffi::BoolType>,
-        ConvertTorchConversionFrom<mlir::torch::TorchConversion::FromI64Op,
-                                   tvm_ffi::IntType>,
         ConvertTorchArrayConstruct<mlir::torch::Torch::PrimListConstructOp>,
         ConvertTorchArrayConstruct<mlir::torch::Torch::PrimTupleConstructOp>,
         ConvertTorchArrayUnpack,
-        ConvertTorchConstant<mlir::torch::Torch::ConstantBoolOp,
-                             tvm_ffi::ConstantBoolOp, TorchBoolConstantAttr>,
-        ConvertTorchConstant<mlir::torch::Torch::ConstantDeviceOp,
-                             tvm_ffi::ConstantDeviceOp,
-                             TorchDeviceConstantAttr>,
-        ConvertTorchConstant<mlir::torch::Torch::ConstantFloatOp,
-                             tvm_ffi::ConstantFloatOp, TorchFloatConstantAttr>,
-        ConvertTorchConstant<mlir::torch::Torch::ConstantIntOp,
-                             tvm_ffi::ConstantIntOp, TorchIntConstantAttr>,
-        ConvertTorchConstantNone, ConvertTorchConstantStr,
         ConvertTorchConversionTo<mlir::torch::TorchConversion::ToF64Op>,
         ConvertTorchConversionTo<mlir::torch::TorchConversion::ToI1Op>,
         ConvertTorchConversionTo<mlir::torch::TorchConversion::ToI64Op>,

@@ -10,6 +10,7 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/StringRef.h>
+#include <llvm/ADT/TypeSwitch.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypeInterfaces.h>
@@ -85,6 +86,37 @@ mlir::LogicalResult ToOp::verify() {
          << nativeType << " to " << resultType;
 }
 
+mlir::LogicalResult ToOp::inferReturnTypes(
+    mlir::MLIRContext *context, std::optional<mlir::Location>,
+    mlir::ValueRange operands, mlir::DictionaryAttr, mlir::OpaqueProperties,
+    mlir::RegionRange, llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
+  if (operands.size() != 1) {
+    return mlir::failure();
+  }
+  mlir::Type const nativeType = operands.front().getType();
+  mlir::Type const resultType =
+      llvm::TypeSwitch<mlir::Type, mlir::Type>(nativeType)
+          .Case<mlir::IntegerType>(
+              [context](mlir::IntegerType type) -> mlir::Type {
+                if (type.getWidth() == 1) {
+                  return BoolType::get(context);
+                }
+                if (type.getWidth() == 64) {
+                  return IntType::get(context);
+                }
+                return {};
+              })
+          .Case<mlir::Float64Type>([context](mlir::Float64Type) -> mlir::Type {
+            return FloatType::get(context);
+          })
+          .Default([](mlir::Type) -> mlir::Type { return {}; });
+  if (!resultType) {
+    return mlir::failure();
+  }
+  inferredReturnTypes.push_back(resultType);
+  return mlir::success();
+}
+
 mlir::LogicalResult TensorLiteralOp::verify() {
   if (!mlir::isa<mlir::DenseElementsAttr>(getValue())) {
     return emitOpError("requires a dense elements attribute");
@@ -133,6 +165,27 @@ mlir::LogicalResult GetOp::verify() {
   }
   return emitOpError("unsupported get from ")
          << tvmFFIType << " to " << resultType;
+}
+
+mlir::LogicalResult GetOp::inferReturnTypes(
+    mlir::MLIRContext *, std::optional<mlir::Location>,
+    mlir::ValueRange operands, mlir::DictionaryAttr, mlir::OpaqueProperties,
+    mlir::RegionRange, llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
+  if (operands.size() != 1) {
+    return mlir::failure();
+  }
+  mlir::Type const inputType = operands.front().getType();
+  if (mlir::isa<mlir::torch::Torch::BaseTensorType>(inputType)) {
+    inferredReturnTypes.push_back(ObjectType::get(inputType.getContext()));
+    return mlir::success();
+  }
+  auto nativeTypeInterface =
+      mlir::dyn_cast<TVMFFINativeTypeInterface>(inputType);
+  if (!nativeTypeInterface) {
+    return mlir::failure();
+  }
+  inferredReturnTypes.push_back(nativeTypeInterface.getNativeType());
+  return mlir::success();
 }
 
 mlir::LogicalResult AsOp::verify() {

@@ -13,6 +13,7 @@
 #include <mlir/Bytecode/BytecodeOpInterface.h>
 #include <mlir/IR/OpDefinition.h>
 #include <mlir/Interfaces/CastInterfaces.h>
+#include <mlir/Interfaces/InferTypeOpInterface.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 

@@ -33,8 +33,7 @@ func.func @constant_float() -> !torch.float {
 
 // CHECK-LABEL: func.func @constant_string() -> !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str> {
 // CHECK: %[[RAW_STRING:[a-zA-Z0-9_]+]] = tvm_ffi.constant.raw_str "trident"
-// CHECK: %[[STRING_FUNC:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "ffi.String" : !tvm_ffi.function
-// CHECK: %[[STRING:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[STRING_FUNC]](%[[RAW_STRING]]) : (!tvm_ffi.raw_str) -> !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str>
+// CHECK: %[[STRING:[a-zA-Z0-9_]+]] = tvm_ffi.cast %[[RAW_STRING]] : !tvm_ffi.raw_str -> !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str>
 // CHECK: return %[[STRING]] : !tvm_ffi.union<!tvm_ffi.raw_str, !tvm_ffi.small_str, !tvm_ffi.str>
 func.func @constant_string() -> !torch.str {
   %0 = torch.constant.str "trident"
@@ -47,6 +46,14 @@ func.func @constant_string() -> !torch.str {
 func.func @constant_bool() -> !torch.bool {
   %0 = torch.constant.bool true
   return %0 : !torch.bool
+}
+
+// CHECK-LABEL: func.func @constant_device() -> !tvm_ffi.device {
+// CHECK: %[[DEVICE:[a-zA-Z0-9_]+]] = tvm_ffi.constant.device "cuda:0"
+// CHECK: return %[[DEVICE]] : !tvm_ffi.device
+func.func @constant_device() -> !torch.Device {
+  %0 = torch.constant.device "cuda:0"
+  return %0 : !torch.Device
 }
 
 // CHECK-LABEL: func.func @constant_none() -> !tvm_ffi.none {

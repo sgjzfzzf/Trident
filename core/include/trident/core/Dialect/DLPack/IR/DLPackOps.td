@@ -10,6 +10,7 @@
 
 include "mlir/IR/CommonTypeConstraints.td"
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "trident/core/Dialect/DLPack/IR/DLPackBase.td"
 
@@ -17,34 +18,39 @@ class DLPack_Op<string mnemonic, list<Trait> traits = []>
     : Op<DLPack_Dialect, mnemonic, traits>;
 
 class DLPack_TensorIndexedMetadataOp<string mnemonic>
-    : DLPack_Op<mnemonic, [Pure]> {
+    : DLPack_Op<mnemonic, [Pure,
+        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins DLPack_DLTensorType:$tensor, I64:$index);
   let results = (outs I64:$result);
   let assemblyFormat = "$tensor `[` $index `]` attr-dict `:` type($tensor)";
 }
 
-def DLPack_TensorDataOp : DLPack_Op<"tensor.data", [Pure]> {
+def DLPack_TensorDataOp : DLPack_Op<"tensor.data", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read the data pointer from a DLPack tensor";
   let arguments = (ins DLPack_DLTensorType:$tensor);
   let results = (outs LLVM_AnyPointer:$result);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor) `->` type($result)";
 }
 
-def DLPack_TensorDeviceOp : DLPack_Op<"tensor.device", [Pure]> {
+def DLPack_TensorDeviceOp : DLPack_Op<"tensor.device", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read DLPack device fields from a tensor";
   let arguments = (ins DLPack_DLTensorType:$tensor);
   let results = (outs I32:$device_type, I32:$device_index);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
 }
 
-def DLPack_TensorDimOp : DLPack_Op<"tensor.dim", [Pure]> {
+def DLPack_TensorDimOp : DLPack_Op<"tensor.dim", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read the rank of a DLPack tensor";
   let arguments = (ins DLPack_DLTensorType:$tensor);
   let results = (outs I64:$result);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
 }
 
-def DLPack_TensorDTypeOp : DLPack_Op<"tensor.dtype", [Pure]> {
+def DLPack_TensorDTypeOp : DLPack_Op<"tensor.dtype", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read DLPack dtype fields from a tensor";
   let arguments = (ins DLPack_DLTensorType:$tensor);
   let results = (outs I8:$code, I8:$bits, I16:$lanes);
@@ -57,7 +63,8 @@ def DLPack_TensorSizeOp
 }
 
 def DLPack_TensorStorageOffsetOp
-    : DLPack_Op<"tensor.storage_offset", [Pure]> {
+    : DLPack_Op<"tensor.storage_offset", [Pure,
+        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read a DLPack tensor storage offset";
   let arguments = (ins DLPack_DLTensorType:$tensor);
   let results = (outs I64:$result);

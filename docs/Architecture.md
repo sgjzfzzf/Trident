@@ -43,8 +43,9 @@ declarative matchers close to the rewrites they describe while preserving C++
 for control-flow and runtime-sensitive lowering.
 
 The current declarative rewrite examples include the DRR definition for
-`torch.prim.If.yield -> scf.yield` and `GeneralizeAtenOps.pdll`, which
-expresses the fixed scalar and tensor-metadata ATen conversions. The generic
+`torch.prim.If.yield -> scf.yield` and PDLL definitions for specialized scalar,
+tensor-metadata, Torch-to-TVM-FFI constant, and integer min/max conversions. The
+generic
 ATen operation wrapper in `GeneralizeAtenOps.cc` remains in C++ because it
 must inspect dynamic operation names, copy arbitrary attributes, and reject
 region-bearing operations. The surrounding `torch.prim.If` rewrite also
@@ -264,6 +265,11 @@ in `python/trident/patch.py` to inject this support at import time:
   `torchext.TritonKernelLaunchOp` referencing the `gpu.binary` symbol.
 - Triton's binder returns a `(signature type, specialization descriptor)` pair
   per parameter. The importer preserves `D` descriptors as divisibility guards.
+- Dynamic integer heuristic expressions may contain `torch.sym_min` and
+  `torch.sym_max`. The scoped importer patch represents these as
+  `torch.prim.min.int` and `torch.prim.max.int`; the Torch-to-TVMFFI conversion
+  unwraps their semantic integer operands, applies `arith.minsi` or
+  `arith.maxsi`, and wraps the result back into a semantic integer.
 - Launch operands remain Torch scalar or tensor values. Every runtime argument
   receives a `#torchext.specialization` attribute whose `kind` TypeAttr records
   the exact native Triton ABI type; `ConvertTorchExtToGPU` uses it to distinguish

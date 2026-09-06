@@ -11,7 +11,7 @@ module {
   func.func @arg_attrs_size(%tensor: !torch.vtensor<[4],f32>, %value: !torch.int) {
     %one = arith.constant 1 : i64
     // expected-error@+1 {{'torchext.trident_kernel_launch' op arg_attrs and kernel operands must have the same size}}
-    "torchext.trident_kernel_launch"(%one, %one, %one, %one, %one, %one, %tensor, %value) <{arg_attrs = [{triton.specialization = #torchext.specialization<kind = !llvm.ptr, divisibility = 16>}], kernel = @kernel::@entry, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 2>}> : (i64, i64, i64, i64, i64, i64, !torch.vtensor<[4],f32>, !torch.int) -> ()
+    "torchext.trident_kernel_launch"(%one, %one, %one, %one, %one, %one, %tensor, %value) <{arg_attrs = [{triton.specialization = #torchext.variable_specialization<kind = !llvm.ptr, divisibility = 16>}], kernel = @kernel::@entry, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 2>}> : (i64, i64, i64, i64, i64, i64, !torch.vtensor<[4],f32>, !torch.int) -> ()
     func.return
   }
 }
@@ -33,7 +33,7 @@ module {
   func.func @invalid_specialization_kind(%value: !torch.float) {
     %one = arith.constant 1 : i64
     // expected-error@+1 {{'torchext.trident_kernel_launch' op kernel operand #0 of type '!torch.float' cannot be converted to specialization kind 'i32'}}
-    "torchext.trident_kernel_launch"(%one, %one, %one, %one, %one, %one, %value) <{arg_attrs = [{triton.specialization = #torchext.specialization<kind = i32, divisibility = 1>}], kernel = @kernel::@entry, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1>}> : (i64, i64, i64, i64, i64, i64, !torch.float) -> ()
+    "torchext.trident_kernel_launch"(%one, %one, %one, %one, %one, %one, %value) <{arg_attrs = [{triton.specialization = #torchext.variable_specialization<kind = i32, divisibility = 1>}], kernel = @kernel::@entry, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1>}> : (i64, i64, i64, i64, i64, i64, !torch.float) -> ()
     func.return
   }
 }
@@ -45,6 +45,17 @@ module {
     %one = arith.constant 1 : i64
     // expected-error@+1 {{'torchext.trident_kernel_launch' op kernel operand #0 requires a triton.specialization attribute}}
     "torchext.trident_kernel_launch"(%one, %one, %one, %one, %one, %one, %value) <{arg_attrs = [{}], kernel = @kernel::@entry, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1>}> : (i64, i64, i64, i64, i64, i64, !torch.int) -> ()
+    func.return
+  }
+}
+
+// -----
+
+module {
+  func.func @invalid_constant_specialization_type(%value: !torch.int) {
+    %one = arith.constant 1 : i64
+    // expected-error@+1 {{constant specialization requires an i1, i64, or f64 value}}
+    "torchext.trident_kernel_launch"(%one, %one, %one, %one, %one, %one, %value) <{arg_attrs = [{triton.specialization = #torchext.constant_specialization<value = 1 : i32>}], kernel = @kernel::@entry, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1>}> : (i64, i64, i64, i64, i64, i64, !torch.int) -> ()
     func.return
   }
 }

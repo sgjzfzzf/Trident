@@ -283,13 +283,16 @@ kernel launches. Its lowering is split across two passes:
 
 Specialization decomposition is performed by `ConvertTorchExtToGPU` before it
 rewrites launches, and both operations run before `ConvertTorchToTVMFFI`, while
-launch operands are still Torch values. Each operand carries a
-`#torchext.specialization` attribute with a `kind` TypeAttr that names its exact
-native Triton ABI type. The conversion uses this metadata rather than inferring
-scalar widths from `!torch.int` or `!torch.float`; its `divisibility` field
-defaults to `1`, so callers only spell it when requesting a runtime guard.
+launch operands are still Torch values. Argument attributes implement the
+TorchExt specialization interface and generate their own runtime checks.
+`#torchext.variable_specialization` records a runtime argument's native ABI type and
+optional divisibility. TorchExt operands preserve Triton source parameter
+order, while `#torchext.constant_specialization` guards boolean, integer, and
+floating-point arguments specialized out of the kernel ABI with an exact
+equality check. `ConvertTorchExtToGPU` filters those constexpr operands when it
+constructs the final launch arguments.
 Private imported functions are first inlined into the `tvm_ffi.func` wrapper,
-allowing failed divisibility checks to return the wrapper's guard-match
+allowing any failed specialization check to return the wrapper's guard-match
 exception before the kernel launch.
 Tensor `_base` metadata is unavailable through the TVM-FFI tensor ABI, so a
 guard involving `_base` conservatively misses rather than permitting unsafe

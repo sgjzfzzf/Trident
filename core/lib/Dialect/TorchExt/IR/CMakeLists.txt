@@ -1,11 +1,14 @@
 add_mlir_dialect_library(
   TorchExtDialect
   TorchExtDialect.cc
+  TorchExtInterfaces.cc
   TorchExtOps.cc
   DEPENDS
   MLIRTorchExtIncGen
+  MLIRTorchExtInterfacesIncGen
   LINK_LIBS
   PUBLIC
   MLIRIR
+  MLIRLLVMDialect
   MLIRSideEffectInterfaces
   TorchMLIRTorchDialect)

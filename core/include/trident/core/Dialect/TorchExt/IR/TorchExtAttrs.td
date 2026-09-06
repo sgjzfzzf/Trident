@@ -10,11 +10,25 @@
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/CommonAttrConstraints.td"
+include "trident/core/Dialect/TorchExt/IR/TorchExtInterfaces.td"
 
-def TorchExt_SpecializationAttr
-    : AttrDef<TorchExt_Dialect, "Specialization"> {
-  let mnemonic = "specialization";
-  let summary = "Triton kernel specialization assumption";
+def TorchExt_ConstantSpecializationAttr
+    : AttrDef<TorchExt_Dialect, "ConstantSpecialization", [
+        DeclareAttrInterfaceMethods<TorchExt_SpecializationAttrInterface>
+      ]> {
+  let mnemonic = "constant_specialization";
+  let summary = "Triton constant specialization assumption";
+  let parameters = (ins "::mlir::TypedAttr":$value);
+  let assemblyFormat = [{ `<` `value` `=` $value `>` }];
+  let genVerifyDecl = 1;
+}
+
+def TorchExt_VariableSpecializationAttr
+    : AttrDef<TorchExt_Dialect, "VariableSpecialization", [
+        DeclareAttrInterfaceMethods<TorchExt_SpecializationAttrInterface>
+      ]> {
+  let mnemonic = "variable_specialization";
+  let summary = "Triton variable specialization assumption";
   let parameters = (ins
     "::mlir::TypeAttr":$kind,
     DefaultValuedParameter<"uint64_t", "1">:$divisibility

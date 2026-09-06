@@ -8,18 +8,21 @@
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/Torch/IR/TorchInterfaces.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtInterfaces.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 #include <cassert>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/OpImplementation.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/OperationSupport.h>
+#include <mlir/IR/Region.h>
 #include <mlir/IR/Types.h>
 #include <mlir/IR/ValueRange.h>
 #include <mlir/Support/LLVM.h>
@@ -157,24 +160,29 @@ mlir::LogicalResult TritonKernelLaunchOp::verify() {
   }
   for (auto [index, argAttr, operand] : llvm::enumerate(
            argAttrs.getAsRange<mlir::DictionaryAttr>(), getKernelOperands())) {
-    SpecializationAttr const specialization =
-        mlir::dyn_cast_or_null<SpecializationAttr>(
+    SpecializationAttrInterface const specialization =
+        mlir::dyn_cast_or_null<SpecializationAttrInterface>(
             argAttr.get(kSpecializationName));
     if (!specialization) {
       return emitOpError("kernel operand #")
              << index << " requires a " << kSpecializationName << " attribute";
     }
     mlir::Type const operandType = operand.getType();
-    mlir::Type const kind = specialization.getKind().getValue();
-    auto integerKind = mlir::dyn_cast<mlir::IntegerType>(kind);
+    mlir::Type const kind = specialization.getTargetType();
     bool const validKind =
-        (mlir::isa<mlir::torch::Torch::BaseTensorType>(operandType) &&
-         mlir::isa<mlir::LLVM::LLVMPointerType>(kind)) ||
-        (mlir::isa<mlir::torch::Torch::BoolType, mlir::torch::Torch::IntType>(
-             operandType) &&
-         integerKind && integerKind.getWidth() <= 64) ||
-        (mlir::isa<mlir::torch::Torch::FloatType>(operandType) &&
-         (kind.isF32() || kind.isF64()));
+        llvm::TypeSwitch<mlir::Type, bool>(operandType)
+            .Case<mlir::torch::Torch::BaseTensorType>([&](mlir::Type) -> bool {
+              return mlir::isa<mlir::LLVM::LLVMPointerType>(kind);
+            })
+            .Case<mlir::torch::Torch::BoolType, mlir::torch::Torch::IntType>(
+                [&](mlir::Type) -> bool {
+                  auto integerKind = mlir::dyn_cast<mlir::IntegerType>(kind);
+                  return integerKind && integerKind.getWidth() <= 64;
+                })
+            .Case<mlir::torch::Torch::FloatType>([&](mlir::Type) -> bool {
+              return kind.isF32() || kind.isF64();
+            })
+            .Default([](mlir::Type) -> bool { return false; });
     if (!validKind) {
       return emitOpError("kernel operand #")
              << index << " of type " << operandType

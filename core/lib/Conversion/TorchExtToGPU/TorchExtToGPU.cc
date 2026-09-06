@@ -18,10 +18,9 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h" // NOLINT(misc-include-cleaner)
+#include "trident/core/Dialect/TorchExt/IR/TorchExtInterfaces.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
-#include <cstdint>
 #include <dlpack/dlpack.h>
-#include <llvm/ADT/APInt.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/SmallVectorExtras.h>
@@ -76,80 +75,48 @@ public:
                   mlir::ConversionPatternRewriter &rewriter) const override {
     mlir::Location const loc = op.getLoc();
     mlir::ArrayAttr const argAttrs = op.getArgAttrsAttr();
-    llvm::SmallVector operandsAndSpecializations = llvm::map_to_vector(
-        llvm::zip(argAttrs.getAsRange<mlir::DictionaryAttr>(),
-                  adaptor.getKernelOperands()),
-        [&](auto attrsAndOperand)
-            -> std::tuple<mlir::Value, torchext::SpecializationAttr> {
-          auto [argAttr, operand] = attrsAndOperand;
-          torchext::SpecializationAttr const specialization =
-              mlir::cast<torchext::SpecializationAttr>(
-                  argAttr.get(kSpecializationName));
-          mlir::Type const kind = specialization.getKind().getValue();
-          if (operand.getType() != kind) {
-            operand = getTypeConverter()->materializeTargetConversion(
-                rewriter, loc, kind, operand);
-          }
-          return {operand, specialization};
-        });
-    if (llvm::any_of(operandsAndSpecializations, [](auto it) -> bool {
-          auto [operand, specialization] = it;
-          return !operand;
-        })) {
-      return op.emitOpError("failed to materialize a native kernel operand");
-    }
+    using OperandAndSpecialization =
+        std::tuple<mlir::Value, torchext::SpecializationAttrInterface>;
+    auto materializeOperand =
+        [&](mlir::DictionaryAttr argAttr,
+            mlir::Value source) -> OperandAndSpecialization {
+      torchext::SpecializationAttrInterface const specialization =
+          mlir::cast<torchext::SpecializationAttrInterface>(
+              argAttr.get(kSpecializationName));
+      mlir::Value operand = source;
+      mlir::Type const kind = specialization.getTargetType();
+      if (operand.getType() != kind) {
+        operand = getTypeConverter()->materializeTargetConversion(
+            rewriter, loc, kind, operand);
+      }
+      return {operand, specialization};
+    };
 
     tvm_ffi::FuncOp function = op->getParentOfType<tvm_ffi::FuncOp>();
     if (function) {
+      llvm::SmallVector<OperandAndSpecialization> operandsAndSpecializations;
+      for (auto [argAttr, source] :
+           llvm::zip(argAttrs.getAsRange<mlir::DictionaryAttr>(),
+                     op.getKernelOperands())) {
+        auto [operand, specialization] = materializeOperand(argAttr, source);
+        if (!operand) {
+          return op.emitOpError(
+              "failed to materialize a native kernel operand");
+        }
+        operandsAndSpecializations.emplace_back(operand, specialization);
+      }
       mlir::Value const allChecks = llvm::accumulate(
           operandsAndSpecializations,
           mlir::LLVM::ConstantOp::create(rewriter, loc, rewriter.getI1Type(), 1)
               .getResult(),
           [&](mlir::Value accumulated,
-              const std::tuple<mlir::Value, torchext::SpecializationAttr> &it)
-              -> mlir::Value {
+              const OperandAndSpecialization &it) -> mlir::Value {
             auto [operand, specialization] = it;
-            uint64_t const divisibility = specialization.getDivisibility();
-            if (divisibility == 1) {
+            mlir::Value const check =
+                specialization.buildCheck(rewriter, loc, operand);
+            if (!check) {
               return accumulated;
             }
-            mlir::Value const value =
-                llvm::TypeSwitch<mlir::Type, mlir::Value>(operand.getType())
-                    .Case<mlir::LLVM::LLVMPointerType>(
-                        [&, operand = operand](
-                            mlir::LLVM::LLVMPointerType) -> mlir::Value {
-                          return mlir::LLVM::PtrToIntOp::create(
-                              rewriter, loc, rewriter.getI64Type(), operand);
-                        })
-                    .Case<mlir::IntegerType>(
-                        [&, operand = operand](
-                            mlir::IntegerType type) -> mlir::Value {
-                          return type.isInteger(64)
-                                     ? operand
-                                     : mlir::LLVM::SExtOp::create(
-                                           rewriter, loc, rewriter.getI64Type(),
-                                           operand)
-                                           .getResult();
-                        })
-                    .Default([&, operand = operand](mlir::Type) -> mlir::Value {
-                      return mlir::UnrealizedConversionCastOp::create(
-                                 rewriter, loc, rewriter.getI64Type(), operand)
-                          .getResult(0);
-                    });
-
-            mlir::Value const divisor = mlir::LLVM::ConstantOp::create(
-                rewriter, loc, rewriter.getI64Type(),
-                llvm::APInt(64, divisibility));
-            mlir::Value const remainder =
-                mlir::LLVM::URemOp::create(rewriter, loc, value, divisor);
-            mlir::Value const zero = mlir::LLVM::ConstantOp::create(
-                rewriter, loc, rewriter.getI64Type(), 0);
-            // ICmpPredicate is generated into LLVMDialect.h without a
-            // standalone public header.
-            mlir::Value const check = mlir::LLVM::ICmpOp::create(
-                rewriter, loc,
-                mlir::LLVM::ICmpPredicate::eq, // NOLINT(misc-include-cleaner)
-                remainder, zero);
             return mlir::arith::AndIOp::create(rewriter, loc, accumulated,
                                                check);
           });
@@ -186,7 +153,25 @@ public:
       tvm_ffi::ReturnOp::create(rewriter, loc, failureResult);
       rewriter.setInsertionPoint(op);
     }
-
+    // TODO: Materialized native values can borrow storage from their source
+    // objects and must not outlive or cross blocks independently of them.
+    // Add a block-transfer check for borrowed values so future conversions
+    // cannot accidentally reuse the guard materialization in this block.
+    llvm::SmallVector<OperandAndSpecialization> operandsAndSpecializations;
+    for (auto [argAttr, source] : llvm::make_filter_range(
+             llvm::zip(argAttrs.getAsRange<mlir::DictionaryAttr>(),
+                       op.getKernelOperands()),
+             [](auto argument) -> bool {
+               auto [attributes, _] = argument;
+               return !mlir::isa<torchext::ConstantSpecializationAttr>(
+                   attributes.get(kSpecializationName));
+             })) {
+      auto [operand, specialization] = materializeOperand(argAttr, source);
+      if (!operand) {
+        return op.emitOpError("failed to materialize a native kernel operand");
+      }
+      operandsAndSpecializations.emplace_back(operand, specialization);
+    }
     mlir::gpu::KernelDim3 const gridSize{
         adaptor.getGridSizeX(), adaptor.getGridSizeY(), adaptor.getGridSizeZ()};
     mlir::gpu::KernelDim3 const blockSize{adaptor.getBlockSizeX(),
@@ -235,7 +220,7 @@ public:
 
     llvm::SmallVector<mlir::Value> operands = llvm::map_to_vector(
         operandsAndSpecializations, [](auto it) -> mlir::Value {
-          auto [operand, specialization] = it;
+          auto [operand, _] = it;
           return operand;
         });
     mlir::Value const nullPointer =

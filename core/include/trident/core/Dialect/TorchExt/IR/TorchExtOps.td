@@ -135,9 +135,10 @@ def TorchExt_TritonKernelLaunchOp
   let summary = "Launch a Torch kernel entry point";
   let description = [{
     Models launching a Torch kernel symbol with explicit grid/block sizes.
-    Kernel operands use Torch-MLIR scalar and tensor types. Each operand's
-    specialization attribute records the exact native type required by the
-    compiled Triton kernel.
+    Operands use Torch-MLIR scalar and tensor types. Each operand's
+    specialization attribute defines its runtime precondition. Constant
+    specializations are guard-only, while variable specializations are passed
+    to the compiled Triton kernel.
 
     Optionally supports cluster-level parallelism via `clusterSizeX`,
     `clusterSizeY`, and `clusterSizeZ` arguments. When present, the kernel

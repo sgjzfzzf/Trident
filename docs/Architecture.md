@@ -204,6 +204,11 @@ When runtime inputs change and guards no longer match:
 - If all specializations fail, the dispatcher returns an `Exception` to the Python caller.
 - `TridentGraphModule.__call__` detects the `Exception` ObjectRef and triggers recompilation.
 
+Triton kernel higher-order operations preserve symbolic integer launch-grid and
+kernel arguments as runtime values during FX import. This keeps launch bounds
+such as ``m``, ``N``, and ``OUT_N`` consistent with the actual tensor shape
+instead of substituting the concrete example hint from Dynamo.
+
 The `max_compiles` parameter (default 2) controls the recompilation limit per
 `TridentGraphModule`. Each new specialization appends a sub-module; the
 dispatcher tries them in creation order. Guard handling is split into two
@@ -286,12 +291,15 @@ in `python/trident/patch.py` to inject this support at import time:
   nonnegative constant exponent is expanded into the same integer
   multiplication sequence because `aten::pow.int` has floating-point runtime
   semantics and cannot represent a `SymInt` result.
-- Launch operands remain Torch scalar or tensor values. Every runtime argument
-  receives a `#torchext.specialization` attribute whose `kind` TypeAttr records
-  the exact native Triton ABI type; `ConvertTorchExtToGPU` uses it to distinguish
-  widths such as i32/i64 and f32/f64 while materializing kernel operands. The
-  attribute's `divisibility` field defaults to `1` and is written explicitly
-  only when Triton requires a runtime divisibility guard.
+- Launch operands remain Torch scalar or tensor values and follow the Triton
+  source parameter order, including explicit compile-time constants. Their
+  specialization attributes implement a common interface that materializes
+  each runtime precondition. `#torchext.variable_specialization` records the native
+  Triton ABI type and an optional divisibility guard. Boolean, integer, and
+  floating-point constexpr parameters receive
+  `#torchext.constant_specialization`; they are checked for exact equality
+  before launch and omitted from the kernel ABI. Other constexpr value types
+  fail import explicitly until a corresponding specialization is implemented.
 - For autotune paths, computes/selects launch grids based on `best_config`.
 
 This integrates Triton kernel launches into the MLIR workflow without modifying

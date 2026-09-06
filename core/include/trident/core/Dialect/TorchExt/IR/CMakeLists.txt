@@ -1,10 +1,16 @@
 add_mlir_dialect(TorchExt torchext)
 
+set(LLVM_TARGET_DEFINITIONS TorchExtInterfaces.td)
+mlir_tablegen(TorchExtInterfaces.h.inc -gen-attr-interface-decls)
+mlir_tablegen(TorchExtInterfaces.cpp.inc -gen-attr-interface-defs)
+add_public_tablegen_target(MLIRTorchExtInterfacesIncGen)
+
 set(LLVM_TARGET_DEFINITIONS TorchExt.td)
 mlir_tablegen(TorchExtAttrs.h.inc -gen-attrdef-decls -attrdefs-dialect=torchext)
 mlir_tablegen(TorchExtAttrs.cpp.inc -gen-attrdef-defs
               -attrdefs-dialect=torchext)
 add_public_tablegen_target(MLIRTorchExtAttrDefsIncGen)
+add_dependencies(MLIRTorchExtAttrDefsIncGen MLIRTorchExtInterfacesIncGen)
 mlir_tablegen(TorchExtTypes.h.inc -gen-typedef-decls -typedefs-dialect=torchext)
 mlir_tablegen(TorchExtTypes.cpp.inc -gen-typedef-defs
               -typedefs-dialect=torchext)

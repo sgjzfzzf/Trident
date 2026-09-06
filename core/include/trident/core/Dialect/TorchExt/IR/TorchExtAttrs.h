@@ -8,6 +8,7 @@
 #ifndef TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTATTRS_H_
 #define TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTATTRS_H_
 
+#include "trident/core/Dialect/TorchExt/IR/TorchExtInterfaces.h"
 #include <mlir/IR/Attributes.h>
 
 #define GET_ATTRDEF_CLASSES

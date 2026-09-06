@@ -46,9 +46,10 @@ def TorchExt_GetResultType
 
 def TorchExt_KernelOperandType
     : AnyTypeOf<[
-      Torch_BoolType, Torch_FloatType, Torch_IntType, AnyTorchTensorType
+      Torch_BoolType, Torch_FloatType, Torch_IntType, Torch_StringType,
+      AnyTorchTensorType
     ],
-                "Torch scalar or tensor accepted by a Triton kernel launch">;
+                "Torch scalar, string, or tensor accepted by a Triton kernel launch">;
 
 def TorchExt_ConvertOp
     : TorchExt_Op<"convert", [Pure,

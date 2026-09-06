@@ -66,6 +66,41 @@ module attributes {gpu.container_module} {
 
 // -----
 
+// CHECK-LABEL: tvm_ffi.func @validate_string
+// CHECK-SAME:    %[[ACTIVATION:[a-zA-Z0-9_]+]]: !torch.str
+// CHECK:         cf.cond_br %[[INITIAL_STRING:[a-zA-Z0-9_]+]], [[SUCCESS_STRING:\^bb[0-9]+]], [[FAILURE_STRING:\^bb[0-9]+]]
+// CHECK:       [[SUCCESS_STRING]]:
+// CHECK:         gpu.launch_func
+// CHECK-SAME:    args(%[[ZERO_STRING:[a-zA-Z0-9_]+]] : i64, %[[ZERO_STRING]] : i64)
+// CHECK-NOT:     torch_c.to_
+// CHECK-NOT:     llvm.icmp
+// CHECK-NOT:     torchext.trident_kernel_launch
+
+module attributes {gpu.container_module} {
+  gpu.binary @kernel [#gpu.object<#nvvm.target, "">]
+
+  func.func private @launch_string(%activation: !torch.str)
+      -> !tvm_ffi.int {
+    %one = arith.constant 1 : i64
+    torchext.trident_kernel_launch @kernel::@entry
+        blocks in (%one, %one, %one) : i64
+        threads in (%one, %one, %one)
+        args (%activation : !torch.str {triton.specialization = #torchext.constant_specialization<value = "leaky_relu">})
+    %result = tvm_ffi.constant.int 0
+    return %result : !tvm_ffi.int
+  }
+
+  tvm_ffi.func @validate_string(%activation: !torch.str)
+      -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception> {
+    %result = func.call @launch_string(%activation)
+        : (!torch.str) -> !tvm_ffi.int
+    %success = tvm_ffi.cast %result : !tvm_ffi.int -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception>
+    tvm_ffi.return %success : !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception>
+  }
+}
+
+// -----
+
 // CHECK-LABEL: tvm_ffi.func @validate_scalar_constants
 // CHECK-SAME:    %[[FLAG:[a-zA-Z0-9_]+]]: !torch.bool
 // CHECK-SAME:    %[[VALUE:[a-zA-Z0-9_]+]]: !torch.int

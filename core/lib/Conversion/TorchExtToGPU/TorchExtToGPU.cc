@@ -250,8 +250,8 @@ public:
                     return mlir::LLVM::LLVMPointerType::get(type.getContext());
                   })
               .Case<mlir::torch::Torch::BoolType, mlir::torch::Torch::FloatType,
-                    mlir::torch::Torch::IntType, mlir::IntegerType,
-                    mlir::FloatType>(
+                    mlir::torch::Torch::IntType, mlir::torch::Torch::StringType,
+                    mlir::IntegerType, mlir::FloatType>(
                   [](mlir::Type type) -> std::optional<mlir::Type> {
                     return type;
                   })

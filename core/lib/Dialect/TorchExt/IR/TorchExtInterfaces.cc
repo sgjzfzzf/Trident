@@ -19,6 +19,7 @@
 #include <mlir/IR/Types.h>
 #include <mlir/IR/Value.h>
 #include <mlir/Support/LogicalResult.h>
+#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 #include "trident/core/Dialect/TorchExt/IR/TorchExtInterfaces.cpp.inc"
 
@@ -26,20 +27,32 @@ namespace trident::torchext {
 
 mlir::LogicalResult ConstantSpecializationAttr::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-    mlir::TypedAttr value) {
-  mlir::Type const type = value.getType();
-  if (!type.isInteger(1) && !type.isInteger(64) && !type.isF64()) {
-    return emitError()
-           << "constant specialization requires an i1, i64, or f64 value";
+    mlir::Attribute value) {
+  if (mlir::isa<mlir::StringAttr>(value)) {
+    return mlir::success();
   }
-  return mlir::success();
+  if (auto typed = mlir::dyn_cast<mlir::TypedAttr>(value)) {
+    mlir::Type const type = typed.getType();
+    if (!type.isInteger(1) && !type.isInteger(64) && !type.isF64()) {
+      return emitError() << "constant specialization requires an i1, i64, f64, "
+                            "or string value";
+    }
+    return mlir::success();
+  }
+  return emitError()
+         << "constant specialization requires a bool, integer, float, or "
+            "string attribute";
 }
 
 mlir::Value ConstantSpecializationAttr::buildCheck(mlir::OpBuilder &builder,
                                                    mlir::Location loc,
                                                    mlir::Value operand) const {
+  if (mlir::isa<mlir::StringAttr>(getValue())) {
+    return {};
+  }
+  auto value = mlir::cast<mlir::TypedAttr>(getValue());
   mlir::Value const expected =
-      mlir::LLVM::ConstantOp::create(builder, loc, getTargetType(), getValue());
+      mlir::LLVM::ConstantOp::create(builder, loc, getTargetType(), value);
   if (getTargetType().isF64()) {
     mlir::Type const bitsType = builder.getI64Type();
     operand = mlir::LLVM::BitcastOp::create(builder, loc, bitsType, operand);
@@ -57,7 +70,10 @@ mlir::Value ConstantSpecializationAttr::buildCheck(mlir::OpBuilder &builder,
 }
 
 mlir::Type ConstantSpecializationAttr::getTargetType() const {
-  return getValue().getType();
+  if (mlir::isa<mlir::StringAttr>(getValue())) {
+    return mlir::torch::Torch::StringType::get(getContext());
+  }
+  return mlir::cast<mlir::TypedAttr>(getValue()).getType();
 }
 
 mlir::Value VariableSpecializationAttr::buildCheck(mlir::OpBuilder &builder,

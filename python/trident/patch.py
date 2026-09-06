@@ -45,6 +45,15 @@ KernelArgument: TypeAlias = torch.fx.Node | KernelValue
 _MISSING: Final[object] = object()
 
 
+def _torch_int_to_i64(value: ir.Value, loc: ir.Location) -> ir.Value:
+    return ir.Operation.create(
+        "torch_c.to_i64",
+        results=[ir.IntegerType.get_signless(64)],
+        operands=[value],
+        loc=loc,
+    ).result
+
+
 class GraphNodeImporterTritonHopPatchState:
     def __init__(self, specialization_id: int = 0) -> None:
         self.specialization_id: int = specialization_id
@@ -108,47 +117,31 @@ class GraphNodeImporterTritonHopPatchState:
         importer: GraphNodeImporter,
         loc: ir.Location,
         value: KernelArgument,
-        *,
-        torch_scalar: bool = False,
     ) -> ir.Value | None:
-        i64_type = ir.IntegerType.get_signless(64)
-        if torch_scalar:
-            arithmetic_ops = {
-                operator.add: torch_d.aten_add_int,
-                operator.floordiv: torch_d.aten_floordiv_int,
-                operator.mul: torch_d.aten_mul_int,
-                operator.sub: torch_d.aten_sub_int,
-                torch.sym_max: torch_d.prim_max_int,
-                torch.sym_min: torch_d.prim_min_int,
-            }
-            shape_ops = {torch.ops.aten.sym_size.int: torch_d.aten_size_int}
-        else:
-            arithmetic_ops = {
-                operator.add: arith.addi,
-                operator.floordiv: arith.floordivsi,
-                operator.mul: arith.muli,
-                operator.or_: arith.ori,
-                operator.rshift: arith.shrsi,
-                operator.sub: arith.subi,
-                torch.sym_max: arith.maxsi,
-                torch.sym_min: arith.minsi,
-            }
-            shape_ops = {
-                torch.ops.aten.sym_size.int: torchext.tensor_size,
-                torch.ops.aten.sym_stride.int: torchext.tensor_stride,
-            }
+        import_torch_int_op = lambda name, operands: (
+            torch_d.operator(
+                [ir.Type.parse("!torch.int", context=loc.context)],
+                name,
+                operands,
+                0,
+                loc=loc,
+            ).result
+        )
 
-        def import_constant(constant: int) -> ir.Value:
-            if torch_scalar:
-                return torch_d.constant_int(constant, loc=loc)
-            return arith.constant(i64_type, constant, loc=loc)
-
-        def import_value(argument: KernelArgument) -> ir.Value:
-            result = GraphNodeImporterTritonHopPatchState._import_kernel_value(
-                importer, loc, argument, torch_scalar=torch_scalar
-            )
-            assert result is not None
-            return result
+        arithmetic_ops = {
+            operator.add: torch_d.aten_add_int,
+            operator.floordiv: torch_d.aten_floordiv_int,
+            operator.mul: torch_d.aten_mul_int,
+            operator.or_: lambda lhs, rhs, *, loc: import_torch_int_op(
+                "torch.aten.__or__.int", [lhs, rhs]
+            ),
+            operator.rshift: lambda lhs, rhs, *, loc: import_torch_int_op(
+                "torch.aten.__rshift__.int", [lhs, rhs]
+            ),
+            operator.sub: torch_d.aten_sub_int,
+            torch.sym_max: torch_d.prim_max_int,
+            torch.sym_min: torch_d.prim_min_int,
+        }
 
         if isinstance(value, torch.fx.Node):
             if value.target is torch.sym_sum:
@@ -157,27 +150,59 @@ class GraphNodeImporterTritonHopPatchState:
                     isinstance(argument, (list, tuple)) for argument in arguments
                 ):
                     [arguments] = arguments
-                result = import_constant(0)
+                result = torch_d.constant_int(0, loc=loc)
                 for argument in arguments:
-                    result = arithmetic_ops[operator.add](
-                        result, import_value(argument), loc=loc
+                    imported = (
+                        GraphNodeImporterTritonHopPatchState._import_kernel_value(
+                            importer, loc, argument
+                        )
                     )
+                    assert imported is not None
+                    result = arithmetic_ops[operator.add](result, imported, loc=loc)
                 return result
 
-            if value.target in shape_ops:
+            if value.target in (
+                torch.ops.aten.sym_size.int,
+                torch.ops.aten.sym_stride.int,
+            ):
                 tensor, index = value.args
                 tensor = importer._import_argument(loc, tensor)
-                return shape_ops[value.target](tensor, import_constant(index), loc=loc)
+                imported_index = (
+                    GraphNodeImporterTritonHopPatchState._import_kernel_value(
+                        importer, loc, index
+                    )
+                )
+                assert imported_index is not None
+                index = _torch_int_to_i64(imported_index, loc)
+                if value.target is torch.ops.aten.sym_size.int:
+                    native_value = torchext.tensor_size(tensor, index, loc=loc)
+                else:
+                    native_value = torchext.tensor_stride(tensor, index, loc=loc)
+                return ir.Operation.create(
+                    "torch_c.from_i64",
+                    results=[ir.Type.parse("!torch.int", context=loc.context)],
+                    operands=[native_value],
+                    loc=loc,
+                ).result
 
             if value.target in arithmetic_ops:
-                lhs, rhs = (import_value(argument) for argument in value.args)
+                lhs, rhs = (
+                    GraphNodeImporterTritonHopPatchState._import_kernel_value(
+                        importer, loc, argument
+                    )
+                    for argument in value.args
+                )
+                assert lhs is not None and rhs is not None
                 return arithmetic_ops[value.target](lhs, rhs, loc=loc)
 
             if value.target is operator.pow:
                 base, exponent = value.args
                 assert isinstance(exponent, int) and exponent >= 0
-                base = import_value(base)
-                result = import_constant(1)
+                base = GraphNodeImporterTritonHopPatchState._import_kernel_value(
+                    importer, loc, base
+                )
+                assert base is not None
+                result = torch_d.constant_int(1, loc=loc)
                 for _ in range(exponent):
                     result = arithmetic_ops[operator.mul](result, base, loc=loc)
                 return result
@@ -186,15 +211,12 @@ class GraphNodeImporterTritonHopPatchState:
 
         if isinstance(value, torch.SymInt):
             expression = value.node.expr
-            if expression.free_symbols:
-                value_kind = "kernel argument" if torch_scalar else "launch expression"
-                raise ValueError(
-                    f"cannot lower unsupported symbolic Triton {value_kind} "
-                    f"{expression!s}; refusing to use its concrete hint"
-                )
+            assert expression.free_symbols, (
+                f"cannot lower unsupported symbolic Triton integer expression {expression!s}; refusing to use its concrete hint"
+            )
             value = ast.literal_eval(value)
         if isinstance(value, int):
-            return import_constant(value)
+            return torch_d.constant_int(value, loc=loc)
         return None
 
     @staticmethod
@@ -217,21 +239,25 @@ class GraphNodeImporterTritonHopPatchState:
             is not None
         ):
             imported = GraphNodeImporterTritonHopPatchState._import_kernel_value(
-                importer, loc, value, torch_scalar=True
+                importer, loc, value
             )
             assert imported is not None, (
                 f"symbolic Triton kernel argument could not be lowered: {value}"
             )
             return imported
-        imported = importer._import_argument(loc, value)
-        assert imported is not None
-        return imported
+        else:
+            imported = importer._import_argument(loc, value)
+            assert imported is not None
+            return imported
 
     @staticmethod
     def _get_symbolic_integer(value: KernelArgument) -> torch.SymInt | None:
         if isinstance(value, torch.fx.Node):
             value = value.meta.get("val")
-        return value if isinstance(value, torch.SymInt) else None
+        elif isinstance(value, torch.SymInt):
+            return value
+        else:
+            return None
 
     def __enter__(self) -> Self:
         _patch_manager.apply(self)
@@ -390,14 +416,13 @@ class _GraphNodeImporterPatchManager:
             state._token = None
             assert self.refcount > 0
             self.refcount -= 1
-            if self.refcount > 0:
-                return
-            patches = self.patches
-            assert patches is not None
-            patches.close()
-            self.patches = None
-            self.original_import_symbolic_torch_op = None
-            self.original_return_node_values = None
+            if self.refcount <= 0:
+                patches = self.patches
+                assert patches is not None
+                patches.close()
+                self.patches = None
+                self.original_import_symbolic_torch_op = None
+                self.original_return_node_values = None
 
 
 _patch_manager = _GraphNodeImporterPatchManager()
@@ -497,50 +522,39 @@ def _import_hop_triton_kernel_wrapper(
     )
     kernel: triton.compiler.CompiledKernel | None = kernel_cache.get(key)
     assert kernel is not None, f"failed to get compiled Triton kernel for {node.name}"
-    integer_types = {
-        "i1",
-        "u1",
-        "i8",
-        "u8",
-        "i16",
-        "u16",
-        "i32",
-        "u32",
-        "i64",
-        "u64",
-    }
     arg_attrs: list[ir.DictAttr] = []
-    operands: list[ir.Value] = []
     operands_by_name: dict[str, ir.Value] = {}
 
     def import_constant(value: KernelValue, name: str) -> ir.Value:
-        # TODO: Support string constexpr specializations, such as the
-        # ACTIVATION argument in examples/mm.py.
-        assert type(value) in {bool, int, float}, (
+        assert isinstance(value, (bool, int, float, str)), (
             f"unsupported constexpr argument {name!r} of type "
-            f"{type(value).__name__}; expected bool, int, or float"
+            f"{type(value).__name__}; expected bool, int, float, or str"
         )
         with loc:
-            if type(value) is bool:
+            if isinstance(value, bool):
                 return torch_d.constant_bool(value)
-            if type(value) is int:
+            if isinstance(value, int):
                 return torch_d.constant_int(value)
-            return torch_d.constant_float(value)
+            if isinstance(value, float):
+                return torch_d.constant_float(value)
+            return torch_d.constant_str(value)
 
     def constant_specialization(value: object, name: str) -> ir.Attribute:
-        assert type(value) in {bool, int, float}, (
+        assert isinstance(value, (bool, int, float, str)), (
             f"unsupported constexpr specialization {name!r} of type "
-            f"{type(value).__name__}; expected bool, int, or float"
+            f"{type(value).__name__}; expected bool, int, float, or str"
         )
-        if type(value) is bool:
+        if isinstance(value, bool):
             value_attr = ir.BoolAttr.get(value)
-        elif type(value) is int:
+        elif isinstance(value, int):
             assert -(1 << 63) <= value < (1 << 63), (
                 f"constexpr specialization {name!r} does not fit in i64: {value}"
             )
             value_attr = ir.IntegerAttr.get(ir.IntegerType.get_signless(64), value)
-        else:
+        elif isinstance(value, float):
             value_attr = ir.FloatAttr.get_f64(value)
+        else:
+            value_attr = ir.StringAttr.get(value)
         return ir.Attribute.parse(
             f"#torchext.constant_specialization<value = {value_attr}>"
         )
@@ -554,9 +568,7 @@ def _import_hop_triton_kernel_wrapper(
         name = parameter.name
         compiled_name, compiled_type = compiled_parameter
         assert (compiled_name, compiled_type) == (name, triton_type), (
-            "compiled Triton signature does not match its source parameter order: "
-            f"expected {(name, triton_type)!r}, got "
-            f"{(compiled_name, compiled_type)!r}"
+            f"compiled Triton signature does not match its source parameter order: expected {(name, triton_type)!r}, got {(compiled_name, compiled_type)!r}"
         )
 
         if triton_type == "constexpr":
@@ -572,8 +584,19 @@ def _import_hop_triton_kernel_wrapper(
         else:
             if triton_type.startswith("*"):
                 native_type = "!llvm.ptr"
-            elif triton_type in integer_types:
-                native_type = f"i{ast.literal_eval(triton_type[1:])}"
+            elif triton_type in {
+                "i1",
+                "u1",
+                "i8",
+                "u8",
+                "i16",
+                "u16",
+                "i32",
+                "u32",
+                "i64",
+                "u64",
+            }:
+                native_type = f"i{triton_type[1:]}"
             elif triton_type in {"fp32", "fp64"}:
                 native_type = f"f{triton_type[2:]}"
             else:
@@ -596,7 +619,6 @@ def _import_hop_triton_kernel_wrapper(
                 f"{', divisibility = 16' if specialization_descriptor == 'D' else ''}>"
             )
 
-        operands.append(operand)
         operands_by_name[name] = operand
         arg_attrs.append(
             ir.DictAttr.get({"triton.specialization": specialization_attr})
@@ -632,23 +654,28 @@ def _import_hop_triton_kernel_wrapper(
                 offloading_handler=ir.Attribute.parse("#gpu.select_object"),
                 loc=loc,
             )
-    i64_type = ir.IntegerType.get_signless(64)
     i32_type = ir.IntegerType.get_signless(32)
     grid_x, grid_y, grid_z = grid
 
+    def import_launch_value(value: KernelArgument) -> ir.Value:
+        imported = GraphNodeImporterTritonHopPatchState._import_kernel_value(
+            self, loc, value
+        )
+        assert imported is not None
+        return _torch_int_to_i64(imported, loc)
+
+    def import_launch_constant(value: int) -> ir.Value:
+        return _torch_int_to_i64(torch_d.constant_int(value, loc=loc), loc)
+
     launch = torchext.trident_kernel_launch(
         ir.Attribute.parse(f"@{binary_name}::@{kernel.metadata.name}"),
-        GraphNodeImporterTritonHopPatchState._import_kernel_value(self, loc, grid_x),
-        GraphNodeImporterTritonHopPatchState._import_kernel_value(self, loc, grid_y),
-        GraphNodeImporterTritonHopPatchState._import_kernel_value(self, loc, grid_z),
-        arith.constant(
-            i64_type,
-            kernel.metadata.num_warps * kernel.metadata.warp_size,
-            loc=loc,
-        ),
-        arith.constant(i64_type, 1, loc=loc),
-        arith.constant(i64_type, 1, loc=loc),
-        operands,
+        import_launch_value(grid_x),
+        import_launch_value(grid_y),
+        import_launch_value(grid_z),
+        import_launch_constant(kernel.metadata.num_warps * kernel.metadata.warp_size),
+        import_launch_constant(1),
+        import_launch_constant(1),
+        list(operands_by_name.values()),
         dynamic_shared_memory_size=arith.constant(
             i32_type, kernel.metadata.shared, loc=loc
         ),

@@ -18,7 +18,7 @@ def TorchExt_ConstantSpecializationAttr
       ]> {
   let mnemonic = "constant_specialization";
   let summary = "Triton constant specialization assumption";
-  let parameters = (ins "::mlir::TypedAttr":$value);
+  let parameters = (ins "::mlir::Attribute":$value);
   let assemblyFormat = [{ `<` `value` `=` $value `>` }];
   let genVerifyDecl = 1;
 }

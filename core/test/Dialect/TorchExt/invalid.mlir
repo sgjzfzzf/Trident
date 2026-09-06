@@ -54,7 +54,7 @@ module {
 module {
   func.func @invalid_constant_specialization_type(%value: !torch.int) {
     %one = arith.constant 1 : i64
-    // expected-error@+1 {{constant specialization requires an i1, i64, or f64 value}}
+    // expected-error@+1 {{constant specialization requires an i1, i64, f64, or string value}}
     "torchext.trident_kernel_launch"(%one, %one, %one, %one, %one, %one, %value) <{arg_attrs = [{triton.specialization = #torchext.constant_specialization<value = 1 : i32>}], kernel = @kernel::@entry, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1>}> : (i64, i64, i64, i64, i64, i64, !torch.int) -> ()
     func.return
   }

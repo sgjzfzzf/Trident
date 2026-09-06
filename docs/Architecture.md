@@ -259,6 +259,16 @@ in `python/trident/patch.py` to inject this support at import time:
   `GraphNodeImporter` before constructing `FxImporter`.
 - `unpatch_graph_node_importer_for_triton_hop()` restores the original class
   state in a `try/finally` block, avoiding persistent global side effects.
+- Importer overrides use small attribute, mapping, and set helpers with a
+  standard-library `ExitStack`. Mapping and set additions are applied in place
+  without naming their owning module attributes, then reverted on exit.
+  Context-local state keeps nested and concurrent specialization IDs isolated
+  while a shared reference count controls the process-global installation.
+- The same scoped patch fills missing `torch.uint32` importer mappings for
+  unsigned tensor types, dtype constants, and tensor literals. A conflicting
+  dependency mapping fails explicitly so that upstream support is reviewed
+  rather than silently overridden. All original mapping contents are restored
+  when the import finishes.
 - The patched import retrieves compiled kernels and runtime parameters from
   Triton JIT/Autotune results, sets `"gpu.container_module"` on the top-level
   module, materializes each kernel's cubin into a `gpu.binary` op, and emits

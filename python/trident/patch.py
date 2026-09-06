@@ -6,13 +6,16 @@ from __future__ import annotations
 import ast
 import operator
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, MutableMapping, MutableSet
+from collections.abc import Set as AbstractSet
+from contextlib import ExitStack
+from contextvars import ContextVar, Token
 from types import TracebackType
-from typing import ClassVar, Final, Self, TypeAlias, cast
+from typing import Final, Self, TypeAlias, cast
 
+import numpy as np
 import torch
 import triton
-from torch._ops import OpOverloadPacket
 
 from trident.core import ir
 from trident.core.dialects import (
@@ -39,26 +42,13 @@ KernelValue: TypeAlias = (
 )
 KernelArgument: TypeAlias = torch.fx.Node | KernelValue
 
+_MISSING: Final[object] = object()
+
 
 class GraphNodeImporterTritonHopPatchState:
-    _refcount: ClassVar[int] = 0
-    _active_state: ClassVar[Self | None] = None
-    _lock: Final[threading.RLock] = threading.RLock()
-
     def __init__(self, specialization_id: int = 0) -> None:
         self.specialization_id: int = specialization_id
-        self.original_attrs: dict[str, object] = {}
-        self.original_scalar_type_map: dict[type[object], str] | None = None
-        self.original_builtin_ops: dict[object, OpOverloadPacket] | None = None
-        self.original_symbolic_torch_ops: set[object] | None = None
-
-    @staticmethod
-    def _symbolic_builtin_ops() -> dict[str, OpOverloadPacket]:
-        return {
-            "or_": torch.ops.aten.__or__,
-            "pow": torch.ops.aten.pow,
-            "rshift": torch.ops.aten.__rshift__,
-        }
+        self._token: Token[GraphNodeImporterTritonHopPatchState | None] | None = None
 
     @staticmethod
     def _resolve_triton_binder_value(
@@ -192,7 +182,7 @@ class GraphNodeImporterTritonHopPatchState:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
-        _patch_manager.restore()
+        _patch_manager.restore(self)
 
 
 class _GraphNodeImporterPatchManager:
@@ -200,87 +190,153 @@ class _GraphNodeImporterPatchManager:
 
     def __init__(self) -> None:
         self.refcount: int = 0
-        self.active_state: GraphNodeImporterTritonHopPatchState | None = None
+        self.patches: ExitStack | None = None
+        self.original_import_symbolic_torch_op: Callable[..., None] | None = None
+        self.original_return_node_values: Callable[..., None] | None = None
+        self._active_state: ContextVar[GraphNodeImporterTritonHopPatchState | None] = (
+            ContextVar("trident_importer_patch_state", default=None)
+        )
         self.lock: Final[threading.RLock] = threading.RLock()
+
+    @property
+    def active_state(self) -> GraphNodeImporterTritonHopPatchState | None:
+        return self._active_state.get()
+
+    @staticmethod
+    def _patch_attribute(
+        patches: ExitStack,
+        target: object,
+        value: Callable[..., object],
+    ) -> object:
+        """Replace one attribute and register its exact restoration."""
+        attribute = value.__name__
+        original = getattr(target, attribute, _MISSING)
+        setattr(target, attribute, value)
+        if original is _MISSING:
+            patches.callback(delattr, target, attribute)
+        else:
+            patches.callback(setattr, target, attribute, original)
+        return original
+
+    @staticmethod
+    def _patch_mapping(
+        patches: ExitStack,
+        mapping: MutableMapping[object, object],
+        additions: Mapping[object, object],
+    ) -> None:
+        conflicts = mapping.keys() & additions.keys()
+        assert not conflicts, f"cannot patch existing mapping keys: {conflicts}"
+        original = mapping.copy()
+        patches.callback(mapping.update, original)
+        patches.callback(mapping.clear)
+        mapping.update(additions)
+
+    @staticmethod
+    def _patch_set(
+        patches: ExitStack,
+        values: MutableSet[object],
+        additions: AbstractSet[object],
+    ) -> None:
+        conflicts = values & additions
+        assert not conflicts, f"cannot patch existing set values: {conflicts}"
+        original = values.copy()
+        patches.callback(values.update, original)
+        patches.callback(values.clear)
+        values.update(additions)
+
+    def _install_patches(
+        self,
+        patches: ExitStack,
+    ) -> tuple[Callable[..., None], Callable[..., None]]:
+        for patch in (
+            _import_hop_triton_kernel_wrapper_functional,
+            _import_hop_triton_kernel_wrapper_mutation,
+        ):
+            self._patch_attribute(patches, GraphNodeImporter, patch)
+        original_import_symbolic_torch_op = self._patch_attribute(
+            patches, GraphNodeImporter, _import_symbolic_torch_op
+        )
+        original_return_node_values = self._patch_attribute(
+            patches, GraphNodeImporter, return_node_values
+        )
+        assert callable(original_import_symbolic_torch_op)
+        assert callable(original_return_node_values)
+
+        self._patch_mapping(
+            patches,
+            fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE,
+            {torch.dtype: "!torch.int"},
+        )
+        self._patch_mapping(
+            patches,
+            fx_importer.TORCH_DTYPE_TO_INT,
+            {torch.uint32: 28},
+        )
+        self._patch_mapping(
+            patches,
+            fx_importer.TORCH_DTYPE_TO_MLIR_TYPE,
+            {torch.uint32: lambda: ir.IntegerType.get_unsigned(32)},
+        )
+        self._patch_mapping(
+            patches,
+            fx_importer.TORCH_DTYPE_TO_MLIR_TYPE_ASM,
+            {torch.uint32: "ui32"},
+        )
+        self._patch_mapping(
+            patches,
+            fx_importer.TORCH_DTYPE_TO_NPY_TYPE,
+            {torch.uint32: np.uint32},
+        )
+        self._patch_mapping(
+            patches,
+            fx_importer.PY_BUILTIN_TO_TORCH_OP,
+            {
+                operator.or_: torch.ops.aten.__or__,
+                operator.pow: torch.ops.aten.pow,
+                operator.rshift: torch.ops.aten.__rshift__,
+            },
+        )
+        self._patch_set(
+            patches,
+            fx_importer.SYMBOLIC_TORCH_OPS,
+            {torch.sym_max, torch.sym_min, torch.sym_sum},
+        )
+        return original_import_symbolic_torch_op, original_return_node_values
 
     def apply(self, state: GraphNodeImporterTritonHopPatchState) -> None:
         with self.lock:
-            if self.refcount > 0:
-                self.refcount += 1
-                return
-
-            importer_patches: tuple[Callable[..., None], ...] = (
-                _import_hop_triton_kernel_wrapper_functional,
-                _import_hop_triton_kernel_wrapper_mutation,
-                _import_symbolic_torch_op,
-                return_node_values,
-            )
-            for importer_patch in importer_patches:
-                attr_name = importer_patch.__name__
-                if hasattr(GraphNodeImporter, attr_name):
-                    state.original_attrs[attr_name] = getattr(
-                        GraphNodeImporter, attr_name
-                    )
-                setattr(GraphNodeImporter, attr_name, importer_patch)
-
-            state.original_scalar_type_map = fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE
-            fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE = {
-                **state.original_scalar_type_map,
-                torch.dtype: "!torch.int",
-            }
-
-            builtin_ops = GraphNodeImporterTritonHopPatchState._symbolic_builtin_ops()
-            state.original_builtin_ops = dict(fx_importer.PY_BUILTIN_TO_TORCH_OP)
-            fx_importer.PY_BUILTIN_TO_TORCH_OP = {
-                **state.original_builtin_ops,
-                **builtin_ops,
-            }
-            state.original_symbolic_torch_ops = fx_importer.SYMBOLIC_TORCH_OPS
-            fx_importer.SYMBOLIC_TORCH_OPS = {
-                *state.original_symbolic_torch_ops,
-                torch.sym_max,
-                torch.sym_min,
-                torch.sym_sum,
-            }
-            self.active_state = state
-            self.refcount = 1
-
-    def restore(self) -> None:
-        with self.lock:
+            assert state._token is None, "patch state is already active"
             if self.refcount == 0:
-                return
+                patches = ExitStack()
+                try:
+                    (
+                        self.original_import_symbolic_torch_op,
+                        self.original_return_node_values,
+                    ) = self._install_patches(patches)
+                except BaseException:
+                    patches.close()
+                    raise
+                self.patches = patches
+            self.refcount += 1
+            state._token = self._active_state.set(state)
+
+    def restore(self, state: GraphNodeImporterTritonHopPatchState) -> None:
+        with self.lock:
+            token = state._token
+            assert token is not None, "patch state is not active"
+            assert self.active_state is state, "patch contexts must exit in LIFO order"
+            self._active_state.reset(token)
+            state._token = None
+            assert self.refcount > 0
             self.refcount -= 1
             if self.refcount > 0:
                 return
-
-            active_state = self.active_state
-            assert active_state is not None
-            importer_patches: tuple[Callable[..., None], ...] = (
-                _import_hop_triton_kernel_wrapper_functional,
-                _import_hop_triton_kernel_wrapper_mutation,
-                _import_symbolic_torch_op,
-                return_node_values,
-            )
-            for importer_patch in importer_patches:
-                attr_name = importer_patch.__name__
-                if hasattr(GraphNodeImporter, attr_name):
-                    delattr(GraphNodeImporter, attr_name)
-                if attr_name in active_state.original_attrs:
-                    setattr(
-                        GraphNodeImporter,
-                        attr_name,
-                        active_state.original_attrs[attr_name],
-                    )
-
-            assert active_state.original_scalar_type_map is not None
-            fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE = (
-                active_state.original_scalar_type_map
-            )
-            assert active_state.original_builtin_ops is not None
-            fx_importer.PY_BUILTIN_TO_TORCH_OP = active_state.original_builtin_ops
-            assert active_state.original_symbolic_torch_ops is not None
-            fx_importer.SYMBOLIC_TORCH_OPS = active_state.original_symbolic_torch_ops
-            self.active_state = None
+            patches = self.patches
+            assert patches is not None
+            patches.close()
+            self.patches = None
+            self.original_import_symbolic_torch_op = None
+            self.original_return_node_values = None
 
 
 _patch_manager = _GraphNodeImporterPatchManager()
@@ -327,9 +383,9 @@ def _import_symbolic_torch_op(
         result = operation(lhs, rhs, loc=loc)
         self.bind_node_value(node, result)
     else:
-        _patch_manager.active_state.original_attrs["_import_symbolic_torch_op"](
-            self, loc, node, target
-        )
+        original = _patch_manager.original_import_symbolic_torch_op
+        assert original is not None
+        original(self, loc, node, target)
 
 
 def _import_hop_triton_kernel_wrapper(
@@ -533,9 +589,7 @@ def return_node_values(
     constants: dict[int, KernelValue],
 ) -> None:
     """Fix constant output indices before delegating to the FX importer."""
-    active_state = _patch_manager.active_state
-    assert active_state is not None
-    original_return_node_values = active_state.original_attrs.get("return_node_values")
+    original_return_node_values = _patch_manager.original_return_node_values
     assert original_return_node_values is not None
     compact_constants = {
         compact_index: constants[original_index]

@@ -66,6 +66,31 @@ module attributes {gpu.container_module} {
 
 // -----
 
+// CHECK-LABEL: tvm_ffi.func @validate_tuple
+// CHECK-SAME:    %[[SHAPE:[a-zA-Z0-9_]+]]: !torch.tuple<int, int>
+// CHECK:         tvm_ffi.array.create
+// CHECK:         tvm_ffi.eq %[[SHAPE]]
+// CHECK:         gpu.launch_func
+// CHECK-NOT:     torchext.trident_kernel_launch
+
+module attributes {gpu.container_module} {
+  gpu.binary @kernel [#gpu.object<#nvvm.target, "">]
+
+  tvm_ffi.func @validate_tuple(%shape: !torch.tuple<int, int>)
+      -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception> {
+    %one = arith.constant 1 : i64
+    torchext.trident_kernel_launch @kernel::@entry
+        blocks in (%one, %one, %one) : i64
+        threads in (%one, %one, %one)
+        args (%shape : !torch.tuple<int, int> {triton.specialization = #torchext.constant_specialization<value = [2, 4]>})
+    %result = tvm_ffi.constant.int 0
+    %success = tvm_ffi.cast %result : !tvm_ffi.int -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception>
+    tvm_ffi.return %success : !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception>
+  }
+}
+
+// -----
+
 // CHECK-LABEL: tvm_ffi.func @validate_string
 // CHECK-SAME:    %[[ACTIVATION:[a-zA-Z0-9_]+]]: !torch.str
 // CHECK:         cf.cond_br %[[INITIAL_STRING:[a-zA-Z0-9_]+]], [[SUCCESS_STRING:\^bb[0-9]+]], [[FAILURE_STRING:\^bb[0-9]+]]

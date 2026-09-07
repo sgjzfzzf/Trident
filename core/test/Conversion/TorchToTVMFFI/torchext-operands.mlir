@@ -13,6 +13,6 @@ func.func @torchext_operand_conversion(
   %one = arith.constant 1 : i64
   torchext.trident_kernel_launch @kernel::@entry
       blocks in (%one, %one, %one) : i64 threads in (%one, %one, %one)
-      args (%tensor : !torch.vtensor<[4],f32> {triton.specialization = #torchext.variable_specialization<kind = !llvm.ptr>}, %scalar : !torch.float {triton.specialization = #torchext.variable_specialization<kind = f64>})
+      args (%tensor : !torch.vtensor<[4],f32> #torchext.variable_specialization<kind = !llvm.ptr>, %scalar : !torch.float #torchext.variable_specialization<kind = f64>)
   return
 }

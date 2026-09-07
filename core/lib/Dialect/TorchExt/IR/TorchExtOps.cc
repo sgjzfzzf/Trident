@@ -8,13 +8,10 @@
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/Torch/IR/TorchInterfaces.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtInterfaces.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 #include <cassert>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
-#include <llvm/ADT/TypeSwitch.h>
-#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypes.h>
@@ -31,18 +28,12 @@
 
 namespace trident::torchext {
 
-namespace {
-
-constexpr llvm::StringLiteral kSpecializationName = "triton.specialization";
-
-} // namespace
-
 mlir::ParseResult TritonKernelLaunchOp::parseKernelArguments(
     mlir::OpAsmParser &parser,
     llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &operands,
-    llvm::SmallVectorImpl<mlir::Type> &types, mlir::ArrayAttr &argAttrs) {
-  llvm::SmallVector<mlir::Attribute> attributes;
-  bool hasAttributes = false;
+    llvm::SmallVectorImpl<mlir::Type> &types,
+    mlir::ArrayAttr &specializations) {
+  llvm::SmallVector<mlir::Attribute> parsedSpecializations;
 
   do {
     mlir::OpAsmParser::UnresolvedOperand operand;
@@ -55,30 +46,26 @@ mlir::ParseResult TritonKernelLaunchOp::parseKernelArguments(
       return mlir::failure();
     }
 
-    mlir::NamedAttrList namedAttrs;
-    if (parser.parseOptionalAttrDict(namedAttrs)) {
+    mlir::Attribute specialization;
+    if (parser.parseAttribute(specialization)) {
       return mlir::failure();
     }
-    hasAttributes |= !namedAttrs.empty();
-    attributes.push_back(namedAttrs.getDictionary(parser.getContext()));
+    parsedSpecializations.push_back(specialization);
     operands.push_back(operand);
     types.push_back(type);
   } while (mlir::succeeded(parser.parseOptionalComma()));
 
-  if (hasAttributes) {
-    argAttrs = mlir::ArrayAttr::get(parser.getContext(), attributes);
-  }
+  specializations =
+      mlir::ArrayAttr::get(parser.getContext(), parsedSpecializations);
   return mlir::success();
 }
 
-void TritonKernelLaunchOp::printKernelArguments(mlir::OpAsmPrinter &printer,
-                                                mlir::Operation *op
-                                                [[maybe_unused]],
-                                                mlir::OperandRange operands,
-                                                mlir::TypeRange types,
-                                                mlir::ArrayAttr argAttrs) {
+void TritonKernelLaunchOp::printKernelArguments(
+    mlir::OpAsmPrinter &printer, mlir::Operation *op [[maybe_unused]],
+    mlir::OperandRange operands, mlir::TypeRange types,
+    mlir::ArrayAttr specializations) {
   assert(operands.size() == types.size());
-  assert(!argAttrs || argAttrs.size() == operands.size());
+  assert(specializations.size() == operands.size());
 
   llvm::interleaveComma(llvm::enumerate(llvm::zip(operands, types)),
                         printer.getStream(), [&](auto indexedOperandAndType) {
@@ -87,14 +74,8 @@ void TritonKernelLaunchOp::printKernelArguments(mlir::OpAsmPrinter &printer,
                           printer.printOperand(operand);
                           printer << " : ";
                           printer.printType(type);
-                          if (!argAttrs) {
-                            return;
-                          }
-                          auto attrs =
-                              mlir::cast<mlir::DictionaryAttr>(argAttrs[index]);
-                          if (!attrs.empty()) {
-                            printer.printOptionalAttrDict(attrs.getValue());
-                          }
+                          printer << ' ';
+                          printer.printAttribute(specializations[index]);
                         });
 }
 
@@ -151,48 +132,9 @@ mlir::LogicalResult GetOp::inferReturnTypes(
 }
 
 mlir::LogicalResult TritonKernelLaunchOp::verify() {
-  mlir::ArrayAttr const argAttrs = getArgAttrsAttr();
-  if (!argAttrs) {
-    return emitOpError("expects arg_attrs for every kernel operand");
-  }
-  if (argAttrs.size() != getKernelOperands().size()) {
-    return emitOpError("arg_attrs and kernel operands must have the same size");
-  }
-  for (auto [index, argAttr, operand] : llvm::enumerate(
-           argAttrs.getAsRange<mlir::DictionaryAttr>(), getKernelOperands())) {
-    SpecializationAttrInterface const specialization =
-        mlir::dyn_cast_or_null<SpecializationAttrInterface>(
-            argAttr.get(kSpecializationName));
-    if (!specialization) {
-      return emitOpError("kernel operand #")
-             << index << " requires a " << kSpecializationName << " attribute";
-    }
-    mlir::Type const operandType = operand.getType();
-    mlir::Type const kind = specialization.getTargetType();
-    bool const validKind =
-        llvm::TypeSwitch<mlir::Type, bool>(operandType)
-            .Case<mlir::torch::Torch::BaseTensorType>([&](mlir::Type) -> bool {
-              return mlir::isa<mlir::LLVM::LLVMPointerType>(kind);
-            })
-            .Case<mlir::torch::Torch::BoolType, mlir::torch::Torch::IntType>(
-                [&](mlir::Type) -> bool {
-                  auto integerKind = mlir::dyn_cast<mlir::IntegerType>(kind);
-                  return integerKind && integerKind.getWidth() <= 64;
-                })
-            .Case<mlir::torch::Torch::FloatType>([&](mlir::Type) -> bool {
-              return kind.isF32() || kind.isF64();
-            })
-            .Case<mlir::torch::Torch::StringType>([&](mlir::Type) -> bool {
-              return mlir::isa<mlir::torch::Torch::StringType>(kind);
-            })
-            .Case<mlir::torch::Torch::TupleType>(
-                [&](mlir::Type) -> bool { return operandType == kind; })
-            .Default([](mlir::Type) -> bool { return false; });
-    if (!validKind) {
-      return emitOpError("kernel operand #")
-             << index << " of type " << operandType
-             << " cannot be converted to specialization kind " << kind;
-    }
+  if (getSpecializations().size() != getKernelOperands().size()) {
+    return emitOpError(
+        "specializations and kernel operands must have the same size");
   }
   return mlir::success();
 }

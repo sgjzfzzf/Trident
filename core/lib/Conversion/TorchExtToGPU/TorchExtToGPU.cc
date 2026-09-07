@@ -45,6 +45,7 @@
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <optional>
+#include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
 #include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h>
 #include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.h>
 #include <tuple>
@@ -54,12 +55,6 @@ namespace trident::conversion {
 
 #define GEN_PASS_DEF_CONVERTTORCHEXTTOGPU
 #include "trident/core/Conversion/Passes.h.inc"
-
-namespace {
-
-constexpr llvm::StringLiteral kSpecializationName = "triton.specialization";
-
-} // namespace
 
 /// Converts torch_ext.trident_kernel_launch to gpu.launch_func.
 class ConvertTritonKernelLaunchOp final
@@ -74,15 +69,12 @@ public:
   matchAndRewrite(torchext::TritonKernelLaunchOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
     mlir::Location const loc = op.getLoc();
-    mlir::ArrayAttr const argAttrs = op.getArgAttrsAttr();
+    mlir::ArrayAttr const specializations = op.getSpecializationsAttr();
     using OperandAndSpecialization =
         std::tuple<mlir::Value, torchext::SpecializationAttrInterface>;
     auto materializeOperand =
-        [&](mlir::DictionaryAttr argAttr,
+        [&](torchext::SpecializationAttrInterface specialization,
             mlir::Value source) -> OperandAndSpecialization {
-      torchext::SpecializationAttrInterface const specialization =
-          mlir::cast<torchext::SpecializationAttrInterface>(
-              argAttr.get(kSpecializationName));
       mlir::Value operand = source;
       mlir::Type const kind = specialization.getTargetType();
       if (operand.getType() != kind) {
@@ -95,15 +87,17 @@ public:
     tvm_ffi::FuncOp function = op->getParentOfType<tvm_ffi::FuncOp>();
     if (function) {
       llvm::SmallVector<OperandAndSpecialization> operandsAndSpecializations;
-      for (auto [argAttr, source] :
-           llvm::zip(argAttrs.getAsRange<mlir::DictionaryAttr>(),
+      for (auto [specialization, source] :
+           llvm::zip(specializations
+                         .getAsRange<torchext::SpecializationAttrInterface>(),
                      op.getKernelOperands())) {
-        auto [operand, specialization] = materializeOperand(argAttr, source);
+        auto [operand, checkedSpecialization] =
+            materializeOperand(specialization, source);
         if (!operand) {
           return op.emitOpError(
               "failed to materialize a native kernel operand");
         }
-        operandsAndSpecializations.emplace_back(operand, specialization);
+        operandsAndSpecializations.emplace_back(operand, checkedSpecialization);
       }
       mlir::Value const allChecks = llvm::accumulate(
           operandsAndSpecializations,
@@ -158,19 +152,21 @@ public:
     // Add a block-transfer check for borrowed values so future conversions
     // cannot accidentally reuse the guard materialization in this block.
     llvm::SmallVector<OperandAndSpecialization> operandsAndSpecializations;
-    for (auto [argAttr, source] : llvm::make_filter_range(
-             llvm::zip(argAttrs.getAsRange<mlir::DictionaryAttr>(),
+    for (auto [specialization, source] : llvm::make_filter_range(
+             llvm::zip(specializations
+                           .getAsRange<torchext::SpecializationAttrInterface>(),
                        op.getKernelOperands()),
              [](auto argument) -> bool {
-               auto [attributes, _] = argument;
+               auto [specialization, _] = argument;
                return !mlir::isa<torchext::ConstantSpecializationAttr>(
-                   attributes.get(kSpecializationName));
+                   specialization);
              })) {
-      auto [operand, specialization] = materializeOperand(argAttr, source);
+      auto [operand, checkedSpecialization] =
+          materializeOperand(specialization, source);
       if (!operand) {
         return op.emitOpError("failed to materialize a native kernel operand");
       }
-      operandsAndSpecializations.emplace_back(operand, specialization);
+      operandsAndSpecializations.emplace_back(operand, checkedSpecialization);
     }
     mlir::gpu::KernelDim3 const gridSize{
         adaptor.getGridSizeX(), adaptor.getGridSizeY(), adaptor.getGridSizeZ()};
@@ -251,7 +247,8 @@ public:
                   })
               .Case<mlir::torch::Torch::BoolType, mlir::torch::Torch::FloatType,
                     mlir::torch::Torch::IntType, mlir::torch::Torch::StringType,
-                    mlir::IntegerType, mlir::FloatType>(
+                    mlir::torch::Torch::TupleType, mlir::IntegerType,
+                    mlir::FloatType>(
                   [](mlir::Type type) -> std::optional<mlir::Type> {
                     return type;
                   })
@@ -325,7 +322,12 @@ public:
     });
 
     target.addIllegalOp<torchext::TritonKernelLaunchOp>();
-    target.addLegalOp<mlir::gpu::LaunchFuncOp, torchext::GetOp>();
+    target.addLegalOp<
+        mlir::gpu::LaunchFuncOp, mlir::torch::Torch::ConstantBoolOp,
+        mlir::torch::Torch::ConstantFloatOp, mlir::torch::Torch::ConstantIntOp,
+        mlir::torch::Torch::ConstantStrOp,
+        mlir::torch::Torch::PrimTupleConstructOp, torchext::EqOp,
+        torchext::GetOp>();
     target.addLegalDialect<
         mlir::arith::ArithDialect, mlir::cf::ControlFlowDialect,
         mlir::gpu::GPUDialect, mlir::BuiltinDialect, mlir::func::FuncDialect,

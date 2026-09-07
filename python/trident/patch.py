@@ -11,7 +11,7 @@ from collections.abc import Set as AbstractSet
 from contextlib import ExitStack
 from contextvars import ContextVar, Token
 from types import TracebackType
-from typing import Final, Self, TypeAlias, cast
+from typing import Any, Final, Self, TypeAlias, cast
 
 import numpy as np
 import torch
@@ -42,7 +42,7 @@ KernelValue: TypeAlias = (
 )
 KernelArgument: TypeAlias = torch.fx.Node | KernelValue
 
-_MISSING: Final[object] = object()
+_MISSING: Final[Any] = object()
 
 
 def _torch_int_to_i64(value: ir.Value, loc: ir.Location) -> ir.Value:
@@ -292,9 +292,9 @@ class _GraphNodeImporterPatchManager:
     @staticmethod
     def _patch_attribute(
         patches: ExitStack,
-        target: object,
-        value: Callable[..., object],
-    ) -> object:
+        target: Any,
+        value: Callable[..., Any],
+    ) -> Any:
         """Replace one attribute and register its exact restoration."""
         attribute = value.__name__
         original = getattr(target, attribute, _MISSING)
@@ -308,8 +308,8 @@ class _GraphNodeImporterPatchManager:
     @staticmethod
     def _patch_mapping(
         patches: ExitStack,
-        mapping: MutableMapping[object, object],
-        additions: Mapping[object, object],
+        mapping: MutableMapping[Any, Any],
+        additions: Mapping[Any, Any],
     ) -> None:
         conflicts = mapping.keys() & additions.keys()
         assert not conflicts, f"cannot patch existing mapping keys: {conflicts}"
@@ -321,8 +321,8 @@ class _GraphNodeImporterPatchManager:
     @staticmethod
     def _patch_set(
         patches: ExitStack,
-        values: MutableSet[object],
-        additions: AbstractSet[object],
+        values: MutableSet[Any],
+        additions: AbstractSet[Any],
     ) -> None:
         conflicts = values & additions
         assert not conflicts, f"cannot patch existing set values: {conflicts}"
@@ -432,7 +432,7 @@ def _import_symbolic_torch_op(
     self: GraphNodeImporter,
     loc: ir.Location,
     node: torch.fx.Node,
-    target: object,
+    target: Any,
 ) -> None:
     if target is operator.pow and isinstance(node.meta.get("val"), torch.SymInt):
         base, exponent = node.args
@@ -478,7 +478,7 @@ def _import_hop_triton_kernel_wrapper(
     self: GraphNodeImporter,
     loc: ir.Location,
     node: torch.fx.Node,
-    hop: object,
+    hop: Any,
 ) -> None:
     knodes = cast(dict[str, KernelArgument], node.kwargs["kwargs"])
     output_names: list[str] = node.kwargs.get("tensors_to_clone", [])
@@ -522,8 +522,7 @@ def _import_hop_triton_kernel_wrapper(
     )
     kernel: triton.compiler.CompiledKernel | None = kernel_cache.get(key)
     assert kernel is not None, f"failed to get compiled Triton kernel for {node.name}"
-    arg_attrs: list[ir.DictAttr] = []
-    operands_by_name: dict[str, ir.Value] = {}
+    operands: dict[str, tuple[ir.Attribute, ir.Value]] = {}
 
     def import_constant(value: KernelValue, name: str) -> ir.Value | None:
         with loc:
@@ -548,7 +547,7 @@ def _import_hop_triton_kernel_wrapper(
             if isinstance(value, str):
                 return torch_d.constant_str(value)
 
-    def constant_value_attribute(value: object, name: str) -> ir.Attribute | None:
+    def constant_value_attribute(value: Any, name: str) -> ir.Attribute | None:
         if isinstance(value, tuple):
             return ir.ArrayAttr.get(
                 [
@@ -568,7 +567,7 @@ def _import_hop_triton_kernel_wrapper(
         if isinstance(value, str):
             return ir.StringAttr.get(value)
 
-    def constant_specialization(value: object, name: str) -> ir.Attribute:
+    def constant_specialization(value: Any, name: str) -> ir.Attribute:
         value_attr = constant_value_attribute(value, name)
         return ir.Attribute.parse(
             f"#torchext.constant_specialization<value = {value_attr}>"
@@ -634,10 +633,8 @@ def _import_hop_triton_kernel_wrapper(
                 f"{', divisibility = 16' if specialization_descriptor == 'D' else ''}>"
             )
 
-        operands_by_name[name] = operand
-        arg_attrs.append(
-            ir.DictAttr.get({"triton.specialization": specialization_attr})
-        )
+        assert operand is not None
+        operands[name] = (specialization_attr, operand)
     grids: list[tuple[int, int, int]] = node.kwargs["grid"]
     if len(configs) > 0 and best_config is not None:
         i: Final[int] = configs.index(best_config)
@@ -682,7 +679,7 @@ def _import_hop_triton_kernel_wrapper(
     def import_launch_constant(value: int) -> ir.Value:
         return _torch_int_to_i64(torch_d.constant_int(value, loc=loc), loc)
 
-    launch = torchext.trident_kernel_launch(
+    torchext.trident_kernel_launch(
         ir.Attribute.parse(f"@{binary_name}::@{kernel.metadata.name}"),
         import_launch_value(grid_x),
         import_launch_value(grid_y),
@@ -690,25 +687,25 @@ def _import_hop_triton_kernel_wrapper(
         import_launch_constant(kernel.metadata.num_warps * kernel.metadata.warp_size),
         import_launch_constant(1),
         import_launch_constant(1),
-        list(operands_by_name.values()),
+        [operand for _, operand in operands.values()],
+        ir.ArrayAttr.get([specialization for specialization, _ in operands.values()]),
         dynamic_shared_memory_size=arith.constant(
             i32_type, kernel.metadata.shared, loc=loc
         ),
         loc=loc,
     )
-    launch.attributes["arg_attrs"] = ir.ArrayAttr.get(arg_attrs)
-
     self._multi_result_nodes.add(node)
 
     for name in output_names:
-        self.bind_node_value(node, operands_by_name[name], name)
+        _, operand = operands[name]
+        self.bind_node_value(node, operand, name)
 
 
 def _import_hop_triton_kernel_wrapper_functional(
     self: GraphNodeImporter,
     loc: ir.Location,
     node: torch.fx.Node,
-    hop: object,
+    hop: Any,
 ) -> None:
     _import_hop_triton_kernel_wrapper(self, loc, node, hop)
 
@@ -717,7 +714,7 @@ def _import_hop_triton_kernel_wrapper_mutation(
     self: GraphNodeImporter,
     loc: ir.Location,
     node: torch.fx.Node,
-    hop: object,
+    hop: Any,
 ) -> None:
     _import_hop_triton_kernel_wrapper(self, loc, node, hop)
 

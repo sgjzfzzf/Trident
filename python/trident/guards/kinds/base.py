@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from ..codes.base import GuardBuilder, GuardCode
 from ..local import Local
@@ -27,7 +27,7 @@ class Guard:
         self.source: Final[Local | None] = source
         self.codes: Final[list[GuardBuilder]] = codes
 
-    def __init_subclass__(cls, **kwargs: object) -> None:
+    def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         create_fn_name = cls.__dict__.get("create_fn_name")
         if create_fn_name is not None:

@@ -71,6 +71,13 @@ def TorchExt_ConvertOp
   }];
 }
 
+def TorchExt_EqOp : TorchExt_Op<"eq", [Pure, SameTypeOperands]> {
+  let summary = "Compare two Torch semantic values for structural equality";
+  let arguments = (ins AnyTorchType:$lhs, AnyTorchType:$rhs);
+  let results = (outs I1:$result);
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs)";
+}
+
 def TorchExt_GetOp
     : TorchExt_Op<"get", [Pure,
         DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
@@ -159,7 +166,7 @@ let arguments = (ins SymbolRefAttr:$kernel,
                    Optional<I64>:$clusterSizeZ,
                    Optional<I32>:$dynamicSharedMemorySize,
                    Variadic<TorchExt_KernelOperandType>:$kernelOperands,
-                   OptionalAttr<DictArrayAttr>:$arg_attrs);
+                   TorchExt_SpecializationArrayAttr:$specializations);
 let results = (outs);
 let hasVerifier = 1;
 
@@ -170,12 +177,12 @@ let extraClassDeclaration = [{
         ::mlir::OpAsmParser &parser,
         ::llvm::SmallVectorImpl<::mlir::OpAsmParser::UnresolvedOperand> &operands,
         ::llvm::SmallVectorImpl<::mlir::Type> &types,
-        ::mlir::ArrayAttr &argAttrs);
+        ::mlir::ArrayAttr &specializations);
     static void printKernelArguments(
         ::mlir::OpAsmPrinter &printer,
         ::mlir::Operation *op [[maybe_unused]],
         ::mlir::OperandRange operands, ::mlir::TypeRange types,
-        ::mlir::ArrayAttr argAttrs);
+        ::mlir::ArrayAttr specializations);
   }];
 
   let assemblyFormat = [{
@@ -185,7 +192,7 @@ let extraClassDeclaration = [{
     `:` type($gridSizeX)
     `threads` `in` `(` $blockSizeX `,` $blockSizeY `,` $blockSizeZ `)`
     (`dynamic_shared_memory_size` $dynamicSharedMemorySize^)?
-    (`args` `(` custom<KernelArguments>($kernelOperands, type($kernelOperands), $arg_attrs)^ `)`)?
+    `args` `(` custom<KernelArguments>($kernelOperands, type($kernelOperands), $specializations) `)`
     prop-dict attr-dict
 }];
 }

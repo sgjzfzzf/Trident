@@ -14,6 +14,21 @@ from base import TridentTestCase
 
 
 class FrontendTest(TridentTestCase):
+    def test_tuple_constant_specialization(self) -> None:
+        @trident.jit(dynamic=False)
+        def add_tuple_element(
+            x: torch.Tensor, values: tuple[int, int]
+        ) -> torch.Tensor:
+            return x + values[0]
+
+        x = torch.arange(8, device="cuda", dtype=torch.float32)
+        for values in ((2, 3), (4, 3), (2, 3), (4, 3)):
+            torch.testing.assert_close(
+                add_tuple_element(x, values), x + values[0]
+            )
+
+        self.assertEqual(len(add_tuple_element._sub_modules), 2)
+
     def test_device_argument(self) -> None:
         @trident.jit
         def empty_on_device(

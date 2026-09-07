@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.h"
 #include <cstdint>
 #include <llvm/ADT/APInt.h>
@@ -58,12 +59,38 @@ mlir::Type getConstantValueType(mlir::Attribute value,
                          }));
       })
       .Case<mlir::IntegerAttr>([&](mlir::IntegerAttr integer) -> mlir::Type {
-        return integer.getType().isInteger(1)
-                   ? mlir::torch::Torch::BoolType::get(context)
-                   : mlir::torch::Torch::IntType::get(context);
+        if (integer.getType().isInteger(1)) {
+          return mlir::torch::Torch::BoolType::get(context);
+        }
+        return mlir::torch::Torch::IntType::get(context);
       })
       .Case<mlir::FloatAttr>([&](mlir::FloatAttr) -> mlir::Type {
         return mlir::torch::Torch::FloatType::get(context);
+      });
+}
+
+mlir::Value buildTVMFFIConstant(mlir::OpBuilder &builder, mlir::Location loc,
+                                mlir::Attribute value) {
+  return llvm::TypeSwitch<mlir::Attribute, mlir::Value>(value)
+      .Case<mlir::StringAttr>([&](mlir::StringAttr string) -> mlir::Value {
+        return tvm_ffi::ConstantRawStrOp::create(builder, loc, string);
+      })
+      .Case<mlir::ArrayAttr>([&](mlir::ArrayAttr array) -> mlir::Value {
+        llvm::SmallVector<mlir::Value> elements;
+        elements.reserve(array.size());
+        for (mlir::Attribute element : array) {
+          elements.push_back(buildTVMFFIConstant(builder, loc, element));
+        }
+        return tvm_ffi::ArrayCreateOp::create(builder, loc, elements);
+      })
+      .Case<mlir::IntegerAttr>([&](mlir::IntegerAttr integer) -> mlir::Value {
+        if (integer.getType().isInteger(1)) {
+          return tvm_ffi::ConstantBoolOp::create(builder, loc, integer);
+        }
+        return tvm_ffi::ConstantIntOp::create(builder, loc, integer);
+      })
+      .Case<mlir::FloatAttr>([&](mlir::FloatAttr value) -> mlir::Value {
+        return tvm_ffi::ConstantFloatOp::create(builder, loc, value);
       });
 }
 
@@ -82,7 +109,11 @@ mlir::LogicalResult ConstantSpecializationAttr::verify(
 mlir::Value ConstantSpecializationAttr::buildCheck(mlir::OpBuilder &builder,
                                                    mlir::Location loc,
                                                    mlir::Value operand) const {
-  if (mlir::isa<mlir::ArrayAttr, mlir::StringAttr>(getValue())) {
+  if (mlir::isa<mlir::ArrayAttr>(getValue())) {
+    mlir::Value const expected = buildTVMFFIConstant(builder, loc, getValue());
+    return tvm_ffi::EqOp::create(builder, loc, operand, expected);
+  }
+  if (mlir::isa<mlir::StringAttr>(getValue())) {
     return {};
   }
   auto value = mlir::cast<mlir::TypedAttr>(getValue());
@@ -105,7 +136,13 @@ mlir::Value ConstantSpecializationAttr::buildCheck(mlir::OpBuilder &builder,
 }
 
 mlir::Type ConstantSpecializationAttr::getTargetType() const {
-  return getConstantValueType(getValue(), getContext());
+  if (mlir::isa<mlir::ArrayAttr>(getValue())) {
+    return getConstantValueType(getValue(), getContext());
+  }
+  if (mlir::isa<mlir::StringAttr>(getValue())) {
+    return mlir::torch::Torch::StringType::get(getContext());
+  }
+  return mlir::cast<mlir::TypedAttr>(getValue()).getType();
 }
 
 mlir::Value VariableSpecializationAttr::buildCheck(mlir::OpBuilder &builder,

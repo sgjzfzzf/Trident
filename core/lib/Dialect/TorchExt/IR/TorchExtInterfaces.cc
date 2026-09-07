@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/STLFunctionalExtras.h>
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
@@ -25,29 +27,62 @@
 
 namespace trident::torchext {
 
+namespace {
+
+bool isValidConstantValue(mlir::Attribute value) {
+  if (mlir::isa<mlir::StringAttr>(value)) {
+    return true;
+  }
+  if (auto array = mlir::dyn_cast<mlir::ArrayAttr>(value)) {
+    return llvm::all_of(array, isValidConstantValue);
+  }
+  auto typed = mlir::dyn_cast<mlir::TypedAttr>(value);
+  if (!typed) {
+    return false;
+  }
+  mlir::Type const type = typed.getType();
+  return type.isInteger(1) || type.isInteger(64) || type.isF64();
+}
+
+mlir::Type getConstantValueType(mlir::Attribute value,
+                                mlir::MLIRContext *context) {
+  return llvm::TypeSwitch<mlir::Attribute, mlir::Type>(value)
+      .Case<mlir::StringAttr>([&](mlir::StringAttr) -> mlir::Type {
+        return mlir::torch::Torch::StringType::get(context);
+      })
+      .Case<mlir::ArrayAttr>([&](mlir::ArrayAttr array) -> mlir::Type {
+        return mlir::torch::Torch::TupleType::get(
+            context, llvm::map_to_vector(
+                         array, [&](mlir::Attribute element) -> mlir::Type {
+                           return getConstantValueType(element, context);
+                         }));
+      })
+      .Case<mlir::IntegerAttr>([&](mlir::IntegerAttr integer) -> mlir::Type {
+        return integer.getType().isInteger(1)
+                   ? mlir::torch::Torch::BoolType::get(context)
+                   : mlir::torch::Torch::IntType::get(context);
+      })
+      .Case<mlir::FloatAttr>([&](mlir::FloatAttr) -> mlir::Type {
+        return mlir::torch::Torch::FloatType::get(context);
+      });
+}
+
+} // namespace
+
 mlir::LogicalResult ConstantSpecializationAttr::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
     mlir::Attribute value) {
-  if (mlir::isa<mlir::StringAttr>(value)) {
+  if (isValidConstantValue(value)) {
     return mlir::success();
   }
-  if (auto typed = mlir::dyn_cast<mlir::TypedAttr>(value)) {
-    mlir::Type const type = typed.getType();
-    if (!type.isInteger(1) && !type.isInteger(64) && !type.isF64()) {
-      return emitError() << "constant specialization requires an i1, i64, f64, "
-                            "or string value";
-    }
-    return mlir::success();
-  }
-  return emitError()
-         << "constant specialization requires a bool, integer, float, or "
-            "string attribute";
+  return emitError() << "constant specialization requires an i1, i64, f64, "
+                        "string, or tuple value";
 }
 
 mlir::Value ConstantSpecializationAttr::buildCheck(mlir::OpBuilder &builder,
                                                    mlir::Location loc,
                                                    mlir::Value operand) const {
-  if (mlir::isa<mlir::StringAttr>(getValue())) {
+  if (mlir::isa<mlir::ArrayAttr, mlir::StringAttr>(getValue())) {
     return {};
   }
   auto value = mlir::cast<mlir::TypedAttr>(getValue());
@@ -70,10 +105,7 @@ mlir::Value ConstantSpecializationAttr::buildCheck(mlir::OpBuilder &builder,
 }
 
 mlir::Type ConstantSpecializationAttr::getTargetType() const {
-  if (mlir::isa<mlir::StringAttr>(getValue())) {
-    return mlir::torch::Torch::StringType::get(getContext());
-  }
-  return mlir::cast<mlir::TypedAttr>(getValue()).getType();
+  return getConstantValueType(getValue(), getContext());
 }
 
 mlir::Value VariableSpecializationAttr::buildCheck(mlir::OpBuilder &builder,

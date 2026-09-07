@@ -185,6 +185,8 @@ mlir::LogicalResult TritonKernelLaunchOp::verify() {
             .Case<mlir::torch::Torch::StringType>([&](mlir::Type) -> bool {
               return mlir::isa<mlir::torch::Torch::StringType>(kind);
             })
+            .Case<mlir::torch::Torch::TupleType>(
+                [&](mlir::Type) -> bool { return operandType == kind; })
             .Default([](mlir::Type) -> bool { return false; });
     if (!validKind) {
       return emitOpError("kernel operand #")

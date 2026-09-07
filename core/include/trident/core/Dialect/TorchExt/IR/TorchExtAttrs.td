@@ -12,6 +12,10 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/CommonAttrConstraints.td"
 include "trident/core/Dialect/TorchExt/IR/TorchExtInterfaces.td"
 
+def TorchExt_SpecializationArrayAttr
+    : TypedArrayAttrBase<TorchExt_SpecializationAttrInterface,
+                         "array of Triton argument specializations">;
+
 def TorchExt_ConstantSpecializationAttr
     : AttrDef<TorchExt_Dialect, "ConstantSpecialization", [
         DeclareAttrInterfaceMethods<TorchExt_SpecializationAttrInterface>

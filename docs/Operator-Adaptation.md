@@ -285,13 +285,15 @@ Specialization decomposition is performed by `ConvertTorchExtToGPU` before it
 rewrites launches, and both operations run before `ConvertTorchToTVMFFI`, while
 launch operands are still Torch values. Argument attributes implement the
 TorchExt specialization interface and generate their own runtime checks.
-`#torchext.variable_specialization` records a runtime argument's native ABI type and
-optional divisibility. TorchExt operands preserve Triton source parameter
+The launch stores exactly one such attribute per kernel operand in its typed
+`specializations` array instead of wrapping entries in generic argument
+attribute dictionaries. `#torchext.variable_specialization` records a runtime
+argument's native ABI type and optional divisibility. TorchExt operands preserve Triton source parameter
 order, while `#torchext.constant_specialization` guards boolean, integer, and
-floating-point arguments specialized out of the kernel ABI with an exact
-equality check. `ConvertTorchExtToGPU` filters those constexpr operands when it
-constructs the final launch arguments. Aggregate tuple constexpr values are
-compile-time-only and are omitted from launch operands as well.
+floating-point arguments specialized out of the kernel ABI with TVM FFI
+structural equality. String and aggregate tuple constexpr values use the same
+check. `ConvertTorchExtToGPU` filters all constexpr operands when it constructs
+the final launch arguments.
 Private imported functions are first inlined into the `tvm_ffi.func` wrapper,
 allowing any failed specialization check to return the wrapper's guard-match
 exception before the kernel launch.

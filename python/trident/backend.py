@@ -8,7 +8,7 @@ import gc
 import inspect
 import operator
 from collections.abc import Callable, Hashable, Sequence
-from typing import Final, TypeAlias
+from typing import Any, Final, TypeAlias
 
 import torch
 import tvm_ffi
@@ -45,7 +45,7 @@ from .guards import parse_guards
 from .input import InputTableBuilder
 from .patch import apply_patch
 
-RuntimeValue: TypeAlias = object
+RuntimeValue: TypeAlias = Any
 RuntimeArguments: TypeAlias = tuple[RuntimeValue, ...]
 RuntimeKeywords: TypeAlias = dict[str, RuntimeValue]
 RuntimeCallable: TypeAlias = Callable[..., RuntimeValue]
@@ -962,7 +962,7 @@ class TridentGraphModule:
                 result = result + operator.index(round(offset))
             return result
 
-        def register_shape(value: object, fake_value: object) -> None:
+        def register_shape(value: Any, fake_value: Any) -> None:
             if isinstance(value, torch.Tensor):
                 assert isinstance(fake_value, torch.Tensor), (
                     "Dynamo placeholder for a Tensor input does not contain "

@@ -118,3 +118,16 @@ tvm_ffi.func @guard_operand_conversion(
   %result = arith.select %guard_ok, %success, %error : !tvm_ffi.any
   tvm_ffi.return %result : !tvm_ffi.any
 }
+
+// -----
+
+// CHECK-LABEL: func.func @structural_equal(
+// CHECK-SAME: %[[LHS:[a-zA-Z0-9_]+]]: !tvm_ffi.array, %[[RHS:[a-zA-Z0-9_]+]]: !tvm_ffi.array) -> i1 {
+// CHECK: %[[EQUAL:[a-zA-Z0-9_]+]] = tvm_ffi.eq %[[LHS]], %[[RHS]] : !tvm_ffi.array, !tvm_ffi.array
+// CHECK-NEXT: return %[[EQUAL]] : i1
+// CHECK-NOT: torchext.eq
+func.func @structural_equal(%lhs: !torch.tuple<int, tuple<bool, str>>,
+    %rhs: !torch.tuple<int, tuple<bool, str>>) -> i1 {
+  %equal = torchext.eq %lhs, %rhs : !torch.tuple<int, tuple<bool, str>>
+  return %equal : i1
+}

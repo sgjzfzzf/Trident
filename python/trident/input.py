@@ -6,7 +6,7 @@ from __future__ import annotations
 import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from typing import Final, Self, TypeAlias, override
+from typing import Any, Final, Self, TypeAlias, override
 
 import torch
 import torch.utils._pytree as pytree
@@ -20,7 +20,7 @@ from trident.core import ir
 from trident.core.dialects import tvm_ffi as tvm_ffi_d
 
 InputPath: TypeAlias = Sequence[int | str]
-InputValue: TypeAlias = object
+InputValue: TypeAlias = Any
 
 
 pytree.register_pytree_node(
@@ -239,9 +239,7 @@ class InputTableBuilder:
         input_specs = exported_program.graph_signature.input_specs
         exported_input_values = pytree.tree_leaves(exported_program.example_inputs)
         assert len(input_specs) == len(exported_input_values), (
-            "ExportedProgram input specs do not match flattened exported inputs: "
-            f"got {len(input_specs)} specs and "
-            f"{len(exported_input_values)} values"
+            f"ExportedProgram input specs do not match flattened exported inputs: got {len(input_specs)} specs and {len(exported_input_values)} values"
         )
 
         main_input_count = sum(
@@ -250,15 +248,12 @@ class InputTableBuilder:
             for input_spec in input_specs
         )
         assert main_input_count == len(main_input_types), (
-            "ExportedProgram graph inputs do not match imported MLIR inputs: "
-            f"got {main_input_count} graph inputs and "
-            f"{len(main_input_types)} MLIR inputs"
+            f"ExportedProgram graph inputs do not match imported MLIR inputs: got {main_input_count} graph inputs and {len(main_input_types)} MLIR inputs"
         )
 
         in_spec = exported_program.call_spec.in_spec
         assert isinstance(in_spec, pytree.TreeSpec), (
-            "trident.jit requires a pytree TreeSpec for exported inputs; "
-            f"got {in_spec!r}"
+            f"trident.jit requires a pytree TreeSpec for exported inputs; got {in_spec!r}"
         )
         root_children = in_spec.children()
         assert in_spec.type is tuple and len(root_children) == 2, (
@@ -286,23 +281,18 @@ class InputTableBuilder:
         kwargs_names = [*kwargs_spec.context]
         kwargs_children = kwargs_spec.children()
         assert len(kwargs_names) == len(kwargs_children), (
-            "ExportedProgram keyword inputs do not match the call spec: "
-            f"got {len(kwargs_children)} inputs and {len(kwargs_names)} names"
+            f"ExportedProgram keyword inputs do not match the call spec: got {len(kwargs_children)} inputs and {len(kwargs_names)} names"
         )
         assert len(args_children) <= len(positional_names), (
-            "ExportedProgram positional inputs exceed the positional parameters: "
-            f"got {len(args_children)} inputs and "
-            f"{len(positional_names)} parameters"
+            f"ExportedProgram positional inputs exceed the positional parameters: got {len(args_children)} inputs and {len(positional_names)} parameters"
         )
         args_names = [name for name, _ in zip(positional_names, args_children)]
         provided_names = [*args_names, *kwargs_names]
         assert len(provided_names) == len(set(provided_names)), (
-            "ExportedProgram input trees map multiple inputs to the same "
-            f"function parameter: {provided_names!r}"
+            f"ExportedProgram input trees map multiple inputs to the same function parameter: {provided_names!r}"
         )
         assert all(name in signature_names for name in provided_names), (
-            "ExportedProgram input trees contain unknown function parameters: "
-            f"got {provided_names!r}, expected names from {signature_names!r}"
+            f"ExportedProgram input trees contain unknown function parameters: got {provided_names!r}, expected names from {signature_names!r}"
         )
         leaf_iter = zip(input_specs, exported_input_values)
         main_input_type_iter = iter(main_input_types)
@@ -325,8 +315,7 @@ class InputTableBuilder:
                 return InputNodeBuilder(type)
             else:
                 assert node.type is not dict, (
-                    f"dict parameters (path step {name!r}) are not yet "
-                    "supported by trident.jit"
+                    f"dict parameters (path step {name!r}) are not yet supported by trident.jit"
                 )
                 children = [build_node(child, name) for child in node.children()]
                 assert not children or not all(
@@ -360,8 +349,7 @@ class InputTableBuilder:
     def build(self, operands: Sequence[ir.Value]) -> InputTable:
         """Bind *operands* to a fresh table for the current IR region."""
         assert len(operands) == len(self._entries), (
-            "input operand count does not match the wrapper signature: "
-            f"got {len(operands)}, expected {len(self._entries)}"
+            f"input operand count does not match the wrapper signature: got {len(operands)}, expected {len(self._entries)}"
         )
         nodes = {
             name: builder.build(operand)

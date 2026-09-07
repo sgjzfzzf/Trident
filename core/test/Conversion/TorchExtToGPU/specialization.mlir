@@ -14,13 +14,12 @@
 // CHECK:         %[[GUARD_OBJECT:[a-zA-Z0-9_]+]] = torchext.get %[[TENSOR]]
 // CHECK:         %[[GUARD_TENSOR:[a-zA-Z0-9_]+]] = tvm_ffi.as %[[GUARD_OBJECT]]
 // CHECK:         %[[GUARD_DATA:[a-zA-Z0-9_]+]] = dlpack.tensor.data %[[GUARD_TENSOR]]
-// CHECK:         %[[GUARD_CONSTANT:[a-zA-Z0-9_]+]] = torch_c.to_i64 %[[SPECIALIZED]]
 // CHECK:         %[[FLOAT_VALUE:[a-zA-Z0-9_]+]] = torch_c.to_f64 %[[FLOAT:[a-zA-Z0-9_]+]]
 // CHECK:         llvm.ptrtoint %[[GUARD_DATA]]
 // CHECK:         llvm.urem
 // CHECK:         %[[TENSOR_CHECKS:[a-zA-Z0-9_]+]] = arith.andi
-// CHECK:         %[[EXPECTED:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i64) : i64
-// CHECK:         %[[CONSTANT_CHECK:[a-zA-Z0-9_]+]] = llvm.icmp "eq" %[[GUARD_CONSTANT]], %[[EXPECTED]]
+// CHECK:         %[[EXPECTED:[a-zA-Z0-9_]+]] = torch.constant.int 1
+// CHECK:         %[[CONSTANT_CHECK:[a-zA-Z0-9_]+]] = torchext.eq %[[SPECIALIZED]], %[[EXPECTED]] : !torch.int
 // CHECK:         %[[CHECKS_WITH_CONSTANT:[a-zA-Z0-9_]+]] = arith.andi %[[TENSOR_CHECKS]], %[[CONSTANT_CHECK]]
 // CHECK:         %[[CAST:[a-zA-Z0-9_]+]] = builtin.unrealized_conversion_cast
 // CHECK:         llvm.urem
@@ -49,7 +48,7 @@ module attributes {gpu.container_module} {
     torchext.trident_kernel_launch @kernel::@entry
         blocks in (%one, %one, %one) : i64
         threads in (%one, %one, %one)
-        args (%tensor : !torch.vtensor<[4],f32> {triton.specialization = #torchext.variable_specialization<kind = !llvm.ptr, divisibility = 16>}, %specialized : !torch.int {triton.specialization = #torchext.constant_specialization<value = 1 : i64>}, %value : !torch.float {triton.specialization = #torchext.variable_specialization<kind = f32, divisibility = 16>})
+        args (%tensor : !torch.vtensor<[4],f32> #torchext.variable_specialization<kind = !llvm.ptr, divisibility = 16>, %specialized : !torch.int #torchext.constant_specialization<value = 1 : i64>, %value : !torch.float #torchext.variable_specialization<kind = f32, divisibility = 16>)
     %result = tvm_ffi.constant.int 0
     return %result : !tvm_ffi.int
   }
@@ -68,12 +67,13 @@ module attributes {gpu.container_module} {
 
 // CHECK-LABEL: tvm_ffi.func @validate_string
 // CHECK-SAME:    %[[ACTIVATION:[a-zA-Z0-9_]+]]: !torch.str
-// CHECK:         cf.cond_br %[[INITIAL_STRING:[a-zA-Z0-9_]+]], [[SUCCESS_STRING:\^bb[0-9]+]], [[FAILURE_STRING:\^bb[0-9]+]]
+// CHECK:         %[[EXPECTED_STRING:[a-zA-Z0-9_]+]] = torch.constant.str "leaky_relu"
+// CHECK:         %[[STRING_EQUAL:[a-zA-Z0-9_]+]] = torchext.eq %[[ACTIVATION]], %[[EXPECTED_STRING]] : !torch.str
+// CHECK:         %[[STRING_CHECK:[a-zA-Z0-9_]+]] = arith.andi %{{[a-zA-Z0-9_]+}}, %[[STRING_EQUAL]] : i1
+// CHECK:         cf.cond_br %[[STRING_CHECK]], [[SUCCESS_STRING:\^bb[0-9]+]], [[FAILURE_STRING:\^bb[0-9]+]]
 // CHECK:       [[SUCCESS_STRING]]:
 // CHECK:         gpu.launch_func
 // CHECK-SAME:    args(%[[ZERO_STRING:[a-zA-Z0-9_]+]] : i64, %[[ZERO_STRING]] : i64)
-// CHECK-NOT:     torch_c.to_
-// CHECK-NOT:     llvm.icmp
 // CHECK-NOT:     torchext.trident_kernel_launch
 
 module attributes {gpu.container_module} {
@@ -85,7 +85,7 @@ module attributes {gpu.container_module} {
     torchext.trident_kernel_launch @kernel::@entry
         blocks in (%one, %one, %one) : i64
         threads in (%one, %one, %one)
-        args (%activation : !torch.str {triton.specialization = #torchext.constant_specialization<value = "leaky_relu">})
+        args (%activation : !torch.str #torchext.constant_specialization<value = "leaky_relu">)
     %result = tvm_ffi.constant.int 0
     return %result : !tvm_ffi.int
   }
@@ -101,20 +101,55 @@ module attributes {gpu.container_module} {
 
 // -----
 
+// CHECK-LABEL: tvm_ffi.func @validate_tuple
+// CHECK-SAME:    %[[TUPLE:[a-zA-Z0-9_]+]]: !torch.tuple<int, tuple<bool, str>>
+// CHECK:         %[[ONE:[a-zA-Z0-9_]+]] = torch.constant.int 1
+// CHECK:         %[[TRUE_TUPLE:[a-zA-Z0-9_]+]] = torch.constant.bool true
+// CHECK:         %[[NAME:[a-zA-Z0-9_]+]] = torch.constant.str "name"
+// CHECK:         %[[INNER:[a-zA-Z0-9_]+]] = torch.prim.TupleConstruct %[[TRUE_TUPLE]], %[[NAME]]
+// CHECK:         %[[EXPECTED_TUPLE:[a-zA-Z0-9_]+]] = torch.prim.TupleConstruct %[[ONE]], %[[INNER]]
+// CHECK:         %[[TUPLE_EQUAL:[a-zA-Z0-9_]+]] = torchext.eq %[[TUPLE]], %[[EXPECTED_TUPLE]] : !torch.tuple<int, tuple<bool, str>>
+// CHECK:         cf.cond_br
+// CHECK:         gpu.launch_func
+// CHECK-SAME:    args(%[[ZERO_TUPLE:[a-zA-Z0-9_]+]] : i64, %[[ZERO_TUPLE]] : i64)
+// CHECK-NOT:     torchext.trident_kernel_launch
+
+module attributes {gpu.container_module} {
+  gpu.binary @kernel [#gpu.object<#nvvm.target, "">]
+
+  func.func private @launch_tuple(
+      %value: !torch.tuple<int, tuple<bool, str>>) -> !tvm_ffi.int {
+    %one = arith.constant 1 : i64
+    torchext.trident_kernel_launch @kernel::@entry
+        blocks in (%one, %one, %one) : i64
+        threads in (%one, %one, %one)
+        args (%value : !torch.tuple<int, tuple<bool, str>> #torchext.constant_specialization<value = [1 : i64, [true, "name"]]>)
+    %result = tvm_ffi.constant.int 0
+    return %result : !tvm_ffi.int
+  }
+
+  tvm_ffi.func @validate_tuple(
+      %value: !torch.tuple<int, tuple<bool, str>>)
+      -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception> {
+    %result = func.call @launch_tuple(%value)
+        : (!torch.tuple<int, tuple<bool, str>>) -> !tvm_ffi.int
+    %success = tvm_ffi.cast %result : !tvm_ffi.int -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception>
+    tvm_ffi.return %success : !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception>
+  }
+}
+
+// -----
+
 // CHECK-LABEL: tvm_ffi.func @validate_scalar_constants
 // CHECK-SAME:    %[[FLAG:[a-zA-Z0-9_]+]]: !torch.bool
 // CHECK-SAME:    %[[VALUE:[a-zA-Z0-9_]+]]: !torch.int
 // CHECK-SAME:    %[[SCALE:[a-zA-Z0-9_]+]]: !torch.float
-// CHECK:         %[[FLAG_NATIVE:[a-zA-Z0-9_]+]] = torch_c.to_i1 %[[FLAG]]
 // CHECK:         %[[VALUE_NATIVE:[a-zA-Z0-9_]+]] = torch_c.to_i64 %[[VALUE]]
-// CHECK:         %[[SCALE_NATIVE:[a-zA-Z0-9_]+]] = torch_c.to_f64 %[[SCALE]]
 // CHECK:         %[[INITIAL:[a-zA-Z0-9_]+]] = llvm.mlir.constant(true) : i1
-// CHECK:         %[[TRUE:[a-zA-Z0-9_]+]] = llvm.mlir.constant(true) : i1
-// CHECK:         llvm.icmp "eq" %[[FLAG_NATIVE]], %[[TRUE]] : i1
-// CHECK:         %[[EXPECTED_FLOAT:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1.000000e+00 : f64) : f64
-// CHECK:         %[[SCALE_BITS:[a-zA-Z0-9_]+]] = llvm.bitcast %[[SCALE_NATIVE]] : f64 to i64
-// CHECK:         %[[EXPECTED_BITS:[a-zA-Z0-9_]+]] = llvm.bitcast %[[EXPECTED_FLOAT]] : f64 to i64
-// CHECK:         llvm.icmp "eq" %[[SCALE_BITS]], %[[EXPECTED_BITS]] : i64
+// CHECK:         %[[TRUE:[a-zA-Z0-9_]+]] = torch.constant.bool true
+// CHECK:         torchext.eq %[[FLAG]], %[[TRUE]] : !torch.bool
+// CHECK:         %[[EXPECTED_FLOAT:[a-zA-Z0-9_.]+]] = torch.constant.float 1.000000e+00
+// CHECK:         torchext.eq %[[SCALE]], %[[EXPECTED_FLOAT]] : !torch.float
 // CHECK:         cf.cond_br
 // CHECK:         %[[LAUNCH_VALUE:[a-zA-Z0-9_]+]] = torch_c.to_i64 %[[VALUE]]
 // CHECK:         %[[LAUNCH_I32:[a-zA-Z0-9_]+]] = llvm.trunc %[[LAUNCH_VALUE]] : i64 to i32
@@ -131,7 +166,7 @@ module attributes {gpu.container_module} {
     torchext.trident_kernel_launch @kernel::@entry
         blocks in (%one, %one, %one) : i64
         threads in (%one, %one, %one)
-        args (%flag : !torch.bool {triton.specialization = #torchext.constant_specialization<value = true>}, %value : !torch.int {triton.specialization = #torchext.variable_specialization<kind = i32>}, %scale : !torch.float {triton.specialization = #torchext.constant_specialization<value = 1.000000e+00 : f64>})
+        args (%flag : !torch.bool #torchext.constant_specialization<value = true>, %value : !torch.int #torchext.variable_specialization<kind = i32>, %scale : !torch.float #torchext.constant_specialization<value = 1.000000e+00 : f64>)
     %result = tvm_ffi.constant.int 0
     return %result : !tvm_ffi.int
   }

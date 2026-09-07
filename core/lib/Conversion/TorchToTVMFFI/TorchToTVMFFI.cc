@@ -201,6 +201,20 @@ private:
   const TorchFFITypeConverter &typeConverter;
 };
 
+class ConvertTorchExtEq final
+    : public mlir::OpConversionPattern<torchext::EqOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(torchext::EqOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<tvm_ffi::EqOp>(op, adaptor.getLhs(),
+                                               adaptor.getRhs());
+    return mlir::success();
+  }
+};
+
 /// Keep an already-semantic operation while converting its operands.
 template <typename Op>
 class ConvertGenericOp final : public mlir::OpConversionPattern<Op> {
@@ -531,7 +545,7 @@ class ConvertTorchToTVMFFIPass final
         ConvertTorchConversionTo<mlir::torch::TorchConversion::ToI1Op>,
         ConvertTorchConversionTo<mlir::torch::TorchConversion::ToI64Op>,
         ConvertTorchCopyToValueTensor, ConvertTorchExtConvert,
-        ConvertTorchExtGet,
+        ConvertTorchExtEq, ConvertTorchExtGet,
         ConvertTorchExtTensorMetadata<torchext::TensorDeviceOp,
                                       tvm_ffi::TensorDeviceOp>,
         ConvertTorchExtTensorMetadata<torchext::TensorDimOp,

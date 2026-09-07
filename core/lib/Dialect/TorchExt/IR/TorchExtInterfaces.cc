@@ -6,21 +6,26 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include <cstdint>
 #include <llvm/ADT/APInt.h>
+#include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/IR/Attributes.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinAttributeInterfaces.h>
 #include <mlir/IR/Diagnostics.h>
 #include <mlir/IR/Location.h>
 #include <mlir/IR/Types.h>
 #include <mlir/IR/Value.h>
+#include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
+#include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 #include "trident/core/Dialect/TorchExt/IR/TorchExtInterfaces.cpp.inc"
@@ -29,6 +34,8 @@ namespace trident::torchext {
 
 namespace {
 
+// Recursive traversal mirrors the nested tuple attribute structure.
+// NOLINTBEGIN(misc-no-recursion)
 bool isValidConstantValue(mlir::Attribute value) {
   if (mlir::isa<mlir::StringAttr>(value)) {
     return true;
@@ -58,14 +65,45 @@ mlir::Type getConstantValueType(mlir::Attribute value,
                          }));
       })
       .Case<mlir::IntegerAttr>([&](mlir::IntegerAttr integer) -> mlir::Type {
-        return integer.getType().isInteger(1)
-                   ? mlir::torch::Torch::BoolType::get(context)
-                   : mlir::torch::Torch::IntType::get(context);
+        if (integer.getType().isInteger(1)) {
+          return mlir::torch::Torch::BoolType::get(context);
+        }
+        return mlir::torch::Torch::IntType::get(context);
       })
       .Case<mlir::FloatAttr>([&](mlir::FloatAttr) -> mlir::Type {
         return mlir::torch::Torch::FloatType::get(context);
       });
 }
+
+mlir::Value materializeConstantValue(mlir::OpBuilder &builder,
+                                     mlir::Location loc,
+                                     mlir::Attribute value) {
+  return llvm::TypeSwitch<mlir::Attribute, mlir::Value>(value)
+      .Case<mlir::StringAttr>([&](mlir::StringAttr string) -> mlir::Value {
+        return mlir::torch::Torch::ConstantStrOp::create(builder, loc, string);
+      })
+      .Case<mlir::ArrayAttr>([&](mlir::ArrayAttr array) -> mlir::Value {
+        llvm::SmallVector<mlir::Value> const elements = llvm::map_to_vector(
+            array, [&](mlir::Attribute element) -> mlir::Value {
+              return materializeConstantValue(builder, loc, element);
+            });
+        return mlir::torch::Torch::PrimTupleConstructOp::create(
+            builder, loc, getConstantValueType(array, builder.getContext()),
+            elements);
+      })
+      .Case<mlir::IntegerAttr>([&](mlir::IntegerAttr integer) -> mlir::Value {
+        if (integer.getType().isInteger(1)) {
+          return mlir::torch::Torch::ConstantBoolOp::create(
+              builder, loc, integer.getValue().getBoolValue());
+        }
+        return mlir::torch::Torch::ConstantIntOp::create(builder, loc, integer);
+      })
+      .Case<mlir::FloatAttr>([&](mlir::FloatAttr floating) -> mlir::Value {
+        return mlir::torch::Torch::ConstantFloatOp::create(builder, loc,
+                                                           floating);
+      });
+}
+// NOLINTEND(misc-no-recursion)
 
 } // namespace
 
@@ -82,26 +120,9 @@ mlir::LogicalResult ConstantSpecializationAttr::verify(
 mlir::Value ConstantSpecializationAttr::buildCheck(mlir::OpBuilder &builder,
                                                    mlir::Location loc,
                                                    mlir::Value operand) const {
-  if (mlir::isa<mlir::ArrayAttr, mlir::StringAttr>(getValue())) {
-    return {};
-  }
-  auto value = mlir::cast<mlir::TypedAttr>(getValue());
   mlir::Value const expected =
-      mlir::LLVM::ConstantOp::create(builder, loc, getTargetType(), value);
-  if (getTargetType().isF64()) {
-    mlir::Type const bitsType = builder.getI64Type();
-    operand = mlir::LLVM::BitcastOp::create(builder, loc, bitsType, operand);
-    mlir::Value const expectedBits =
-        mlir::LLVM::BitcastOp::create(builder, loc, bitsType, expected);
-    return mlir::LLVM::ICmpOp::create(
-        builder, loc,
-        mlir::LLVM::ICmpPredicate::eq, // NOLINT(misc-include-cleaner)
-        operand, expectedBits);
-  }
-  return mlir::LLVM::ICmpOp::create(
-      builder, loc,
-      mlir::LLVM::ICmpPredicate::eq, // NOLINT(misc-include-cleaner)
-      operand, expected);
+      materializeConstantValue(builder, loc, getValue());
+  return EqOp::create(builder, loc, operand, expected);
 }
 
 mlir::Type ConstantSpecializationAttr::getTargetType() const {

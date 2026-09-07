@@ -8,7 +8,7 @@ import warnings
 from collections.abc import Callable
 from functools import reduce
 from itertools import chain, pairwise
-from typing import ClassVar, TypeAlias
+from typing import Any, ClassVar, TypeAlias
 
 import torch
 import tvm_ffi as tvm_ffi_runtime
@@ -253,7 +253,7 @@ class ASTVisitor(ast.NodeVisitor):
         return arith.truncf(target, value)
 
     @staticmethod
-    def _constant_tvm_ffi(value: object) -> GuardBuildFn | None:
+    def _constant_tvm_ffi(value: Any) -> GuardBuildFn | None:
         if value is None:
             return lambda _, context: tvm_ffi.constant_none()
         if isinstance(value, torch.device):
@@ -367,7 +367,7 @@ class ASTVisitor(ast.NodeVisitor):
             "i64": ir.Type.parse("!tvm_ffi.int", context=context),
             "f64": ir.Type.parse("!tvm_ffi.float", context=context),
         }
-        ffi_type = ffi_types.get(str(value.type))
+        ffi_type = ffi_types.get(f"{value.type}")
         return value if ffi_type is None else tvm_ffi.to(value)
 
     @staticmethod
@@ -377,7 +377,7 @@ class ASTVisitor(ast.NodeVisitor):
             "!tvm_ffi.float": ir.F64Type.get(context),
             "!tvm_ffi.int": ir.IntegerType.get_signless(64, context),
         }
-        native_type = native_types.get(str(value.type))
+        native_type = native_types.get(f"{value.type}")
         return value if native_type is None else tvm_ffi.get(value)
 
     @staticmethod

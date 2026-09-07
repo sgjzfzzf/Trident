@@ -298,8 +298,10 @@ in `python/trident/patch.py` to inject this support at import time:
   Triton ABI type and an optional divisibility guard. Boolean, integer, and
   floating-point constexpr parameters receive
   `#torchext.constant_specialization`; they are checked for exact equality
-  before launch and omitted from the kernel ABI. Other constexpr value types
-  fail import explicitly until a corresponding specialization is implemented.
+  before launch and omitted from the kernel ABI. Aggregate tuple constexpr
+  parameters are compile-time-only values and are omitted from the launch
+  operands as well. Other constexpr value types fail import explicitly until
+  a corresponding specialization is implemented.
 - For autotune paths, computes/selects launch grids based on `best_config`.
 
 This integrates Triton kernel launches into the MLIR workflow without modifying

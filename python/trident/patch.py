@@ -525,36 +525,51 @@ def _import_hop_triton_kernel_wrapper(
     arg_attrs: list[ir.DictAttr] = []
     operands_by_name: dict[str, ir.Value] = {}
 
-    def import_constant(value: KernelValue, name: str) -> ir.Value:
-        assert isinstance(value, (bool, int, float, str)), (
-            f"unsupported constexpr argument {name!r} of type "
-            f"{type(value).__name__}; expected bool, int, float, or str"
-        )
+    def import_constant(value: KernelValue, name: str) -> ir.Value | None:
         with loc:
+            if isinstance(value, tuple):
+                elements = [
+                    import_constant(element, f"{name}[{index}]")
+                    for index, element in enumerate(value)
+                ]
+                element_types = ", ".join(
+                    f"{element.type}".removeprefix("!torch.") for element in elements
+                )
+                tuple_type = ir.Type.parse(
+                    f"!torch.tuple<{element_types}>", context=loc.context
+                )
+                return torch_d.prim_TupleConstruct(tuple_type, elements, loc=loc)
             if isinstance(value, bool):
                 return torch_d.constant_bool(value)
             if isinstance(value, int):
                 return torch_d.constant_int(value)
             if isinstance(value, float):
                 return torch_d.constant_float(value)
-            return torch_d.constant_str(value)
+            if isinstance(value, str):
+                return torch_d.constant_str(value)
 
-    def constant_specialization(value: object, name: str) -> ir.Attribute:
-        assert isinstance(value, (bool, int, float, str)), (
-            f"unsupported constexpr specialization {name!r} of type "
-            f"{type(value).__name__}; expected bool, int, float, or str"
-        )
+    def constant_value_attribute(value: object, name: str) -> ir.Attribute | None:
+        if isinstance(value, tuple):
+            return ir.ArrayAttr.get(
+                [
+                    constant_value_attribute(element, f"{name}[{index}]")
+                    for index, element in enumerate(value)
+                ]
+            )
         if isinstance(value, bool):
-            value_attr = ir.BoolAttr.get(value)
-        elif isinstance(value, int):
+            return ir.BoolAttr.get(value)
+        if isinstance(value, int):
             assert -(1 << 63) <= value < (1 << 63), (
                 f"constexpr specialization {name!r} does not fit in i64: {value}"
             )
-            value_attr = ir.IntegerAttr.get(ir.IntegerType.get_signless(64), value)
-        elif isinstance(value, float):
-            value_attr = ir.FloatAttr.get_f64(value)
-        else:
-            value_attr = ir.StringAttr.get(value)
+            return ir.IntegerAttr.get(ir.IntegerType.get_signless(64), value)
+        if isinstance(value, float):
+            return ir.FloatAttr.get_f64(value)
+        if isinstance(value, str):
+            return ir.StringAttr.get(value)
+
+    def constant_specialization(value: object, name: str) -> ir.Attribute:
+        value_attr = constant_value_attribute(value, name)
         return ir.Attribute.parse(
             f"#torchext.constant_specialization<value = {value_attr}>"
         )

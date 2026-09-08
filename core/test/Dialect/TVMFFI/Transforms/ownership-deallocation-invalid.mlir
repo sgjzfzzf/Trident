@@ -20,13 +20,3 @@ module {
     return %result : i32
   }
 }
-
-// -----
-
-module {
-  func.func @consume_borrowed_handle(%function: !tvm_ffi.function) {
-    // expected-error @+1 {{object reference count would become negative}}
-    tvm_ffi.FunctionCall %function() : () -> ()
-    return
-  }
-}

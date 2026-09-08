@@ -26,16 +26,6 @@ func.func @invalid_dtype_constant() {
 
 // -----
 
-func.func @array_get_item_missing_element_type(
-    %array: !tvm_ffi.array, %index: !tvm_ffi.int) -> !tvm_ffi.int {
-  // expected-error@+1 {{'tvm_ffi.array.get_item' op array element type must be specified}}
-  %item = tvm_ffi.array.get_item %array[%index]
-      : !tvm_ffi.array, !tvm_ffi.int -> !tvm_ffi.int
-  return %item : !tvm_ffi.int
-}
-
-// -----
-
 // expected-error@+1 {{'tvm_ffi.func' op must have public visibility}}
 tvm_ffi.func private @private_function() {
   tvm_ffi.return

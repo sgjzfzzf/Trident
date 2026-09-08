@@ -15,8 +15,11 @@
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypeInterfaces.h>
 #include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/OperationSupport.h>
+#include <mlir/IR/Region.h>
 #include <mlir/IR/Types.h>
 #include <mlir/IR/Value.h>
+#include <mlir/IR/ValueRange.h>
 #include <mlir/Support/LLVM.h>
 #include <optional>
 #include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
@@ -129,23 +132,6 @@ mlir::LogicalResult TensorLiteralOp::verify() {
   if (!mlir::isa<mlir::IntegerType, mlir::FloatType>(type.getElementType())) {
     return emitOpError(
         "requires an integer, boolean, or floating-point element type");
-  }
-  return mlir::success();
-}
-
-mlir::LogicalResult ArrayGetItemOp::verify() {
-  const mlir::Type base = getArray().getType();
-  if (!mlir::isa<ArrayType, mlir::torch::Torch::AnyType,
-                 mlir::torch::Torch::ListType, mlir::torch::Torch::TupleType>(
-          base)) {
-    return emitOpError("array operand must be !tvm_ffi.array");
-  }
-  const std::optional<mlir::Type> element = getElementType();
-  if (!element) {
-    return emitOpError("array element type must be specified");
-  }
-  if (getResult().getType() != *element) {
-    return emitOpError("result type must be ") << *element;
   }
   return mlir::success();
 }

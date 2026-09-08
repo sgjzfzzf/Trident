@@ -10,6 +10,10 @@
 #include "torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.td"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.td"
 
+// Keep ordinary patterns and the C++ AtenLibrary fallback at benefit 1. ATen
+// specializations that match torch.operator must use benefit 2 so they are
+// attempted first. Keep these values synchronized with TorchToTVMFFI.cc.
+
 Pattern ConvertTorchConstantBool with benefit(1) {
   let root = op<torch.constant.bool> {value = value: Attr}
       -> (rootType: Type);

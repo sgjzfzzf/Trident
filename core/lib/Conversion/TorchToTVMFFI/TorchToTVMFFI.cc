@@ -9,15 +9,18 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/Torch/IR/TorchInterfaces.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtInterfaces.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 #include <cstdint>
+#include <dlpack/dlpack.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringRef.h>
+#include <llvm/Support/FormatVariadic.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
+#include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h>
 #include <mlir/Dialect/ControlFlow/Transforms/StructuralTypeConversions.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/Func/Transforms/FuncConversions.h>
@@ -103,38 +106,33 @@ public:
   }
 };
 
-class ConvertArrayGetItem final
-    : public mlir::OpConversionPattern<tvm_ffi::ArrayGetItemOp> {
-public:
-  explicit ConvertArrayGetItem(const TorchFFITypeConverter &typeConverter,
-                               mlir::MLIRContext *context)
-      : mlir::OpConversionPattern<tvm_ffi::ArrayGetItemOp>(typeConverter,
-                                                           context),
-        typeConverter(typeConverter) {}
+tvm_ffi::FunctionCallOp createCheckedFunctionCall(mlir::OpBuilder &builder,
+                                                  mlir::Location loc,
+                                                  mlir::Type resultType,
+                                                  llvm::StringRef callee,
+                                                  mlir::ValueRange arguments) {
+  tvm_ffi::FunctionGetGlobalOp getGlobal = tvm_ffi::FunctionGetGlobalOp::create(
+      builder, loc, tvm_ffi::FunctionType::get(builder.getContext()),
+      builder.getI1Type(), callee);
+  std::string const getGlobalError =
+      llvm::formatv("TVMFFIFunctionGetGlobal failed for {0}", callee);
+  mlir::cf::AssertOp::create(builder, loc, getGlobal.getSuccess(),
+                             getGlobalError);
 
-  mlir::LogicalResult
-  matchAndRewrite(tvm_ffi::ArrayGetItemOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Type const resultType =
-        typeConverter.convertType(op.getResult().getType());
-    if (!resultType) {
-      return op.emitError("cannot convert array element type");
-    }
-    rewriter.replaceOpWithNewOp<tvm_ffi::ArrayGetItemOp>(
-        op, resultType, adaptor.getArray(), adaptor.getIndex(),
-        mlir::TypeAttr::get(resultType));
-    return mlir::success();
-  }
+  tvm_ffi::FunctionCallOp call = tvm_ffi::FunctionCallOp::create(
+      builder, loc, resultType, builder.getI1Type(), getGlobal.getResult(),
+      arguments);
+  std::string const callError =
+      llvm::formatv("TVMFFIFunctionCall failed for {0}", callee);
+  mlir::cf::AssertOp::create(builder, loc, call.getSuccess(), callError);
+  return call;
+}
 
-private:
-  const TorchFFITypeConverter &typeConverter;
-};
-
-class ConvertAtenCall final
+class ConvertAtenLibraryCall final
     : public mlir::OpConversionPattern<mlir::torch::Torch::OperatorOp> {
 public:
-  explicit ConvertAtenCall(const TorchFFITypeConverter &typeConverter,
-                           mlir::MLIRContext *ctx)
+  explicit ConvertAtenLibraryCall(const TorchFFITypeConverter &typeConverter,
+                                  mlir::MLIRContext *ctx)
       : mlir::OpConversionPattern<mlir::torch::Torch::OperatorOp>(typeConverter,
                                                                   ctx, 1),
         typeConverter(typeConverter) {}
@@ -150,34 +148,21 @@ public:
         ("trident." + name.drop_front(sizeof("torch.") - 1)).str();
     mlir::ValueRange const operands = adaptor.getOperands();
     llvm::SmallVector<mlir::Value> replacements;
-    if (op->getNumResults() <= 1) {
-      llvm::SmallVector<mlir::Type> resultTypes;
-      if (op->getNumResults()) {
-        mlir::Type const resultType =
-            typeConverter.convertType(op->getResult(0).getType());
-        if (!resultType) {
-          return mlir::failure();
-        }
-        resultTypes.push_back(resultType);
+    if (op->getNumResults() == 0) {
+      return op.emitError("TVM FFI function calls require one result");
+    } else if (op->getNumResults() == 1) {
+      mlir::Type const resultType =
+          typeConverter.convertType(op->getResult(0).getType());
+      if (!resultType) {
+        return mlir::failure();
       }
-      tvm_ffi::FunctionGetGlobalOp getGlobal =
-          tvm_ffi::FunctionGetGlobalOp::create(
-              rewriter, op->getLoc(), tvm_ffi::FunctionType::get(getContext()),
-              callee);
-      tvm_ffi::FunctionCallOp call = tvm_ffi::FunctionCallOp::create(
-          rewriter, op->getLoc(), resultTypes, getGlobal.getResult(), operands);
-      if (op->getNumResults()) {
-        replacements.push_back(call.getResult(0));
-      }
+      tvm_ffi::FunctionCallOp call = createCheckedFunctionCall(
+          rewriter, op->getLoc(), resultType, callee, operands);
+      replacements.push_back(call.getResult());
     } else {
       mlir::Type const arrayType = tvm_ffi::ArrayType::get(getContext());
-      tvm_ffi::FunctionGetGlobalOp getGlobal =
-          tvm_ffi::FunctionGetGlobalOp::create(
-              rewriter, op->getLoc(), tvm_ffi::FunctionType::get(getContext()),
-              callee);
-      tvm_ffi::FunctionCallOp call = tvm_ffi::FunctionCallOp::create(
-          rewriter, op->getLoc(), mlir::TypeRange{arrayType},
-          getGlobal.getResult(), operands);
+      tvm_ffi::FunctionCallOp call = createCheckedFunctionCall(
+          rewriter, op->getLoc(), arrayType, callee, operands);
       for (auto [index, result] : llvm::enumerate(op->getResults())) {
         tvm_ffi::ConstantIntOp idx = tvm_ffi::ConstantIntOp::create(
             rewriter, op->getLoc(), tvm_ffi::IntType::get(getContext()),
@@ -186,15 +171,47 @@ public:
         if (!base) {
           return mlir::failure();
         }
-        mlir::Type const semantic = base;
-
-        tvm_ffi::ArrayGetItemOp item = tvm_ffi::ArrayGetItemOp::create(
-            rewriter, op->getLoc(), base, call.getResult(0), idx.getResult(),
-            mlir::TypeAttr::get(semantic));
+        tvm_ffi::FunctionCallOp item = createCheckedFunctionCall(
+            rewriter, op->getLoc(), base, "ffi.ArrayGetItem",
+            {call.getResult(), idx.getResult()});
         replacements.push_back(item.getResult());
       }
     }
     rewriter.replaceOp(op, replacements);
+    return mlir::success();
+  }
+
+private:
+  const TorchFFITypeConverter &typeConverter;
+};
+
+class ConvertAtenLenT final
+    : public mlir::OpConversionPattern<mlir::torch::Torch::OperatorOp> {
+public:
+  explicit ConvertAtenLenT(const TorchFFITypeConverter &typeConverter,
+                           mlir::MLIRContext *context)
+      : mlir::OpConversionPattern<mlir::torch::Torch::OperatorOp>(typeConverter,
+                                                                  context, 2),
+        typeConverter(typeConverter) {}
+
+  mlir::LogicalResult
+  matchAndRewrite(mlir::torch::Torch::OperatorOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    if (op.getName() != "torch.aten.len.t") {
+      return mlir::failure();
+    }
+    if (op->getNumResults() != 1) {
+      return op.emitError("expected exactly one result");
+    }
+    mlir::Type const resultType =
+        typeConverter.convertType(op->getResult(0).getType());
+    if (!resultType) {
+      return op.emitError("cannot convert result type");
+    }
+    tvm_ffi::FunctionCallOp call =
+        createCheckedFunctionCall(rewriter, op.getLoc(), resultType,
+                                  "ffi.ArraySize", adaptor.getOperands());
+    rewriter.replaceOp(op, call.getResult());
     return mlir::success();
   }
 
@@ -243,8 +260,10 @@ public:
   mlir::LogicalResult
   matchAndRewrite(Op op, typename Op::Adaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<tvm_ffi::ArrayCreateOp>(
-        op, tvm_ffi::ArrayType::get(this->getContext()), adaptor.getElements());
+    tvm_ffi::FunctionCallOp call = createCheckedFunctionCall(
+        rewriter, op.getLoc(), tvm_ffi::ArrayType::get(this->getContext()),
+        "ffi.Array", adaptor.getElements());
+    rewriter.replaceOp(op, call.getResult());
     return mlir::success();
   }
 };
@@ -271,9 +290,9 @@ public:
       tvm_ffi::ConstantIntOp idx = tvm_ffi::ConstantIntOp::create(
           rewriter, op.getLoc(), tvm_ffi::IntType::get(this->getContext()),
           rewriter.getI64IntegerAttr(static_cast<int64_t>(index)));
-      tvm_ffi::ArrayGetItemOp item = tvm_ffi::ArrayGetItemOp::create(
-          rewriter, op.getLoc(), resultType, array, idx.getResult(),
-          mlir::TypeAttr::get(resultType));
+      tvm_ffi::FunctionCallOp item = createCheckedFunctionCall(
+          rewriter, op.getLoc(), resultType, "ffi.ArrayGetItem",
+          {array, idx.getResult()});
       replacements.push_back(item.getResult());
     }
     rewriter.replaceOp(op, replacements);
@@ -296,13 +315,10 @@ public:
   mlir::LogicalResult
   matchAndRewrite(torchext::ConvertOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    tvm_ffi::FunctionGetGlobalOp getGlobal =
-        tvm_ffi::FunctionGetGlobalOp::create(
-            rewriter, op.getLoc(), tvm_ffi::FunctionType::get(getContext()),
-            "trident.runtime.tvm_ffi_to_torch_type");
-    rewriter.replaceOpWithNewOp<tvm_ffi::FunctionCallOp>(
-        op, mlir::TypeRange{tvm_ffi::IntType::get(getContext())},
-        getGlobal.getResult(), adaptor.getOperands());
+    tvm_ffi::FunctionCallOp call = createCheckedFunctionCall(
+        rewriter, op.getLoc(), tvm_ffi::IntType::get(getContext()),
+        "trident.runtime.tvm_ffi_to_torch_type", adaptor.getOperands());
+    rewriter.replaceOp(op, call.getResult());
     return mlir::success();
   }
 };
@@ -318,7 +334,7 @@ public:
     auto dtype =
         mlir::cast<trident::torchext::DTypeAttrInterface>(op.getValue());
     DLDataType const dlpackDType = dtype.getDLPackDType();
-    mlir::ArrayAttr value = mlir::ArrayAttr::get(
+    mlir::ArrayAttr const value = mlir::ArrayAttr::get(
         getContext(), {rewriter.getI64IntegerAttr(dlpackDType.code),
                        rewriter.getI64IntegerAttr(dlpackDType.bits),
                        rewriter.getI64IntegerAttr(dlpackDType.lanes)});
@@ -556,7 +572,7 @@ class ConvertTorchToTVMFFIPass final
     populateGeneratedPDLLPatterns(conversionPatterns,
                                   mlir::PDLConversionConfig(&typeConverter));
     conversionPatterns.add<
-        ConvertArrayGetItem, ConvertAtenCall,
+        ConvertAtenLenT, ConvertAtenLibraryCall,
         ConvertTorchArrayConstruct<mlir::torch::Torch::PrimListConstructOp>,
         ConvertTorchArrayConstruct<mlir::torch::Torch::PrimTupleConstructOp>,
         ConvertTorchArrayUnpack<mlir::torch::Torch::PrimListUnpackOp>,
@@ -579,7 +595,6 @@ class ConvertTorchToTVMFFIPass final
         ConvertTorchExtTensorIndexedMetadata<torchext::TensorStrideOp,
                                              tvm_ffi::TensorStrideOp>,
         ConvertTorchOverwriteTensorContents, ConvertTorchValueTensorLiteralOp,
-        ConvertGenericOp<tvm_ffi::ArrayLengthOp>,
         ConvertGenericOp<tvm_ffi::CastOp>, ConvertGenericOp<tvm_ffi::EqOp>,
         ConvertGenericOp<tvm_ffi::TensorDeviceOp>,
         ConvertGenericOp<tvm_ffi::TensorDimOp>,
@@ -587,9 +602,7 @@ class ConvertTorchToTVMFFIPass final
         ConvertGenericOp<tvm_ffi::TensorSizeOp>,
         ConvertGenericOp<tvm_ffi::TensorStorageOffsetOp>,
         ConvertGenericOp<tvm_ffi::TensorStrideOp>,
-        ConvertGenericOp<mlir::func::CallOp>,
-        ConvertGenericOp<tvm_ffi::ArrayCreateOp>,
-        ConvertGenericOp<tvm_ffi::CallOp>,
+        ConvertGenericOp<mlir::func::CallOp>, ConvertGenericOp<tvm_ffi::CallOp>,
         ConvertGenericOp<tvm_ffi::ExceptionOp>,
         ConvertGenericOp<tvm_ffi::FunctionCallOp>>(typeConverter,
                                                    &getContext());
@@ -599,14 +612,14 @@ class ConvertTorchToTVMFFIPass final
         .addLegalDialect<mlir::arith::ArithDialect, mlir::BuiltinDialect,
                          mlir::LLVM::LLVMDialect>();
     conversionTarget.addLegalOp<
-        tvm_ffi::ArrayCreateOp, tvm_ffi::CallOp, tvm_ffi::ConstantBoolOp,
-        tvm_ffi::ConstantDeviceOp, tvm_ffi::ConstantDTypeOp,
-        tvm_ffi::ConstantFloatOp, tvm_ffi::ConstantIntOp,
-        tvm_ffi::ConstantNoneOp, tvm_ffi::ConstantRawStrOp,
-        tvm_ffi::ExceptionOp, tvm_ffi::FunctionCallOp,
-        tvm_ffi::FunctionGetGlobalOp, tvm_ffi::ObjectDecRefOp,
-        tvm_ffi::ObjectIncRefOp, tvm_ffi::TensorCloneOp, tvm_ffi::TensorCopyOp,
-        tvm_ffi::TensorLiteralOp, tvm_ffi::ToOp>();
+        tvm_ffi::CallOp, tvm_ffi::ConstantBoolOp, tvm_ffi::ConstantDeviceOp,
+        tvm_ffi::ConstantDTypeOp, tvm_ffi::ConstantFloatOp,
+        tvm_ffi::ConstantIntOp, tvm_ffi::ConstantNoneOp,
+        tvm_ffi::ConstantRawStrOp, tvm_ffi::ExceptionOp,
+        tvm_ffi::FunctionCallOp, tvm_ffi::FunctionGetGlobalOp,
+        tvm_ffi::ObjectDecRefOp, tvm_ffi::ObjectIncRefOp,
+        tvm_ffi::TensorCloneOp, tvm_ffi::TensorCopyOp, tvm_ffi::TensorLiteralOp,
+        tvm_ffi::ToOp>();
     conversionTarget.addDynamicallyLegalOp<mlir::func::FuncOp>(
         [&](mlir::func::FuncOp func) -> bool {
           return typeConverter.isSignatureLegal(func.getFunctionType());
@@ -638,13 +651,13 @@ class ConvertTorchToTVMFFIPass final
     mlir::scf::populateSCFStructuralTypeConversionsAndLegality(
         typeConverter, conversionPatterns, conversionTarget);
     conversionTarget.addDynamicallyLegalOp<
-        tvm_ffi::ArrayGetItemOp, tvm_ffi::ArrayLengthOp, tvm_ffi::CastOp,
-        tvm_ffi::EqOp, tvm_ffi::TensorDeviceOp, tvm_ffi::TensorDimOp,
-        tvm_ffi::TensorDTypeOp, tvm_ffi::TensorSizeOp,
+        tvm_ffi::CastOp, tvm_ffi::EqOp, tvm_ffi::TensorDeviceOp,
+        tvm_ffi::TensorDimOp, tvm_ffi::TensorDTypeOp, tvm_ffi::TensorSizeOp,
         tvm_ffi::TensorStorageOffsetOp, tvm_ffi::TensorStrideOp,
         tvm_ffi::GetOp>(
         [&](mlir::Operation *op) -> bool { return typeConverter.isLegal(op); });
-    conversionTarget.addLegalOp<mlir::ModuleOp, tvm_ffi::ReturnOp>();
+    conversionTarget
+        .addLegalOp<mlir::ModuleOp, mlir::cf::AssertOp, tvm_ffi::ReturnOp>();
     // Torch, TorchConversion, and TorchExt operations must all be lowered
     // before this conversion completes. In particular, a Triton kernel launch
     // must have been converted to gpu.launch_func by ConvertTorchExtToGPU.

@@ -11,15 +11,3 @@ add_mlir_library(
   MLIRIR
   MLIRPass
   TVMFFIDialect)
-
-add_mlir_library(
-  DecomposeTVMFFI
-  DecomposeTVMFFI.cc
-  DEPENDS
-  MLIRTVMFFITransformsPassIncGen
-  LINK_LIBS
-  PUBLIC
-  MLIRIR
-  MLIRPass
-  MLIRTransformUtils
-  TVMFFIDialect)

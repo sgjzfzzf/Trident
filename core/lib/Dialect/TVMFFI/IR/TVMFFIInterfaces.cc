@@ -15,18 +15,8 @@
 
 namespace trident::tvm_ffi {
 
-ObjectResultOwnership ArrayGetItemOp::getObjectResultOwnership(uint32_t) {
-  return ObjectResultOwnership::Owned;
-}
-
 ObjectResultOwnership CastOp::getObjectResultOwnership(uint32_t) {
   return ObjectResultOwnership::Borrowed;
-}
-
-ObjectOperandOwnership
-FunctionCallOp::getObjectOperandOwnership(uint32_t index) {
-  return index == 0 ? ObjectOperandOwnership::Consumed
-                    : ObjectOperandOwnership::Borrowed;
 }
 
 ObjectOperandOwnership ObjectDecRefOp::getObjectOperandOwnership(uint32_t) {

@@ -253,10 +253,7 @@ class InputTableBuilder:
             if node_type is tuple:
                 return torch_d.TorchTupleType.get(element_types, context=context)
             assert node_type is list
-            [element_type] = element_types
-            assert all(element == element_type for element in element_types), (
-                "Torch list inputs must have a uniform element type"
-            )
+            [element_type] = {*element_types}
             return torch_d.TorchListType.get(element_type)
 
         input_specs = exported_program.graph_signature.input_specs

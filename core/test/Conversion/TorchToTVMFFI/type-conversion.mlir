@@ -18,8 +18,10 @@ func.func @dtype_identity(%arg0: !torchext.dtype) -> !torchext.dtype {
 
 // CHECK-LABEL: func.func @dtype_to_torch_type(
 // CHECK-SAME: %[[DTYPE:[a-zA-Z0-9_]+]]: !tvm_ffi.dtype) -> !tvm_ffi.int {
-// CHECK: %[[FUNC:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.runtime.tvm_ffi_to_torch_type" : !tvm_ffi.function
-// CHECK: %[[TYPE:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%[[DTYPE]]) : (!tvm_ffi.dtype) -> !tvm_ffi.int
+// CHECK: %[[FUNC:[a-zA-Z0-9_]+]], %[[GET_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.runtime.tvm_ffi_to_torch_type" : !tvm_ffi.function, i1
+// CHECK-NEXT: cf.assert %[[GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed for trident.runtime.tvm_ffi_to_torch_type"
+// CHECK-NEXT: %[[TYPE:[a-zA-Z0-9_]+]], %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%[[DTYPE]]) : (!tvm_ffi.dtype) -> !tvm_ffi.int, i1
+// CHECK-NEXT: cf.assert %[[CALL_SUCCESS]], "TVMFFIFunctionCall failed for trident.runtime.tvm_ffi_to_torch_type"
 // CHECK: return %[[TYPE]] : !tvm_ffi.int
 func.func @dtype_to_torch_type(%dtype: !torchext.dtype) -> !torch.int {
   %type = torchext.convert %dtype : !torchext.dtype -> !torch.int

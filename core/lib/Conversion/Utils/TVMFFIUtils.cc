@@ -25,6 +25,7 @@
 #include <mlir/IR/Value.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
+#include <tuple>
 
 namespace trident::conversion::utils {
 
@@ -61,10 +62,9 @@ callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
                                   numArgs);
 }
 
-mlir::FailureOr<mlir::Value> getTVMFFIGlobalFunction(mlir::OpBuilder &builder,
-                                                     mlir::Location loc,
-                                                     mlir::ModuleOp moduleOp,
-                                                     llvm::StringRef funcName) {
+mlir::FailureOr<std::tuple<mlir::Value, mlir::Value>>
+getTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
+                        mlir::ModuleOp moduleOp, llvm::StringRef funcName) {
   mlir::MLIRContext *ctx = builder.getContext();
   mlir::IntegerType const i32Ty = mlir::IntegerType::get(ctx, 32);
   mlir::IntegerType const i64Ty = mlir::IntegerType::get(ctx, 64);
@@ -95,14 +95,17 @@ mlir::FailureOr<mlir::Value> getTVMFFIGlobalFunction(mlir::OpBuilder &builder,
       mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
   mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getGlobal =
       getOrCreateTVMFFIFunctionGetGlobal(moduleOp);
-  if (mlir::failed(getGlobal))
+  if (mlir::failed(getGlobal)) {
     return mlir::failure();
-  mlir::LLVM::CallOp::create(builder, loc, getGlobal.value(),
-                             {nameSlot, funcSlot});
-  return mlir::LLVM::LoadOp::create(builder, loc, ptrTy, funcSlot).getResult();
+  }
+  mlir::LLVM::CallOp call = mlir::LLVM::CallOp::create(
+      builder, loc, getGlobal.value(), {nameSlot, funcSlot});
+  mlir::Value const handle =
+      mlir::LLVM::LoadOp::create(builder, loc, ptrTy, funcSlot).getResult();
+  return std::make_tuple(handle, call.getResult());
 }
 
-mlir::LogicalResult
+mlir::FailureOr<mlir::Value>
 callTVMFFIFunction(mlir::OpBuilder &builder, mlir::Location loc,
                    mlir::ModuleOp moduleOp, mlir::Value funcHandle,
                    llvm::ArrayRef<mlir::Value> args, mlir::Value resultSlot) {
@@ -131,7 +134,7 @@ callTVMFFIFunction(mlir::OpBuilder &builder, mlir::Location loc,
                             numArgs, resultSlot);
 }
 
-mlir::LogicalResult
+mlir::FailureOr<mlir::Value>
 callTVMFFIFunction(mlir::OpBuilder &builder, mlir::Location loc,
                    mlir::ModuleOp moduleOp, mlir::Value funcHandle,
                    mlir::Value argsArray, mlir::Value numArgs,
@@ -141,16 +144,10 @@ callTVMFFIFunction(mlir::OpBuilder &builder, mlir::Location loc,
   if (mlir::failed(ffiCall)) {
     return mlir::failure();
   }
-  mlir::LLVM::CallOp::create(builder, loc, ffiCall.value(),
-                             {funcHandle, argsArray, numArgs, resultSlot});
-
-  mlir::FailureOr<mlir::LLVM::LLVMFuncOp> decRef =
-      getOrCreateTVMFFIObjectDecRef(moduleOp);
-  if (mlir::failed(decRef)) {
-    return mlir::failure();
-  }
-  mlir::LLVM::CallOp::create(builder, loc, decRef.value(), {funcHandle});
-  return mlir::success();
+  mlir::LLVM::CallOp call =
+      mlir::LLVM::CallOp::create(builder, loc, ffiCall.value(),
+                                 {funcHandle, argsArray, numArgs, resultSlot});
+  return call.getResult();
 }
 
 mlir::FailureOr<mlir::Value>
@@ -164,10 +161,11 @@ callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
   mlir::IntegerType const i64Ty = mlir::IntegerType::get(ctx, 64);
   mlir::LLVM::LLVMPointerType const ptrTy =
       mlir::LLVM::LLVMPointerType::get(ctx);
-  mlir::FailureOr<mlir::Value> funcHandle =
+  mlir::FailureOr<std::tuple<mlir::Value, mlir::Value>> function =
       getTVMFFIGlobalFunction(builder, loc, moduleOp, funcName);
-  if (mlir::failed(funcHandle))
+  if (mlir::failed(function)) {
     return mlir::failure();
+  }
 
   mlir::Value const zero32 =
       mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, 0);
@@ -186,11 +184,17 @@ callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
       builder, loc, mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 0),
       mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, resultSlot,
                                 llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
-  if (mlir::failed(callTVMFFIFunction(builder, loc, moduleOp,
-                                      funcHandle.value(), argsArray, numArgs,
-                                      resultSlot))) {
+  auto [handle, _] = *function;
+  mlir::FailureOr<mlir::LLVM::LLVMFuncOp> decRef =
+      getOrCreateTVMFFIObjectDecRef(moduleOp);
+  if (mlir::failed(decRef)) {
     return mlir::failure();
   }
+  if (mlir::failed(callTVMFFIFunction(builder, loc, moduleOp, handle, argsArray,
+                                      numArgs, resultSlot))) {
+    return mlir::failure();
+  }
+  mlir::LLVM::CallOp::create(builder, loc, decRef.value(), {handle});
   return resultSlot;
 }
 

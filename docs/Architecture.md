@@ -180,9 +180,10 @@ SSA arguments, so tuple/list parameters do not overrun the FFI argument array.
   with the input specs and selects the operands consumed by `main_{i}`. Values
   are not cached across regions, so every extracted SSA value is defined in
   the region where it is consumed.
-- `ffi.ArrayGetItem` returns a *borrowed* reference (the container argument is
-  kept alive by the FFI call context for the duration of the call), so no
-  ref-counting is emitted for extracted elements.
+- List and tuple construction, unpacking, and length checks lower directly to
+  checked `ffi.Array`, `ffi.ArrayGetItem`, and `ffi.ArraySize` function calls at
+  the Torch-to-TVMFFI boundary. There are no intermediate `tvm_ffi.array.*`
+  operations.
 - dict parameters are currently rejected during signature reconstruction by
   an assertion (runtime `ffi.MapGetItem` exists; lowering support is future
   work), and
@@ -359,6 +360,17 @@ types to their semantic TVMFFI counterparts (lists and tuples use
 explicit `tvm_ffi.ObjectIncRef`/`tvm_ffi.ObjectDecRef` operations for manually-managed
 objects.  `ConvertTVMFFIToLLVM` then lowers these operations to the TVM FFI
 ABI.  LLVM lowering consumes only the semantic TVMFFI representation.
+
+`tvm_ffi.FunctionGetGlobal` and `tvm_ffi.FunctionCall` always return an `i1`
+success value in addition to their semantic result.  LLVM lowering defines
+this value as the TVM FFI C ABI status being equal to zero.
+`ConvertTorchToTVMFFI` checks both values with `cf.assert`, including the
+runtime calls used for array construction, element access, and length queries.
+`tvm_ffi.FunctionCall` borrows both its function handle and arguments; an owned
+handle returned by `tvm_ffi.FunctionGetGlobal` remains reusable and is released
+after its last use.
+The status check intentionally does not test whether a successful global
+lookup returned a null handle.
 
 ## TorchExt Dialect
 

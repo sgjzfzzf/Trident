@@ -9,7 +9,6 @@
 
 // CHECK-DAG: llvm.func @TVMFFIFunctionCall(!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK-DAG: llvm.func @TVMFFIFunctionGetGlobal(!llvm.ptr, !llvm.ptr) -> i32
-// CHECK-DAG: llvm.func @TVMFFIObjectDecRef(!llvm.ptr) -> i32
 // CHECK-LABEL: func.func @global_call(
 // CHECK-SAME: %[[GLOBAL_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[GLOBAL_NAME:[a-zA-Z0-9_]+]], %[[GLOBAL_HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
@@ -24,13 +23,35 @@
 // CHECK: llvm.store %[[GLOBAL_ARG_COPY]], %[[GLOBAL_CALL_ARG]]
 // CHECK: %[[GLOBAL_NARGS:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i32) : i32
 // CHECK: llvm.call @TVMFFIFunctionCall(%[[GLOBAL_HANDLE]], %[[GLOBAL_CALL_ARGS]], %[[GLOBAL_NARGS]], %[[GLOBAL_RESULT_SLOT]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[GLOBAL_HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: %[[GLOBAL_RESULT:[a-zA-Z0-9_]+]] = llvm.load %[[GLOBAL_RESULT_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: return %[[GLOBAL_RESULT]] : !llvm.struct<(i32, i32, i64)>
 func.func @global_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
-  %callee = tvm_ffi.FunctionGetGlobal "test.identity" : !tvm_ffi.function
-  %result = tvm_ffi.FunctionCall %callee(%arg)
-      : (!tvm_ffi.int) -> !tvm_ffi.int
+  %callee, %get_success = tvm_ffi.FunctionGetGlobal "test.identity"
+      : !tvm_ffi.function, i1
+  %result, %call_success = tvm_ffi.FunctionCall %callee(%arg)
+      : (!tvm_ffi.int) -> !tvm_ffi.int, i1
+  return %result : !tvm_ffi.int
+}
+
+// -----
+
+// CHECK-LABEL: func.func @checked_global_call(
+// CHECK: %[[GET_STATUS:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionGetGlobal(%[[NAME:[a-zA-Z0-9_]+]], %[[HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
+// CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
+// CHECK: %[[GET_ZERO:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[GET_SUCCESS:[a-zA-Z0-9_]+]] = llvm.icmp "eq" %[[GET_STATUS]], %[[GET_ZERO]] : i32
+// CHECK: %[[CALL_STATUS:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[ARGS:[a-zA-Z0-9_]+]], %[[NARGS:[a-zA-Z0-9_]+]], %[[RESULT_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
+// CHECK: %[[CALL_ZERO:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = llvm.icmp "eq" %[[CALL_STATUS]], %[[CALL_ZERO]] : i32
+// CHECK: cf.assert %[[GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed"
+// CHECK: cf.assert %[[CALL_SUCCESS]], "TVMFFIFunctionCall failed"
+func.func @checked_global_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
+  %callee, %get_success = tvm_ffi.FunctionGetGlobal "test.identity"
+      : !tvm_ffi.function, i1
+  %result, %call_success = tvm_ffi.FunctionCall %callee(%arg)
+      : (!tvm_ffi.int) -> !tvm_ffi.int, i1
+  cf.assert %get_success, "TVMFFIFunctionGetGlobal failed"
+  cf.assert %call_success, "TVMFFIFunctionCall failed"
   return %result : !tvm_ffi.int
 }
 
@@ -83,28 +104,6 @@ func.func @exception() -> !tvm_ffi.exception {
 
 // -----
 
-// CHECK-LABEL: func.func @array_length(
-// CHECK-SAME: %[[ARRAY:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> i64 {
-// CHECK: %[[SOURCE:[a-zA-Z0-9_]+]] = llvm.alloca
-// CHECK: llvm.store %[[ARRAY]], %[[SOURCE]]
-// CHECK: %[[ARGS:[a-zA-Z0-9_]+]] = llvm.alloca
-// CHECK: %[[ARG_SLOT:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[ARGS]][0]
-// CHECK: %[[ARG:[a-zA-Z0-9_]+]] = llvm.load %[[SOURCE]]
-// CHECK: llvm.store %[[ARG]], %[[ARG_SLOT]]
-// CHECK: %[[NARGS:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i32) : i32
-// CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[HANDLE_SLOT:[a-zA-Z0-9_]+]] : !llvm.ptr -> !llvm.ptr
-// CHECK: %[[CALL:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[ARGS]], %[[NARGS]], %[[RESULT_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[HANDLE]]) : (!llvm.ptr) -> i32
-// CHECK: %[[PAYLOAD_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[RESULT_SLOT]][0, 2]
-// CHECK: %[[LENGTH:[a-zA-Z0-9_]+]] = llvm.load %[[PAYLOAD_PTR]] : !llvm.ptr -> i64
-// CHECK: return %[[LENGTH]] : i64
-func.func @array_length(%array: !tvm_ffi.array) -> i64 {
-  %length = tvm_ffi.array.length %array : !tvm_ffi.array
-  return %length : i64
-}
-
-// -----
-
 // CHECK-LABEL: func.func @object_refs(
 // CHECK-SAME: %[[OBJECT:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) {
 // CHECK: %[[INC_BITS:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[OBJECT]][2]
@@ -117,6 +116,19 @@ func.func @array_length(%array: !tvm_ffi.array) -> i64 {
 func.func @object_refs(%object: !tvm_ffi.tensor) {
   tvm_ffi.ObjectIncRef %object : !tvm_ffi.tensor
   tvm_ffi.ObjectDecRef %object : !tvm_ffi.tensor
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @function_refs(
+// CHECK-SAME: %[[FUNCTION:[a-zA-Z0-9_]+]]: !llvm.ptr) {
+// CHECK-NEXT: llvm.call @TVMFFIObjectIncRef(%[[FUNCTION]]) : (!llvm.ptr) -> i32
+// CHECK-NEXT: llvm.call @TVMFFIObjectDecRef(%[[FUNCTION]]) : (!llvm.ptr) -> i32
+// CHECK-NEXT: return
+func.func @function_refs(%function: !tvm_ffi.function) {
+  tvm_ffi.ObjectIncRef %function : !tvm_ffi.function
+  tvm_ffi.ObjectDecRef %function : !tvm_ffi.function
   return
 }
 

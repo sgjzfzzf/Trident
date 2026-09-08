@@ -26,14 +26,18 @@
 // CHECK: %[[FORMAT:[0-9]+]] = llvm.insertvalue %[[ZERO_I64]], %[[FORMAT_WITH_DEVICE]][2]
 // CHECK: %[[GETGLOBAL:[0-9]+]] = llvm.call @TVMFFIFunctionGetGlobal(%[[FUNCTION_NAME:[0-9]+]], %[[HANDLE_SLOT:[0-9]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
 // CHECK: %[[HANDLE:[0-9]+]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
+// CHECK: %[[GET_SUCCESS:[0-9]+]] = llvm.icmp "eq" %[[GETGLOBAL]], %[[ZERO_I32]] : i32
+// CHECK: llvm.cond_br %[[GET_SUCCESS]],
 // CHECK: %[[ARGS:[0-9]+]] = llvm.alloca %[[TWO]] x !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.store %[[ARG0]], %[[ARGS]]
 // CHECK: %[[FORMAT_SLOT:[0-9]+]] = llvm.getelementptr %[[ARGS]][1]
 // CHECK: llvm.store %[[FORMAT]], %[[FORMAT_SLOT]]
 // CHECK: %[[RET_SLOT:[0-9]+]] = llvm.alloca
 // CHECK: %[[CALL:[0-9]+]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[CALL_ARGS:[0-9]+]], %[[NARGS]], %[[RET_SLOT]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: %[[RET:[0-9]+]] = llvm.load %[[RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: %[[CALL_SUCCESS:[0-9]+]] = llvm.icmp "eq" %[[CALL]], %[[ZERO_I32]] : i32
+// CHECK: llvm.cond_br %[[CALL_SUCCESS]],
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: llvm.return %[[RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_clone(
 // CHECK: %[[WRAP_ARG:[0-9]+]] = llvm.load %arg1 : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>

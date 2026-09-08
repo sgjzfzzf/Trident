@@ -84,7 +84,7 @@ declare_mlir_python_sources(
   TridentCorePythonSources
   SOURCES
   __init__.py
-  dialects/torch.py
+  dialects/torch/__init__.py
   dialects/torch_c.py
   dialects/torchext.py
   dialects/tvm_ffi.py)

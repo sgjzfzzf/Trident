@@ -6,7 +6,6 @@ add_mlir_conversion_library(
   LINK_LIBS
   PUBLIC
   OwnershipDeallocation
-  DecomposeTVMFFI
   DLPackToLLVM
   FinalizeTVMFFI
   GeneralizeAtenOps

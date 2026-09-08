@@ -90,8 +90,9 @@ tvm_ffi.func @unordered_union(
 // DIALECT-SAME: [[TENSOR_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.tensor,
 // DIALECT-SAME: [[ARRAY_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.array,
 // DIALECT-SAME: [[ANY_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.any,
-// DIALECT-SAME: [[INDEX_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.int) -> !tvm_ffi.tensor {
-// DIALECT:      [[ITEM:%[a-zA-Z0-9_]+]] = tvm_ffi.array.get_item [[ARRAY_ARG]][[[INDEX_ARG]]] as !tvm_ffi.tensor : !tvm_ffi.array, !tvm_ffi.int -> !tvm_ffi.tensor
+// DIALECT-SAME: [[INDEX_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.int,
+// DIALECT-SAME: [[FUNCTION_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.function) -> !tvm_ffi.tensor {
+// DIALECT:      [[ITEM:%[a-zA-Z0-9_]+]], [[SUCCESS:%[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall [[FUNCTION_ARG]]([[ARRAY_ARG]], [[INDEX_ARG]]) : (!tvm_ffi.array, !tvm_ffi.int) -> !tvm_ffi.tensor, i1
 // DIALECT-NEXT: tvm_ffi.ObjectIncRef [[ITEM]] : !tvm_ffi.tensor
 // DIALECT-NEXT: tvm_ffi.ObjectDecRef [[ARRAY_ARG]] : !tvm_ffi.array
 // DIALECT-NEXT: tvm_ffi.ObjectIncRef [[ANY_ARG]] : !tvm_ffi.any
@@ -102,11 +103,10 @@ tvm_ffi.func @lifetime_types(
     %tensor: !tvm_ffi.tensor,
     %array: !tvm_ffi.array,
     %any: !tvm_ffi.any,
-    %index: !tvm_ffi.int) -> !tvm_ffi.tensor {
-  %item = tvm_ffi.array.get_item %array[%index]
-      as !tvm_ffi.tensor
-      : !tvm_ffi.array, !tvm_ffi.int
-      -> !tvm_ffi.tensor
+    %index: !tvm_ffi.int,
+    %function: !tvm_ffi.function) -> !tvm_ffi.tensor {
+  %item, %success = tvm_ffi.FunctionCall %function(%array, %index)
+      : (!tvm_ffi.array, !tvm_ffi.int) -> !tvm_ffi.tensor, i1
   tvm_ffi.ObjectIncRef %item : !tvm_ffi.tensor
   tvm_ffi.ObjectDecRef %array : !tvm_ffi.array
   tvm_ffi.ObjectIncRef %any : !tvm_ffi.any
@@ -114,32 +114,22 @@ tvm_ffi.func @lifetime_types(
   tvm_ffi.return %item : !tvm_ffi.tensor
 }
 
-// DIALECT-LABEL: tvm_ffi.func @array_unifies_list_and_tuple(
-// DIALECT-SAME: [[ARRAY_VALUE:%[a-zA-Z0-9_]+]]: !tvm_ffi.array,
-// DIALECT-SAME: [[ARRAY_INDEX:%[a-zA-Z0-9_]+]]: !tvm_ffi.int) -> !tvm_ffi.int {
-// DIALECT-NEXT: [[ARRAY_ITEM:%[a-zA-Z0-9_]+]] = tvm_ffi.array.get_item [[ARRAY_VALUE]][[[ARRAY_INDEX]]] as !tvm_ffi.int : !tvm_ffi.array, !tvm_ffi.int -> !tvm_ffi.int
-// DIALECT-NEXT: tvm_ffi.return [[ARRAY_ITEM]] : !tvm_ffi.int
-// DIALECT-NEXT: }
-tvm_ffi.func @array_unifies_list_and_tuple(
-    %list_or_tuple: !tvm_ffi.array,
-    %index: !tvm_ffi.int) -> !tvm_ffi.int {
-  %item = tvm_ffi.array.get_item %list_or_tuple[%index]
-      as !tvm_ffi.int
-      : !tvm_ffi.array, !tvm_ffi.int
-      -> !tvm_ffi.int
-  tvm_ffi.return %item : !tvm_ffi.int
-}
-
 // -----
 
 // DIALECT-LABEL: tvm_ffi.func @function_call() -> !tvm_ffi.array {
-// DIALECT-NEXT:    [[ARRAY_FUNC:%[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "ffi.Array" : !tvm_ffi.function
-// DIALECT-NEXT:    [[ARRAY_RESULT:%[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall [[ARRAY_FUNC]]() : () -> !tvm_ffi.array
+// DIALECT-NEXT:    [[ARRAY_FUNC:%[a-zA-Z0-9_]+]], [[GET_SUCCESS:%[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "ffi.Array" : !tvm_ffi.function, i1
+// DIALECT-NEXT:    [[ARRAY_RESULT:%[a-zA-Z0-9_]+]], [[CALL_SUCCESS:%[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall [[ARRAY_FUNC]]() : () -> !tvm_ffi.array, i1
+// DIALECT-NEXT:    cf.assert [[GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed"
+// DIALECT-NEXT:    cf.assert [[CALL_SUCCESS]], "TVMFFIFunctionCall failed"
 // DIALECT-NEXT:    tvm_ffi.return [[ARRAY_RESULT]] : !tvm_ffi.array
 // DIALECT-NEXT:  }
 tvm_ffi.func @function_call() -> !tvm_ffi.array {
-  %func = tvm_ffi.FunctionGetGlobal "ffi.Array" : !tvm_ffi.function
-  %result = tvm_ffi.FunctionCall %func() : () -> !tvm_ffi.array
+  %func, %get_success = tvm_ffi.FunctionGetGlobal "ffi.Array"
+      : !tvm_ffi.function, i1
+  %result, %call_success = tvm_ffi.FunctionCall %func()
+      : () -> !tvm_ffi.array, i1
+  cf.assert %get_success, "TVMFFIFunctionGetGlobal failed"
+  cf.assert %call_success, "TVMFFIFunctionCall failed"
   tvm_ffi.return %result : !tvm_ffi.array
 }
 

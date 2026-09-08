@@ -33,38 +33,6 @@ class TVMFFI_TensorIndexedMetadataOp<string mnemonic>
   let assemblyFormat = "$tensor `[` $index `]` attr-dict `:` type($tensor)";
 }
 
-def TVMFFI_ArrayCreateOp
-    : TVMFFI_Op<"array.create", [
-        DeclareOpInterfaceMethods<InferTypeOpInterface>,
-        TVMFFI_ObjectOwnershipOpInterface]> {
-  let summary = "Create a TVM FFI Array from semantic values";
-  let arguments = (ins Variadic<AnyTVMFFISemanticType> : $elements);
-  let results = (outs TVMFFI_ArrayType : $result);
-}
-
-def TVMFFI_ArrayGetItemOp : TVMFFI_Op<"array.get_item", [
-    DeclareOpInterfaceMethods<TVMFFI_ObjectOwnershipOpInterface,
-                              ["getObjectResultOwnership"]>]> {
-  let summary = "Borrow an element from a TVM FFI Array";
-  let arguments = (ins AnyTVMFFIArrayOrTorchType:$array,
-                       TVMFFI_IntType:$index,
-                       OptionalAttr<TypeAttr>:$element_type);
-  let results = (outs AnyTypeOf<[AnyTVMFFISemanticType, AnyTorchType],
-                                "TVM FFI semantic value or a Torch frontend value">
-                 : $result);
-  let assemblyFormat = "$array `[` $index `]` (`as` $element_type^)? attr-dict "
-                       "`:` type($array) `,` type($index) `->` type($result)";
-  let hasVerifier = 1;
-}
-
-def TVMFFI_ArrayLengthOp : TVMFFI_Op<"array.length", [Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Read the length of a runtime TVM FFI array";
-  let arguments = (ins AnyTVMFFIArrayOrTorchType : $array);
-  let results = (outs I64 : $result);
-  let assemblyFormat = "$array attr-dict `:` type($array)";
-}
-
 def TVMFFI_AsOp : TVMFFI_Op<"as", [Pure]> {
   let summary = "View the payload of a TVM FFI object as a native type";
   let arguments = (ins TVMFFI_ObjectType:$object);
@@ -207,14 +175,13 @@ def TVMFFI_FuncOp : TVMFFI_Op<"func", [
   let skipDefaultBuilders = 1;
 }
 
-def TVMFFI_FunctionCallOp : TVMFFI_Op<"FunctionCall", [
-    DeclareOpInterfaceMethods<TVMFFI_ObjectOwnershipOpInterface,
-                              ["getObjectOperandOwnership"]>]> {
+def TVMFFI_FunctionCallOp
+    : TVMFFI_Op<"FunctionCall", [TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Call a TVM FFI function handle";
   let arguments = (ins TVMFFI_FunctionType:$callee,
                        Variadic<AnyTVMFFISemanticType>:$arguments);
-  let results = (outs Variadic<AnyTVMFFISemanticType>:$results);
-  let assemblyFormat = "$callee `(` $arguments `)` attr-dict `:` functional-type($arguments, $results)";
+  let results = (outs AnyTVMFFISemanticType:$result, I1:$success);
+  let assemblyFormat = "$callee `(` $arguments `)` attr-dict `:` functional-type($arguments, $result) `,` type($success)";
 }
 
 def TVMFFI_FunctionGetGlobalOp
@@ -223,8 +190,8 @@ def TVMFFI_FunctionGetGlobalOp
         TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Get a TVM FFI global function by name";
   let arguments = (ins StrAttr:$name);
-  let results = (outs TVMFFI_FunctionType:$result);
-  let assemblyFormat = "$name attr-dict `:` type($result)";
+  let results = (outs TVMFFI_FunctionType:$result, I1:$success);
+  let assemblyFormat = "$name attr-dict `:` type($result) `,` type($success)";
 }
 
 def TVMFFI_GetOp : TVMFFI_Op<"get", [Pure,

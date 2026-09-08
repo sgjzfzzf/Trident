@@ -31,7 +31,11 @@
 // CHECK: %[[OFFSET:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.storage_offset %[[TENSOR]] : !tvm_ffi.tensor
 // CHECK: %[[DTYPE_CODE:[a-zA-Z0-9_]+]], %[[DTYPE_BITS:[a-zA-Z0-9_]+]], %[[DTYPE_LANES:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.dtype %[[TENSOR]] : !tvm_ffi.tensor
 // CHECK: %[[DEVICE_TYPE:[a-zA-Z0-9_]+]], %[[DEVICE_INDEX:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.device %[[TENSOR]] : !tvm_ffi.tensor
-// CHECK: %[[LENGTH:[a-zA-Z0-9_]+]] = tvm_ffi.array.length %[[ARRAY]] : !tvm_ffi.array
+// CHECK: %[[LENGTH_FUNCTION:[a-zA-Z0-9_]+]], %[[LENGTH_GET_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "ffi.ArraySize" : !tvm_ffi.function, i1
+// CHECK-NEXT: cf.assert %[[LENGTH_GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed for ffi.ArraySize"
+// CHECK-NEXT: %[[LENGTH_VALUE:[a-zA-Z0-9_]+]], %[[LENGTH_CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[LENGTH_FUNCTION]](%[[ARRAY]]) : (!tvm_ffi.array) -> !tvm_ffi.int, i1
+// CHECK-NEXT: cf.assert %[[LENGTH_CALL_SUCCESS]], "TVMFFIFunctionCall failed for ffi.ArraySize"
+// CHECK-NEXT: %[[LENGTH:[a-zA-Z0-9_]+]] = tvm_ffi.get %[[LENGTH_VALUE]] : !tvm_ffi.int -> i64
 // CHECK: %[[VALUES_EQUAL:[a-zA-Z0-9_]+]] = tvm_ffi.eq %[[LHS]], %[[RHS]] : !tvm_ffi.bool, !tvm_ffi.bool
 // CHECK: %[[DIM_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[DIM]], %[[EXPECTED_DIM_SIZE_LENGTH]] : i64
 // CHECK: %[[SIZE_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[SIZE]], %[[EXPECTED_DIM_SIZE_LENGTH]] : i64
@@ -76,7 +80,8 @@ tvm_ffi.func @guard_operand_conversion(
       : !tvm_ffi.tensor
   %device_type, %device_index = tvm_ffi.tensor.device %tensor
       : !tvm_ffi.tensor
-  %length = tvm_ffi.array.length %array : !torch.list<int>
+  %length_value = torch.aten.len.t %array : !torch.list<int> -> !torch.int
+  %length = torch_c.to_i64 %length_value
   %values_equal = tvm_ffi.eq %lhs, %rhs : !torch.bool, !torch.bool
 
   %expected_dim = arith.constant 2 : i64

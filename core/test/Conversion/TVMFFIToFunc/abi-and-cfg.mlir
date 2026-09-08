@@ -106,7 +106,7 @@ tvm_ffi.func @switch_argument(
 // cleanup block is cloned.
 // INTERMEDIATE-LABEL: func.func @forward_block_use(
 // INTERMEDIATE: tvm_ffi.ObjectDecRef [[ARRAY:%[a-zA-Z0-9_]+]] : !tvm_ffi.array
-// INTERMEDIATE: [[ARRAY]] = "tvm_ffi.array.create"
+// INTERMEDIATE: [[ARRAY:%[a-zA-Z0-9_]+]], [[CALL_SUCCESS:%[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall
 tvm_ffi.func @forward_block_use() {
   cf.br ^definition
 
@@ -116,8 +116,10 @@ tvm_ffi.func @forward_block_use() {
 
 ^definition:
   %one = tvm_ffi.constant.int 1
-  %array = "tvm_ffi.array.create"(%one)
-      : (!tvm_ffi.int) -> !tvm_ffi.array
+  %function, %get_success = tvm_ffi.FunctionGetGlobal "ffi.Array"
+      : !tvm_ffi.function, i1
+  %array, %call_success = tvm_ffi.FunctionCall %function(%one)
+      : (!tvm_ffi.int) -> !tvm_ffi.array, i1
   cf.br ^cleanup
 }
 

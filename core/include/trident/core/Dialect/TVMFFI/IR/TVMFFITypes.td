@@ -135,9 +135,6 @@ def AnyTVMFFIGetOperandType : AnyTypeOf<[
 def AnyTVMFFIAnyABIOrTorchType : AnyTypeOf<[
   AnyTVMFFIAnyABIType, AnyTorchType, TorchExt_DTypeType
 ], "TVM FFI ABI value or a Torch frontend value">;
-def AnyTVMFFIArrayOrTorchType : AnyTypeOf<[
-  TVMFFI_ArrayType, AnyTorchListType, Torch_TupleType, Torch_AnyType
-], "TVM FFI array or a Torch frontend container value">;
 def AnyTVMFFIObjectOrAnyType : AnyTypeOf<[
   TVMFFI_AnyType, TVMFFI_ArrayType, TVMFFI_ExceptionType,
   TVMFFI_FunctionType, TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType

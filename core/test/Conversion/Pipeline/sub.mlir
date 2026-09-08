@@ -22,8 +22,8 @@
 // CHECK: %[[SCALAR_SLOT2:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[SCALAR_ARGS]][2]
 // CHECK: llvm.store %[[SCALAR_ARG2]], %[[SCALAR_SLOT2]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK: llvm.call @TVMFFIFunctionCall(%[[SCALAR_HANDLE:[0-9]+]], %[[SCALAR_CALL_ARGS:[0-9]+]], %[[SCALAR_ARG_COUNT:[0-9]+]], %[[SCALAR_RETURN_SLOT:[0-9]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[SCALAR_HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: %[[SCALAR_RET:[a-zA-Z0-9_]+]] = llvm.load %[[SCALAR_RET_SLOT:[a-zA-Z0-9_]+]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[SCALAR_HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: llvm.return %[[SCALAR_RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL:   llvm.func @torch.aten.sub.Tensor
 // CHECK-SAME: %[[TENSOR_ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[TENSOR_ARG1:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[TENSOR_ARG2:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
@@ -35,8 +35,8 @@
 // CHECK: %[[TENSOR_SLOT2:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[TENSOR_ARGS]][2]
 // CHECK: llvm.store %[[TENSOR_ARG2]], %[[TENSOR_SLOT2]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK: llvm.call @TVMFFIFunctionCall(%[[TENSOR_HANDLE:[0-9]+]], %[[TENSOR_CALL_ARGS:[0-9]+]], %[[TENSOR_ARG_COUNT:[0-9]+]], %[[TENSOR_RETURN_SLOT:[0-9]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[TENSOR_HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: %[[TENSOR_RET:[a-zA-Z0-9_]+]] = llvm.load %[[TENSOR_RET_SLOT:[a-zA-Z0-9_]+]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[TENSOR_HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: llvm.return %[[TENSOR_RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_sub_scalar(
 // CHECK: llvm.call @sub_scalar(%[[SCALAR_WRAPPER_INPUT:[a-zA-Z0-9_]+]], %[[SCALAR_WRAPPER_OTHER:[a-zA-Z0-9_]+]], %[[SCALAR_WRAPPER_ALPHA:[a-zA-Z0-9_]+]]) : (!llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>

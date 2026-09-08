@@ -19,6 +19,7 @@ add_mlir_conversion_library(
   PUBLIC
   MLIRAnalysis
   MLIRArithDialect
+  MLIRControlFlowDialect
   MLIRIR
   MLIRPass
   MLIRTransformUtils

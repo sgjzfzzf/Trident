@@ -5,7 +5,6 @@ add_mlir_library(
   LINK_LIBS
   PUBLIC
   OwnershipDeallocation
-  DecomposeTVMFFI
   DLPackDialect
   DLPackToLLVM
   FinalizeTVMFFI

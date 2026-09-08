@@ -18,8 +18,8 @@
 // CHECK: llvm.store %[[EMPTY_LIKE_ARG]], %[[EMPTY_LIKE_ARGS]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK: %[[EMPTY_LIKE_RET_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca %[[EMPTY_LIKE_RET_COUNT:[a-zA-Z0-9_]+]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
 // CHECK: %[[EMPTY_LIKE_CALL:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionCall(%[[EMPTY_LIKE_HANDLE]], %[[EMPTY_LIKE_ARGS_COPY:[a-zA-Z0-9_]+]], %[[EMPTY_LIKE_NARGS:[a-zA-Z0-9_]+]], %[[EMPTY_LIKE_RET_SLOT]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[EMPTY_LIKE_HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: %[[EMPTY_LIKE_RET:[a-zA-Z0-9_]+]] = llvm.load %[[EMPTY_LIKE_RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[EMPTY_LIKE_HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: llvm.return %[[EMPTY_LIKE_RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_empty_like(
 // CHECK: llvm.call @empty_like(%[[EMPTY_LIKE_WRAPPER_ARGS:[a-zA-Z0-9_]+]]) : (!llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
@@ -50,8 +50,8 @@ tvm_ffi.func @empty_like(%arg0: !torch.vtensor<[200,200,26],f64>) -> !torch.vten
 // CHECK: %[[EMPTY_DEVICE_SLOT:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[EMPTY_ARGS]][3]
 // CHECK: llvm.store %[[EMPTY_DEVICE_ARG]], %[[EMPTY_DEVICE_SLOT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // CHECK: llvm.call @TVMFFIFunctionCall(%[[EMPTY_HANDLE:[0-9]+]], %[[EMPTY_ARGS_COPY:[0-9]+]], %[[EMPTY_NARGS:[0-9]+]], %[[EMPTY_RET_SLOT:[0-9]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[EMPTY_HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: %[[EMPTY_RET:[a-zA-Z0-9_]+]] = llvm.load %[[EMPTY_RET_SLOT:[a-zA-Z0-9_]+]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[EMPTY_HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: llvm.return %[[EMPTY_RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_empty(
 // CHECK: llvm.call @empty(%[[EMPTY_WRAPPER_SHAPE:[a-zA-Z0-9_]+]], %[[EMPTY_WRAPPER_DTYPE:[a-zA-Z0-9_]+]], %[[EMPTY_WRAPPER_DEVICE:[a-zA-Z0-9_]+]]) : (!llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>

@@ -12,22 +12,22 @@
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/IR/Value.h>
 #include <mlir/Support/LogicalResult.h>
+#include <tuple>
 
 namespace trident::conversion::utils {
 
 /// Get an owned TVM FFI global function handle by name.
-mlir::FailureOr<mlir::Value> getTVMFFIGlobalFunction(mlir::OpBuilder &builder,
-                                                     mlir::Location loc,
-                                                     mlir::ModuleOp moduleOp,
-                                                     llvm::StringRef funcName);
+mlir::FailureOr<std::tuple<mlir::Value, mlir::Value>>
+getTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
+                        mlir::ModuleOp moduleOp, llvm::StringRef funcName);
 
-/// Call a TVM FFI function handle.
-mlir::LogicalResult
+/// Call a borrowed TVM FFI function handle.
+mlir::FailureOr<mlir::Value>
 callTVMFFIFunction(mlir::OpBuilder &builder, mlir::Location loc,
                    mlir::ModuleOp moduleOp, mlir::Value funcHandle,
                    llvm::ArrayRef<mlir::Value> args, mlir::Value resultSlot);
 
-mlir::LogicalResult
+mlir::FailureOr<mlir::Value>
 callTVMFFIFunction(mlir::OpBuilder &builder, mlir::Location loc,
                    mlir::ModuleOp moduleOp, mlir::Value funcHandle,
                    mlir::Value argsArray, mlir::Value numArgs,

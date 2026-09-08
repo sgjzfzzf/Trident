@@ -75,9 +75,8 @@ mlir::Type getConstantValueType(mlir::Attribute value,
       });
 }
 
-mlir::Value materializeConstantValue(mlir::OpBuilder &builder,
-                                     mlir::Location loc,
-                                     mlir::Attribute value) {
+mlir::Value buildConstantValue(mlir::OpBuilder &builder, mlir::Location loc,
+                               mlir::Attribute value) {
   return llvm::TypeSwitch<mlir::Attribute, mlir::Value>(value)
       .Case<mlir::StringAttr>([&](mlir::StringAttr string) -> mlir::Value {
         return mlir::torch::Torch::ConstantStrOp::create(builder, loc, string);
@@ -85,7 +84,7 @@ mlir::Value materializeConstantValue(mlir::OpBuilder &builder,
       .Case<mlir::ArrayAttr>([&](mlir::ArrayAttr array) -> mlir::Value {
         llvm::SmallVector<mlir::Value> const elements = llvm::map_to_vector(
             array, [&](mlir::Attribute element) -> mlir::Value {
-              return materializeConstantValue(builder, loc, element);
+              return buildConstantValue(builder, loc, element);
             });
         return mlir::torch::Torch::PrimTupleConstructOp::create(
             builder, loc, getConstantValueType(array, builder.getContext()),
@@ -120,8 +119,7 @@ mlir::LogicalResult ConstantSpecializationAttr::verify(
 mlir::Value ConstantSpecializationAttr::buildCheck(mlir::OpBuilder &builder,
                                                    mlir::Location loc,
                                                    mlir::Value operand) const {
-  mlir::Value const expected =
-      materializeConstantValue(builder, loc, getValue());
+  mlir::Value const expected = buildConstantValue(builder, loc, getValue());
   return EqOp::create(builder, loc, operand, expected);
 }
 

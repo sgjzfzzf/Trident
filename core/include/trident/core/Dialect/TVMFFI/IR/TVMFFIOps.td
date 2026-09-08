@@ -117,9 +117,8 @@ def TVMFFI_ConstantRawStrOp
 def TVMFFI_EqOp : TVMFFI_Op<"eq", [Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Compare the ABI representation of two TVM FFI values";
-  let arguments = (ins AnyTVMFFIAnyABIOrTorchType
-                   : $lhs, AnyTVMFFIAnyABIOrTorchType
-                   : $rhs);
+  let arguments = (ins AnyTVMFFIAnyABIType : $lhs,
+                       AnyTVMFFIAnyABIType : $rhs);
   let results = (outs I1 : $result);
   let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)";
 }

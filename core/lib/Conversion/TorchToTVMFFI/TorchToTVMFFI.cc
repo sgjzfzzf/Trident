@@ -117,7 +117,6 @@ tvm_ffi::FunctionCallOp createCheckedFunctionCall(mlir::OpBuilder &builder,
       llvm::formatv("TVMFFIFunctionGetGlobal failed for {0}", callee);
   mlir::cf::AssertOp::create(builder, loc, getGlobal.getSuccess(),
                              getGlobalError);
-
   tvm_ffi::FunctionCallOp call = tvm_ffi::FunctionCallOp::create(
       builder, loc, resultType, builder.getI1Type(), getGlobal.getResult(),
       arguments);
@@ -228,23 +227,6 @@ public:
                   mlir::ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<tvm_ffi::EqOp>(op, adaptor.getLhs(),
                                                adaptor.getRhs());
-    return mlir::success();
-  }
-};
-
-/// Keep an already-semantic operation while converting its operands.
-template <typename Op>
-class ConvertGenericOp final : public mlir::OpConversionPattern<Op> {
-public:
-  ConvertGenericOp(const TorchFFITypeConverter &typeConverter,
-                   mlir::MLIRContext *context)
-      : mlir::OpConversionPattern<Op>(typeConverter, context) {}
-
-  mlir::LogicalResult
-  matchAndRewrite(Op op, typename Op::Adaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    rewriter.modifyOpInPlace(op,
-                             [&] { op->setOperands(adaptor.getOperands()); });
     return mlir::success();
   }
 };
@@ -551,18 +533,7 @@ class ConvertTorchToTVMFFIPass final
         ConvertTorchExtTensorIndexedMetadata<torchext::TensorStrideOp,
                                              tvm_ffi::TensorStrideOp>,
         ConvertTorchOverwriteTensorContents, ConvertTorchValueTensorLiteralOp,
-        ConvertTVMFFIReturn, ConvertGenericOp<tvm_ffi::CastOp>,
-        ConvertGenericOp<tvm_ffi::EqOp>,
-        ConvertGenericOp<tvm_ffi::TensorDeviceOp>,
-        ConvertGenericOp<tvm_ffi::TensorDimOp>,
-        ConvertGenericOp<tvm_ffi::TensorDTypeOp>,
-        ConvertGenericOp<tvm_ffi::TensorSizeOp>,
-        ConvertGenericOp<tvm_ffi::TensorStorageOffsetOp>,
-        ConvertGenericOp<tvm_ffi::TensorStrideOp>,
-        ConvertGenericOp<mlir::func::CallOp>, ConvertGenericOp<tvm_ffi::CallOp>,
-        ConvertGenericOp<tvm_ffi::ExceptionOp>,
-        ConvertGenericOp<tvm_ffi::FunctionCallOp>>(typeConverter,
-                                                   &getContext());
+        ConvertTVMFFIReturn>(typeConverter, &getContext());
 
     mlir::ConversionTarget target(getContext());
     target.addLegalDialect<mlir::arith::ArithDialect, mlir::BuiltinDialect,

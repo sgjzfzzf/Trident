@@ -85,7 +85,7 @@ tvm_ffi.func @guard_operand_conversion(
       : !tvm_ffi.tensor
   %length_value = torch.aten.len.t %array : !torch.list<int> -> !torch.int
   %length = torch_c.to_i64 %length_value
-  %values_equal = tvm_ffi.eq %lhs, %rhs : !torch.bool, !torch.bool
+  %values_equal = torchext.eq %lhs, %rhs : !torch.bool
 
   %expected_dim = arith.constant 2 : i64
   %expected_size = arith.constant 2 : i64

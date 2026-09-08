@@ -51,6 +51,13 @@ must inspect dynamic operation names, copy arbitrary attributes, and reject
 region-bearing operations. The surrounding `torch.prim.If` rewrite also
 remains in C++ because it must inline regions and manage the replacement block.
 
+Torch-side structural comparisons remain `torchext.eq` until
+`ConvertTorchToTVMFFI` rewrites them to `tvm_ffi.eq`. TVMFFI equality accepts
+only values that already have a TVMFFIAny ABI representation; it is not a
+second spelling for an operation on Torch values. The conversion therefore
+does not carry a generic pattern that mutates arbitrary TVMFFI operations to
+consume remapped Torch operands. Each dialect owns its side of this boundary.
+
 ## High-Level Components
 
 - Top-level CMake project

@@ -56,6 +56,12 @@ reason to choose PDLL over DRR: if the whole pattern is already a simple DRR
 rewrite, keep it in DRR; if only matching is declarative but construction is
 imperative, PDLL plus a native rewrite can be appropriate.
 
+Do not construct TVMFFI semantic operations with Torch operands and rely on a
+generic operand-remapping conversion. Keep the operation in Torch or TorchExt
+until its dedicated Torch-to-TVMFFI rewrite. For example, structural equality
+over Torch values is `torchext.eq`; `tvm_ffi.eq` begins at the TVMFFI side of
+the boundary and accepts only TVMFFI ABI values.
+
 For DRR-based changes:
 
 1. Add the `.td` pattern source beside the pass that owns the rewrite.

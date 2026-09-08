@@ -14,23 +14,24 @@
 // CHECK-DAG:  %[[C32:[a-zA-Z0-9_]+]] = llvm.mlir.constant(32 : i64) : i64
 // CHECK-DAG:  %[[C16:[a-zA-Z0-9_]+]] = llvm.mlir.constant(16 : i64) : i64
 // CHECK-DAG:  %[[C128:[a-zA-Z0-9_]+]] = llvm.mlir.constant(128 : i64) : i64
-// CHECK-DAG:  %[[C1:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i64) : i64
-// CHECK-DAG:  %[[ZERO:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i64) : i64
+// CHECK-DAG:  %[[GRID_ONE:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i64) : i64
 // CHECK-DAG:  %[[SHMEM:[a-zA-Z0-9_]+]] = llvm.mlir.constant(16384 : i32) : i32
-// CHECK-DAG:  %[[CUDA_DEVICE:[a-zA-Z0-9_]+]] = llvm.mlir.constant(2 : i32) : i32
 // CHECK:      %[[TENSOR_OBJECT:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[TENS_ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // CHECK:      %[[TENSOR_OBJECT_PTR:[a-zA-Z0-9_]+]] = llvm.inttoptr %[[TENSOR_OBJECT]] : i64 to !llvm.ptr
 // CHECK:      %[[DLTENSOR_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[TENSOR_OBJECT_PTR]][24] : (!llvm.ptr) -> !llvm.ptr, i8
 // CHECK:      %[[DLTENSOR:[a-zA-Z0-9_]+]] = llvm.load %[[DLTENSOR_PTR]] : !llvm.ptr -> !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
 // CHECK:      %[[DATA_PTR:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DLTENSOR]][0] : !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
 // CHECK:      %[[SCALAR_I64:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[SCALAR_ARG]][2] : !llvm.struct<(i32, i32, i64)>
-// CHECK:      %[[DEVICE_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca %[[C1]] x i32 : (i64) -> !llvm.ptr
+// CHECK:      %[[ALLOCA_ONE:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i64) : i64
+// CHECK:      %[[DEVICE_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca %[[ALLOCA_ONE]] x i32 : (i64) -> !llvm.ptr
 // CHECK:      llvm.call @aoti_torch_get_current_device_index(%[[DEVICE_SLOT]]) : (!llvm.ptr) -> i32
 // CHECK:      %[[DEVICE_INDEX:[a-zA-Z0-9_]+]] = llvm.load %[[DEVICE_SLOT]] : !llvm.ptr -> i32
+// CHECK:      %[[CUDA_DEVICE:[a-zA-Z0-9_]+]] = llvm.mlir.constant(2 : i32) : i32
 // CHECK:      %[[STREAM:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIEnvGetStream(%[[CUDA_DEVICE]], %[[DEVICE_INDEX]]) : (i32, i32) -> !llvm.ptr
+// CHECK:      %[[ZERO:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i64) : i64
 // CHECK:      gpu.launch_func <%[[STREAM]] : !llvm.ptr> @kernel::@entry
-// CHECK:      blocks in (%[[C32]], %[[C16]], %[[C1]])
-// CHECK:      threads in (%[[C128]], %[[C1]], %[[C1]])
+// CHECK:      blocks in (%[[C32]], %[[C16]], %[[GRID_ONE]])
+// CHECK:      threads in (%[[C128]], %[[GRID_ONE]], %[[GRID_ONE]])
 // CHECK:      dynamic_shared_memory_size %[[SHMEM]]
 // CHECK:      args(%[[DATA_PTR]] : !llvm.ptr, %[[SCALAR_I64]] : i64, %[[ZERO]] : i64, %[[ZERO]] : i64)
 

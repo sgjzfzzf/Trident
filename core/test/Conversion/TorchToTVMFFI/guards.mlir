@@ -17,17 +17,10 @@
 // CHECK-SAME: %[[LHS:[a-zA-Z0-9_]+]]: !tvm_ffi.bool,
 // CHECK-SAME: %[[RHS:[a-zA-Z0-9_]+]]: !tvm_ffi.bool) {
 // CHECK-NOT: !torch
-// CHECK: %[[EXPECTED_DEVICE_INDEX:[a-zA-Z0-9_]+]] = arith.constant 0 : i32
-// CHECK: %[[EXPECTED_DEVICE_TYPE:[a-zA-Z0-9_]+]] = arith.constant 2 : i32
-// CHECK: %[[EXPECTED_LANES:[a-zA-Z0-9_]+]] = arith.constant 1 : i16
-// CHECK: %[[EXPECTED_BITS:[a-zA-Z0-9_]+]] = arith.constant 32 : i8
-// CHECK: %[[EXPECTED_CODE:[a-zA-Z0-9_]+]] = arith.constant 2 : i8
-// CHECK: %[[EXPECTED_STRIDE:[a-zA-Z0-9_]+]] = arith.constant 3 : i64
-// CHECK: %[[EXPECTED_DIM_SIZE_LENGTH:[a-zA-Z0-9_]+]] = arith.constant 2 : i64
-// CHECK: %[[INDEX_AND_EXPECTED_OFFSET:[a-zA-Z0-9_]+]] = arith.constant 0 : i64
+// CHECK: %[[INDEX:[a-zA-Z0-9_]+]] = arith.constant 0 : i64
 // CHECK: %[[DIM:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.dim %[[TENSOR]] : !tvm_ffi.tensor
-// CHECK: %[[SIZE:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.size %[[TENSOR]][%[[INDEX_AND_EXPECTED_OFFSET]]] : !tvm_ffi.tensor
-// CHECK: %[[STRIDE:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.stride %[[TENSOR]][%[[INDEX_AND_EXPECTED_OFFSET]]] : !tvm_ffi.tensor
+// CHECK: %[[SIZE:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.size %[[TENSOR]][%[[INDEX]]] : !tvm_ffi.tensor
+// CHECK: %[[STRIDE:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.stride %[[TENSOR]][%[[INDEX]]] : !tvm_ffi.tensor
 // CHECK: %[[OFFSET:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.storage_offset %[[TENSOR]] : !tvm_ffi.tensor
 // CHECK: %[[DTYPE_CODE:[a-zA-Z0-9_]+]], %[[DTYPE_BITS:[a-zA-Z0-9_]+]], %[[DTYPE_LANES:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.dtype %[[TENSOR]] : !tvm_ffi.tensor
 // CHECK: %[[DEVICE_TYPE:[a-zA-Z0-9_]+]], %[[DEVICE_INDEX:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.device %[[TENSOR]] : !tvm_ffi.tensor
@@ -37,16 +30,26 @@
 // CHECK-NEXT: cf.assert %[[LENGTH_CALL_SUCCESS]], "TVMFFIFunctionCall failed for ffi.ArraySize"
 // CHECK-NEXT: %[[LENGTH:[a-zA-Z0-9_]+]] = tvm_ffi.get %[[LENGTH_VALUE]] : !tvm_ffi.int -> i64
 // CHECK: %[[VALUES_EQUAL:[a-zA-Z0-9_]+]] = tvm_ffi.eq %[[LHS]], %[[RHS]] : !tvm_ffi.bool, !tvm_ffi.bool
-// CHECK: %[[DIM_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[DIM]], %[[EXPECTED_DIM_SIZE_LENGTH]] : i64
-// CHECK: %[[SIZE_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[SIZE]], %[[EXPECTED_DIM_SIZE_LENGTH]] : i64
+// CHECK-DAG: %[[EXPECTED_DIM:[a-zA-Z0-9_]+]] = arith.constant 2 : i64
+// CHECK-DAG: %[[EXPECTED_SIZE:[a-zA-Z0-9_]+]] = arith.constant 2 : i64
+// CHECK-DAG: %[[EXPECTED_STRIDE:[a-zA-Z0-9_]+]] = arith.constant 3 : i64
+// CHECK-DAG: %[[EXPECTED_OFFSET:[a-zA-Z0-9_]+]] = arith.constant 0 : i64
+// CHECK-DAG: %[[EXPECTED_CODE:[a-zA-Z0-9_]+]] = arith.constant 2 : i8
+// CHECK-DAG: %[[EXPECTED_BITS:[a-zA-Z0-9_]+]] = arith.constant 32 : i8
+// CHECK-DAG: %[[EXPECTED_LANES:[a-zA-Z0-9_]+]] = arith.constant 1 : i16
+// CHECK-DAG: %[[EXPECTED_DEVICE_TYPE:[a-zA-Z0-9_]+]] = arith.constant 2 : i32
+// CHECK-DAG: %[[EXPECTED_DEVICE_INDEX:[a-zA-Z0-9_]+]] = arith.constant 0 : i32
+// CHECK-DAG: %[[EXPECTED_LENGTH:[a-zA-Z0-9_]+]] = arith.constant 2 : i64
+// CHECK: %[[DIM_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[DIM]], %[[EXPECTED_DIM]] : i64
+// CHECK: %[[SIZE_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[SIZE]], %[[EXPECTED_SIZE]] : i64
 // CHECK: %[[STRIDE_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[STRIDE]], %[[EXPECTED_STRIDE]] : i64
-// CHECK: %[[OFFSET_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[OFFSET]], %[[INDEX_AND_EXPECTED_OFFSET]] : i64
+// CHECK: %[[OFFSET_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[OFFSET]], %[[EXPECTED_OFFSET]] : i64
 // CHECK: %[[CODE_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[DTYPE_CODE]], %[[EXPECTED_CODE]] : i8
 // CHECK: %[[BITS_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[DTYPE_BITS]], %[[EXPECTED_BITS]] : i8
 // CHECK: %[[LANES_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[DTYPE_LANES]], %[[EXPECTED_LANES]] : i16
 // CHECK: %[[DEVICE_TYPE_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[DEVICE_TYPE]], %[[EXPECTED_DEVICE_TYPE]] : i32
 // CHECK: %[[DEVICE_INDEX_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[DEVICE_INDEX]], %[[EXPECTED_DEVICE_INDEX]] : i32
-// CHECK: %[[LENGTH_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[LENGTH]], %[[EXPECTED_DIM_SIZE_LENGTH]] : i64
+// CHECK: %[[LENGTH_OK:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[LENGTH]], %[[EXPECTED_LENGTH]] : i64
 // CHECK: %[[SHAPE_OK:[a-zA-Z0-9_]+]] = arith.andi %[[DIM_OK]], %[[SIZE_OK]] : i1
 // CHECK: %[[LAYOUT_OK:[a-zA-Z0-9_]+]] = arith.andi %[[STRIDE_OK]], %[[OFFSET_OK]] : i1
 // CHECK: %[[DTYPE_HEAD_OK:[a-zA-Z0-9_]+]] = arith.andi %[[CODE_OK]], %[[BITS_OK]] : i1

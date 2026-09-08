@@ -38,6 +38,28 @@ func.func @int_bool(%arg0: !torch.bool) -> !torch.int {
   return %result : !torch.int
 }
 
+// CHECK-LABEL: func.func @eq_int
+// CHECK: %[[EQ_A:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg0
+// CHECK: %[[EQ_B:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg1
+// CHECK: %[[EQ_RESULT:[a-zA-Z0-9_]+]] = arith.cmpi eq, %[[EQ_A]], %[[EQ_B]] : i64
+// CHECK: torch_c.from_i1 %[[EQ_RESULT]]
+func.func @eq_int(%arg0: !torch.int, %arg1: !torch.int) -> !torch.bool {
+  %result = torch.aten.eq.int %arg0, %arg1
+      : !torch.int, !torch.int -> !torch.bool
+  return %result : !torch.bool
+}
+
+// CHECK-LABEL: func.func @le_int
+// CHECK: %[[LE_A:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg0
+// CHECK: %[[LE_B:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg1
+// CHECK: %[[LE_RESULT:[a-zA-Z0-9_]+]] = arith.cmpi sle, %[[LE_A]], %[[LE_B]] : i64
+// CHECK: torch_c.from_i1 %[[LE_RESULT]]
+func.func @le_int(%arg0: !torch.int, %arg1: !torch.int) -> !torch.bool {
+  %result = torch.aten.le.int %arg0, %arg1
+      : !torch.int, !torch.int -> !torch.bool
+  return %result : !torch.bool
+}
+
 // CHECK-LABEL: func.func @mul_int
 // CHECK: %[[MUL_A:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg0
 // CHECK: %[[MUL_B:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg1

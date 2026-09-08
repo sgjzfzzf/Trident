@@ -10,6 +10,19 @@
 
 include "mlir/IR/OpBase.td"
 
+def TorchExt_DTypeAttr : AttrInterface<"DTypeAttrInterface"> {
+  let cppNamespace = "::trident::torchext";
+  let description = [{
+    Describes a Torch dtype and its DLPack representation.
+  }];
+  let methods = [
+    InterfaceMethod<
+      "Returns the corresponding DLPack dtype.", "::DLDataType",
+      "getDLPackDType", (ins)
+    >
+  ];
+}
+
 def TorchExt_SpecializationAttrInterface
     : AttrInterface<"SpecializationAttrInterface"> {
   let cppNamespace = "::trident::torchext";

@@ -9,6 +9,7 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/Torch/IR/TorchInterfaces.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
@@ -232,16 +233,15 @@ public:
   }
 };
 
-template <typename ConstructOp>
-class ConvertTorchArrayConstruct final
-    : public mlir::OpConversionPattern<ConstructOp> {
+template <typename Op>
+class ConvertTorchArrayConstruct final : public mlir::OpConversionPattern<Op> {
 public:
   explicit ConvertTorchArrayConstruct(
       const TorchFFITypeConverter &typeConverter, mlir::MLIRContext *ctx)
-      : mlir::OpConversionPattern<ConstructOp>(typeConverter, ctx, 1) {}
+      : mlir::OpConversionPattern<Op>(typeConverter, ctx, 1) {}
 
   mlir::LogicalResult
-  matchAndRewrite(ConstructOp op, typename ConstructOp::Adaptor adaptor,
+  matchAndRewrite(Op op, typename Op::Adaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<tvm_ffi::ArrayCreateOp>(
         op, tvm_ffi::ArrayType::get(this->getContext()), adaptor.getElements());
@@ -249,28 +249,27 @@ public:
   }
 };
 
-class ConvertTorchArrayUnpack final
-    : public mlir::OpConversionPattern<mlir::torch::Torch::PrimListUnpackOp> {
+template <typename Op>
+class ConvertTorchArrayUnpack final : public mlir::OpConversionPattern<Op> {
 public:
   explicit ConvertTorchArrayUnpack(const TorchFFITypeConverter &typeConverter,
                                    mlir::MLIRContext *ctx)
-      : mlir::OpConversionPattern<mlir::torch::Torch::PrimListUnpackOp>(
-            typeConverter, ctx, 1),
+      : mlir::OpConversionPattern<Op>(typeConverter, ctx, 1),
         typeConverter(typeConverter) {}
 
   mlir::LogicalResult
-  matchAndRewrite(mlir::torch::Torch::PrimListUnpackOp op, OpAdaptor adaptor,
+  matchAndRewrite(Op op, typename Op::Adaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Value const array = adaptor.getOperand();
+    mlir::Value const array = adaptor.getOperands().front();
     llvm::SmallVector<mlir::Value> replacements;
     replacements.reserve(op.getNumResults());
     for (auto [index, result] : llvm::enumerate(op.getResults())) {
       mlir::Type const resultType = typeConverter.convertType(result.getType());
       if (!resultType) {
-        return op.emitError("cannot convert ListUnpack result type");
+        return op.emitError("cannot convert unpack result type");
       }
       tvm_ffi::ConstantIntOp idx = tvm_ffi::ConstantIntOp::create(
-          rewriter, op.getLoc(), tvm_ffi::IntType::get(getContext()),
+          rewriter, op.getLoc(), tvm_ffi::IntType::get(this->getContext()),
           rewriter.getI64IntegerAttr(static_cast<int64_t>(index)));
       tvm_ffi::ArrayGetItemOp item = tvm_ffi::ArrayGetItemOp::create(
           rewriter, op.getLoc(), resultType, array, idx.getResult(),
@@ -304,6 +303,26 @@ public:
     rewriter.replaceOpWithNewOp<tvm_ffi::FunctionCallOp>(
         op, mlir::TypeRange{tvm_ffi::IntType::get(getContext())},
         getGlobal.getResult(), adaptor.getOperands());
+    return mlir::success();
+  }
+};
+
+class ConvertTorchExtConstantDType final
+    : public mlir::OpConversionPattern<torchext::ConstantDTypeOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(torchext::ConstantDTypeOp op, OpAdaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    auto dtype =
+        mlir::cast<trident::torchext::DTypeAttrInterface>(op.getValue());
+    DLDataType const dlpackDType = dtype.getDLPackDType();
+    mlir::ArrayAttr value = mlir::ArrayAttr::get(
+        getContext(), {rewriter.getI64IntegerAttr(dlpackDType.code),
+                       rewriter.getI64IntegerAttr(dlpackDType.bits),
+                       rewriter.getI64IntegerAttr(dlpackDType.lanes)});
+    rewriter.replaceOpWithNewOp<tvm_ffi::ConstantDTypeOp>(op, value);
     return mlir::success();
   }
 };
@@ -540,12 +559,13 @@ class ConvertTorchToTVMFFIPass final
         ConvertArrayGetItem, ConvertAtenCall,
         ConvertTorchArrayConstruct<mlir::torch::Torch::PrimListConstructOp>,
         ConvertTorchArrayConstruct<mlir::torch::Torch::PrimTupleConstructOp>,
-        ConvertTorchArrayUnpack,
+        ConvertTorchArrayUnpack<mlir::torch::Torch::PrimListUnpackOp>,
+        ConvertTorchArrayUnpack<mlir::torch::Torch::PrimTupleUnpackOp>,
         ConvertTorchConversionTo<mlir::torch::TorchConversion::ToF64Op>,
         ConvertTorchConversionTo<mlir::torch::TorchConversion::ToI1Op>,
         ConvertTorchConversionTo<mlir::torch::TorchConversion::ToI64Op>,
-        ConvertTorchCopyToValueTensor, ConvertTorchExtConvert,
-        ConvertTorchExtEq, ConvertTorchExtGet,
+        ConvertTorchCopyToValueTensor, ConvertTorchExtConstantDType,
+        ConvertTorchExtConvert, ConvertTorchExtEq, ConvertTorchExtGet,
         ConvertTorchExtTensorMetadata<torchext::TensorDeviceOp,
                                       tvm_ffi::TensorDeviceOp>,
         ConvertTorchExtTensorMetadata<torchext::TensorDimOp,

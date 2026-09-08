@@ -202,6 +202,8 @@ class TridentGraphModule:
                     lambda element: (
                         tvm_ffi.device(f"{element}")
                         if isinstance(element, torch.device)
+                        else tvm_ffi.convert(element)
+                        if isinstance(element, torch.dtype)
                         else element
                     ),
                 )
@@ -711,8 +713,8 @@ class TridentGraphModule:
         flat_types: Sequence[ir.Type] = main_func.type.inputs
 
         with self.ctx:
-            device_type = ir.Type.parse("!torch.Device", context=self.ctx)
-            dtype_type = ir.Type.parse("!torchext.dtype", context=self.ctx)
+            device_type = torch_d.TorchDeviceType.get(self.ctx)
+            dtype_type = torchext.DTypeType.get(self.ctx)
 
         input_builder = InputTableBuilder.get(
             exported_program,
@@ -789,9 +791,9 @@ class TridentGraphModule:
                     )
                     main_args: list[ir.Value] = [
                         torchext.convert(main_arg)
-                        if main_arg.type == dtype_type
+                        if isinstance(main_arg.type, torchext.DTypeType)
                         else main_arg
-                        for flat_type, main_arg in zip(flat_types, main_inputs)
+                        for _, main_arg in zip(flat_types, main_inputs)
                     ]
                     call_result: ir.Value | Sequence[ir.Value] = func.call(
                         main_func.type.results,

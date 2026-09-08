@@ -39,6 +39,8 @@ declare_mlir_python_extension(
   ADD_TO_PARENT
   TridentCorePythonExtensions
   SOURCES
+  dialects/torch/TorchDialect.cc
+  dialects/torchext/TorchExtDialect.cc
   RegistrationModules.cc
   EMBED_CAPI_LINK_LIBS
   TridentCoreCAPI
@@ -82,6 +84,8 @@ declare_mlir_python_sources(
   TridentCorePythonSources
   SOURCES
   __init__.py
+  dialects/torch.py
+  dialects/torch_c.py
   dialects/torchext.py
   dialects/tvm_ffi.py)
 
@@ -93,7 +97,6 @@ declare_mlir_python_sources(
   TridentCorePythonSources
   SOURCES
   compiler_utils.py
-  dialects/torch/__init__.py
   extras/fx_decomp_util.py
   extras/fx_importer.py
   fx.py)
@@ -128,6 +131,16 @@ declare_mlir_dialect_python_bindings(
   DIALECT_NAME
   torch)
 
+declare_mlir_dialect_python_bindings(
+  ADD_TO_PARENT
+  TridentCorePythonSources.Core
+  ROOT_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}"
+  TD_FILE
+  dialects/TorchConversionBinding.td
+  DIALECT_NAME
+  torch_c)
+
 add_mlir_python_sources_target(
   TridentCorePythonSourcesTarget
   INSTALL_COMPONENT
@@ -139,6 +152,7 @@ add_mlir_python_sources_target(
   SOURCES_TARGETS
   TridentCorePythonSources.Core
   TridentCorePythonSources.Core.torch.ops_gen
+  TridentCorePythonSources.Core.torch_c.ops_gen
   TridentCorePythonSources.Core.torchext.ops_gen
   TridentCorePythonSources.Core.tvm_ffi.ops_gen
   TridentCorePythonSources.TorchMlirCompat)

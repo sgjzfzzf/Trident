@@ -71,6 +71,14 @@ def TorchExt_ConvertOp
   }];
 }
 
+def TorchExt_ConstantDTypeOp
+    : TorchExt_Op<"constant.dtype", [Pure]> {
+  let summary = "Create a TorchExt dtype constant";
+  let arguments = (ins TorchExt_DTypeAttr:$value);
+  let results = (outs TorchExt_DTypeType:$result);
+  let assemblyFormat = "$value attr-dict";
+}
+
 def TorchExt_EqOp : TorchExt_Op<"eq", [Pure, SameTypeOperands]> {
   let summary = "Compare two Torch semantic values for structural equality";
   let arguments = (ins AnyTorchType:$lhs, AnyTorchType:$rhs);

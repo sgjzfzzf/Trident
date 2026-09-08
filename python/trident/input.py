@@ -17,7 +17,8 @@ from torch.export.graph_signature import (
 )
 
 from trident.core import ir
-from trident.core.dialects import tvm_ffi as tvm_ffi_d
+from trident.core.dialects import torch as torch_d
+from trident.core.dialects import torchext
 
 InputPath: TypeAlias = Sequence[int | str]
 InputValue: TypeAlias = Any
@@ -112,16 +113,28 @@ class _InputNonLeafNode(_InputNode):
             parent = self.value
             if parent is None:
                 return None
-            child.value = tvm_ffi_d.array_get_item(
-                child.type,
-                parent,
-                tvm_ffi_d.constant_int(
-                    ir.IntegerAttr.get(
-                        ir.IntegerType.get_signless(64, parent.context), index
-                    ),
-                ),
-                element_type=child.type,
-            )
+            if isinstance(parent.type, torch_d.TorchListType):
+                unpacked = torch_d.prim_ListUnpack(
+                    [node.type for _, node in self._children_iter], parent
+                )
+                results = (
+                    [unpacked] if isinstance(unpacked, ir.Value) else list(unpacked)
+                )
+                for (_, node), value in zip(self._children_iter, results, strict=True):
+                    node.value = value
+            elif isinstance(parent.type, torch_d.TorchTupleType):
+                unpacked = torch_d.prim_TupleUnpack(
+                    [node.type for _, node in self._children_iter], parent
+                )
+                results = (
+                    [unpacked] if isinstance(unpacked, ir.Value) else list(unpacked)
+                )
+                for (_, node), value in zip(self._children_iter, results, strict=True):
+                    node.value = value
+            else:
+                raise TypeError(
+                    f"unsupported guard container type: {parent.type}; expected a Torch list or tuple"
+                )
         return child
 
     def child(self, key: int | str) -> _InputNode | None:
@@ -234,8 +247,18 @@ class InputTableBuilder:
         value_type: Callable[[InputValue], ir.Type],
         context: ir.Context,
     ) -> Self:
-        array_type = ir.Type.parse("!tvm_ffi.array", context=context)
-        dtype_type = ir.Type.parse("!torchext.dtype", context=context)
+        def container_type(
+            node_type: type, element_types: Sequence[ir.Type]
+        ) -> ir.Type:
+            if node_type is tuple:
+                return torch_d.TorchTupleType.get(element_types, context=context)
+            assert node_type is list
+            [element_type] = element_types
+            assert all(element == element_type for element in element_types), (
+                "Torch list inputs must have a uniform element type"
+            )
+            return torch_d.TorchListType.get(element_type)
+
         input_specs = exported_program.graph_signature.input_specs
         exported_input_values = pytree.tree_leaves(exported_program.example_inputs)
         assert len(input_specs) == len(exported_input_values), (
@@ -319,9 +342,12 @@ class InputTableBuilder:
                 )
                 children = [build_node(child, name) for child in node.children()]
                 assert not children or not all(
-                    child.type == dtype_type for child in children
+                    isinstance(child.type, torchext.DTypeType) for child in children
                 ), "containers of multiple torch.dtype values are not supported"
-                return InputNodeBuilder(array_type, children=children)
+                return InputNodeBuilder(
+                    container_type(node.type, [child.type for child in children]),
+                    children=children,
+                )
 
         provided_entries = {
             name: build_node(child, name)
@@ -330,14 +356,20 @@ class InputTableBuilder:
                 *zip(kwargs_names, kwargs_children),
             ]
         }
+
+        def build_value(value: InputValue) -> InputNodeBuilder:
+            if isinstance(value, (list, tuple)):
+                children = [build_value(child) for child in value]
+                return InputNodeBuilder(
+                    container_type(type(value), [child.type for child in children]),
+                    children=children,
+                )
+            return InputNodeBuilder(value_type(value))
+
         entries = [
             provided_entries[name]
             if name in provided_entries
-            else InputNodeBuilder(
-                array_type
-                if isinstance(bound_arguments[name], (list, tuple))
-                else value_type(bound_arguments[name])
-            )
+            else build_value(bound_arguments[name])
             for name in signature_names
         ]
         input_names = [*args_names, *kwargs_names]

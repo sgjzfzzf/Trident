@@ -7,6 +7,17 @@
 
 // RUN: trident-core-opt %s -split-input-file | FileCheck %s
 
+// CHECK-LABEL: func.func @constant_dtype() -> !torchext.dtype {
+// CHECK-NEXT: %[[DTYPE:[a-zA-Z0-9_]+]] = torchext.constant.dtype #torchext.float32
+// CHECK-NEXT: return %[[DTYPE]] : !torchext.dtype
+// CHECK-NEXT: }
+func.func @constant_dtype() -> !torchext.dtype {
+  %dtype = torchext.constant.dtype #torchext.float32
+  return %dtype : !torchext.dtype
+}
+
+// -----
+
 // CHECK-LABEL: func.func @get_float(
 // CHECK-SAME:    %[[ARG:[a-zA-Z0-9_]+]]: !torch.float) -> f64 {
 // CHECK:         %[[VAL:[a-zA-Z0-9_]+]] = torch_c.to_f64 %[[ARG]]

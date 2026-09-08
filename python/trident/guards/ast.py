@@ -11,18 +11,41 @@ from itertools import chain, pairwise
 from typing import Any, ClassVar, TypeAlias
 
 import torch
-import tvm_ffi as tvm_ffi_runtime
 
 from trident.core import ir
-from trident.core.dialects import arith, torchext, tvm_ffi
+from trident.core.dialects import arith, torch_c, torchext
+from trident.core.dialects import torch as torch_d
+from trident.core.dialects.torch import (
+    TorchBoolType,
+    TorchFloatType,
+    TorchIntType,
+    TorchListType,
+    TorchNonValueTensorType,
+    TorchTupleType,
+    TorchValueTensorType,
+)
 from trident.input import InputTable
 
 from .local import Local
 
 GuardBuildFn: TypeAlias = Callable[[InputTable, ir.Context], ir.Value]
-TensorMetadataFn: TypeAlias = Callable[[ir.Type, ir.Value], ir.Value]
+TensorMetadataFn: TypeAlias = Callable[[ir.Value], ir.Value]
 TensorIndexedMetadataFn: TypeAlias = Callable[[ir.Type, ir.Value, ir.Value], ir.Value]
-NumericOperationFn: TypeAlias = Callable[[ir.Value, ir.Value], ir.Value]
+TorchOperationFn: TypeAlias = Callable[[ir.Value, ir.Value], ir.Value]
+TorchOperationKey: TypeAlias = type[ast.operator | ast.cmpop] | str
+
+
+def _torch_int_operator(
+    name: str,
+    lhs: ir.Value,
+    rhs: ir.Value,
+) -> ir.Value:
+    return torch_d.operator(
+        [TorchIntType.get(lhs.context)],
+        name,
+        [lhs, rhs],
+        0,
+    )
 
 
 class _SkipGuard(Exception):
@@ -34,55 +57,64 @@ class _SkipGuard(Exception):
 class ASTVisitor(ast.NodeVisitor):
     """Compose delayed IR builders from supported Dynamo guard AST nodes."""
 
-    _binary_ops: ClassVar[
+    _torch_ops: ClassVar[
         dict[
-            type[ast.operator] | str,
-            tuple[NumericOperationFn | None, NumericOperationFn | None],
+            type[ast.operator | ast.cmpop] | str,
+            tuple[
+                TorchOperationFn | None,
+                TorchOperationFn | None,
+            ],
         ]
     ] = {
-        ast.Add: (arith.addf, arith.addi),
-        ast.Sub: (arith.subf, arith.subi),
-        ast.Mult: (arith.mulf, arith.muli),
-        ast.Div: (arith.divf, arith.divsi),
-        ast.FloorDiv: (None, arith.floordivsi),
-        ast.Mod: (None, arith.remsi),
-        ast.BitOr: (None, arith.ori),
-        ast.RShift: (None, arith.shrsi),
-        "min": (arith.minimumf, arith.minsi),
-        "max": (arith.maximumf, arith.maxsi),
-    }
-    _compare_predicates: ClassVar[dict] = {
-        ast.Eq: (arith.CmpIPredicate.eq, arith.CmpFPredicate.OEQ),
-        ast.NotEq: (arith.CmpIPredicate.ne, arith.CmpFPredicate.ONE),
-        ast.Lt: (arith.CmpIPredicate.slt, arith.CmpFPredicate.OLT),
-        ast.LtE: (arith.CmpIPredicate.sle, arith.CmpFPredicate.OLE),
-        ast.Gt: (arith.CmpIPredicate.sgt, arith.CmpFPredicate.OGT),
-        ast.GtE: (arith.CmpIPredicate.sge, arith.CmpFPredicate.OGE),
+        ast.Add: (torch_d.aten_add_int, torch_d.aten_add_float),
+        ast.Sub: (torch_d.aten_sub_int, torch_d.aten_sub_float),
+        ast.Mult: (torch_d.aten_mul_int, torch_d.aten_mul_float),
+        ast.Div: (torch_d.aten_div_int, torch_d.aten_div_float),
+        ast.FloorDiv: (torch_d.aten_floordiv_int, None),
+        ast.Mod: (torch_d.aten_remainder_int, None),
+        ast.BitOr: (
+            lambda lhs, rhs: _torch_int_operator("torch.aten.__or__.Scalar", lhs, rhs),
+            None,
+        ),
+        ast.Eq: (torch_d.aten_eq_int, torch_d.aten_eq_float),
+        ast.NotEq: (
+            torch_d.aten_ne_int,
+            lambda lhs, rhs: torch_d.aten___not__(torch_d.aten_eq_float(lhs, rhs)),
+        ),
+        ast.Lt: (torch_d.aten_lt_int, torch_d.aten_lt_float),
+        ast.LtE: (
+            torch_d.aten_le_int,
+            lambda lhs, rhs: torch_d.aten_ge_float(rhs, lhs),
+        ),
+        ast.Gt: (torch_d.aten_gt_int, torch_d.aten_gt_float),
+        ast.GtE: (torch_d.aten_ge_int, torch_d.aten_ge_float),
+        "min": (torch_d.prim_min_int, None),
+        "max": (torch_d.prim_max_int, None),
     }
 
     @staticmethod
     def _build_binary_template(
         lhs: GuardBuildFn,
         rhs: GuardBuildFn,
-        float_operation: NumericOperationFn | None,
-        integer_operation: NumericOperationFn | None,
+        operation_key: TorchOperationKey,
     ) -> GuardBuildFn:
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
-            lhs_value = ASTVisitor._to_native(
-                ASTVisitor._value(lhs, tree, context), context
-            )
-            rhs_value = ASTVisitor._to_native(
-                ASTVisitor._value(rhs, tree, context), context
-            )
-            lhs_value, rhs_value, is_float = ASTVisitor._promote_numeric(
-                lhs_value, rhs_value, context
-            )
-            operation = float_operation if is_float else integer_operation
+            lhs_raw = ASTVisitor._value(lhs, tree, context)
+            rhs_raw = ASTVisitor._value(rhs, tree, context)
+            integer_operation, float_operation = ASTVisitor._torch_ops[operation_key]
+            operation = None
+            if isinstance(lhs_raw.type, TorchIntType) and isinstance(
+                rhs_raw.type, TorchIntType
+            ):
+                operation = integer_operation
+            elif isinstance(lhs_raw.type, TorchFloatType) and isinstance(
+                rhs_raw.type, TorchFloatType
+            ):
+                operation = float_operation
             assert operation is not None, (
-                f"unsupported numeric operation for "
-                f"{'float' if is_float else 'integer'} guard operands"
+                "unsupported Torch numeric operation for guard operands"
             )
-            return ASTVisitor._to_ffi(operation(lhs_value, rhs_value), context)
+            return operation(lhs_raw, rhs_raw)
 
         return build
 
@@ -90,18 +122,25 @@ class ASTVisitor(ast.NodeVisitor):
     def _build_compare_template(
         lhs: GuardBuildFn,
         rhs: GuardBuildFn,
-        integer_predicate: arith.CmpIPredicate,
-        float_predicate: arith.CmpFPredicate,
+        operation_key: TorchOperationKey,
     ) -> GuardBuildFn:
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
-            lhs_value, rhs_value, is_float = ASTVisitor._promote_numeric(
-                ASTVisitor._to_native(ASTVisitor._value(lhs, tree, context), context),
-                ASTVisitor._to_native(ASTVisitor._value(rhs, tree, context), context),
-                context,
+            raw_lhs = ASTVisitor._value(lhs, tree, context)
+            raw_rhs = ASTVisitor._value(rhs, tree, context)
+            integer_operation, float_operation = ASTVisitor._torch_ops[operation_key]
+            operation = (
+                integer_operation
+                if isinstance(raw_lhs.type, TorchIntType)
+                and isinstance(raw_rhs.type, TorchIntType)
+                else float_operation
+                if isinstance(raw_lhs.type, TorchFloatType)
+                and isinstance(raw_rhs.type, TorchFloatType)
+                else None
             )
-            if is_float:
-                return arith.cmpf(float_predicate, lhs_value, rhs_value)
-            return arith.cmpi(integer_predicate, lhs_value, rhs_value)
+            assert operation is not None, (
+                "unsupported Torch comparison operation for guard operands"
+            )
+            return operation(raw_lhs, raw_rhs)
 
         return build
 
@@ -115,15 +154,46 @@ class ASTVisitor(ast.NodeVisitor):
         rhs: GuardBuildFn,
     ) -> GuardBuildFn:
         if isinstance(operation, ast.Eq):
-            return lambda tree, context: tvm_ffi.eq(
-                self._value(lhs, tree, context),
-                self._value(rhs, tree, context),
-            )
-        predicates = self._compare_predicates.get(type(operation))
-        assert predicates is not None
-        integer_predicate, float_predicate = predicates
+            integer_operation, float_operation = self._torch_ops[type(operation)]
+            if integer_operation is not None:
+
+                def build(tree: InputTable, context: ir.Context) -> ir.Value:
+                    [lhs_value, rhs_value] = [
+                        torchext.convert(value)
+                        if isinstance(value.type, torchext.DTypeType)
+                        else value
+                        for value in (
+                            self._value(lhs, tree, context),
+                            self._value(rhs, tree, context),
+                        )
+                    ]
+                    if isinstance(lhs_value.type, TorchIntType) and isinstance(
+                        rhs_value.type, TorchIntType
+                    ):
+                        return integer_operation(lhs_value, rhs_value)
+                    if (
+                        float_operation is not None
+                        and isinstance(lhs_value.type, TorchFloatType)
+                        and isinstance(rhs_value.type, TorchFloatType)
+                    ):
+                        return float_operation(lhs_value, rhs_value)
+                    equality = torchext.eq(lhs_value, rhs_value)
+                    return torch_c.from_i1(equality, loc=equality.owner.location)
+
+                return build
+
+            def build(tree: InputTable, context: ir.Context) -> ir.Value:
+                equality = torchext.eq(
+                    self._value(lhs, tree, context),
+                    self._value(rhs, tree, context),
+                )
+                return torch_c.from_i1(equality, loc=equality.owner.location)
+
+            return build
         return self._build_compare_template(
-            lhs, rhs, integer_predicate, float_predicate
+            lhs,
+            rhs,
+            type(operation),
         )
 
     def _build_identity(self, lhs: Local, rhs: Local) -> GuardBuildFn:
@@ -133,18 +203,15 @@ class ASTVisitor(ast.NodeVisitor):
             assert lhs_value is not None and rhs_value is not None, (
                 f"guard source cannot be resolved: {self.text!r}"
             )
-            tensor_type_ids = {
-                ir.Type.parse(type_text, context=context).typeid
-                for type_text in (
-                    "!torch.tensor",
-                    "!torch.vtensor",
-                    "!tvm_ffi.tensor",
-                )
-            }
             if not all(
-                value.type.typeid in tensor_type_ids for value in (lhs_value, rhs_value)
+                isinstance(
+                    value.type,
+                    (TorchNonValueTensorType, TorchValueTensorType),
+                )
+                for value in (lhs_value, rhs_value)
             ):
-                return tvm_ffi.eq(lhs_value, rhs_value)
+                equality = torchext.eq(lhs_value, rhs_value)
+                return torch_c.from_i1(equality, loc=equality.owner.location)
             warnings.warn(
                 "Skipping unsupported Tensor identity guard; object identity "
                 f"will not be validated: {self.text!r}",
@@ -157,41 +224,45 @@ class ASTVisitor(ast.NodeVisitor):
 
     @staticmethod
     def _build_logical_and(lhs: ir.Value, rhs: ir.Value) -> ir.Value:
-        return arith.andi(lhs, rhs)
+        return torch_d.aten___and___bool(lhs, rhs)
 
     @staticmethod
-    def _build_logical_not(value: ir.Value, context: ir.Context) -> ir.Value:
-        i1 = ir.IntegerType.get_signless(1, context)
-        true = arith.constant(i1, ir.IntegerAttr.get(i1, 1))
-        return arith.xori(value, true)
+    def _build_logical_not(value: ir.Value) -> ir.Value:
+        return torch_d.aten___not__(value)
 
     @staticmethod
     def _build_logical_or(lhs: ir.Value, rhs: ir.Value) -> ir.Value:
-        return arith.ori(lhs, rhs)
+        return torch_d.aten___or___bool(lhs, rhs)
 
     @staticmethod
-    def _build_negate(value: ir.Value, context: ir.Context) -> ir.Value:
-        value = ASTVisitor._to_native(value, context)
-        zero = arith.constant(
-            value.type,
-            ir.FloatAttr.get(value.type, 0.0)
-            if isinstance(value.type, ir.FloatType)
-            else ir.IntegerAttr.get(value.type, 0),
-        )
-        if isinstance(value.type, ir.FloatType):
-            return ASTVisitor._to_ffi(arith.subf(zero, value), context)
-        assert isinstance(value.type, ir.IntegerType)
-        return ASTVisitor._to_ffi(arith.subi(zero, value), context)
+    def _build_negate(value: ir.Value) -> ir.Value:
+        assert isinstance(value.type, (TorchFloatType, TorchIntType))
+        if isinstance(value.type, TorchFloatType):
+            return torch_d.aten_neg_float(value)
+        return torch_d.aten_neg_int(value)
 
     def _build_not_sequence(self, source: Local) -> GuardBuildFn:
         def length(tree: InputTable, context: ir.Context) -> ir.Value:
             value = source.resolve(tree)
             assert value is not None, f"guard source cannot be resolved: {self.text!r}"
-            return tvm_ffi.array_length(value)
+            length_value = self._sequence_length(value)
+            if length_value.type == ir.IntegerType.get_signless(64, context):
+                return torch_c.from_i64(
+                    length_value,
+                    loc=length_value.owner.location,
+                )
+            return length_value
 
-        constant = self._constant_tvm_ffi(0)
+        constant = self._constant(0)
         assert constant is not None
         return self._build_comparison(ast.Eq(), length, constant)
+
+    @staticmethod
+    def _sequence_length(value: ir.Value) -> ir.Value | None:
+        if isinstance(value.type, TorchTupleType):
+            return torch_d.constant_int(len(value.type.types))
+        elif isinstance(value.type, TorchListType):
+            return torch_d.aten_len_t(value)
 
     @staticmethod
     def _build_select(
@@ -200,11 +271,26 @@ class ASTVisitor(ast.NodeVisitor):
         false_value: ir.Value,
     ) -> ir.Value:
         context = condition.context
-        true_value = ASTVisitor._to_native(true_value, context)
-        false_value = ASTVisitor._to_native(false_value, context)
-        return ASTVisitor._to_ffi(
-            arith.select(condition, true_value, false_value), context
-        )
+        true_value, false_value = [
+            (
+                torch_c.to_i1(value, loc=value.owner.location)
+                if isinstance(value.type, TorchBoolType)
+                else torch_c.to_i64(value, loc=value.owner.location)
+                if isinstance(value.type, TorchIntType)
+                else torch_c.to_f64(value, loc=value.owner.location)
+                if isinstance(value.type, TorchFloatType)
+                else value
+            )
+            for value in (true_value, false_value)
+        ]
+        selected = arith.select(condition, true_value, false_value)
+        if selected.type == ir.IntegerType.get_signless(1, context):
+            return torch_c.from_i1(selected, loc=selected.owner.location)
+        if selected.type == ir.IntegerType.get_signless(64, context):
+            return torch_c.from_i64(selected, loc=selected.owner.location)
+        if selected.type == ir.F64Type.get(context):
+            return torch_c.from_f64(selected, loc=selected.owner.location)
+        return selected
 
     def _build_tensor_indexed_metadata(
         self,
@@ -215,9 +301,16 @@ class ASTVisitor(ast.NodeVisitor):
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
             tensor = source.resolve(tree)
             assert tensor is not None, f"guard source cannot be resolved: {self.text!r}"
-            i64 = ir.IntegerType.get_signless(64, context)
-            dimension = arith.constant(i64, ir.IntegerAttr.get(i64, index))
-            return ASTVisitor._to_ffi(operation(tensor, dimension), context)
+            dimension = torch_d.constant_int(index)
+            if isinstance(dimension.type, TorchIntType):
+                dimension = torch_c.to_i64(
+                    dimension,
+                    loc=dimension.owner.location,
+                )
+            result = operation(tensor, dimension)
+            if result.type == ir.IntegerType.get_signless(64, context):
+                return torch_c.from_i64(result, loc=result.owner.location)
+            return result
 
         return build
 
@@ -229,120 +322,49 @@ class ASTVisitor(ast.NodeVisitor):
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
             tensor = source.resolve(tree)
             assert tensor is not None, f"guard source cannot be resolved: {self.text!r}"
-            return ASTVisitor._to_ffi(operation(tensor), context)
+            result = operation(tensor)
+            if result.type == ir.IntegerType.get_signless(64, context):
+                return torch_c.from_i64(result, loc=result.owner.location)
+            return result
 
         return build
 
-    @classmethod
-    def _cast_numeric(
-        cls,
-        value: ir.Value,
-        target: ir.Type,
-    ) -> ir.Value:
-        if value.type == target:
-            return value
-        if cls._is_integer(value) and cls._is_integer_value_type(target):
-            if value.type.width < target.width:
-                return arith.extsi(target, value)
-            return arith.trunci(target, value)
-        if cls._is_integer(value) and cls._is_float_type(target):
-            return arith.sitofp(target, value)
-        assert cls._is_float(value) and cls._is_float_type(target)
-        if value.type.width < target.width:
-            return arith.extf(target, value)
-        return arith.truncf(target, value)
-
     @staticmethod
-    def _constant_tvm_ffi(value: Any) -> GuardBuildFn | None:
+    def _constant(value: Any) -> GuardBuildFn | None:
         if value is None:
-            return lambda _, context: tvm_ffi.constant_none()
+            return lambda _, context: torch_d.constant_none()
         if isinstance(value, torch.device):
-            return lambda _, context: tvm_ffi.constant_device(
+            return lambda _, context: torch_d.constant_device(
                 ir.StringAttr.get(f"{value}", context=context),
             )
         if isinstance(value, torch.dtype):
-            dtype = tvm_ffi_runtime.convert(value)
-            return lambda _, context: tvm_ffi.constant_dtype(
-                ir.ArrayAttr.get(
-                    [
-                        ir.IntegerAttr.get(
-                            ir.IntegerType.get_signless(64, context), component
-                        )
-                        for component in (dtype.type_code, dtype.bits, dtype.lanes)
-                    ]
-                )
+            return lambda _, context: torchext.constant_dtype(
+                torchext.dtype(value, context=context),
             )
         if isinstance(value, bool):
-            return lambda _, context: tvm_ffi.constant_bool(
-                ir.BoolAttr.get(value, context=context),
-            )
+            return lambda _, context: torch_d.constant_bool(value)
         if isinstance(value, int):
-            return lambda _, context: tvm_ffi.constant_int(
-                ir.IntegerAttr.get(ir.IntegerType.get_signless(64, context), value),
-            )
+            return lambda _, context: torch_d.constant_int(value)
         if isinstance(value, float):
-            return lambda _, context: tvm_ffi.constant_float(
+            return lambda _, context: torch_d.constant_float(
                 ir.FloatAttr.get(ir.F64Type.get(context), value),
             )
         if isinstance(value, str):
-            return lambda _, context: tvm_ffi.constant_raw_str(
+            return lambda _, context: torch_d.constant_str(
                 ir.StringAttr.get(value, context),
             )
         return None
 
     def _error(self, message: str) -> GuardBuildFn:
-        def build(_: InputTable, __: ir.Context) -> ir.Value:
-            assert False, f"{message}: {self.text!r}"
+        def build(_: InputTable, context: ir.Context) -> ir.Value:
+            assert False, f"{message}: {self.text!r} in {context}"
 
         return build
 
-    @staticmethod
-    def _is_float(value: ir.Value) -> bool:
-        return isinstance(value.type, ir.FloatType)
-
-    @staticmethod
-    def _is_float_type(value_type: ir.Type) -> bool:
-        return isinstance(value_type, ir.FloatType)
-
-    @staticmethod
-    def _is_integer(value: ir.Value) -> bool:
-        return isinstance(value.type, ir.IntegerType)
-
-    @staticmethod
-    def _is_integer_value_type(value_type: ir.Type) -> bool:
-        return isinstance(value_type, ir.IntegerType)
-
-    @classmethod
-    def _promote_numeric(
-        cls,
-        lhs: ir.Value,
-        rhs: ir.Value,
-        context: ir.Context,
-    ) -> tuple[ir.Value, ir.Value, bool]:
-        assert cls._is_integer(lhs) or cls._is_float(lhs)
-        assert cls._is_integer(rhs) or cls._is_float(rhs)
-        if cls._is_float(lhs) or cls._is_float(rhs):
-            if cls._is_float(lhs) and cls._is_float(rhs):
-                target = lhs.type if lhs.type.width >= rhs.type.width else rhs.type
-            else:
-                target = lhs.type if cls._is_float(lhs) else rhs.type
-            return (
-                cls._cast_numeric(lhs, target),
-                cls._cast_numeric(rhs, target),
-                True,
-            )
-        width = max(lhs.type.width, rhs.type.width)
-        target = ir.IntegerType.get_signless(width, context)
-        return (
-            cls._cast_numeric(lhs, target),
-            cls._cast_numeric(rhs, target),
-            False,
-        )
-
     def _skip_base(self) -> GuardBuildFn:
-        def build(_: InputTable, __: ir.Context) -> ir.Value:
+        def build(_: InputTable, context: ir.Context) -> ir.Value:
             warnings.warn(
-                f"Unsupported Tensor._base guard forces a specialization miss: {self.text!r}",
+                f"Unsupported Tensor._base guard forces a specialization miss: {self.text!r} in {context}",
                 RuntimeWarning,
                 stacklevel=2,
             )
@@ -361,34 +383,12 @@ class ASTVisitor(ast.NodeVisitor):
         return build
 
     @staticmethod
-    def _to_ffi(value: ir.Value, context: ir.Context) -> ir.Value:
-        ffi_types = {
-            "i1": ir.Type.parse("!tvm_ffi.bool", context=context),
-            "i64": ir.Type.parse("!tvm_ffi.int", context=context),
-            "f64": ir.Type.parse("!tvm_ffi.float", context=context),
-        }
-        ffi_type = ffi_types.get(f"{value.type}")
-        return value if ffi_type is None else tvm_ffi.to(value)
-
-    @staticmethod
-    def _to_native(value: ir.Value, context: ir.Context) -> ir.Value:
-        native_types = {
-            "!tvm_ffi.bool": ir.IntegerType.get_signless(1, context),
-            "!tvm_ffi.float": ir.F64Type.get(context),
-            "!tvm_ffi.int": ir.IntegerType.get_signless(64, context),
-        }
-        native_type = native_types.get(f"{value.type}")
-        return value if native_type is None else tvm_ffi.get(value)
-
-    @staticmethod
     def _false(context: ir.Context) -> ir.Value:
-        i1 = ir.IntegerType.get_signless(1, context)
-        return arith.constant(i1, ir.IntegerAttr.get(i1, 0))
+        return torch_d.constant_bool(False)
 
     @staticmethod
     def _true(context: ir.Context) -> ir.Value:
-        i1 = ir.IntegerType.get_signless(1, context)
-        return arith.constant(i1, ir.IntegerAttr.get(i1, 1))
+        return torch_d.constant_bool(True)
 
     @staticmethod
     def _value(
@@ -441,7 +441,7 @@ class ASTVisitor(ast.NodeVisitor):
             and node.value.id == "torch"
             and isinstance(value := getattr(torch, node.attr, None), torch.dtype)
         ):
-            return self._constant_tvm_ffi(value)
+            return self._constant(value)
         if node.attr == "_base":
             return self._skip_base()
         if isinstance(node.value, ast.Attribute):
@@ -449,16 +449,17 @@ class ASTVisitor(ast.NodeVisitor):
         return None
 
     def visit_BinOp(self, node: ast.BinOp) -> GuardBuildFn | None:
-        if type(node.op) not in self._binary_ops:
+        if type(node.op) not in self._torch_ops:
             return None
         lhs = self.visit(node.left)
         rhs = self.visit(node.right)
         if lhs is None or rhs is None:
             return None
-        operations = self._binary_ops.get(type(node.op))
-        assert operations is not None
-        float_operation, integer_operation = operations
-        return self._build_binary_template(lhs, rhs, float_operation, integer_operation)
+        return self._build_binary_template(
+            lhs,
+            rhs,
+            type(node.op),
+        )
 
     def visit_BoolOp(self, node: ast.BoolOp) -> GuardBuildFn | None:
         values = [self.visit(value) for value in node.values]
@@ -494,7 +495,7 @@ class ASTVisitor(ast.NodeVisitor):
                 value = torch.device(**keywords)
             except (SyntaxError, TypeError, ValueError, RuntimeError):
                 return None
-            return self._constant_tvm_ffi(value)
+            return self._constant(value)
 
         operations = {"min", "max"}
         if (
@@ -508,11 +509,10 @@ class ASTVisitor(ast.NodeVisitor):
             rhs = self.visit(rhs_node)
             if lhs is None or rhs is None:
                 return None
-            operations = self._binary_ops.get(node.func.id)
-            assert operations is not None
-            float_operation, integer_operation = operations
             return self._build_binary_template(
-                lhs, rhs, float_operation, integer_operation
+                lhs,
+                rhs,
+                node.func.id,
             )
 
         if (
@@ -532,7 +532,7 @@ class ASTVisitor(ast.NodeVisitor):
             return None
         return self._build_tensor_metadata(
             source,
-            torchext.tensor_dim if is_tensor_shape else tvm_ffi.array_length,
+            torchext.tensor_dim if is_tensor_shape else self._sequence_length,
         )
 
     def visit_Compare(self, node: ast.Compare) -> GuardBuildFn | None:
@@ -569,19 +569,17 @@ class ASTVisitor(ast.NodeVisitor):
         )
 
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
-            i1 = ir.IntegerType.get_signless(1, context)
-            true = arith.constant(i1, ir.IntegerAttr.get(i1, 1))
             return reduce(
                 self._build_logical_and,
                 (comparison(tree, context) for comparison in comparison_builders),
-                true,
+                torch_d.constant_bool(True),
             )
 
         return build
 
     def visit_Constant(self, node: ast.Constant) -> GuardBuildFn | None:
         if node.value is None or isinstance(node.value, (bool, int, float, str)):
-            return self._constant_tvm_ffi(node.value)
+            return self._constant(node.value)
         return None
 
     def visit_IfExp(self, node: ast.IfExp) -> GuardBuildFn | None:
@@ -601,10 +599,10 @@ class ASTVisitor(ast.NodeVisitor):
         source = Local.from_expression(node)
         if source is not None:
 
-            def build(tree: InputTable, __: ir.Context) -> ir.Value:
+            def build(tree: InputTable, context: ir.Context) -> ir.Value:
                 value = source.resolve(tree)
                 assert value is not None, (
-                    f"guard source cannot be resolved: {self.text!r}"
+                    f"guard source cannot be resolved: {self.text!r} in {context}"
                 )
                 return value
 
@@ -655,13 +653,11 @@ class ASTVisitor(ast.NodeVisitor):
         if isinstance(node.op, ast.Not):
             return lambda tree, context: self._build_logical_not(
                 self._value(operand, tree, context),
-                context,
             )
         if isinstance(node.op, ast.UAdd):
             return operand
         if isinstance(node.op, ast.USub):
             return lambda tree, context: self._build_negate(
                 self._value(operand, tree, context),
-                context,
             )
         return None

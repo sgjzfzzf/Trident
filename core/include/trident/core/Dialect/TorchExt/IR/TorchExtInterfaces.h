@@ -8,6 +8,7 @@
 #ifndef TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTINTERFACES_H_
 #define TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTINTERFACES_H_
 
+#include <dlpack/dlpack.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/Value.h>
 

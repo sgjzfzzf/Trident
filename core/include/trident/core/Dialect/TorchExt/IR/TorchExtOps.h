@@ -9,6 +9,7 @@
 #define TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTOPS_H_
 
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 #include <mlir/Bytecode/BytecodeOpInterface.h>
 #include <mlir/IR/OpDefinition.h>

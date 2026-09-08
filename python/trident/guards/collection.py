@@ -10,7 +10,8 @@ import torch._guards
 from torch._guards import GuardSource
 
 from trident.core import ir
-from trident.core.dialects import cf
+from trident.core.dialects import cf, torch_c
+from trident.core.dialects.torch import TorchBoolType
 from trident.input import InputTable
 
 from .codes import GuardBuilder
@@ -74,6 +75,11 @@ class Guards:
                 result = code.build(table, context)
             next_block = ir.Block.create_after(current_block)
             with ir.InsertionPoint(current_block):
+                if isinstance(result.type, TorchBoolType):
+                    result = torch_c.to_i1(
+                        result,
+                        loc=result.owner.location,
+                    )
                 cf.CondBranchOp(
                     result,
                     [],

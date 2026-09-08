@@ -32,6 +32,92 @@
 
 namespace trident::torchext {
 
+DLDataType BFloat16Attr::getDLPackDType() const { return {kDLBfloat, 16, 1}; }
+
+DLDataType BoolAttr::getDLPackDType() const { return {kDLBool, 8, 1}; }
+
+DLDataType Float4E2M1FNX2Attr::getDLPackDType() const {
+  return {kDLFloat4_e2m1fn, 4, 2};
+}
+
+DLDataType Float8E4M3FNAttr::getDLPackDType() const {
+  return {kDLFloat8_e4m3fn, 8, 1};
+}
+
+DLDataType Float8E4M3FNUZAttr::getDLPackDType() const {
+  return {kDLFloat8_e4m3fnuz, 8, 1};
+}
+
+DLDataType Float8E5M2Attr::getDLPackDType() const {
+  return {kDLFloat8_e5m2, 8, 1};
+}
+
+DLDataType Float8E5M2FNUZAttr::getDLPackDType() const {
+  return {kDLFloat8_e5m2fnuz, 8, 1};
+}
+
+DLDataType Float8E8M0FNUAttr::getDLPackDType() const {
+  return {kDLFloat8_e8m0fnu, 8, 1};
+}
+
+DLDataType Complex32Attr::getDLPackDType() const { return {kDLComplex, 32, 1}; }
+
+DLDataType Complex64Attr::getDLPackDType() const { return {kDLComplex, 64, 1}; }
+
+DLDataType Complex128Attr::getDLPackDType() const {
+  return {kDLComplex, 128, 1};
+}
+
+DLDataType Float16Attr::getDLPackDType() const { return {kDLFloat, 16, 1}; }
+
+DLDataType Float32Attr::getDLPackDType() const { return {kDLFloat, 32, 1}; }
+
+DLDataType Float64Attr::getDLPackDType() const { return {kDLFloat, 64, 1}; }
+
+DLDataType Int8Attr::getDLPackDType() const { return {kDLInt, 8, 1}; }
+
+DLDataType Int1Attr::getDLPackDType() const { return {kDLInt, 1, 1}; }
+
+DLDataType Int2Attr::getDLPackDType() const { return {kDLInt, 2, 1}; }
+
+DLDataType Int3Attr::getDLPackDType() const { return {kDLInt, 3, 1}; }
+
+DLDataType Int4Attr::getDLPackDType() const { return {kDLInt, 4, 1}; }
+
+DLDataType Int5Attr::getDLPackDType() const { return {kDLInt, 5, 1}; }
+
+DLDataType Int6Attr::getDLPackDType() const { return {kDLInt, 6, 1}; }
+
+DLDataType Int7Attr::getDLPackDType() const { return {kDLInt, 7, 1}; }
+
+DLDataType Int16Attr::getDLPackDType() const { return {kDLInt, 16, 1}; }
+
+DLDataType Int32Attr::getDLPackDType() const { return {kDLInt, 32, 1}; }
+
+DLDataType Int64Attr::getDLPackDType() const { return {kDLInt, 64, 1}; }
+
+DLDataType UInt8Attr::getDLPackDType() const { return {kDLUInt, 8, 1}; }
+
+DLDataType UInt1Attr::getDLPackDType() const { return {kDLUInt, 1, 1}; }
+
+DLDataType UInt2Attr::getDLPackDType() const { return {kDLUInt, 2, 1}; }
+
+DLDataType UInt3Attr::getDLPackDType() const { return {kDLUInt, 3, 1}; }
+
+DLDataType UInt4Attr::getDLPackDType() const { return {kDLUInt, 4, 1}; }
+
+DLDataType UInt5Attr::getDLPackDType() const { return {kDLUInt, 5, 1}; }
+
+DLDataType UInt6Attr::getDLPackDType() const { return {kDLUInt, 6, 1}; }
+
+DLDataType UInt7Attr::getDLPackDType() const { return {kDLUInt, 7, 1}; }
+
+DLDataType UInt16Attr::getDLPackDType() const { return {kDLUInt, 16, 1}; }
+
+DLDataType UInt32Attr::getDLPackDType() const { return {kDLUInt, 32, 1}; }
+
+DLDataType UInt64Attr::getDLPackDType() const { return {kDLUInt, 64, 1}; }
+
 namespace {
 
 // Recursive traversal mirrors the nested tuple attribute structure.

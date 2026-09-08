@@ -21,6 +21,7 @@ from trident.core import ir
 from trident.core.dialects import (
     arith,
     gpu,
+    torch_c,
     torchext,
 )
 from trident.core.dialects import (
@@ -46,12 +47,10 @@ _MISSING: Final[Any] = object()
 
 
 def _torch_int_to_i64(value: ir.Value, loc: ir.Location) -> ir.Value:
-    return ir.Operation.create(
-        "torch_c.to_i64",
-        results=[ir.IntegerType.get_signless(64)],
-        operands=[value],
+    return torch_c.to_i64(
+        value,
         loc=loc,
-    ).result
+    )
 
 
 class GraphNodeImporterTritonHopPatchState:
@@ -120,7 +119,7 @@ class GraphNodeImporterTritonHopPatchState:
     ) -> ir.Value | None:
         import_torch_int_op = lambda name, operands: (
             torch_d.operator(
-                [ir.Type.parse("!torch.int", context=loc.context)],
+                [torch_d.TorchIntType.get(loc.context)],
                 name,
                 operands,
                 0,
@@ -178,12 +177,10 @@ class GraphNodeImporterTritonHopPatchState:
                     native_value = torchext.tensor_size(tensor, index, loc=loc)
                 else:
                     native_value = torchext.tensor_stride(tensor, index, loc=loc)
-                return ir.Operation.create(
-                    "torch_c.from_i64",
-                    results=[ir.Type.parse("!torch.int", context=loc.context)],
-                    operands=[native_value],
+                return torch_c.from_i64(
+                    native_value,
                     loc=loc,
-                ).result
+                )
 
             if value.target in arithmetic_ops:
                 lhs, rhs = (

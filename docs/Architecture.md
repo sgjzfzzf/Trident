@@ -161,7 +161,7 @@ Each `compile(*args, **kwargs)` produces a new sub-module with these properties:
 ### `tvm_ffi.func` input reconstruction
 
 The `tvm_ffi.func` signature mirrors the *Python* function signature (one SSA
-argument per parameter; container parameters typed `!tvm_ffi.array`). This
+argument per parameter; container parameters use Torch list/tuple types). This
 keeps `num_args` (as seen by the Python kwargs wrapper) equal to the number of
 SSA arguments, so tuple/list parameters do not overrun the FFI argument array.
 
@@ -171,9 +171,10 @@ SSA arguments, so tuple/list parameters do not overrun the FFI argument array.
   retaining IR values.
 - A builder binds the operands of each IR region to a fresh `InputTable` whose
   nodes own their child trees and lazy region-local value builders. Guards
-  resolve sources with `table[path]`; the table recursively emits one
-  `tvm_ffi.array.get_item` for each container level on that path and does not
-  cache materialized values.
+  resolve sources with `table[path]`; Torch list and tuple inputs are unpacked
+  with `torch.prim.ListUnpack`/`torch.prim.TupleUnpack` and cached in the current
+  region. The Torch-to-TVMFFI conversion lowers these operations to ABI array
+  accesses at the backend boundary.
 - The guarded success region uses its own table to recursively flatten all
   exported inputs in graph-signature order. The backend pairs those values
   with the input specs and selects the operands consumed by `main_{i}`. Values
@@ -223,11 +224,14 @@ Ordinary local sources are parsed from `Guard.name` with Python's AST into a
 root argument plus integer-index path. Code classes use source-aware regular
 expressions except for `ASTCode`, which uses an AST because shape expressions
 can combine multiple sources, arithmetic, and comparisons. Shape expressions
- may use integer division and floating-point constants. Integer operands use
- integer arithmetic, while floating-point or mixed operands are promoted to a
- common floating-point type. AST guard values use TVM FFI semantic scalar
- types; arithmetic temporarily unwraps them to builtin MLIR numeric types and
- wraps the result again. Each parsed Code
+may use integer division and floating-point constants. Integer operands use
+integer arithmetic, while floating-point or mixed operands are promoted to a
+common floating-point type. Guard AST lowering constructs Torch semantic scalar
+values for the frontend path; supported scalar operations and comparisons use
+Torch dialect operations and are converted during `ConvertTorchToTVMFFI`.
+Operations whose Torch form does not preserve the guard's existing semantics,
+such as Python integer division, or mixed numeric cases without a matching
+Torch overload, temporarily unwrap values to builtin MLIR numeric types. Each parsed Code
 object produces a delayed builder carrying its deduplication key, execution
 phase, and structural depth. The collection orders the builders and emits them
 in sequential CFG blocks with `cf.cond_br`, so they short-circuit before unsafe

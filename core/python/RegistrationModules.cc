@@ -5,17 +5,22 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "dialects/torch/TorchDialect.h"
+#include "dialects/torchext/TorchExtDialect.h"
 #include "trident-c/core/Registration.h"
 #include <mlir-c/IR.h>
-#include <mlir/Bindings/Python/NanobindAdaptors.h> // NOLINT(misc-include-cleaner)
+#include <mlir/Bindings/Python/IRCore.h>
+#include <mlir/Bindings/Python/NanobindAdaptors.h>
 #include <mlir/InitAllTranslations.h>
 #include <nanobind/nanobind.h>
-#include <nanobind/nb_defs.h>
 
 namespace nb = nanobind;
+using namespace mlir::python::MLIR_BINDINGS_PYTHON_DOMAIN;
 
-void registerAllDialects(MlirContext context) {
-  tridentCoreRegisterAllDialects(context);
+void registerAllDialects(
+    mlir::python::MLIR_BINDINGS_PYTHON_DOMAIN::DefaultingPyMlirContext
+        context) {
+  tridentCoreRegisterAllDialects(context.get()->get());
 }
 
 void registerAllPasses() { tridentCoreRegisterAllPasses(); }
@@ -36,4 +41,6 @@ NB_MODULE(_trident, m) {
   m.def("register_all_passes", &registerAllPasses);
   m.def("_convert_torch_type_to_tvm_ffi_type", &convertTorchTypeToTVMFFIType,
         nb::arg("type"));
+  mlir::python::MLIR_BINDINGS_PYTHON_DOMAIN::torch::bindTorchTypes(m);
+  mlir::python::MLIR_BINDINGS_PYTHON_DOMAIN::torchext::bindTorchExtTypes(m);
 }

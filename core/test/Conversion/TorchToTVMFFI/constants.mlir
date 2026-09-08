@@ -9,6 +9,14 @@
 
 // Constants are converted to their semantic TVM FFI scalar types, rather than
 // being lowered through the LLVM representation used by the final ABI pass.
+// CHECK-LABEL: func.func @constant_dtype() -> !tvm_ffi.dtype {
+// CHECK: %[[DTYPE:[a-zA-Z0-9_]+]] = tvm_ffi.constant.dtype [2, 32, 1]
+// CHECK: return %[[DTYPE]] : !tvm_ffi.dtype
+func.func @constant_dtype() -> !torchext.dtype {
+  %dtype = torchext.constant.dtype #torchext.float32
+  return %dtype : !torchext.dtype
+}
+
 // CHECK-LABEL: func.func @constants(
 // CHECK-SAME: -> !tvm_ffi.array {
 // CHECK: %[[I0:[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 7

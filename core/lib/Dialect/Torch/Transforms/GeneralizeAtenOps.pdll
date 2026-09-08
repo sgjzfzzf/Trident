@@ -42,6 +42,30 @@ Pattern AtenIntBool with benefit(1) {
   };
 }
 
+Pattern AtenAndBool with benefit(1) {
+  let root = op<torch.aten.__and__.bool>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i1>(a) -> (type<"i1">);
+    let nativeB = op<torch_c.to_i1>(b) -> (type<"i1">);
+    let nativeResult = op<arith.andi>(nativeA, nativeB) -> (type<"i1">);
+    replace root with op<torch_c.from_i1>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenEqInt with benefit(1) {
+  let root = op<torch.aten.eq.int>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
+    let nativeResult = op<arith.cmpi>(nativeA, nativeB) {
+      predicate = attr<"0 : i64">
+    } -> (type<"i1">);
+    replace root with op<torch_c.from_i1>(nativeResult) -> (types);
+  };
+}
+
 Pattern AtenMulInt with benefit(1) {
   let root = op<torch.aten.mul.int>(a: Value, b: Value) -> (types: TypeRange);
   rewrite root with {
@@ -49,6 +73,43 @@ Pattern AtenMulInt with benefit(1) {
     let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
     let nativeResult = op<arith.muli>(nativeA, nativeB) -> (type<"i64">);
     replace root with op<torch_c.from_i64>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenLeInt with benefit(1) {
+  let root = op<torch.aten.le.int>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
+    let nativeResult = op<arith.cmpi>(nativeA, nativeB) {
+      predicate = attr<"3 : i64">
+    } -> (type<"i1">);
+    replace root with op<torch_c.from_i1>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenNotBool with benefit(1) {
+  let root = op<torch.aten.__not__>(value: Value) -> (types: TypeRange);
+  rewrite root with {
+    let nativeValue = op<torch_c.to_i1>(value) -> (type<"i1">);
+    let nativeOne = op<arith.constant> {
+      value = attr<"1 : i1">
+    } -> (type<"i1">);
+    let nativeResult = op<arith.xori>(nativeValue, nativeOne)
+        -> (type<"i1">);
+    replace root with op<torch_c.from_i1>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenOrBool with benefit(1) {
+  let root = op<torch.aten.__or__.bool>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i1>(a) -> (type<"i1">);
+    let nativeB = op<torch_c.to_i1>(b) -> (type<"i1">);
+    let nativeResult = op<arith.ori>(nativeA, nativeB) -> (type<"i1">);
+    replace root with op<torch_c.from_i1>(nativeResult) -> (types);
   };
 }
 

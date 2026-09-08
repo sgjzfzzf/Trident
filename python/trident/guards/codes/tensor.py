@@ -9,7 +9,8 @@ from collections.abc import Hashable
 from functools import reduce
 from typing import Final, Self, override
 
-import tvm_ffi as runtime_ffi
+import torch
+import tvm_ffi
 
 from trident.core import ir
 from trident.core.dialects import arith, torchext
@@ -25,11 +26,11 @@ class TensorDTypeCode(GuardCode):
         text: str,
         source: Local,
         expected: str,
-        dtype: runtime_ffi.dtype,
+        dtype: torch.dtype,
     ) -> None:
         super().__init__(text, source)
         self.expected: Final[str] = expected
-        self.dtype: Final[runtime_ffi.dtype] = dtype
+        self.dtype: Final[torch.dtype] = dtype
 
     @classmethod
     def parse(
@@ -48,9 +49,8 @@ class TensorDTypeCode(GuardCode):
         if match is None:
             return None
         expected = match.group("dtype")
-        try:
-            dtype = runtime_ffi.dtype(expected.removeprefix("torch."))
-        except (TypeError, ValueError):
+        dtype = getattr(torch, expected.removeprefix("torch."), None)
+        if not isinstance(dtype, torch.dtype):
             return None
         return cls(text, source, expected, dtype)
 
@@ -71,6 +71,7 @@ class TensorDTypeCode(GuardCode):
         if tensor is None:
             return super().build(tree, context)
         metadata = torchext.tensor_dtype(tensor)
+        dtype = tvm_ffi.convert(self.dtype)
         i1 = ir.IntegerType.get_signless(1, context)
         return reduce(
             arith.andi,
@@ -85,7 +86,7 @@ class TensorDTypeCode(GuardCode):
                 )
                 for actual, expected_value in zip(
                     metadata,
-                    (self.dtype.type_code, self.dtype.bits, self.dtype.lanes),
+                    (dtype.type_code, dtype.bits, dtype.lanes),
                 )
             ],
             arith.constant(i1, ir.IntegerAttr.get(i1, 1)),
@@ -98,11 +99,11 @@ class TensorDeviceCode(GuardCode):
         text: str,
         source: Local,
         expected: str,
-        device: runtime_ffi.Device,
+        device: torch.device,
     ) -> None:
         super().__init__(text, source)
         self.expected: Final[str] = expected
-        self.device: Final[runtime_ffi.Device] = device
+        self.device: Final[torch.device] = device
 
     @classmethod
     def parse(
@@ -120,10 +121,7 @@ class TensorDeviceCode(GuardCode):
         if match is None:
             return None
         expected = match.group("device")
-        try:
-            device = runtime_ffi.device(expected)
-        except (TypeError, ValueError):
-            return None
+        device = torch.device(expected)
         return cls(text, source, expected, device)
 
     @property
@@ -145,26 +143,30 @@ class TensorDeviceCode(GuardCode):
         i32 = ir.IntegerType.get_signless(32, context)
         metadata = torchext.tensor_device(tensor)
         i1 = ir.IntegerType.get_signless(1, context)
+        [index, type_code] = metadata
+        device_type = tvm_ffi.device(self.device.type).dlpack_device_type()
         return reduce(
             arith.andi,
             [
                 arith.cmpi(
                     arith.CmpIPredicate.eq,
-                    metadata[0],
+                    index,
                     arith.constant(
                         i32,
                         ir.IntegerAttr.get(
                             i32,
-                            self.device.dlpack_device_type(),
+                            device_type,
                         ),
                     ),
                 ),
                 arith.cmpi(
                     arith.CmpIPredicate.eq,
-                    metadata[1],
+                    type_code,
                     arith.constant(
                         i32,
-                        ir.IntegerAttr.get(i32, self.device.index),
+                        ir.IntegerAttr.get(
+                            i32, 0 if self.device.index is None else self.device.index
+                        ),
                     ),
                 ),
             ],

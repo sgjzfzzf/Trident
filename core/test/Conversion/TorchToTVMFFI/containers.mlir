@@ -12,7 +12,7 @@
 // CHECK-SAME: %[[LHS:[a-zA-Z0-9_]+]]: !tvm_ffi.int, %[[RHS:[a-zA-Z0-9_]+]]: !tvm_ffi.int) -> !tvm_ffi.array {
 // CHECK: %[[FUNCTION:[a-zA-Z0-9_]+]], %[[GET_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "ffi.Array" : !tvm_ffi.function, i1
 // CHECK-NEXT: cf.assert %[[GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed for ffi.Array"
-// CHECK-NEXT: %[[ARRAY:[a-zA-Z0-9_]+]], %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNCTION]](%[[LHS]], %[[RHS]]) : (!tvm_ffi.int, !tvm_ffi.int) -> !tvm_ffi.array, i1
+// CHECK: %[[ARRAY:[a-zA-Z0-9_]+]], %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNCTION]](%[[LHS]], %[[RHS]]) : (!tvm_ffi.int, !tvm_ffi.int) -> !tvm_ffi.array, i1
 // CHECK-NEXT: cf.assert %[[CALL_SUCCESS]], "TVMFFIFunctionCall failed for ffi.Array"
 // CHECK-NEXT: return %[[ARRAY]] : !tvm_ffi.array
 func.func @container_construct(%arg0: !torch.int, %arg1: !torch.int)
@@ -27,7 +27,7 @@ func.func @container_construct(%arg0: !torch.int, %arg1: !torch.int)
 // CHECK-SAME: -> !tvm_ffi.array {
 // CHECK: %[[FUNCTION:[a-zA-Z0-9_]+]], %[[GET_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "ffi.Array" : !tvm_ffi.function, i1
 // CHECK-NEXT: cf.assert %[[GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed for ffi.Array"
-// CHECK-NEXT: %[[TUPLE:[a-zA-Z0-9_]+]], %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNCTION]](%[[LHS]], %[[RHS]]) : (!tvm_ffi.int, !tvm_ffi.int) -> !tvm_ffi.array, i1
+// CHECK: %[[TUPLE:[a-zA-Z0-9_]+]], %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNCTION]](%[[LHS]], %[[RHS]]) : (!tvm_ffi.int, !tvm_ffi.int) -> !tvm_ffi.array, i1
 // CHECK-NEXT: cf.assert %[[CALL_SUCCESS]], "TVMFFIFunctionCall failed for ffi.Array"
 // CHECK: return %[[TUPLE]] : !tvm_ffi.array
 func.func @tuple_construct(%lhs: !torch.int, %rhs: !torch.int)
@@ -42,12 +42,12 @@ func.func @tuple_construct(%lhs: !torch.int, %rhs: !torch.int)
 // CHECK: %[[ZERO:[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 0
 // CHECK-NEXT: %[[LHS_FUNCTION:[a-zA-Z0-9_]+]], %[[LHS_GET_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "ffi.ArrayGetItem" : !tvm_ffi.function, i1
 // CHECK-NEXT: cf.assert %[[LHS_GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed for ffi.ArrayGetItem"
-// CHECK-NEXT: %[[LHS:[a-zA-Z0-9_]+]], %[[LHS_CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[LHS_FUNCTION]](%[[ARRAY]], %[[ZERO]]) : (!tvm_ffi.array, !tvm_ffi.int) -> !tvm_ffi.int, i1
+// CHECK: %[[LHS:[a-zA-Z0-9_]+]], %[[LHS_CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[LHS_FUNCTION]](%[[ARRAY]], %[[ZERO]]) : (!tvm_ffi.array, !tvm_ffi.int) -> !tvm_ffi.int, i1
 // CHECK-NEXT: cf.assert %[[LHS_CALL_SUCCESS]], "TVMFFIFunctionCall failed for ffi.ArrayGetItem"
 // CHECK: %[[ONE:[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 1
 // CHECK-NEXT: %[[RHS_FUNCTION:[a-zA-Z0-9_]+]], %[[RHS_GET_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "ffi.ArrayGetItem" : !tvm_ffi.function, i1
 // CHECK-NEXT: cf.assert %[[RHS_GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed for ffi.ArrayGetItem"
-// CHECK-NEXT: %[[RHS:[a-zA-Z0-9_]+]], %[[RHS_CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[RHS_FUNCTION]](%[[ARRAY]], %[[ONE]]) : (!tvm_ffi.array, !tvm_ffi.int) -> !tvm_ffi.int, i1
+// CHECK: %[[RHS:[a-zA-Z0-9_]+]], %[[RHS_CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[RHS_FUNCTION]](%[[ARRAY]], %[[ONE]]) : (!tvm_ffi.array, !tvm_ffi.int) -> !tvm_ffi.int, i1
 // CHECK-NEXT: cf.assert %[[RHS_CALL_SUCCESS]], "TVMFFIFunctionCall failed for ffi.ArrayGetItem"
 // CHECK: return %[[LHS]], %[[RHS]] : !tvm_ffi.int, !tvm_ffi.int
 func.func @list_unpack(%array: !torch.list<int>) -> (!torch.int, !torch.int) {

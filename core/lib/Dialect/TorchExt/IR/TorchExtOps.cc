@@ -28,6 +28,21 @@
 
 namespace trident::torchext {
 
+bool CastOp::areCastCompatible(mlir::TypeRange inputs,
+                               mlir::TypeRange outputs) {
+  if (inputs.size() != 1 || outputs.size() != 1) {
+    return false;
+  }
+  mlir::Type const input = inputs[0];
+  mlir::Type const output = outputs[0];
+  if (mlir::isa<mlir::torch::Torch::AnyType>(output)) {
+    return true;
+  }
+  mlir::torch::Torch::UnionType const unionType =
+      mlir::dyn_cast<mlir::torch::Torch::UnionType>(output);
+  return unionType && llvm::is_contained(unionType.getContainedTypes(), input);
+}
+
 mlir::ParseResult TritonKernelLaunchOp::parseKernelArguments(
     mlir::OpAsmParser &parser,
     llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &operands,

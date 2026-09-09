@@ -92,3 +92,118 @@ func.func @sub_int(%arg0: !torch.int, %arg1: !torch.int) -> !torch.int {
       : !torch.int, !torch.int -> !torch.int
   return %result : !torch.int
 }
+
+// CHECK-LABEL: func.func @float_ops
+// CHECK: %[[ADD_FLOAT_A:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg0
+// CHECK: %[[ADD_FLOAT_B:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg1
+// CHECK: %[[ADD_FLOAT:[a-zA-Z0-9_]+]] = arith.addf %[[ADD_FLOAT_A]], %[[ADD_FLOAT_B]] : f64
+// CHECK: %[[ADD_FLOAT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_f64 %[[ADD_FLOAT]]
+// CHECK: %[[DIV_FLOAT_A:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg0
+// CHECK: %[[DIV_FLOAT_B:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg1
+// CHECK: %[[DIV_FLOAT:[a-zA-Z0-9_]+]] = arith.divf %[[DIV_FLOAT_A]], %[[DIV_FLOAT_B]] : f64
+// CHECK: %[[DIV_FLOAT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_f64 %[[DIV_FLOAT]]
+// CHECK: %[[MUL_FLOAT_A:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg0
+// CHECK: %[[MUL_FLOAT_B:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg1
+// CHECK: %[[MUL_FLOAT:[a-zA-Z0-9_]+]] = arith.mulf %[[MUL_FLOAT_A]], %[[MUL_FLOAT_B]] : f64
+// CHECK: %[[MUL_FLOAT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_f64 %[[MUL_FLOAT]]
+// CHECK: %[[NEG_FLOAT_A:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg0
+// CHECK: %[[NEG_FLOAT:[a-zA-Z0-9_]+]] = arith.negf %[[NEG_FLOAT_A]] : f64
+// CHECK: %[[NEG_FLOAT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_f64 %[[NEG_FLOAT]]
+// CHECK: %[[SUB_FLOAT_A:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg0
+// CHECK: %[[SUB_FLOAT_B:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg1
+// CHECK: %[[SUB_FLOAT:[a-zA-Z0-9_]+]] = arith.subf %[[SUB_FLOAT_A]], %[[SUB_FLOAT_B]] : f64
+// CHECK: %[[SUB_FLOAT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_f64 %[[SUB_FLOAT]]
+// CHECK: %[[EQ_FLOAT_A:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg0
+// CHECK: %[[EQ_FLOAT_B:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg1
+// CHECK: %[[EQ_FLOAT:[a-zA-Z0-9_]+]] = arith.cmpf oeq, %[[EQ_FLOAT_A]], %[[EQ_FLOAT_B]] : f64
+// CHECK: %[[EQ_FLOAT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_i1 %[[EQ_FLOAT]]
+// CHECK: %[[GE_FLOAT_A:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg0
+// CHECK: %[[GE_FLOAT_B:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg1
+// CHECK: %[[GE_FLOAT:[a-zA-Z0-9_]+]] = arith.cmpf oge, %[[GE_FLOAT_A]], %[[GE_FLOAT_B]] : f64
+// CHECK: %[[GE_FLOAT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_i1 %[[GE_FLOAT]]
+// CHECK: %[[GT_FLOAT_A:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg0
+// CHECK: %[[GT_FLOAT_B:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg1
+// CHECK: %[[GT_FLOAT:[a-zA-Z0-9_]+]] = arith.cmpf ogt, %[[GT_FLOAT_A]], %[[GT_FLOAT_B]] : f64
+// CHECK: %[[GT_FLOAT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_i1 %[[GT_FLOAT]]
+// CHECK: %[[LT_FLOAT_A:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg0
+// CHECK: %[[LT_FLOAT_B:[a-zA-Z0-9_]+]] = torch_c.to_f64 %arg1
+// CHECK: %[[LT_FLOAT:[a-zA-Z0-9_]+]] = arith.cmpf olt, %[[LT_FLOAT_A]], %[[LT_FLOAT_B]] : f64
+// CHECK: %[[LT_FLOAT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_i1 %[[LT_FLOAT]]
+func.func @float_ops(%arg0: !torch.float, %arg1: !torch.float)
+    -> (!torch.float, !torch.float, !torch.float, !torch.float, !torch.float,
+        !torch.bool, !torch.bool, !torch.bool, !torch.bool) {
+  %add = torch.aten.add.float %arg0, %arg1
+      : !torch.float, !torch.float -> !torch.float
+  %div = torch.aten.div.float %arg0, %arg1
+      : !torch.float, !torch.float -> !torch.float
+  %mul = torch.aten.mul.float %arg0, %arg1
+      : !torch.float, !torch.float -> !torch.float
+  %neg = torch.aten.neg.float %arg0 : !torch.float -> !torch.float
+  %sub = torch.aten.sub.float %arg0, %arg1
+      : !torch.float, !torch.float -> !torch.float
+  %eq = torch.aten.eq.float %arg0, %arg1
+      : !torch.float, !torch.float -> !torch.bool
+  %ge = torch.aten.ge.float %arg0, %arg1
+      : !torch.float, !torch.float -> !torch.bool
+  %gt = torch.aten.gt.float %arg0, %arg1
+      : !torch.float, !torch.float -> !torch.bool
+  %lt = torch.aten.lt.float %arg0, %arg1
+      : !torch.float, !torch.float -> !torch.bool
+  return %add, %div, %mul, %neg, %sub, %eq, %ge, %gt, %lt
+      : !torch.float, !torch.float, !torch.float, !torch.float, !torch.float,
+        !torch.bool, !torch.bool, !torch.bool, !torch.bool
+}
+
+// CHECK-LABEL: func.func @additional_int_ops
+// CHECK: %[[DIV_INT_A:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg0
+// CHECK: %[[DIV_INT_B:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg1
+// CHECK: %[[DIV_INT_FLOAT_A:[a-zA-Z0-9_]+]] = arith.sitofp %[[DIV_INT_A]] : i64 to f64
+// CHECK: %[[DIV_INT_FLOAT_B:[a-zA-Z0-9_]+]] = arith.sitofp %[[DIV_INT_B]] : i64 to f64
+// CHECK: %[[DIV_INT:[a-zA-Z0-9_]+]] = arith.divf %[[DIV_INT_FLOAT_A]], %[[DIV_INT_FLOAT_B]] : f64
+// CHECK: %[[DIV_INT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_f64 %[[DIV_INT]]
+// CHECK: %[[GE_INT_A:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg0
+// CHECK: %[[GE_INT_B:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg1
+// CHECK: %[[GE_INT:[a-zA-Z0-9_]+]] = arith.cmpi sge, %[[GE_INT_A]], %[[GE_INT_B]] : i64
+// CHECK: %[[GE_INT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_i1 %[[GE_INT]]
+// CHECK: %[[GT_INT_A:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg0
+// CHECK: %[[GT_INT_B:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg1
+// CHECK: %[[GT_INT:[a-zA-Z0-9_]+]] = arith.cmpi sgt, %[[GT_INT_A]], %[[GT_INT_B]] : i64
+// CHECK: %[[GT_INT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_i1 %[[GT_INT]]
+// CHECK: %[[LT_INT_A:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg0
+// CHECK: %[[LT_INT_B:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg1
+// CHECK: %[[LT_INT:[a-zA-Z0-9_]+]] = arith.cmpi slt, %[[LT_INT_A]], %[[LT_INT_B]] : i64
+// CHECK: %[[LT_INT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_i1 %[[LT_INT]]
+// CHECK: %[[NE_INT_A:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg0
+// CHECK: %[[NE_INT_B:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg1
+// CHECK: %[[NE_INT:[a-zA-Z0-9_]+]] = arith.cmpi ne, %[[NE_INT_A]], %[[NE_INT_B]] : i64
+// CHECK: %[[NE_INT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_i1 %[[NE_INT]]
+// CHECK: %[[NEG_INT_A:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg0
+// CHECK: %[[NEG_INT_ZERO:[a-zA-Z0-9_]+]] = arith.constant 0 : i64
+// CHECK: %[[NEG_INT:[a-zA-Z0-9_]+]] = arith.subi %[[NEG_INT_ZERO]], %[[NEG_INT_A]] : i64
+// CHECK: %[[NEG_INT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_i64 %[[NEG_INT]]
+// CHECK: %[[REM_INT_A:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg0
+// CHECK: %[[REM_INT_B:[a-zA-Z0-9_]+]] = torch_c.to_i64 %arg1
+// CHECK: %[[REM_QUOTIENT:[a-zA-Z0-9_]+]] = arith.floordivsi %[[REM_INT_A]], %[[REM_INT_B]] : i64
+// CHECK: %[[REM_PRODUCT:[a-zA-Z0-9_]+]] = arith.muli %[[REM_QUOTIENT]], %[[REM_INT_B]] : i64
+// CHECK: %[[REM_INT:[a-zA-Z0-9_]+]] = arith.subi %[[REM_INT_A]], %[[REM_PRODUCT]] : i64
+// CHECK: %[[REM_INT_RESULT:[a-zA-Z0-9_]+]] = torch_c.from_i64 %[[REM_INT]]
+func.func @additional_int_ops(%arg0: !torch.int, %arg1: !torch.int)
+    -> (!torch.float, !torch.bool, !torch.bool, !torch.bool, !torch.bool,
+        !torch.int, !torch.int) {
+  %div = torch.aten.div.int %arg0, %arg1
+      : !torch.int, !torch.int -> !torch.float
+  %ge = torch.aten.ge.int %arg0, %arg1
+      : !torch.int, !torch.int -> !torch.bool
+  %gt = torch.aten.gt.int %arg0, %arg1
+      : !torch.int, !torch.int -> !torch.bool
+  %lt = torch.aten.lt.int %arg0, %arg1
+      : !torch.int, !torch.int -> !torch.bool
+  %ne = torch.aten.ne.int %arg0, %arg1
+      : !torch.int, !torch.int -> !torch.bool
+  %neg = torch.aten.neg.int %arg0 : !torch.int -> !torch.int
+  %remainder = torch.aten.remainder.int %arg0, %arg1
+      : !torch.int, !torch.int -> !torch.int
+  return %div, %ge, %gt, %lt, %ne, %neg, %remainder
+      : !torch.float, !torch.bool, !torch.bool, !torch.bool, !torch.bool,
+        !torch.int, !torch.int
+}

@@ -373,11 +373,36 @@ success value in addition to their semantic result.  LLVM lowering defines
 this value as the TVM FFI C ABI status being equal to zero.
 `ConvertTorchToTVMFFI` checks both values with `cf.assert`, including the
 runtime calls used for array construction, element access, and length queries.
+Before calling a global function, it also casts the semantic function handle
+to its native pointer representation and asserts that the pointer is non-null.
+The lookup status reports whether the lookup operation itself failed; a
+successful status does not guarantee that the requested name was registered.
 `tvm_ffi.FunctionCall` borrows both its function handle and arguments; an owned
 handle returned by `tvm_ffi.FunctionGetGlobal` remains reusable and is released
 after its last use.
-The status check intentionally does not test whether a successful global
-lookup returned a null handle.
+
+Guard expressions use Torch scalar operations while they retain Torch
+semantics. Scalar overloads present in the Torch JIT schema are not necessarily
+registered c10 dispatcher operators and therefore may be absent from the
+atengen library. `GeneralizeAtenOps` lowers every scalar ATen operation emitted
+by `python/trident/guards/ast.py` to native arithmetic before the generic ATen
+FFI fallback. Integer bitwise-or is constructed directly with native arithmetic
+because `aten::__or__.Scalar` is a tensor dispatcher overload, not the Python
+integer operation needed by guards.
+
+Cross-dialect widening at a frontend boundary is represented by
+`torchext.cast`. Its operand is a Torch or TorchExt value and its result remains
+`!torch.any` or `!torch.union`, so the operation contains no TVM FFI types.
+`ConvertTorchToTVMFFI` converts both types and replaces the operation with
+`tvm_ffi.cast`. Torch unions are converted recursively; a union containing
+`!torch.any` becomes `!tvm_ffi.any`, while fully known alternatives become a
+precise TVM FFI union. Guarded wrappers widen every normal Torch result to
+`!torch.any` and expose `!tvm_ffi.any` at the ABI boundary. Guard failures
+construct a TVM FFI exception directly and widen it to the same ABI Any type,
+so Torch and TorchExt types do not encode exception semantics. A `tvm_ffi.cast`
+is therefore strictly semantic TVM FFI IR: its operand must have a TVM FFI ABI
+type, its result must be Any or Union, and a Union must contain the operand
+type.
 
 ## TorchExt Dialect
 
@@ -387,6 +412,7 @@ launches. Its lowering is split across two passes in `trident-lowering-pipeline`
 | Op | Lowered By | Purpose |
 |---|---|---|
 | `torch_c.to_i1`, `torch_c.to_i64`, `torch_c.to_f64` | `ConvertTorchToTVMFFI` | Custom-lowers Torch scalar conversion ops to `tvm_ffi.get` for typed scalar passing to Triton kernels. |
+| `torchext.cast` | `ConvertTorchToTVMFFI` | Widens a Torch or TorchExt value to Torch Any/Union; conversion then maps both sides to semantic TVM FFI types. |
 | `torchext.trident_kernel_launch` | `ConvertTorchExtToGPU` | Runs in the Torch phase before `ConvertTorchToTVMFFI`; accepts only Torch tensor/scalar arguments, converts each argument to the native type recorded by its specialization `kind`, and emits `gpu.launch_func`. Uses the TVMFFI stream API for CUDA stream management. |
 
 Reference counting for Torch objects (tensors, lists, tuples, optionals)

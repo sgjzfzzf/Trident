@@ -7,8 +7,10 @@
 
 #include "TorchDialect.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <mlir-c/IR.h>
 #include <mlir/Bindings/Python/IRCore.h>
-#include <mlir/Bindings/Python/Nanobind.h>
 #include <mlir/Bindings/Python/NanobindAdaptors.h> // NOLINT(misc-include-cleaner)
 #include <nanobind/nanobind.h>
 #include <torch-mlir-c/TorchTypes.h>
@@ -174,26 +176,68 @@ struct TupleType : PyConcreteType<TupleType> {
           for (const PyType &type : types) {
             containedTypes.push_back(type);
           }
-          return TupleType(context->getRef(),
-                           torchMlirTorchTupleTypeGet(context.get()->get(),
-                                                      types.size(),
-                                                      containedTypes.data()));
+          return TupleType(
+              context->getRef(),
+              torchMlirTorchTupleTypeGet(context.get()->get(),
+                                         static_cast<intptr_t>(types.size()),
+                                         containedTypes.data()));
         },
         nb::arg("types"), nb::arg("context").none() = nb::none());
     c.def_prop_ro(
         "types",
-        [](TupleType &self) {
+        [](TupleType &self) -> nb::tuple {
           const size_t numTypes = torchMlirTorchTupleTypeGetNumTypes(self);
-          nb::tuple types = nb::steal<nb::tuple>(PyTuple_New(numTypes));
+          nb::list types;
           for (size_t pos = 0; pos < numTypes; ++pos) {
-            auto type = PyType(self.getContext(),
-                               torchMlirTorchTupleTypeGetType(self, pos))
-                            .maybeDownCast();
-            PyTuple_SetItem(types.ptr(), pos, type.release().ptr());
+            types.append(
+                PyType(self.getContext(), torchMlirTorchTupleTypeGetType(
+                                              self, static_cast<intptr_t>(pos)))
+                    .maybeDownCast());
           }
-          return types;
+          return nb::tuple(types);
         },
         "Returns the types contained in the tuple type.");
+  }
+};
+
+struct UnionType : PyConcreteType<UnionType> {
+  static constexpr IsAFunctionTy isaFunction = torchMlirTypeIsATorchUnion;
+  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
+      torchMlirTorchUnionTypeGetTypeID;
+  static constexpr const char *pyClassName = "TorchUnionType";
+  using Base::Base;
+
+  static void bindDerived(ClassTy &c) {
+    c.def_static(
+        "get",
+        [](const std::vector<PyType> &types,
+           DefaultingPyMlirContext context) -> UnionType {
+          std::vector<MlirType> containedTypes;
+          containedTypes.reserve(types.size());
+          for (const PyType &type : types) {
+            containedTypes.push_back(type);
+          }
+          return UnionType(
+              context->getRef(),
+              torchMlirTorchUnionTypeGet(context.get()->get(),
+                                         static_cast<intptr_t>(types.size()),
+                                         containedTypes.data()));
+        },
+        nb::arg("types"), nb::arg("context").none() = nb::none());
+    c.def_prop_ro(
+        "types",
+        [](UnionType &self) -> nb::tuple {
+          const size_t numTypes = torchMlirTorchUnionTypeGetNumTypes(self);
+          nb::list types;
+          for (size_t pos = 0; pos < numTypes; ++pos) {
+            types.append(
+                PyType(self.getContext(), torchMlirTorchUnionTypeGetType(
+                                              self, static_cast<intptr_t>(pos)))
+                    .maybeDownCast());
+          }
+          return nb::tuple(types);
+        },
+        "Returns the types contained in the union type.");
   }
 };
 
@@ -245,6 +289,7 @@ void bindTorchTypes(nb::module_ &module) {
   ListType::bind(module);
   NonValueTensorType::bind(module);
   TupleType::bind(module);
+  UnionType::bind(module);
   ValueTensorType::bind(module);
 }
 

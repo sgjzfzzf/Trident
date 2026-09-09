@@ -64,11 +64,20 @@ public:
   void runOnOperation() final {
     mlir::ConversionTarget target(getContext());
     target.addIllegalOp<
-        mlir::torch::Torch::AtenAddIntOp, mlir::torch::Torch::AtenFloordivIntOp,
-        mlir::torch::Torch::AtenEqIntOp, mlir::torch::Torch::AtenIntBoolOp,
-        mlir::torch::Torch::AtenLeIntOp, mlir::torch::Torch::AtenMulIntOp,
-        mlir::torch::Torch::AtenSizeIntOp, mlir::torch::Torch::AtenSubIntOp,
-        mlir::torch::Torch::Aten__And__BoolOp,
+        mlir::torch::Torch::AtenAddFloatOp, mlir::torch::Torch::AtenAddIntOp,
+        mlir::torch::Torch::AtenDivFloatOp, mlir::torch::Torch::AtenDivIntOp,
+        mlir::torch::Torch::AtenEqFloatOp, mlir::torch::Torch::AtenEqIntOp,
+        mlir::torch::Torch::AtenFloordivIntOp,
+        mlir::torch::Torch::AtenGeFloatOp, mlir::torch::Torch::AtenGeIntOp,
+        mlir::torch::Torch::AtenGtFloatOp, mlir::torch::Torch::AtenGtIntOp,
+        mlir::torch::Torch::AtenIntBoolOp, mlir::torch::Torch::AtenLeIntOp,
+        mlir::torch::Torch::AtenLtFloatOp, mlir::torch::Torch::AtenLtIntOp,
+        mlir::torch::Torch::AtenMulFloatOp, mlir::torch::Torch::AtenMulIntOp,
+        mlir::torch::Torch::AtenNeIntOp, mlir::torch::Torch::AtenNegFloatOp,
+        mlir::torch::Torch::AtenNegIntOp,
+        mlir::torch::Torch::AtenRemainderIntOp,
+        mlir::torch::Torch::AtenSizeIntOp, mlir::torch::Torch::AtenSubFloatOp,
+        mlir::torch::Torch::AtenSubIntOp, mlir::torch::Torch::Aten__And__BoolOp,
         mlir::torch::Torch::Aten__Not__Op,
         mlir::torch::Torch::Aten__Or__BoolOp>();
     target.addLegalDialect<

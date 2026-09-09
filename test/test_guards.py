@@ -21,6 +21,7 @@ from trident.core.dialects.torch import (
     TorchListType,
     TorchNonValueTensorType,
     TorchTupleType,
+    TorchUnionType,
     TorchValueTensorType,
 )
 from trident.guards.codes import (
@@ -130,8 +131,15 @@ class GuardParserTest(TridentTestCase):
             constructed_tuple = TorchTupleType.get(
                 [TorchIntType.get(context), constructed_list], context=context
             )
+            constructed_union = TorchUnionType.get(
+                [constructed_tuple, any_type], context=context
+            )
             self.assertEqual(str(constructed_list), "!torch.list<any>")
             self.assertEqual(str(constructed_tuple), "!torch.tuple<int, list<any>>")
+            self.assertEqual(
+                str(constructed_union),
+                "!torch.union<tuple<int, list<any>>, any>",
+            )
 
             tuple_type = ir.Type.parse(
                 "!torch.tuple<int, list<int>, tuple<bool>>", context=context
@@ -152,6 +160,11 @@ class GuardParserTest(TridentTestCase):
             contained_type = list_type.contained_type  # type: ignore[attr-defined]
             self.assertIsInstance(contained_type, TorchTupleType)
             self.assertIsInstance(contained_type.types[0], TorchFloatType)  # type: ignore[attr-defined]
+
+            self.assertIsInstance(constructed_union, TorchUnionType)
+            self.assertEqual(len(constructed_union.types), 2)  # type: ignore[attr-defined]
+            self.assertIsInstance(constructed_union.types[0], TorchTupleType)  # type: ignore[attr-defined]
+            self.assertIsInstance(constructed_union.types[1], TorchAnyType)  # type: ignore[attr-defined]
 
     def test_build_creates_a_table_for_each_guard_block(self) -> None:
         guards = Guards(
@@ -751,7 +764,7 @@ class GuardParserTest(TridentTestCase):
         self.assertIn("torch.aten.add.float", str(module))
         self.assertIn("torch.aten.ge.float", str(module))
 
-    def test_bitwise_or_expression_builds_a_torch_bool_value(self) -> None:
+    def test_bitwise_or_expression_uses_native_integer_operation(self) -> None:
         text = "(1 | 2) == 3"
         code = ASTCode(text, ast.parse(text, mode="eval").body)
         context = ir.Context()
@@ -768,7 +781,8 @@ class GuardParserTest(TridentTestCase):
                     result = code.build(None, context)  # type: ignore[arg-type]
                     func.ReturnOp([])
         self.assertEqual(str(result.type), "!torch.bool")
-        self.assertIn("torch.aten.__or__.Scalar", str(module))
+        self.assertIn("arith.ori", str(module))
+        self.assertNotIn("torch.aten.__or__.Scalar", str(module))
 
     def test_tensor_identity_is_skipped_with_warning(self) -> None:
         text = "L['x'] is L['y']"

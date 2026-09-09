@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h" // NOLINT(misc-include-cleaner)
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/Torch/IR/TorchInterfaces.h"
@@ -55,20 +56,6 @@ namespace trident::conversion {
 #define GEN_PASS_DEF_CONVERTTORCHTOTVMFFI
 #include "trident/core/Conversion/Passes.h.inc"
 
-void populateTorchToTVMFFITypeConversions(mlir::TypeConverter &typeConverter) {
-  typeConverter.addConversion([](mlir::Type type) -> std::optional<mlir::Type> {
-    if (type.getDialect().getNamespace() != "torch" &&
-        !mlir::isa<torchext::DTypeType>(type)) {
-      return std::nullopt;
-    }
-    if (mlir::isa<trident::torch::TorchToTVMFFITypeInterface>(type)) {
-      return mlir::cast<trident::torch::TorchToTVMFFITypeInterface>(type)
-          .getTVMFFIType();
-    }
-    return tvm_ffi::AnyType::get(type.getContext());
-  });
-}
-
 /// TypeConverter used by this bridge.  Keeping the Torch-to-semantic mapping
 /// in a TypeConverter makes it reusable by conversion patterns and gives us
 /// the standard MLIR materialization path for the temporary boundary casts.
@@ -80,7 +67,18 @@ public:
                  ? std::optional<mlir::Type>(type)
                  : std::nullopt;
     });
-    populateTorchToTVMFFITypeConversions(*this);
+    addConversion([](mlir::Type type) -> std::optional<mlir::Type> {
+      if (type.getDialect().getNamespace() != "torch" &&
+          !mlir::isa<torchext::DTypeType>(type)) {
+        return std::nullopt;
+      }
+      if (trident::torch::TorchToTVMFFITypeInterface const interface =
+              mlir::dyn_cast<trident::torch::TorchToTVMFFITypeInterface>(
+                  type)) {
+        return interface.getTVMFFIType();
+      }
+      return tvm_ffi::AnyType::get(type.getContext());
+    });
     addConversion([](mlir::IntegerType type) -> mlir::Type { return type; });
     addConversion([](mlir::FloatType type) -> mlir::Type { return type; });
     addTargetMaterialization([](mlir::OpBuilder &builder, mlir::Type type,
@@ -117,6 +115,23 @@ tvm_ffi::FunctionCallOp createCheckedFunctionCall(mlir::OpBuilder &builder,
       llvm::formatv("TVMFFIFunctionGetGlobal failed for {0}", callee);
   mlir::cf::AssertOp::create(builder, loc, getGlobal.getSuccess(),
                              getGlobalError);
+  mlir::Type const pointerType =
+      mlir::LLVM::LLVMPointerType::get( // NOLINT(misc-include-cleaner)
+          builder.getContext());
+  mlir::Value const functionPointer =
+      mlir::UnrealizedConversionCastOp::create(builder, loc, {pointerType},
+                                               getGlobal.getResult())
+          .getResult(0);
+  mlir::Value const nullPointer =
+      mlir::LLVM::ZeroOp::create(builder, loc, pointerType);
+  mlir::Value const nonNull =
+      mlir::LLVM::ICmpOp::create( // NOLINT(misc-include-cleaner)
+          builder, loc,
+          mlir::LLVM::ICmpPredicate::ne, // NOLINT(misc-include-cleaner)
+          functionPointer, nullPointer);
+  std::string const nullGlobalError =
+      llvm::formatv("TVMFFIFunctionGetGlobal returned null for {0}", callee);
+  mlir::cf::AssertOp::create(builder, loc, nonNull, nullGlobalError);
   tvm_ffi::FunctionCallOp call = tvm_ffi::FunctionCallOp::create(
       builder, loc, resultType, builder.getI1Type(), getGlobal.getResult(),
       arguments);
@@ -465,6 +480,26 @@ public:
     return mlir::success();
   }
 };
+
+class ConvertTorchExtCast final
+    : public mlir::OpConversionPattern<torchext::CastOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(torchext::CastOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::Type const resultType =
+        getTypeConverter()->convertType(op.getResult().getType());
+    if (!resultType) {
+      return op.emitError("cannot convert cast result type");
+    }
+    rewriter.replaceOpWithNewOp<tvm_ffi::CastOp>(op, resultType,
+                                                 adaptor.getValue());
+    return mlir::success();
+  }
+};
+
 class ConvertTVMFFIReturn final
     : public mlir::OpConversionPattern<tvm_ffi::ReturnOp> {
 public:
@@ -518,8 +553,9 @@ class ConvertTorchToTVMFFIPass final
         ConvertTorchConversionTo<mlir::torch::TorchConversion::ToF64Op>,
         ConvertTorchConversionTo<mlir::torch::TorchConversion::ToI1Op>,
         ConvertTorchConversionTo<mlir::torch::TorchConversion::ToI64Op>,
-        ConvertTorchCopyToValueTensor, ConvertTorchExtConstantDType,
-        ConvertTorchExtConvert, ConvertTorchExtEq, ConvertTorchExtGet,
+        ConvertTorchCopyToValueTensor, ConvertTorchExtCast,
+        ConvertTorchExtConstantDType, ConvertTorchExtConvert, ConvertTorchExtEq,
+        ConvertTorchExtGet,
         ConvertTorchExtTensorMetadata<torchext::TensorDeviceOp,
                                       tvm_ffi::TensorDeviceOp>,
         ConvertTorchExtTensorMetadata<torchext::TensorDimOp,

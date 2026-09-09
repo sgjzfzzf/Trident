@@ -7,6 +7,48 @@
 
 // RUN: trident-core-opt %s -generalize-aten-ops -convert-torch-to-tvm-ffi | FileCheck %s
 
+// CHECK-LABEL: func.func @cast_tensor(
+// CHECK-SAME: %[[TENSOR:[a-zA-Z0-9_]+]]: !tvm_ffi.tensor)
+// CHECK-SAME: -> !tvm_ffi.any {
+// CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = tvm_ffi.cast %[[TENSOR]] : !tvm_ffi.tensor -> !tvm_ffi.any
+// CHECK-NEXT: return %[[RESULT]] : !tvm_ffi.any
+func.func @cast_tensor(%tensor: !torch.vtensor<[4],f32>)
+    -> !torch.union<vtensor<[4],f32>, any> {
+  %result = torchext.cast %tensor
+      : !torch.vtensor<[4],f32>
+      -> !torch.union<vtensor<[4],f32>, any>
+  return %result : !torch.union<vtensor<[4],f32>, any>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @cast_dtype(
+// CHECK-SAME: %[[DTYPE:[a-zA-Z0-9_]+]]: !tvm_ffi.dtype)
+// CHECK-SAME: -> !tvm_ffi.any {
+// CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = tvm_ffi.cast %[[DTYPE]] : !tvm_ffi.dtype -> !tvm_ffi.any
+func.func @cast_dtype(%dtype: !torchext.dtype)
+    -> !torch.any {
+  %result = torchext.cast %dtype
+      : !torchext.dtype
+      -> !torch.any
+  return %result : !torch.any
+}
+
+// -----
+
+// CHECK-LABEL: func.func @cast_precise_union(
+// CHECK-SAME: %[[INT:[a-zA-Z0-9_]+]]: !tvm_ffi.int)
+// CHECK-SAME: -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.float> {
+// CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = tvm_ffi.cast %[[INT]] : !tvm_ffi.int -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.float>
+func.func @cast_precise_union(%value: !torch.int)
+    -> !torch.union<int, float> {
+  %result = torchext.cast %value
+      : !torch.int -> !torch.union<int, float>
+  return %result : !torch.union<int, float>
+}
+
+// -----
+
 // TorchExt dtype values are already represented by TVM FFI dtypes when the
 // Torch-to-TVMFFI conversion reaches a function boundary.
 // CHECK-LABEL: func.func @dtype_identity(
@@ -20,7 +62,7 @@ func.func @dtype_identity(%arg0: !torchext.dtype) -> !torchext.dtype {
 // CHECK-SAME: %[[DTYPE:[a-zA-Z0-9_]+]]: !tvm_ffi.dtype) -> !tvm_ffi.int {
 // CHECK: %[[FUNC:[a-zA-Z0-9_]+]], %[[GET_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.runtime.tvm_ffi_to_torch_type" : !tvm_ffi.function, i1
 // CHECK-NEXT: cf.assert %[[GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed for trident.runtime.tvm_ffi_to_torch_type"
-// CHECK-NEXT: %[[TYPE:[a-zA-Z0-9_]+]], %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%[[DTYPE]]) : (!tvm_ffi.dtype) -> !tvm_ffi.int, i1
+// CHECK: %[[TYPE:[a-zA-Z0-9_]+]], %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%[[DTYPE]]) : (!tvm_ffi.dtype) -> !tvm_ffi.int, i1
 // CHECK-NEXT: cf.assert %[[CALL_SUCCESS]], "TVMFFIFunctionCall failed for trident.runtime.tvm_ffi_to_torch_type"
 // CHECK: return %[[TYPE]] : !tvm_ffi.int
 func.func @dtype_to_torch_type(%dtype: !torchext.dtype) -> !torch.int {

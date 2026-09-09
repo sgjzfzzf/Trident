@@ -8,6 +8,38 @@
 // RUN: trident-core-opt %s -split-input-file -verify-diagnostics
 
 module {
+  func.func @cast_to_incompatible_union(%value: !torch.int) {
+    // expected-error@+1 {{'torchext.cast' op operand type '!torch.int' and result type '!torch.union<float, none>' are cast incompatible}}
+    %result = torchext.cast %value
+        : !torch.int
+        -> !torch.union<float, none>
+    func.return
+  }
+}
+
+// -----
+
+module {
+  func.func @cast_rejects_tvm_ffi_operand(%value: !tvm_ffi.int) {
+    // expected-error@+1 {{'torchext.cast' op operand #0 must be Torch or TorchExt value accepted by torchext.cast, but got '!tvm_ffi.int'}}
+    %result = "torchext.cast"(%value) : (!tvm_ffi.int) -> !torch.any
+    func.return
+  }
+}
+
+// -----
+
+module {
+  func.func @cast_rejects_tvm_ffi_result(%value: !torch.int) {
+    // expected-error@+1 {{'torchext.cast' op result #0 must be Torch Any or Union value produced by torchext.cast, but got '!tvm_ffi.any'}}
+    %result = "torchext.cast"(%value) : (!torch.int) -> !tvm_ffi.any
+    func.return
+  }
+}
+
+// -----
+
+module {
   func.func @specializations_size(%tensor: !torch.vtensor<[4],f32>, %value: !torch.int) {
     %one = arith.constant 1 : i64
     // expected-error@+1 {{'torchext.trident_kernel_launch' op specializations and kernel operands must have the same size}}

@@ -11,6 +11,17 @@
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.td"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.td"
 
+Pattern AtenAddFloat with benefit(1) {
+  let root = op<torch.aten.add.float>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_f64>(a) -> (type<"f64">);
+    let nativeB = op<torch_c.to_f64>(b) -> (type<"f64">);
+    let nativeResult = op<arith.addf>(nativeA, nativeB) -> (type<"f64">);
+    replace root with op<torch_c.from_f64>(nativeResult) -> (types);
+  };
+}
+
 Pattern AtenAddInt with benefit(1) {
   let root = op<torch.aten.add.int>(a: Value, b: Value) -> (types: TypeRange);
   rewrite root with {
@@ -21,27 +32,6 @@ Pattern AtenAddInt with benefit(1) {
   };
 }
 
-Pattern AtenFloordivInt with benefit(1) {
-  let root = op<torch.aten.floordiv.int>(a: Value, b: Value)
-      -> (types: TypeRange);
-  rewrite root with {
-    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
-    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
-    let nativeResult =
-        op<arith.floordivsi>(nativeA, nativeB) -> (type<"i64">);
-    replace root with op<torch_c.from_i64>(nativeResult) -> (types);
-  };
-}
-
-Pattern AtenIntBool with benefit(1) {
-  let root = op<torch.aten.Int.bool>(a: Value) -> (types: TypeRange);
-  rewrite root with {
-    let nativeBool = op<torch_c.to_i1>(a) -> (type<"i1">);
-    let nativeInt = op<arith.extui>(nativeBool) -> (type<"i64">);
-    replace root with op<torch_c.from_i64>(nativeInt) -> (types);
-  };
-}
-
 Pattern AtenAndBool with benefit(1) {
   let root = op<torch.aten.__and__.bool>(a: Value, b: Value)
       -> (types: TypeRange);
@@ -49,6 +39,43 @@ Pattern AtenAndBool with benefit(1) {
     let nativeA = op<torch_c.to_i1>(a) -> (type<"i1">);
     let nativeB = op<torch_c.to_i1>(b) -> (type<"i1">);
     let nativeResult = op<arith.andi>(nativeA, nativeB) -> (type<"i1">);
+    replace root with op<torch_c.from_i1>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenDivFloat with benefit(1) {
+  let root = op<torch.aten.div.float>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_f64>(a) -> (type<"f64">);
+    let nativeB = op<torch_c.to_f64>(b) -> (type<"f64">);
+    let nativeResult = op<arith.divf>(nativeA, nativeB) -> (type<"f64">);
+    replace root with op<torch_c.from_f64>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenDivInt with benefit(1) {
+  let root = op<torch.aten.div.int>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
+    let floatA = op<arith.sitofp>(nativeA) -> (type<"f64">);
+    let floatB = op<arith.sitofp>(nativeB) -> (type<"f64">);
+    let nativeResult = op<arith.divf>(floatA, floatB) -> (type<"f64">);
+    replace root with op<torch_c.from_f64>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenEqFloat with benefit(1) {
+  let root = op<torch.aten.eq.float>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_f64>(a) -> (type<"f64">);
+    let nativeB = op<torch_c.to_f64>(b) -> (type<"f64">);
+    let nativeResult = op<arith.cmpf>(nativeA, nativeB) {
+      predicate = attr<"1 : i64">
+    } -> (type<"i1">);
     replace root with op<torch_c.from_i1>(nativeResult) -> (types);
   };
 }
@@ -66,13 +93,76 @@ Pattern AtenEqInt with benefit(1) {
   };
 }
 
-Pattern AtenMulInt with benefit(1) {
-  let root = op<torch.aten.mul.int>(a: Value, b: Value) -> (types: TypeRange);
+Pattern AtenFloordivInt with benefit(1) {
+  let root = op<torch.aten.floordiv.int>(a: Value, b: Value)
+      -> (types: TypeRange);
   rewrite root with {
     let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
     let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
-    let nativeResult = op<arith.muli>(nativeA, nativeB) -> (type<"i64">);
+    let nativeResult =
+        op<arith.floordivsi>(nativeA, nativeB) -> (type<"i64">);
     replace root with op<torch_c.from_i64>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenGeFloat with benefit(1) {
+  let root = op<torch.aten.ge.float>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_f64>(a) -> (type<"f64">);
+    let nativeB = op<torch_c.to_f64>(b) -> (type<"f64">);
+    let nativeResult = op<arith.cmpf>(nativeA, nativeB) {
+      predicate = attr<"3 : i64">
+    } -> (type<"i1">);
+    replace root with op<torch_c.from_i1>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenGeInt with benefit(1) {
+  let root = op<torch.aten.ge.int>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
+    let nativeResult = op<arith.cmpi>(nativeA, nativeB) {
+      predicate = attr<"5 : i64">
+    } -> (type<"i1">);
+    replace root with op<torch_c.from_i1>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenGtFloat with benefit(1) {
+  let root = op<torch.aten.gt.float>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_f64>(a) -> (type<"f64">);
+    let nativeB = op<torch_c.to_f64>(b) -> (type<"f64">);
+    let nativeResult = op<arith.cmpf>(nativeA, nativeB) {
+      predicate = attr<"2 : i64">
+    } -> (type<"i1">);
+    replace root with op<torch_c.from_i1>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenGtInt with benefit(1) {
+  let root = op<torch.aten.gt.int>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
+    let nativeResult = op<arith.cmpi>(nativeA, nativeB) {
+      predicate = attr<"4 : i64">
+    } -> (type<"i1">);
+    replace root with op<torch_c.from_i1>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenIntBool with benefit(1) {
+  let root = op<torch.aten.Int.bool>(a: Value) -> (types: TypeRange);
+  rewrite root with {
+    let nativeBool = op<torch_c.to_i1>(a) -> (type<"i1">);
+    let nativeInt = op<arith.extui>(nativeBool) -> (type<"i64">);
+    replace root with op<torch_c.from_i64>(nativeInt) -> (types);
   };
 }
 
@@ -86,6 +176,87 @@ Pattern AtenLeInt with benefit(1) {
       predicate = attr<"3 : i64">
     } -> (type<"i1">);
     replace root with op<torch_c.from_i1>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenLtFloat with benefit(1) {
+  let root = op<torch.aten.lt.float>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_f64>(a) -> (type<"f64">);
+    let nativeB = op<torch_c.to_f64>(b) -> (type<"f64">);
+    let nativeResult = op<arith.cmpf>(nativeA, nativeB) {
+      predicate = attr<"4 : i64">
+    } -> (type<"i1">);
+    replace root with op<torch_c.from_i1>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenLtInt with benefit(1) {
+  let root = op<torch.aten.lt.int>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
+    let nativeResult = op<arith.cmpi>(nativeA, nativeB) {
+      predicate = attr<"2 : i64">
+    } -> (type<"i1">);
+    replace root with op<torch_c.from_i1>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenMulFloat with benefit(1) {
+  let root = op<torch.aten.mul.float>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_f64>(a) -> (type<"f64">);
+    let nativeB = op<torch_c.to_f64>(b) -> (type<"f64">);
+    let nativeResult = op<arith.mulf>(nativeA, nativeB) -> (type<"f64">);
+    replace root with op<torch_c.from_f64>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenMulInt with benefit(1) {
+  let root = op<torch.aten.mul.int>(a: Value, b: Value) -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
+    let nativeResult = op<arith.muli>(nativeA, nativeB) -> (type<"i64">);
+    replace root with op<torch_c.from_i64>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenNeInt with benefit(1) {
+  let root = op<torch.aten.ne.int>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
+    let nativeResult = op<arith.cmpi>(nativeA, nativeB) {
+      predicate = attr<"1 : i64">
+    } -> (type<"i1">);
+    replace root with op<torch_c.from_i1>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenNegFloat with benefit(1) {
+  let root = op<torch.aten.neg.float>(a: Value) -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_f64>(a) -> (type<"f64">);
+    let nativeResult = op<arith.negf>(nativeA) -> (type<"f64">);
+    replace root with op<torch_c.from_f64>(nativeResult) -> (types);
+  };
+}
+
+Pattern AtenNegInt with benefit(1) {
+  let root = op<torch.aten.neg.int>(a: Value) -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let zero = op<arith.constant> {
+      value = attr<"0 : i64">
+    } -> (type<"i64">);
+    let nativeResult = op<arith.subi>(zero, nativeA) -> (type<"i64">);
+    replace root with op<torch_c.from_i64>(nativeResult) -> (types);
   };
 }
 
@@ -113,6 +284,19 @@ Pattern AtenOrBool with benefit(1) {
   };
 }
 
+Pattern AtenRemainderInt with benefit(1) {
+  let root = op<torch.aten.remainder.int>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_i64>(a) -> (type<"i64">);
+    let nativeB = op<torch_c.to_i64>(b) -> (type<"i64">);
+    let quotient = op<arith.floordivsi>(nativeA, nativeB) -> (type<"i64">);
+    let product = op<arith.muli>(quotient, nativeB) -> (type<"i64">);
+    let nativeResult = op<arith.subi>(nativeA, product) -> (type<"i64">);
+    replace root with op<torch_c.from_i64>(nativeResult) -> (types);
+  };
+}
+
 Pattern AtenSizeInt with benefit(1) {
   let root = op<torch.aten.size.int>(self: Value, dim: Value)
       -> (types: TypeRange);
@@ -121,6 +305,17 @@ Pattern AtenSizeInt with benefit(1) {
     let nativeSize =
         op<torchext.tensor.size>(self, nativeDim) -> (type<"i64">);
     replace root with op<torch_c.from_i64>(nativeSize) -> (types);
+  };
+}
+
+Pattern AtenSubFloat with benefit(1) {
+  let root = op<torch.aten.sub.float>(a: Value, b: Value)
+      -> (types: TypeRange);
+  rewrite root with {
+    let nativeA = op<torch_c.to_f64>(a) -> (type<"f64">);
+    let nativeB = op<torch_c.to_f64>(b) -> (type<"f64">);
+    let nativeResult = op<arith.subf>(nativeA, nativeB) -> (type<"f64">);
+    replace root with op<torch_c.from_f64>(nativeResult) -> (types);
   };
 }
 

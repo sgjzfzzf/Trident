@@ -7,6 +7,32 @@
 
 // RUN: trident-core-opt %s -split-input-file | FileCheck %s
 
+// CHECK-LABEL: func.func @cast_tensor(
+// CHECK-SAME: %[[TENSOR:[a-zA-Z0-9_]+]]: !torch.vtensor<[4],f32>)
+// CHECK-SAME: -> !torch.union<vtensor<[4],f32>, any> {
+// CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = torchext.cast %[[TENSOR]] : !torch.vtensor<[4],f32> -> !torch.union<vtensor<[4],f32>, any>
+// CHECK-NEXT: return %[[RESULT]] : !torch.union<vtensor<[4],f32>, any>
+func.func @cast_tensor(%tensor: !torch.vtensor<[4],f32>)
+    -> !torch.union<vtensor<[4],f32>, any> {
+  %result = torchext.cast %tensor
+      : !torch.vtensor<[4],f32>
+      -> !torch.union<vtensor<[4],f32>, any>
+  return %result : !torch.union<vtensor<[4],f32>, any>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @cast_unknown(
+// CHECK-SAME: %[[VALUE:[a-zA-Z0-9_]+]]: !torch.number) -> !torch.any {
+// CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = torchext.cast %[[VALUE]] : !torch.number -> !torch.any
+// CHECK-NEXT: return %[[RESULT]] : !torch.any
+func.func @cast_unknown(%value: !torch.number) -> !torch.any {
+  %result = torchext.cast %value : !torch.number -> !torch.any
+  return %result : !torch.any
+}
+
+// -----
+
 // CHECK-LABEL: func.func @constant_dtype() -> !torchext.dtype {
 // CHECK-NEXT: %[[DTYPE:[a-zA-Z0-9_]+]] = torchext.constant.dtype #torchext.float32
 // CHECK-NEXT: return %[[DTYPE]] : !torchext.dtype

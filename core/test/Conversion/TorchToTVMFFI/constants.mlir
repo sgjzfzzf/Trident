@@ -23,7 +23,7 @@ func.func @constant_dtype() -> !torchext.dtype {
 // CHECK: %[[I1:[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 9
 // CHECK: %[[FUNCTION:[a-zA-Z0-9_]+]], %[[GET_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "ffi.Array" : !tvm_ffi.function, i1
 // CHECK-NEXT: cf.assert %[[GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed for ffi.Array"
-// CHECK-NEXT: %[[ARRAY:[a-zA-Z0-9_]+]], %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNCTION]](%[[I0]], %[[I1]]) : (!tvm_ffi.int, !tvm_ffi.int) -> !tvm_ffi.array, i1
+// CHECK: %[[ARRAY:[a-zA-Z0-9_]+]], %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNCTION]](%[[I0]], %[[I1]]) : (!tvm_ffi.int, !tvm_ffi.int) -> !tvm_ffi.array, i1
 // CHECK-NEXT: cf.assert %[[CALL_SUCCESS]], "TVMFFIFunctionCall failed for ffi.Array"
 // CHECK: return %[[ARRAY]] : !tvm_ffi.array
 func.func @constants() -> !torch.list<int> {

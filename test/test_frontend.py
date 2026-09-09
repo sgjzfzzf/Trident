@@ -54,6 +54,10 @@ class FrontendTest(TridentTestCase):
         second = create_arange()
 
         self.assertEqual(len(create_arange._sub_modules), 1)
+        wrapper_module = f"{create_arange._sub_modules[0]}"
+        self.assertIn("torchext.cast", wrapper_module)
+        self.assertIn("-> !tvm_ffi.any", wrapper_module)
+        self.assertNotIn("!torch.union<", wrapper_module)
         self.assertIsInstance(first, torch.Tensor)
         self.assertIsInstance(second, torch.Tensor)
         torch.testing.assert_close(first, expected)

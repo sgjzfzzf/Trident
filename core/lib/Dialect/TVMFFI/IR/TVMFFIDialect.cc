@@ -36,7 +36,7 @@
 #include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/InliningUtils.h>
 #include <string>
-#include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
+#include <torch-mlir/Dialect/Torch/IR/TorchDialect.h> // NOLINT(misc-include-cleaner)
 
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.cpp.inc"
 
@@ -119,10 +119,9 @@ bool CastOp::areCastCompatible(mlir::TypeRange inputs,
   mlir::Type const input = inputs[0];
   mlir::Type output = outputs[0];
   return mlir::isa<AnyType, UnionType>(output) &&
-         (mlir::isa<mlir::torch::Torch::TorchDialect>(input.getDialect()) ||
-          (mlir::isa<TVMFFIABIType>(input) &&
-           (mlir::isa<AnyType>(output) ||
-            mlir::cast<UnionType>(output).contains(input))));
+         mlir::isa<TVMFFIABIType>(input) &&
+         (mlir::isa<AnyType>(output) ||
+          mlir::cast<UnionType>(output).contains(input));
 }
 
 // FuncOp custom assembly format.

@@ -7,6 +7,34 @@
 
 // RUN: trident-core-opt %s -split-input-file -verify-diagnostics
 
+func.func @cast_rejects_incompatible_union(%arg: !tvm_ffi.int) {
+  // expected-error@+1 {{'tvm_ffi.cast' op operand type '!tvm_ffi.int' and result type '!tvm_ffi.union<!tvm_ffi.float, !tvm_ffi.exception>' are cast incompatible}}
+  %result = tvm_ffi.cast %arg
+      : !tvm_ffi.int
+      -> !tvm_ffi.union<!tvm_ffi.float, !tvm_ffi.exception>
+  return
+}
+
+// -----
+
+func.func @cast_rejects_torch_operand(%arg: !torch.int) {
+  // expected-error@+1 {{'tvm_ffi.cast' op operand #0 must be TVM FFI value with a TVMFFIAny ABI representation, but got '!torch.int'}}
+  %result = "tvm_ffi.cast"(%arg)
+      : (!torch.int) -> !tvm_ffi.any
+  return
+}
+
+// -----
+
+func.func @cast_rejects_concrete_result(%arg: !tvm_ffi.int) {
+  // expected-error@+1 {{'tvm_ffi.cast' op result #0 must be widened TVM FFI any or union value, but got '!tvm_ffi.int'}}
+  %result = "tvm_ffi.cast"(%arg)
+      : (!tvm_ffi.int) -> !tvm_ffi.int
+  return
+}
+
+// -----
+
 // expected-error@+1 {{union requires at least two member types}}
 func.func @single_member_union(%arg: !tvm_ffi.union<!tvm_ffi.int>)
 

@@ -35,19 +35,6 @@ TorchOperationFn: TypeAlias = Callable[[ir.Value, ir.Value], ir.Value]
 TorchOperationKey: TypeAlias = type[ast.operator | ast.cmpop] | str
 
 
-def _torch_int_operator(
-    name: str,
-    lhs: ir.Value,
-    rhs: ir.Value,
-) -> ir.Value:
-    return torch_d.operator(
-        [TorchIntType.get(lhs.context)],
-        name,
-        [lhs, rhs],
-        0,
-    )
-
-
 class _SkipGuard(Exception):
     def __init__(self, result: bool):
         super().__init__(result)
@@ -73,7 +60,12 @@ class ASTVisitor(ast.NodeVisitor):
         ast.FloorDiv: (torch_d.aten_floordiv_int, None),
         ast.Mod: (torch_d.aten_remainder_int, None),
         ast.BitOr: (
-            lambda lhs, rhs: _torch_int_operator("torch.aten.__or__.Scalar", lhs, rhs),
+            lambda lhs, rhs: torch_c.from_i64(
+                arith.ori(
+                    torch_c.to_i64(lhs, loc=lhs.owner.location),
+                    torch_c.to_i64(rhs, loc=rhs.owner.location),
+                )
+            ),
             None,
         ),
         ast.Eq: (torch_d.aten_eq_int, torch_d.aten_eq_float),

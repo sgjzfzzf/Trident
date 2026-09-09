@@ -118,15 +118,24 @@ public:
       mlir::FunctionType const functionType = function.getFunctionType();
       if (functionType.getNumResults() != 1) {
         return op.emitOpError(
-            "enclosing function must have one union result to report "
+            "enclosing function must have one result to report "
             "specialization failure");
       }
-      auto resultUnion =
-          mlir::dyn_cast<tvm_ffi::UnionType>(functionType.getResult(0));
-      if (!resultUnion || !resultUnion.contains(tvm_ffi::ExceptionType::get(
-                              function.getContext()))) {
+      mlir::Type const resultType = functionType.getResult(0);
+      bool const canReportFailure =
+          llvm::TypeSwitch<mlir::Type, bool>(resultType)
+              .Case<tvm_ffi::AnyType>(
+                  [](tvm_ffi::AnyType) -> bool { return true; })
+              .Case<tvm_ffi::UnionType>(
+                  [&](tvm_ffi::UnionType resultUnion) -> bool {
+                    return resultUnion.contains(
+                        tvm_ffi::ExceptionType::get(function.getContext()));
+                  })
+              .Default([](mlir::Type) -> bool { return false; });
+      if (!canReportFailure) {
         return op.emitOpError(
-            "enclosing function result must contain !tvm_ffi.exception");
+            "enclosing function result must be !tvm_ffi.any or contain "
+            "!tvm_ffi.exception");
       }
 
       mlir::Block *launchBlock = op->getBlock();
@@ -142,8 +151,8 @@ public:
       mlir::Value const exception = tvm_ffi::ExceptionOp::create(
           rewriter, loc, tvm_ffi::ExceptionType::get(function.getContext()),
           "GuardMatch");
-      mlir::Value const failureResult = tvm_ffi::CastOp::create(
-          rewriter, loc, functionType.getResult(0), exception);
+      mlir::Value const failureResult =
+          tvm_ffi::CastOp::create(rewriter, loc, resultType, exception);
       tvm_ffi::ReturnOp::create(rewriter, loc, failureResult);
       rewriter.setInsertionPoint(op);
     }

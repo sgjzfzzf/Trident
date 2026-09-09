@@ -26,6 +26,7 @@ from trident.core import (
     register_all_passes,
 )
 from trident.core.dialects import (
+    builtin,
     func,
     llvm,
     torchext,
@@ -733,21 +734,21 @@ class TridentGraphModule:
         param_types = input_builder.input_types
 
         with self.ctx:
-            # Guarded wrappers have one TVM FFI ABI result.  A main function
-            # may still have multiple semantic results; those are packed into
-            # a TVM FFI array in the guarded success branch below.
+            # A main function may have multiple semantic results; those are
+            # packed into a Torch tuple before the wrapper widens every normal
+            # result to Torch Any.
             normal_result_type: ir.Type
             if len(main_func.type.results) == 1:
-                [result] = main_func.type.results
-                normal_result_type = _convert_torch_type_to_tvm_ffi_type(result)
+                [normal_result_type] = main_func.type.results
             else:
-                normal_result_type = ir.Type.parse("!tvm_ffi.array", context=self.ctx)
-            wrapper_result_type = ir.Type.parse(
-                f"!tvm_ffi.union<{normal_result_type}, !tvm_ffi.exception>",
-                context=self.ctx,
-            )
+                normal_result_type = torch_d.TorchTupleType.get(
+                    main_func.type.results,
+                    context=self.ctx,
+                )
+            wrapper_result_type = torch_d.TorchAnyType.get(self.ctx)
+            abi_result_type = _convert_torch_type_to_tvm_ffi_type(wrapper_result_type)
             ffi_type: ir.FunctionType = ir.FunctionType.get(
-                param_types, [wrapper_result_type]
+                param_types, [abi_result_type]
             )
 
         tvm_ffi_name: Final[str] = f"{self.fn.__name__}_{index}"
@@ -804,24 +805,19 @@ class TridentGraphModule:
                     if isinstance(call_result, ir.Value):
                         result = call_result
                     else:
-                        element_types = ", ".join(
-                            f"{element.type}".removeprefix("!torch.")
-                            for element in call_result
-                        )
-                        tuple_type = ir.Type.parse(
-                            f"!torch.tuple<{element_types}>",
-                            context=self.ctx,
-                        )
                         result = torch_d.prim_TupleConstruct(
-                            tuple_type,
+                            normal_result_type,
                             call_result,
                         )
-                    normal_value = tvm_ffi_d.cast(wrapper_result_type, result)
-                    tvm_ffi_d.return_([normal_value])
+                    normal_value = torchext.cast(wrapper_result_type, result)
+                    normal_abi_value = builtin.unrealized_conversion_cast(
+                        [abi_result_type], [normal_value]
+                    )
+                    tvm_ffi_d.return_([normal_abi_value])
 
                 with ir.InsertionPoint(failure_block):
                     exception = tvm_ffi_d.exception("GuardMatch")
-                    error_value = tvm_ffi_d.cast(wrapper_result_type, exception)
+                    error_value = tvm_ffi_d.cast(abi_result_type, exception)
                     tvm_ffi_d.return_([error_value])
 
         self._sub_modules.append(module)

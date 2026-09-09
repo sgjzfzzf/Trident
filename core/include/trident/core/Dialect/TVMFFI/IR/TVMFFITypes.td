@@ -125,6 +125,9 @@ def AnyTVMFFIAnyABIType : AnyTypeOf<[
   TVMFFI_RawStrType, TVMFFI_SmallStrType, TVMFFI_StrType, TVMFFI_TensorType,
   TVMFFI_UnionType
 ], "TVM FFI value with a TVMFFIAny ABI representation">;
+def AnyTVMFFICastResultType : AnyTypeOf<[
+  TVMFFI_AnyType, TVMFFI_UnionType
+], "widened TVM FFI any or union value">;
 def AnyTVMFFIGetResultType : AnyTypeOf<[
   AnyType, TVMFFI_ObjectType
 ], "TVM FFI get result">;

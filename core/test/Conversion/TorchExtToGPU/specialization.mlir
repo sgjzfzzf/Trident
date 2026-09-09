@@ -34,8 +34,9 @@
 // CHECK-SAME:    args(%[[LAUNCH_DATA]] : !llvm.ptr
 // CHECK:         tvm_ffi.return
 // CHECK:       [[FAILURE]]:
-// CHECK:         tvm_ffi.exception "GuardMatch"
-// CHECK:         tvm_ffi.return
+// CHECK:         %[[EXCEPTION:[a-zA-Z0-9_]+]] = tvm_ffi.exception "GuardMatch" : !tvm_ffi.exception
+// CHECK-NEXT:    %[[FAILURE_RESULT:[a-zA-Z0-9_]+]] = tvm_ffi.cast %[[EXCEPTION]] : !tvm_ffi.exception -> !tvm_ffi.any
+// CHECK-NEXT:    tvm_ffi.return %[[FAILURE_RESULT]] : !tvm_ffi.any
 // CHECK-NOT:     torchext.trident_kernel_launch
 
 module attributes {gpu.container_module} {
@@ -55,11 +56,11 @@ module attributes {gpu.container_module} {
 
   tvm_ffi.func @validate(%tensor: !torch.vtensor<[4],f32>, %value: !torch.float,
       %specialized: !torch.int)
-      -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception> {
+      -> !tvm_ffi.any {
     %result = func.call @launch(%tensor, %specialized, %value)
         : (!torch.vtensor<[4],f32>, !torch.int, !torch.float) -> !tvm_ffi.int
-    %success = tvm_ffi.cast %result : !tvm_ffi.int -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception>
-    tvm_ffi.return %success : !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.exception>
+    %success = tvm_ffi.cast %result : !tvm_ffi.int -> !tvm_ffi.any
+    tvm_ffi.return %success : !tvm_ffi.any
   }
 }
 

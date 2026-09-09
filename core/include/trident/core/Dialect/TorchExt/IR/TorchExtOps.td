@@ -32,6 +32,14 @@ class TorchExt_TensorIndexedMetadataOp<string mnemonic>
   let assemblyFormat = "$tensor `[` $index `]` attr-dict `:` type($tensor)";
 }
 
+def TorchExt_CastInputType
+    : AnyTypeOf<[AnyTorchType, TorchExt_DTypeType],
+                "Torch or TorchExt value accepted by torchext.cast">;
+
+def TorchExt_CastResultType
+    : AnyTypeOf<[Torch_AnyType, Torch_UnionType],
+                "Torch Any or Union value produced by torchext.cast">;
+
 def TorchExt_GetOperandType
     : AnyTypeOf<[
            Torch_BoolType, Torch_FloatType, Torch_IntType, TVMFFI_BoolType,
@@ -50,6 +58,15 @@ def TorchExt_KernelOperandType
       Torch_TupleType, AnyTorchTensorType
     ],
                 "Torch scalar, string, or tensor accepted by a Triton kernel launch">;
+
+def TorchExt_CastOp
+    : TorchExt_Op<"cast", [Pure,
+        DeclareOpInterfaceMethods<CastOpInterface>]> {
+  let summary = "Widen a Torch frontend value to Torch Any or Union";
+  let arguments = (ins TorchExt_CastInputType:$value);
+  let results = (outs TorchExt_CastResultType:$result);
+  let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
+}
 
 def TorchExt_ConvertOp
     : TorchExt_Op<"convert", [Pure,

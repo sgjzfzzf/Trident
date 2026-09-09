@@ -26,7 +26,7 @@
 // CHECK: %[[DEVICE_TYPE:[a-zA-Z0-9_]+]], %[[DEVICE_INDEX:[a-zA-Z0-9_]+]] = tvm_ffi.tensor.device %[[TENSOR]] : !tvm_ffi.tensor
 // CHECK: %[[LENGTH_FUNCTION:[a-zA-Z0-9_]+]], %[[LENGTH_GET_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "ffi.ArraySize" : !tvm_ffi.function, i1
 // CHECK-NEXT: cf.assert %[[LENGTH_GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed for ffi.ArraySize"
-// CHECK-NEXT: %[[LENGTH_VALUE:[a-zA-Z0-9_]+]], %[[LENGTH_CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[LENGTH_FUNCTION]](%[[ARRAY]]) : (!tvm_ffi.array) -> !tvm_ffi.int, i1
+// CHECK: %[[LENGTH_VALUE:[a-zA-Z0-9_]+]], %[[LENGTH_CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[LENGTH_FUNCTION]](%[[ARRAY]]) : (!tvm_ffi.array) -> !tvm_ffi.int, i1
 // CHECK-NEXT: cf.assert %[[LENGTH_CALL_SUCCESS]], "TVMFFIFunctionCall failed for ffi.ArraySize"
 // CHECK-NEXT: %[[LENGTH:[a-zA-Z0-9_]+]] = tvm_ffi.get %[[LENGTH_VALUE]] : !tvm_ffi.int -> i64
 // CHECK: %[[VALUES_EQUAL:[a-zA-Z0-9_]+]] = tvm_ffi.eq %[[LHS]], %[[RHS]] : !tvm_ffi.bool, !tvm_ffi.bool

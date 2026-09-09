@@ -90,10 +90,28 @@ For PDLL-based changes:
 ## atengen Auto-Wrapping
 
 Most ATen operators are automatically wrapped by the atengen codegen tool at build
-time (`ffi/lib/aten/atengen.py`). atengen queries PyTorch's JIT
-type system via `torch._C._jit_get_all_schemas()` and generates C++ wrappers that
-register `trident.aten.*` TVM FFI global functions with proper IValue ↔ TVMFFIAny
-conversion.
+time (`ffi/lib/aten/atengen.py`). atengen enumerates PyTorch's dispatcher and
+generates C++ wrappers that register `trident.aten.*` TVM FFI global functions
+with proper IValue ↔ TVMFFIAny conversion.
+
+The implementation enumerates `torch._C._dispatch_get_all_op_names()`, then
+looks up the corresponding schemas. A schema returned by
+`torch._C._jit_get_all_schemas()` alone does not prove that an operator has a
+dispatcher entry or an atengen wrapper. This distinction is especially
+important for scalar overloads used by Dynamo guards. Every ATen operation
+emitted by `python/trident/guards/ast.py` must either appear in the generated
+runtime registry or have a specialized lowering before generic ATen dispatch.
+
+Frontend code that widens a Torch result into a TVM FFI Any or Union must emit
+`torchext.cast` with Torch/TorchExt input and Torch Any/Union result types. The
+Torch-to-TVMFFI conversion maps both sides and turns it into `tvm_ffi.cast`.
+Generated guarded wrappers use `!torch.any` for their frontend result and
+`!tvm_ffi.any` for their ABI result. Guard failures create the exception only
+on the TVM FFI side and widen it to ABI Any; Torch/TorchExt types do not model
+the exception.
+Do not put TVM FFI types on `torchext.cast`, and do not construct
+`tvm_ffi.cast` with a Torch-typed operand; the latter accepts only TVM FFI ABI
+values.
 
 For a standard ATen operator, **no manual C++ changes are needed**:
 - The MLIR lowering (`Aten.cc` -> `ConvertAtenDispatcherOp`) already handles all
@@ -198,6 +216,9 @@ Suspect:
 Check:
 - Lowered code patterns asserted by `FileCheck`
 - Runtime conversion calls in generated LLVM IR path
+- Whether the global name exists in the generated atengen registry. A
+  successful `TVMFFIFunctionGetGlobal` status can still accompany a null handle;
+  checked calls assert both the status and handle before calling it.
 
 ### `@trident.jit` path recompiles too often or never stabilizes
 

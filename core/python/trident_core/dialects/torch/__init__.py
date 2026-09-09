@@ -12,6 +12,7 @@ from ..._mlir_libs._trident import (
     TorchListType,
     TorchNonValueTensorType,
     TorchTupleType,
+    TorchUnionType,
     TorchValueTensorType,
 )
 from .._torch_ops_gen import *
@@ -26,5 +27,6 @@ __all__ = [
     "TorchListType",
     "TorchNonValueTensorType",
     "TorchTupleType",
+    "TorchUnionType",
     "TorchValueTensorType",
 ]

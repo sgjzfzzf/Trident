@@ -6,8 +6,9 @@
 from __future__ import annotations
 
 import torch
-from base import AtenOpTest
 from typing_extensions import override
+
+from test.base import AtenOpTest
 
 
 class CloneTest(AtenOpTest):
@@ -26,19 +27,14 @@ class CloneTest(AtenOpTest):
         return result
 
     def test_clone_contiguous_materializes_storage(self) -> None:
-        """Contiguous-format clone must allocate and normalize the strides."""
+        """Contiguous clone allocates independent storage with normalized strides."""
         x: torch.Tensor = self.make_transposed_input()
+        expected: torch.Tensor = x.clone(memory_format=torch.contiguous_format)
         result: torch.Tensor = self.get_ffi_func("clone")(x)
 
         torch.testing.assert_close(result, x)
         self.assertTrue(result.is_contiguous())
         self.assertNotEqual(result.data_ptr(), x.data_ptr())
-
-    def test_clone_does_not_alias_input(self) -> None:
-        """Mutating the input after clone must not modify the clone result."""
-        x: torch.Tensor = self.make_transposed_input()
-        expected: torch.Tensor = x.clone(memory_format=torch.contiguous_format)
-        result: torch.Tensor = self.get_ffi_func("clone")(x)
 
         x[0, 0] += 1.0
         torch.testing.assert_close(result, expected)

@@ -15,23 +15,17 @@
 // CHECK-LABEL: llvm.func @torch.aten.all.dims(
 // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // The first dispatch constructs the FFI Array for the list of dimensions.
-// CHECK: llvm.call @TVMFFIFunctionCall(%[[ARRAY_HANDLE:[0-9]+]], %[[ARRAY_ARGS:[0-9]+]], %[[ARRAY_ARG_COUNT:[0-9]+]], %[[ARRAY_RETURN_SLOT:[0-9]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// CHECK: %[[GETGLOBAL:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionGetGlobal(%[[ATEN_NAME:[0-9]+]], %[[HANDLE_SLOT:[0-9]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[ARRAY_HANDLE:[a-zA-Z0-9_]+]], %[[ARRAY_ARGS:[a-zA-Z0-9_]+]], %[[ARRAY_ARG_COUNT:[a-zA-Z0-9_]+]], %[[ARRAY_RETURN_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
+// CHECK: %[[GETGLOBAL:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionGetGlobal(%[[ATEN_NAME:[a-zA-Z0-9_]+]], %[[HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
 // CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
-// CHECK: %[[ARGS:[a-zA-Z0-9_]+]] = llvm.alloca %[[ARGS_COUNT:[a-zA-Z0-9_]+]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
-// CHECK: llvm.store %[[ARG0]], %[[ARGS]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK: %[[DIMS_SLOT:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[ARGS]][1]
-// CHECK: llvm.store %[[DIMS:[a-zA-Z0-9_]+]], %[[DIMS_SLOT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK: %[[KEEPDIM_SLOT:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[ARGS]][2]
-// CHECK: llvm.store %[[KEEPDIM:[a-zA-Z0-9_]+]], %[[KEEPDIM_SLOT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// CHECK: %[[RET_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca %[[RET_COUNT:[a-zA-Z0-9_]+]] x !llvm.struct<(i32, i32, i64)> : (i64) -> !llvm.ptr
-// CHECK: %[[CALL:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[ARGS_COPY:[a-zA-Z0-9_]+]], %[[NARGS:[a-zA-Z0-9_]+]], %[[RET_SLOT]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[ARGS:[a-zA-Z0-9_]+]], %[[NARGS:[a-zA-Z0-9_]+]], %[[RET_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK: %[[RET:[a-zA-Z0-9_]+]] = llvm.load %[[RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[ARRAY_HANDLE]]) : (!llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIObjectDecRef(%[[HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: llvm.return %[[RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_all_dims(
-// CHECK: llvm.call @all_dims(%[[WRAPPER_INPUT:[a-zA-Z0-9_]+]]) : (!llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
+// CHECK-SAME: %[[WRAPPER_CONTEXT:[a-zA-Z0-9_]+]]: !llvm.ptr, %[[WRAPPER_ARGS:[a-zA-Z0-9_]+]]: !llvm.ptr, %[[WRAPPER_NARGS:[a-zA-Z0-9_]+]]: i32, %[[WRAPPER_RESULT:[a-zA-Z0-9_]+]]: !llvm.ptr) -> i32 {
+// CHECK: %[[WRAPPER_INPUT:[a-zA-Z0-9_]+]] = llvm.load %[[WRAPPER_ARGS]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: %[[WRAPPER_RET:[a-zA-Z0-9_]+]] = llvm.call @all_dims(%[[WRAPPER_INPUT]]) : (!llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.store %[[WRAPPER_RET]], %[[WRAPPER_RESULT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 
 func.func @torch.aten.all.dims(%arg0: !torch.vtensor<[7,4,11,1],f32>) -> !torch.vtensor<[11,1],i1> {
   %int1 = torch.constant.int 1

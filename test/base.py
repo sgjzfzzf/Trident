@@ -3,8 +3,9 @@
 
 """Base test class for ATen op end-to-end tests.
 
-Subclasses only need to implement ``op_name`` (e.g. ``"empty_like"``) and the
-base class handles parsing, compilation, JIT, and ``tvm_ffi.Function`` wrapping.
+Subclasses only need to implement ``op_name`` (e.g. ``"empty"``) and the base
+class handles one class-level parsing/compilation/JIT cycle plus
+``tvm_ffi.Function`` wrapping.
 """
 
 from __future__ import annotations
@@ -52,12 +53,13 @@ class AtenOpTest(TridentTestCase):
     @abstractmethod
     def op_name(cls) -> str: ...
 
-    def setUp(self) -> None:
-        if self.__class__ is AtenOpTest:
-            raise self.skipTest("AtenOpTest is an abstract base class")
+    @classmethod
+    def setUpClass(cls) -> None:
+        if cls is AtenOpTest:
+            raise unittest.SkipTest("AtenOpTest is an abstract base class")
         register_all_passes()
 
-        op: str = self.op_name()
+        op: str = cls.op_name()
         mlir_path: pathlib.Path = (
             pathlib.Path(__file__).resolve().parent.parent
             / "core"
@@ -78,10 +80,10 @@ class AtenOpTest(TridentTestCase):
             pm.run(module.operation)
 
         shared_libs: Final[list[str]] = capi_utils.find_runtime_libraries()
-        self._engine: execution_engine.ExecutionEngine = (
+        cls._engine: execution_engine.ExecutionEngine = (
             execution_engine.ExecutionEngine(module, shared_libs=shared_libs)
         )
-        self._ffi_funcs: dict[str, tvm_ffi.Function] = {}
+        cls._ffi_funcs: dict[str, tvm_ffi.Function] = {}
 
     def get_ffi_func(self, func_name: str) -> tvm_ffi.Function:
         """Return a wrapped ``tvm_ffi.Function`` by exported function name."""

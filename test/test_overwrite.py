@@ -6,8 +6,9 @@
 from __future__ import annotations
 
 import torch
-from base import AtenOpTest
 from typing_extensions import override
+
+from test.base import AtenOpTest
 
 
 class OverwriteTest(AtenOpTest):

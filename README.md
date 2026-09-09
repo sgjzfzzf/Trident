@@ -79,8 +79,9 @@ All examples compare direct Torch/Triton outputs with Trident-jitted outputs.
 python -m unittest discover -s test -p "test_*.py"
 ```
 
-Tests in `test/` validate end-to-end lowering and execution for selected ATen
-ops: `empty`, `empty_like`, `mul_scalar`, `sub`, `vtensor_literal`.
+Tests in `test/` validate frontend specialization and guards together with
+end-to-end lowering and execution for `all`, `clone`, `empty`, `empty_like`,
+`mul`, `overwrite`, `sub`, `t`, and value tensor literals.
 
 ## License
 

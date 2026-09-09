@@ -273,13 +273,10 @@ Recommendation:
 4. Only then debug `@trident.jit` dynamic specialization behavior.
 5. If failure is unclear, compare your new op with known-good patterns:
 - `core/test/Conversion/Pipeline/empty.mlir`
-- `core/test/Conversion/Pipeline/mul-scalar.mlir`
-- `core/test/Conversion/Pipeline/sub.mlir`
+- `core/test/Conversion/Pipeline/arithmetic.mlir`
 - `core/test/Conversion/Pipeline/value-tensor-literal.mlir`
 - `test/test_empty.py`
-- `test/test_empty_like.py`
-- `test/test_mul_scalar.py`
-- `test/test_sub.py`
+- `test/test_arithmetic.py`
 - `test/test_vtensor_literal.py`
 6. Prefer functional-style graph rewrites during debugging; avoid in-place tensor mutation when possible, because in-place ops can hide data-flow issues and complicate guard/cache correctness analysis.
 

@@ -141,15 +141,16 @@ tvm_ffi.func @no_wrapper() -> !torch.int {
 // Guard failures are represented as nested SCF regions.  The final pipeline
 // lowers those regions to CFG before converting to LLVM.
 // INTERMEDIATE-LABEL: func.func @__tvm_ffi_guarded(
+// INTERMEDIATE-SAME: [[CONTEXT:%[a-zA-Z0-9_]+]]: !llvm.ptr, [[ARGS:%[a-zA-Z0-9_]+]]: !llvm.ptr, [[NARGS:%[a-zA-Z0-9_]+]]: i32, [[RESULT:%[a-zA-Z0-9_]+]]: !llvm.ptr)
 // INTERMEDIATE: [[GUARD_TRUE:%[a-zA-Z0-9_]+]] = arith.constant true
-// INTERMEDIATE-NEXT: [[GUARD_INT_SLOT:%[a-zA-Z0-9_]+]] = llvm.getelementptr %arg1[0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
+// INTERMEDIATE-NEXT: [[GUARD_INT_SLOT:%[a-zA-Z0-9_]+]] = llvm.getelementptr [[ARGS]][0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
 // INTERMEDIATE-NEXT: [[GUARD_INT_ANY:%[a-zA-Z0-9_]+]] = llvm.load [[GUARD_INT_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // INTERMEDIATE-NEXT: [[GUARD_INT:%[a-zA-Z0-9_]+]] = builtin.unrealized_conversion_cast [[GUARD_INT_ANY]] : !llvm.struct<(i32, i32, i64)> to !torch.int
 // INTERMEDIATE-NEXT: [[GUARD_INT_TYPE:%[a-zA-Z0-9_]+]] = llvm.extractvalue [[GUARD_INT_ANY]][0] : !llvm.struct<(i32, i32, i64)>
 // INTERMEDIATE-NEXT: [[GUARD_INT_KIND:%[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i32) : i32
 // INTERMEDIATE-NEXT: [[GUARD_INT_VALID:%[a-zA-Z0-9_]+]] = llvm.icmp "eq" [[GUARD_INT_TYPE]], [[GUARD_INT_KIND]] : i32
 // INTERMEDIATE-NEXT: [[GUARD_AFTER_INT:%[a-zA-Z0-9_]+]] = arith.andi [[GUARD_TRUE]], [[GUARD_INT_VALID]] : i1
-// INTERMEDIATE-NEXT: [[GUARD_BOOL_SLOT:%[a-zA-Z0-9_]+]] = llvm.getelementptr %arg1[1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
+// INTERMEDIATE-NEXT: [[GUARD_BOOL_SLOT:%[a-zA-Z0-9_]+]] = llvm.getelementptr [[ARGS]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
 // INTERMEDIATE-NEXT: [[GUARD_BOOL_ANY:%[a-zA-Z0-9_]+]] = llvm.load [[GUARD_BOOL_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // INTERMEDIATE-NEXT: [[GUARD_BOOL:%[a-zA-Z0-9_]+]] = builtin.unrealized_conversion_cast [[GUARD_BOOL_ANY]] : !llvm.struct<(i32, i32, i64)> to !torch.bool
 // INTERMEDIATE-NEXT: [[GUARD_BOOL_TYPE:%[a-zA-Z0-9_]+]] = llvm.extractvalue [[GUARD_BOOL_ANY]][0] : !llvm.struct<(i32, i32, i64)>
@@ -159,10 +160,10 @@ tvm_ffi.func @no_wrapper() -> !torch.int {
 // INTERMEDIATE-NEXT: scf.if [[ALL_GUARDS_VALID]] {
 // INTERMEDIATE: [[GUARDED_RESULT:%[a-zA-Z0-9_]+]] = func.call @guarded([[GUARD_INT]], [[GUARD_BOOL]]) : (!torch.int, !torch.bool) -> !torch.int
 // INTERMEDIATE-NEXT: [[GUARDED_ABI_RESULT:%[a-zA-Z0-9_]+]] = builtin.unrealized_conversion_cast [[GUARDED_RESULT]] : !torch.int to !llvm.struct<(i32, i32, i64)>
-// INTERMEDIATE-NEXT: llvm.store [[GUARDED_ABI_RESULT]], %arg3 : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// INTERMEDIATE-NEXT: llvm.store [[GUARDED_ABI_RESULT]], [[RESULT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // INTERMEDIATE: [[GUARD_EXCEPTION_DEC_REF:%[a-zA-Z0-9_]+]] = llvm.call @TVMFFIObjectDecRef([[GUARD_EXCEPTION_HANDLE:%[a-zA-Z0-9_]+]]) : (!llvm.ptr) -> i32
 // INTERMEDIATE-NEXT: [[GUARD_FAILURE_RESULT:%[a-zA-Z0-9_]+]] = llvm.load [[GUARD_FAILURE_RESULT_SLOT:%[a-zA-Z0-9_]+]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// INTERMEDIATE-NEXT: llvm.store [[GUARD_FAILURE_RESULT]], %arg3 : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
+// INTERMEDIATE-NEXT: llvm.store [[GUARD_FAILURE_RESULT]], [[RESULT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // INTERMEDIATE-NEXT: }
 // INTERMEDIATE-NEXT: [[GUARD_STATUS:%[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
 // INTERMEDIATE-NEXT: return [[GUARD_STATUS]] : i32

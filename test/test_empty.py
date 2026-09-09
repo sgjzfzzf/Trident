@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import torch
 import tvm_ffi
-from base import AtenOpTest
 from typing_extensions import override
+
+from test.base import AtenOpTest
 
 
 class EmptyTest(AtenOpTest):
@@ -24,3 +25,10 @@ class EmptyTest(AtenOpTest):
         )
         self.assertEqual(result.shape, torch.Size([3, 4]))
         self.assertEqual(result.dtype, tvm_ffi._dtype.float32)
+
+    def test_call_empty_like(self) -> None:
+        """Call empty_like and verify output shape/dtype match input."""
+        x: torch.Tensor = torch.randn([200, 200, 26], device="cuda")
+        result: torch.Tensor = self.get_ffi_func("empty_like")(x)
+        self.assertEqual(result.shape, x.shape)
+        self.assertEqual(result.dtype, x.dtype)

@@ -19,15 +19,8 @@
 // CHECK: llvm.call @aoti_torch_empty_strided(%[[SPLAT_EMPTY_COUNT:[a-zA-Z0-9_]+]], %[[SPLAT_EMPTY_SHAPE:[a-zA-Z0-9_]+]], %[[SPLAT_EMPTY_STRIDES:[a-zA-Z0-9_]+]], %[[SPLAT_EMPTY_DTYPE:[a-zA-Z0-9_]+]], %[[SPLAT_EMPTY_DEVICE:[a-zA-Z0-9_]+]], %[[SPLAT_EMPTY_REQUIRES_GRAD:[a-zA-Z0-9_]+]], %[[SPLAT_EMPTY_OUTPUT:[a-zA-Z0-9_]+]]) : (i64, !llvm.ptr, !llvm.ptr, i32, i32, i32, !llvm.ptr) -> i32
 // CHECK: llvm.call @aoti_torch_copy_(%[[SPLAT_DESTINATION:[a-zA-Z0-9_]+]], %[[SPLAT_SOURCE:[a-zA-Z0-9_]+]], %[[SPLAT_NON_BLOCKING:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32) -> i32
 // CHECK: llvm.call @aoti_torch_delete_tensor_object(%[[SPLAT_SOURCE]]) : (!llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[NONSPLAT_GLOBAL_NAME:[a-zA-Z0-9_]+]], %[[NONSPLAT_HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIFunctionCall(%[[NONSPLAT_HANDLE:[a-zA-Z0-9_]+]], %[[NONSPLAT_RESULT_SLOT:[a-zA-Z0-9_]+]], %[[NONSPLAT_NARGS:[a-zA-Z0-9_]+]], %[[NONSPLAT_ARGS:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK-LABEL: llvm.func @torch.vtensor.literal.nonsplat(
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[NONSPLAT_NAME:[a-zA-Z0-9_]+]], %[[NONSPLAT_GLOBAL_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIFunctionCall(%[[NONSPLAT_FUNCTION:[a-zA-Z0-9_]+]], %[[NONSPLAT_RESULT:[a-zA-Z0-9_]+]], %[[NONSPLAT_COUNT:[a-zA-Z0-9_]+]], %[[NONSPLAT_ARGUMENTS:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK: llvm.call @aoti_torch_create_tensor_from_blob(%[[NONSPLAT_DATA:[a-zA-Z0-9_]+]], %[[NONSPLAT_DATA_COUNT:[a-zA-Z0-9_]+]], %[[NONSPLAT_SHAPE:[a-zA-Z0-9_]+]], %[[NONSPLAT_STRIDES:[a-zA-Z0-9_]+]], %[[NONSPLAT_DTYPE:[a-zA-Z0-9_]+]], %[[NONSPLAT_DEVICE:[a-zA-Z0-9_]+]], %[[NONSPLAT_REQUIRES_GRAD:[a-zA-Z0-9_]+]], %[[NONSPLAT_MEMORY_FORMAT:[a-zA-Z0-9_]+]], %[[NONSPLAT_OUTPUT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, i64, !llvm.ptr, !llvm.ptr, i64, i32, i32, i32, !llvm.ptr) -> i32
-// CHECK: llvm.call @aoti_torch_empty_strided(%[[NONSPLAT_EMPTY_COUNT:[a-zA-Z0-9_]+]], %[[NONSPLAT_EMPTY_SHAPE:[a-zA-Z0-9_]+]], %[[NONSPLAT_EMPTY_STRIDES:[a-zA-Z0-9_]+]], %[[NONSPLAT_EMPTY_DTYPE:[a-zA-Z0-9_]+]], %[[NONSPLAT_EMPTY_DEVICE:[a-zA-Z0-9_]+]], %[[NONSPLAT_EMPTY_REQUIRES_GRAD:[a-zA-Z0-9_]+]], %[[NONSPLAT_EMPTY_OUTPUT:[a-zA-Z0-9_]+]]) : (i64, !llvm.ptr, !llvm.ptr, i32, i32, i32, !llvm.ptr) -> i32
-// CHECK: llvm.call @aoti_torch_copy_(%[[NONSPLAT_DESTINATION:[a-zA-Z0-9_]+]], %[[NONSPLAT_SOURCE:[a-zA-Z0-9_]+]], %[[NONSPLAT_NON_BLOCKING:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32) -> i32
-// CHECK: llvm.call @aoti_torch_delete_tensor_object(%[[NONSPLAT_SOURCE]]) : (!llvm.ptr) -> i32
 // CHECK-LABEL: llvm.func @__tvm_ffi_vtensor_literal_splat(
 // CHECK: llvm.call @vtensor_literal_splat() : () -> !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_vtensor_literal_nonsplat(

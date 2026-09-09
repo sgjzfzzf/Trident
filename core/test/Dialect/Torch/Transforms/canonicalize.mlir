@@ -9,9 +9,10 @@
 
 // Canonicalization must preserve the generalized ATen operator while folding
 // ordinary operations from other dialects in the same module.
-// CHECK-LABEL: func.func @generalized_operator
+// CHECK-LABEL: func.func @generalized_operator(
+// CHECK-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !torch.vtensor<[3,2],f32>)
 // CHECK: %[[FORMAT:[a-zA-Z0-9_]+]] = torch.constant.int 0
-// CHECK-NEXT: %[[CLONE:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.clone"(%arg0, %[[FORMAT]]) : (!torch.vtensor<[3,2],f32>, !torch.int) -> !torch.vtensor<[3,2],f32>
+// CHECK-NEXT: %[[CLONE:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.clone"(%[[ARG]], %[[FORMAT]]) : (!torch.vtensor<[3,2],f32>, !torch.int) -> !torch.vtensor<[3,2],f32>
 // CHECK-NEXT: return %[[CLONE]] : !torch.vtensor<[3,2],f32>
 func.func @generalized_operator(%arg0: !torch.vtensor<[3,2],f32>)
     -> !torch.vtensor<[3,2],f32> {

@@ -9,17 +9,19 @@
 // RUN: trident-core-opt %s -generalize-aten-ops -convert-torch-to-tvm-ffi -convert-tvm-ffi-to-llvm | FileCheck %s --check-prefix=LLVM
 
 // CHECK-LABEL: func.func @int_bool(
-// CHECK: %[[BOOL:[a-zA-Z0-9_]+]] = tvm_ffi.get %arg0 : !tvm_ffi.bool -> i1
+// CHECK-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !tvm_ffi.bool)
+// CHECK: %[[BOOL:[a-zA-Z0-9_]+]] = tvm_ffi.get %[[ARG]] : !tvm_ffi.bool -> i1
 // CHECK: %[[INT:[a-zA-Z0-9_]+]] = arith.extui %[[BOOL]] : i1 to i64
 // CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = tvm_ffi.to %[[INT]] : i64 -> !tvm_ffi.int
 // CHECK: return %[[RESULT]] : !tvm_ffi.int
 
 // LLVM-LABEL: func.func @int_bool(
+// LLVM-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>)
 // LLVM-NOT: builtin.unrealized_conversion_cast
 // LLVM-NOT: ConvertUnrealizedIntCastOp
 // LLVM-NOT: tvm_ffi.to
 // LLVM-NOT: torch_c.from_i64
-// LLVM: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.extractvalue %arg0[2] : !llvm.struct<(i32, i32, i64)>
+// LLVM: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
 // LLVM: %[[BOOL:[a-zA-Z0-9_]+]] = llvm.trunc %[[PAYLOAD]] : i64 to i1
 // LLVM: %[[INT:[a-zA-Z0-9_]+]] = arith.extui %[[BOOL]] : i1 to i64
 // LLVM: %[[UNDEF_RESULT:[a-zA-Z0-9_]+]] = llvm.mlir.undef : !llvm.struct<(i32, i32, i64)>

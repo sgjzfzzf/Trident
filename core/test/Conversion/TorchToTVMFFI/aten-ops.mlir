@@ -29,10 +29,11 @@ func.func @transpose(%arg0: !torch.vtensor<[2,3],f32>)
 // raw-pointer kernel launch. It must reach the FFI lowering before Torch's
 // folder, which ignores memory_format, can replace it with its input.
 // CHECK-LABEL: func.func @clone_contiguous(
+// CHECK-SAME: %[[CLONE_ARG:[a-zA-Z0-9_]+]]: !tvm_ffi.tensor)
 // CHECK: %[[FORMAT:[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 0
 // CHECK: %[[FUNC:[a-zA-Z0-9_]+]], %[[GET_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.clone" : !tvm_ffi.function, i1
 // CHECK-NEXT: cf.assert %[[GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed for trident.aten.clone"
-// CHECK: %[[CLONE:[a-zA-Z0-9_]+]], %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%arg0, %[[FORMAT]]) : (!tvm_ffi.tensor, !tvm_ffi.int) -> !tvm_ffi.tensor, i1
+// CHECK: %[[CLONE:[a-zA-Z0-9_]+]], %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%[[CLONE_ARG]], %[[FORMAT]]) : (!tvm_ffi.tensor, !tvm_ffi.int) -> !tvm_ffi.tensor, i1
 // CHECK-NEXT: cf.assert %[[CALL_SUCCESS]], "TVMFFIFunctionCall failed for trident.aten.clone"
 // CHECK: return %[[CLONE]] : !tvm_ffi.tensor
 func.func @clone_contiguous(%arg0: !torch.vtensor<[32,2],f32>)
@@ -48,11 +49,12 @@ func.func @clone_contiguous(%arg0: !torch.vtensor<[32,2],f32>)
 // result order.  This is the semantic counterpart of the single-result ABI
 // packing performed by the later TVMFFI transforms and TVMFFIToLLVM passes.
 // CHECK-LABEL: func.func @multi_result(
+// CHECK-SAME: %[[MULTI_ARG:[a-zA-Z0-9_]+]]: !tvm_ffi.tensor)
 // CHECK: %[[DIM:[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 0
 // CHECK: %[[KEEPDIM:[a-zA-Z0-9_]+]] = tvm_ffi.constant.bool false
 // CHECK: %[[FUNC:[a-zA-Z0-9_]+]], %[[GET_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "trident.aten.max.dim" : !tvm_ffi.function, i1
 // CHECK-NEXT: cf.assert %[[GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed for trident.aten.max.dim"
-// CHECK: %[[PACKED:[a-zA-Z0-9_]+]], %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%arg0, %[[DIM]], %[[KEEPDIM]]) : (!tvm_ffi.tensor, !tvm_ffi.int, !tvm_ffi.bool) -> !tvm_ffi.array, i1
+// CHECK: %[[PACKED:[a-zA-Z0-9_]+]], %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionCall %[[FUNC]](%[[MULTI_ARG]], %[[DIM]], %[[KEEPDIM]]) : (!tvm_ffi.tensor, !tvm_ffi.int, !tvm_ffi.bool) -> !tvm_ffi.array, i1
 // CHECK-NEXT: cf.assert %[[CALL_SUCCESS]], "TVMFFIFunctionCall failed for trident.aten.max.dim"
 // CHECK: %[[IDX0:[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 0
 // CHECK-NEXT: %[[ITEM_FUNC0:[a-zA-Z0-9_]+]], %[[ITEM_GET_SUCCESS0:[a-zA-Z0-9_]+]] = tvm_ffi.FunctionGetGlobal "ffi.ArrayGetItem" : !tvm_ffi.function, i1

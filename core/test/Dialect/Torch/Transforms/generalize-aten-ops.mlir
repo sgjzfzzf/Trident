@@ -9,12 +9,15 @@
 // RUN: trident-core-opt %s -generalize-aten-ops --mlir-print-debuginfo | FileCheck %s --check-prefix=LOCATION
 // RUN: trident-core-opt %s -generalize-aten-ops -generalize-aten-ops | FileCheck %s --check-prefix=IDEMPOTENT
 
-// GENERALIZE-LABEL: func.func @single_result
+// GENERALIZE-LABEL: func.func @single_result(
+// GENERALIZE-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !torch.vtensor<[3,2],f32>
 // GENERALIZE: %[[FORMAT:[a-zA-Z0-9_]+]] = torch.constant.int 0
-// GENERALIZE: %[[CLONE:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.clone"(%arg0, %[[FORMAT]]) {trident.test = "kept"}
+// GENERALIZE: %[[CLONE:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.clone"(%[[ARG]], %[[FORMAT]]) {trident.test = "kept"}
 // GENERALIZE-SAME: -> !torch.vtensor<[3,2],f32>
 // GENERALIZE: return %[[CLONE]] : !torch.vtensor<[3,2],f32>
-// LOCATION: %[[CLONE_RESULT:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.clone"(%arg0, %[[CLONE_FORMAT:[a-zA-Z0-9_]+]]) {trident.test = "kept"} : (!torch.vtensor<[3,2],f32>, !torch.int) -> !torch.vtensor<[3,2],f32> loc(#[[CLONE_LOC:loc[0-9]+]])
+// LOCATION-LABEL: func.func @single_result(
+// LOCATION-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !torch.vtensor<[3,2],f32>
+// LOCATION: %[[CLONE_RESULT:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.clone"(%[[ARG]], %[[CLONE_FORMAT:[a-zA-Z0-9_]+]]) {trident.test = "kept"} : (!torch.vtensor<[3,2],f32>, !torch.int) -> !torch.vtensor<[3,2],f32> loc(#[[CLONE_LOC:loc[0-9]+]])
 // LOCATION: #[[CLONE_LOC]] = loc("model.py":42:7)
 // IDEMPOTENT-LABEL: func.func @single_result
 // IDEMPOTENT-COUNT-1: torch.operator "torch.aten.clone"
@@ -41,9 +44,10 @@ func.func @multiple_results(%arg0: !torch.vtensor<[4],f32>)
       : !torch.vtensor<[],f32>, !torch.vtensor<[],si64>
 }
 
-// GENERALIZE-LABEL: func.func @zero_results
+// GENERALIZE-LABEL: func.func @zero_results(
+// GENERALIZE-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !torch.vtensor<[4],f32>
 // GENERALIZE: %[[NONE:[a-zA-Z0-9_]+]] = torch.constant.none
-// GENERALIZE-NEXT: torch.operator "torch.aten._assert_tensor_metadata"(%arg0, %[[NONE]], %[[NONE]], %[[NONE]], %[[NONE]], %[[NONE]]) : (!torch.vtensor<[4],f32>, !torch.none, !torch.none, !torch.none, !torch.none, !torch.none) -> ()
+// GENERALIZE-NEXT: torch.operator "torch.aten._assert_tensor_metadata"(%[[ARG]], %[[NONE]], %[[NONE]], %[[NONE]], %[[NONE]], %[[NONE]]) : (!torch.vtensor<[4],f32>, !torch.none, !torch.none, !torch.none, !torch.none, !torch.none) -> ()
 func.func @zero_results(%arg0: !torch.vtensor<[4],f32>) {
   %none = torch.constant.none
   torch.aten._assert_tensor_metadata %arg0, %none, %none, %none, %none, %none
@@ -52,10 +56,11 @@ func.func @zero_results(%arg0: !torch.vtensor<[4],f32>) {
   return
 }
 
-// GENERALIZE-LABEL: func.func @preserve_structural_ops
+// GENERALIZE-LABEL: func.func @preserve_structural_ops(
+// GENERALIZE-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !torch.bool
 // GENERALIZE: %[[INT:[a-zA-Z0-9_]+]] = torch.constant.int 0
 // GENERALIZE: %[[LIST:[a-zA-Z0-9_]+]] = torch.prim.ListConstruct %[[INT]]
-// GENERALIZE: torch.runtime.assert %arg0, "condition"
+// GENERALIZE: torch.runtime.assert %[[ARG]], "condition"
 // GENERALIZE: %[[OPAQUE:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.existing"(%[[LIST]]) {trident.test = "unchanged"} : (!torch.list<int>) -> !torch.vtensor<[1],f32>
 // GENERALIZE: return %[[OPAQUE]] : !torch.vtensor<[1],f32>
 func.func @preserve_structural_ops(%arg0: !torch.bool)
@@ -69,9 +74,10 @@ func.func @preserve_structural_ops(%arg0: !torch.bool)
   return %opaque : !torch.vtensor<[1],f32>
 }
 
-// GENERALIZE-LABEL: func.func @nested_region
+// GENERALIZE-LABEL: func.func @nested_region(
+// GENERALIZE-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !torch.vtensor<[2,3],f32>
 // GENERALIZE: scf.if
-// GENERALIZE: %[[TRANSPOSED:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.t"(%arg0)
+// GENERALIZE: %[[TRANSPOSED:[a-zA-Z0-9_]+]] = torch.operator "torch.aten.t"(%[[ARG]])
 // GENERALIZE: scf.yield %[[TRANSPOSED]]
 func.func @nested_region(%arg0: !torch.vtensor<[2,3],f32>, %cond: i1)
     -> !torch.vtensor<[3,2],f32> {

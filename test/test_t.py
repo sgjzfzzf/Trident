@@ -16,8 +16,9 @@ semantics survive the Trident FFI round-trip:
 from __future__ import annotations
 
 import torch
-from base import AtenOpTest
 from typing_extensions import override
+
+from test.base import AtenOpTest
 
 
 class TTest(AtenOpTest):
@@ -26,34 +27,15 @@ class TTest(AtenOpTest):
     def op_name(cls) -> str:
         return "transpose"
 
-    def test_call_t(self) -> None:
-        """Call the t wrapper and compare with eager PyTorch."""
+    def test_call_t_rectangular_view(self) -> None:
+        """The transpose has the expected layout and aliases its input."""
         x: torch.Tensor = torch.randn([2, 3], device="cuda", dtype=torch.float32)
-        result: torch.Tensor = self.get_ffi_func("t")(x)
-
-        # The FFI boundary should preserve the transposed (view) layout.
-        torch.testing.assert_close(result, x.t())
-
-    def test_call_t_square(self) -> None:
-        """Square input: view semantics still apply (strides swapped)."""
-        x: torch.Tensor = torch.randn([4, 4], device="cuda", dtype=torch.float32)
         result: torch.Tensor = self.get_ffi_func("t")(x)
 
         torch.testing.assert_close(result, x.t())
+        self.assertEqual(result.shape, torch.Size([3, 2]))
+        self.assertEqual(result.stride(), x.t().stride())
+        self.assertNotEqual(result.data_ptr(), 0)
 
-    def test_call_t_alive(self) -> None:
-        """The returned tensor must be non-empty and hold a valid pointer."""
-        x: torch.Tensor = torch.randn([2, 3], device="cuda", dtype=torch.float32)
-        result: torch.Tensor = self.get_ffi_func("t")(x)
-
-        self.assertEqual(tuple(result.shape), (3, 2))
-        self.assertNotEqual(result.data_ptr, 0)
-
-    def test_call_t_value_semantics(self) -> None:
-        """The view must alias the input data (read-back after mutation)."""
-        x: torch.Tensor = torch.randn([2, 3], device="cuda", dtype=torch.float32)
-        result: torch.Tensor = self.get_ffi_func("t")(x)
-
-        # x.t() is a view: writing into x is visible through the transpose.
         x[0, 0] = 42.0
-        torch.testing.assert_close(result, x.t())
+        self.assertEqual(result[0, 0].item(), 42.0)

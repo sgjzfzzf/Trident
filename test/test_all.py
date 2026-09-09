@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import torch
 import trident
-from base import TridentTestCase
+
+from test.base import TridentTestCase
 
 
 @trident.jit

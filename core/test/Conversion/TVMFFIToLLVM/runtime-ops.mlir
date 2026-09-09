@@ -79,7 +79,7 @@ func.func @local_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
 // -----
 
 // CHECK-LABEL: func.func @exception() -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: %[[MESSAGE_SIZE:[0-9]+]] = llvm.mlir.constant(11 : i64) : i64
+// CHECK: %[[MESSAGE_SIZE:[a-zA-Z0-9_]+]] = llvm.mlir.constant(11 : i64) : i64
 // CHECK: %[[MESSAGE_PTR:[a-zA-Z0-9_]+]] = llvm.alloca %[[MESSAGE_SIZE]] x i8 : (i64) -> !llvm.ptr
 // CHECK: %[[MESSAGE_END_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[MESSAGE_PTR]][10] : (!llvm.ptr) -> !llvm.ptr, i8
 // CHECK: %[[MESSAGE_END:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i8) : i8

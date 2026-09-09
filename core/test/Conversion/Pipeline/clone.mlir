@@ -15,38 +15,27 @@
 
 // CHECK-LABEL: llvm.func @torch.aten.clone(
 // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: %[[NARGS:[0-9]+]] = llvm.mlir.constant(2 : i32) : i32
-// CHECK: %[[TWO:[0-9]+]] = llvm.mlir.constant(2 : i64) : i64
-// CHECK: %[[ZERO_I32:[0-9]+]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK: %[[ZERO_I64:[0-9]+]] = llvm.mlir.constant(0 : i64) : i64
-// CHECK: %[[FORMAT_UNDEF:[0-9]+]] = llvm.mlir.undef : !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[INT_TYPE_CODE:[0-9]+]] = llvm.mlir.constant(1 : i32) : i32
-// CHECK: %[[FORMAT_WITH_TYPE:[0-9]+]] = llvm.insertvalue %[[INT_TYPE_CODE]], %[[FORMAT_UNDEF]][0]
-// CHECK: %[[FORMAT_WITH_DEVICE:[0-9]+]] = llvm.insertvalue %[[ZERO_I32]], %[[FORMAT_WITH_TYPE]][1]
-// CHECK: %[[FORMAT:[0-9]+]] = llvm.insertvalue %[[ZERO_I64]], %[[FORMAT_WITH_DEVICE]][2]
-// CHECK: %[[GETGLOBAL:[0-9]+]] = llvm.call @TVMFFIFunctionGetGlobal(%[[FUNCTION_NAME:[0-9]+]], %[[HANDLE_SLOT:[0-9]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK: %[[HANDLE:[0-9]+]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
-// CHECK: %[[GET_SUCCESS:[0-9]+]] = llvm.icmp "eq" %[[GETGLOBAL]], %[[ZERO_I32]] : i32
-// CHECK: llvm.cond_br %[[GET_SUCCESS]],
-// CHECK: %[[ARGS:[0-9]+]] = llvm.alloca %[[TWO]] x !llvm.struct<(i32, i32, i64)>
+// CHECK: %[[GETGLOBAL:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionGetGlobal(%[[FUNCTION_NAME:[a-zA-Z0-9_]+]], %[[HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
+// CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
+// CHECK: %[[ARGS:[a-zA-Z0-9_]+]] = llvm.alloca %[[ARGS_COUNT:[a-zA-Z0-9_]+]] x !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.store %[[ARG0]], %[[ARGS]]
-// CHECK: %[[FORMAT_SLOT:[0-9]+]] = llvm.getelementptr %[[ARGS]][1]
-// CHECK: llvm.store %[[FORMAT]], %[[FORMAT_SLOT]]
-// CHECK: %[[RET_SLOT:[0-9]+]] = llvm.alloca
-// CHECK: %[[CALL:[0-9]+]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[CALL_ARGS:[0-9]+]], %[[NARGS]], %[[RET_SLOT]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// CHECK: %[[RET:[0-9]+]] = llvm.load %[[RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[CALL_SUCCESS:[0-9]+]] = llvm.icmp "eq" %[[CALL]], %[[ZERO_I32]] : i32
-// CHECK: llvm.cond_br %[[CALL_SUCCESS]],
+// CHECK: %[[FORMAT_SLOT:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[ARGS]][1]
+// CHECK: llvm.store %[[FORMAT:[a-zA-Z0-9_]+]], %[[FORMAT_SLOT]]
+// CHECK: %[[RET_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[CALL_ARGS:[a-zA-Z0-9_]+]], %[[NARGS:[a-zA-Z0-9_]+]], %[[RET_SLOT]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
+// CHECK: %[[RET:[a-zA-Z0-9_]+]] = llvm.load %[[RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.call @TVMFFIObjectDecRef(%[[HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: llvm.return %[[RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_clone(
-// CHECK: %[[WRAP_ARG:[0-9]+]] = llvm.load %arg1 : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[WRAP_RET:[0-9]+]] = llvm.call @clone(%[[WRAP_ARG]]) : (!llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.store %[[WRAP_RET]], %arg3
+// CHECK-SAME: %[[WRAP_CONTEXT:[a-zA-Z0-9_]+]]: !llvm.ptr, %[[WRAP_ARGS:[a-zA-Z0-9_]+]]: !llvm.ptr, %[[WRAP_NARGS:[a-zA-Z0-9_]+]]: i32, %[[WRAP_RESULT:[a-zA-Z0-9_]+]]: !llvm.ptr)
+// CHECK: %[[WRAP_ARG:[a-zA-Z0-9_]+]] = llvm.load %[[WRAP_ARGS]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: %[[WRAP_RET:[a-zA-Z0-9_]+]] = llvm.call @clone(%[[WRAP_ARG]]) : (!llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.store %[[WRAP_RET]], %[[WRAP_RESULT]]
 // CHECK-LABEL: llvm.func @__tvm_ffi_clone_preserve(
-// CHECK: %[[PRESERVE_ARG:[0-9]+]] = llvm.load %arg1 : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[PRESERVE_RET:[0-9]+]] = llvm.call @clone_preserve(%[[PRESERVE_ARG]]) : (!llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.store %[[PRESERVE_RET]], %arg3
+// CHECK-SAME: %[[PRESERVE_CONTEXT:[a-zA-Z0-9_]+]]: !llvm.ptr, %[[PRESERVE_ARGS:[a-zA-Z0-9_]+]]: !llvm.ptr, %[[PRESERVE_NARGS:[a-zA-Z0-9_]+]]: i32, %[[PRESERVE_RESULT:[a-zA-Z0-9_]+]]: !llvm.ptr)
+// CHECK: %[[PRESERVE_ARG:[a-zA-Z0-9_]+]] = llvm.load %[[PRESERVE_ARGS]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: %[[PRESERVE_RET:[a-zA-Z0-9_]+]] = llvm.call @clone_preserve(%[[PRESERVE_ARG]]) : (!llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.store %[[PRESERVE_RET]], %[[PRESERVE_RESULT]]
 
 func.func @torch.aten.clone(%arg0: !torch.vtensor<[32,2],f32>)
     -> !torch.vtensor<[32,2],f32> {

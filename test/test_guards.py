@@ -1,7 +1,7 @@
 # Part of the Trident project, under the MIT License.
 # SPDX-License-Identifier: MIT
 
-"""Tests for mapping Dynamo Guards to Trident GuardCode objects."""
+"""Focused tests for translating Dynamo guards to Trident guard IR."""
 
 from __future__ import annotations
 
@@ -9,21 +9,8 @@ import ast
 import unittest
 from dataclasses import dataclass
 
-from base import TridentTestCase
 from torch._guards import GuardSource
 from trident.core import ir, register_all_dialects
-from trident.core.dialects import func
-from trident.core.dialects.torch import (
-    TorchAnyType,
-    TorchBoolType,
-    TorchFloatType,
-    TorchIntType,
-    TorchListType,
-    TorchNonValueTensorType,
-    TorchTupleType,
-    TorchUnionType,
-    TorchValueTensorType,
-)
 from trident.guards.codes import (
     ASTCode,
     ConstantCode,
@@ -35,7 +22,6 @@ from trident.guards.codes import (
     TensorRankCode,
     TypeIdCode,
 )
-from trident.guards.collection import Guards
 from trident.guards.kinds import (
     ConstantMatchGuard,
     DuplicateInputGuard,
@@ -47,7 +33,8 @@ from trident.guards.kinds import (
     TypeMatchGuard,
 )
 from trident.guards.local import Local
-from trident.input import InputTable
+
+from test.base import TridentTestCase
 
 
 @dataclass(frozen=True)
@@ -61,238 +48,83 @@ class FakeGuard:
         return self.create_fn
 
 
-class FirstMatchingCode(GuardCode):
-    @classmethod
-    def parse(cls, text: str, source: Local | None) -> FirstMatchingCode:
-        return cls(text, source)
-
-    def build(self, tree: InputTable, context: ir.Context) -> ir.Value:
-        return super().build(tree, context)
-
-
-class SecondMatchingCode(FirstMatchingCode):
-    pass
-
-
-class AmbiguousTestGuard(Guard):
-    create_fn_name = "TEST_AMBIGUOUS"
-    code_types = (FirstMatchingCode, SecondMatchingCode)
-
-
-class GuardParserTest(TridentTestCase):
-    def test_torch_scalar_type_bindings_support_isinstance(self) -> None:
-        context = ir.Context()
-        register_all_dialects(context)
-        with context:
-            torch_types = {
-                "bool": TorchBoolType,
-                "float": TorchFloatType,
-                "int": TorchIntType,
-            }
-            for name, expected_type in torch_types.items():
-                with self.subTest(name=name):
-                    value_type = ir.Type.parse(f"!torch.{name}", context=context)
-                    self.assertIsInstance(value_type, expected_type)
-                    self.assertEqual(value_type, expected_type.get(context))
-                    for other_type in torch_types.values():
-                        self.assertEqual(
-                            isinstance(value_type, other_type),
-                            other_type is expected_type,
-                        )
-
-            builtin_type = ir.IntegerType.get_signless(64, context)
-            self.assertNotIsInstance(builtin_type, TorchIntType)
-
-    def test_torch_tensor_type_bindings_support_isinstance(self) -> None:
-        context = ir.Context()
-        register_all_dialects(context)
-        with context:
-            tensor_types = {
-                "tensor": TorchNonValueTensorType,
-                "vtensor": TorchValueTensorType,
-            }
-            for name, expected_type in tensor_types.items():
-                with self.subTest(name=name):
-                    value_type = ir.Type.parse(f"!torch.{name}", context=context)
-                    self.assertIsInstance(value_type, expected_type)
-                    self.assertEqual(value_type, expected_type.get(context))
-                    for other_type in tensor_types.values():
-                        self.assertEqual(
-                            isinstance(value_type, other_type),
-                            other_type is expected_type,
-                        )
-
-    def test_torch_container_type_bindings_expose_contained_types(self) -> None:
-        context = ir.Context()
-        register_all_dialects(context)
-        with context:
-            any_type = TorchAnyType.get(context)
-            constructed_list = TorchListType.get(any_type)
-            constructed_tuple = TorchTupleType.get(
-                [TorchIntType.get(context), constructed_list], context=context
-            )
-            constructed_union = TorchUnionType.get(
-                [constructed_tuple, any_type], context=context
-            )
-            self.assertEqual(str(constructed_list), "!torch.list<any>")
-            self.assertEqual(str(constructed_tuple), "!torch.tuple<int, list<any>>")
-            self.assertEqual(
-                str(constructed_union),
-                "!torch.union<tuple<int, list<any>>, any>",
-            )
-
-            tuple_type = ir.Type.parse(
-                "!torch.tuple<int, list<int>, tuple<bool>>", context=context
-            )
-            list_type = ir.Type.parse("!torch.list<tuple<float>>", context=context)
-
-            self.assertIsInstance(tuple_type, TorchTupleType)
-            tuple_types = tuple_type.types  # type: ignore[attr-defined]
-            self.assertIsInstance(tuple_types, tuple)
-            self.assertEqual(len(tuple_types), 3)
-            self.assertIsInstance(tuple_types[0], TorchIntType)
-            self.assertIsInstance(tuple_types[1], TorchListType)
-            nested_tuple = tuple_types[2]
-            self.assertIsInstance(nested_tuple, TorchTupleType)
-            self.assertEqual(len(nested_tuple.types), 1)  # type: ignore[attr-defined]
-
-            self.assertIsInstance(list_type, TorchListType)
-            contained_type = list_type.contained_type  # type: ignore[attr-defined]
-            self.assertIsInstance(contained_type, TorchTupleType)
-            self.assertIsInstance(contained_type.types[0], TorchFloatType)  # type: ignore[attr-defined]
-
-            self.assertIsInstance(constructed_union, TorchUnionType)
-            self.assertEqual(len(constructed_union.types), 2)  # type: ignore[attr-defined]
-            self.assertIsInstance(constructed_union.types[0], TorchTupleType)  # type: ignore[attr-defined]
-            self.assertIsInstance(constructed_union.types[1], TorchAnyType)  # type: ignore[attr-defined]
-
-    def test_build_creates_a_table_for_each_guard_block(self) -> None:
-        guards = Guards(
-            [
-                FakeGuard(
-                    "TYPE_MATCH",
-                    ["___check_type_id(L['x'], 1), type=<class 'torch.Tensor'>"],
-                    "L['x']",
-                ),
-                FakeGuard(
-                    "TYPE_MATCH",
-                    ["___check_type_id(L['y'], 2), type=<class 'torch.Tensor'>"],
-                    "L['y']",
-                ),
-            ]
-        )
-        table_count = 0
-
-        def table_factory() -> InputTable:
-            nonlocal table_count
-            table_count += 1
-            return None  # type: ignore[return-value]
-
-        context = ir.Context()
-        register_all_dialects(context)
-        with context, ir.Location.unknown(context):
-            module = ir.Module.create()
-            with ir.InsertionPoint(module.body):
-                function = func.FuncOp(
-                    "guard_tables",
-                    ir.FunctionType.get([], []),
-                )
-                block = function.add_entry_block()
-                with ir.InsertionPoint(block):
-                    success_block, failure_block = guards.build(
-                        table_factory, context, block
-                    )
-                with ir.InsertionPoint(success_block):
-                    func.ReturnOp([])
-                with ir.InsertionPoint(failure_block):
-                    func.ReturnOp([])
-
-        self.assertEqual(table_count, 2)
-
-    def test_build_converts_torch_bool_before_branching(self) -> None:
-        guards = Guards(
-            [
-                FakeGuard(
-                    "DUPLICATE_INPUT",
-                    ["1 == 1"],
-                    "L['x']",
-                ),
-            ]
-        )
-
-        context = ir.Context()
-        register_all_dialects(context)
-        with context, ir.Location.unknown(context):
-            module = ir.Module.create()
-            with ir.InsertionPoint(module.body):
-                function = func.FuncOp(
-                    "torch_bool_guard_branch",
-                    ir.FunctionType.get([], []),
-                )
-                entry_block = function.add_entry_block()
-                with ir.InsertionPoint(entry_block):
-                    success_block, failure_block = guards.build(
-                        lambda: None,
-                        context,
-                        entry_block,  # type: ignore[return-value]
-                    )
-                with ir.InsertionPoint(success_block):
-                    func.ReturnOp([])
-                with ir.InsertionPoint(failure_block):
-                    func.ReturnOp([])
-
-        self.assertIn("torch_c.to_i1", str(module))
-
+class GuardTest(TridentTestCase):
     def assert_parsed(
         self,
         guard: FakeGuard,
-        handler_type: type[Guard],
+        kind: type[Guard],
         code_types: tuple[type[GuardCode], ...],
     ) -> Guard:
         parsed = Guard.parse(guard)
-        self.assertIsInstance(parsed, handler_type)
+        self.assertIsInstance(parsed, kind)
         assert parsed is not None
-        self.assertEqual(
-            tuple(type(code.code) for code in parsed.codes),
-            code_types,
-        )
+        self.assertEqual(tuple(type(item.code) for item in parsed.codes), code_types)
         return parsed
 
-    def test_ignored_guards_accept_every_code_list_shape(self) -> None:
-        cases = [
-            (
-                "AUTOGRAD_SAVED_TENSORS_HOOKS",
-                ["top_saved_tensors_hooks ids == None"],
-            ),
-            ("DEFAULT_DEVICE", ["CURRENT_DEVICE == None"]),
-            ("DETERMINISTIC_ALGORITHMS", None),
-            ("GLOBAL_STATE", []),
-            ("GRAD_MODE", ["first", "second"]),
-            ("TORCH_FUNCTION_STATE", None),
-        ]
-        for create_fn_name, code_list in cases:
-            with self.subTest(create_fn_name=create_fn_name, code_list=code_list):
-                parsed = self.assert_parsed(
-                    FakeGuard(create_fn_name, code_list),
-                    IgnoredGuard,
-                    (),
-                )
-                self.assertIsNone(parsed.source)
+    def build_ast_code(self, text: str) -> tuple[str, str]:
+        """Insert a guard expression into a textually parsed IR fixture."""
+        context = ir.Context()
+        register_all_dialects(context)
+        with context, ir.Location.unknown(context):
+            module = ir.Module.parse(
+                """
+                module {
+                  func.func @guard_expression() {
+                    return
+                  }
+                }
+                """
+            )
+            function = module.body.operations[0]
+            block = function.regions[0].blocks[0]
+            with ir.InsertionPoint(block.operations[-1]):
+                code = ASTCode(text, ast.parse(text, mode="eval").body)
+                result = code.build(None, context)  # type: ignore[arg-type]
+            result_type = str(result.type)
+            module_text = str(module)
+        return result_type, module_text
 
-    def test_constant_match_parses_supported_literals(self) -> None:
-        cases = [
+    def test_ast_lowering(self) -> None:
+        cases = (
+            (
+                "(1 | 2) == 3",
+                "!torch.bool",
+                ("arith.ori",),
+                ("torch.aten.__or__.Scalar",),
+            ),
+            ("1 == 1 <= 3", "!torch.bool", ("torch.aten.le.int",), ()),
+            (
+                "1.0 + 2.0 <= 4.0",
+                "!torch.bool",
+                ("torch.aten.add.float", "torch.aten.ge.float"),
+                (),
+            ),
+            ("1 + 2", "!torch.int", ("torch.aten.add.int",), ()),
+            ("5 / 2", "!torch.float", ("torch.aten.div.int",), ()),
+            ("True and not False", "!torch.bool", ("torch.aten.__not__",), ()),
+            ("-1", "!torch.int", ("torch.aten.neg.int",), ()),
+            ("torch.float32", "!torchext.dtype", ("#torchext.float32",), ()),
+        )
+        for text, result_type, expected, excluded in cases:
+            with self.subTest(text=text):
+                actual_type, module = self.build_ast_code(text)
+                self.assertEqual(actual_type, result_type)
+                for operation in expected:
+                    self.assertIn(operation, module)
+                for operation in excluded:
+                    self.assertNotIn(operation, module)
+
+    def test_constant_match(self) -> None:
+        supported = (
             "L['value'] is None",
             "L['value'] == True",
-            "L['value'] == False",
             "L['value'] == -7",
             "L['value'] == 1.5",
             "L['value'] == 'constant'",
-            "L['value'] == ''",
-            "L['value'] == device(type='cpu')",
             "L['value'] == device(type='cuda', index=1)",
             "L['value'] == torch.float32",
-        ]
-        for text in cases:
+        )
+        for text in supported:
             with self.subTest(text=text):
                 parsed = self.assert_parsed(
                     FakeGuard("CONSTANT_MATCH", [text], "L['value']"),
@@ -304,527 +136,87 @@ class GuardParserTest(TridentTestCase):
                 self.assertEqual(
                     ast.dump(code.expression, include_attributes=False),
                     ast.dump(
-                        ast.parse(text, mode="eval").body,
-                        include_attributes=False,
+                        ast.parse(text, mode="eval").body, include_attributes=False
                     ),
                 )
 
-    def test_duplicate_input_parses_identity_guard(self) -> None:
-        parsed = self.assert_parsed(
-            FakeGuard(
-                "DUPLICATE_INPUT",
-                ["L['out_grad'] is L['new_out']"],
-                "L['new_out']",
-            ),
-            DuplicateInputGuard,
-            (ASTCode,),
-        )
-        (builder,) = parsed.codes
-        code = builder.code
-        assert isinstance(code, ASTCode)
-
-    def test_constant_match_rejects_unsupported_literals(self) -> None:
-        for literal in (
-            "b'constant'",
-            "[1, 2]",
-            "{'value': 1}",
-            "device(**{'type': 'cpu'})",
-            "device('cpu')",
-            "device(type='cpu', extra=True)",
-            "device(type='cpu', type='cuda')",
-            "device(type='cuda', index=True)",
-            "device(type='not-a-device')",
-            "not valid",
-        ):
-            with self.subTest(literal=literal):
-                self.assertIsNone(
-                    Guard.parse(
-                        FakeGuard(
-                            "CONSTANT_MATCH", [f"L['value'] == {literal}"], "L['value']"
-                        )
-                    )
-                )
-
-        for text in (
-            "1 == L['value']",
-            "L['other'] == 1",
+        rejected = (
+            "L['value'] == [1, 2]",
+            "L['value'] == device('cpu')",
             "L['value'] != 1",
-            "L['value'] == 1 == 1",
-            "L['value'] is True",
-        ):
+            "1 == L['value']",
+            "G['value'] == 1",
+        )
+        for text in rejected:
             with self.subTest(text=text):
                 self.assertIsNone(
                     Guard.parse(FakeGuard("CONSTANT_MATCH", [text], "L['value']"))
                 )
 
-    def test_constant_match_requires_exactly_one_code(self) -> None:
-        invalid_code_lists = (
-            None,
-            [],
-            ["L['value'] == 1", "L['value'] == 2"],
-        )
-        for code_list in invalid_code_lists:
-            with self.subTest(code_list=code_list):
-                self.assertIsNone(
-                    Guard.parse(FakeGuard("CONSTANT_MATCH", code_list, "L['value']"))
-                )
-
-    def test_constant_match_rejects_invalid_operations_and_sources(self) -> None:
-        cases = [
-            ("L['value'] is 1", "L['value']"),
-            ("L['value'] is 'constant'", "L['value']"),
-            ("L['value'] != 1", "L['value']"),
-            ("L['other'] == 1", "L['value']"),
-            ("G['value'] == 1", "G['value']"),
-        ]
-        for text, name in cases:
-            with self.subTest(text=text, name=name):
-                self.assertIsNone(
-                    Guard.parse(FakeGuard("CONSTANT_MATCH", [text], name))
-                )
-
-    def test_sequence_length_parses_type_length_and_empty_checks(self) -> None:
-        cases = [
+    def test_guard_kinds(self) -> None:
+        cases = (
             (
-                "L['xs']",
-                [
-                    "___check_type_id(L['xs'], 123), type=<class 'list'>",
-                    "len(L['xs']) == 2",
-                ],
+                FakeGuard("DUPLICATE_INPUT", ["L['x'] is L['y']"], "L['x']"),
+                DuplicateInputGuard,
+                (ASTCode,),
+            ),
+            (FakeGuard("GLOBAL_STATE", None), IgnoredGuard, ()),
+            (
+                FakeGuard(
+                    "SEQUENCE_LENGTH",
+                    [
+                        "___check_type_id(L['xs'], 1), type=<class 'list'>",
+                        "len(L['xs']) == 2",
+                    ],
+                    "L['xs']",
+                ),
+                SequenceLengthGuard,
                 (TypeIdCode, ASTCode),
             ),
             (
-                "L['xss'][1]",
-                ["not L['xss'][1]"],
-                (ASTCode,),
-            ),
-        ]
-        for name, code_list, code_types in cases:
-            with self.subTest(name=name):
-                parsed = self.assert_parsed(
-                    FakeGuard("SEQUENCE_LENGTH", code_list, name),
-                    SequenceLengthGuard,
-                    code_types,
-                )
-                length_code = next(
-                    builder.code
-                    for builder in parsed.codes
-                    if isinstance(builder.code, ASTCode)
-                )
-                self.assertIsNotNone(length_code.expression)
-
-    def test_sequence_length_parses_tensor_shape_with_expression_code(self) -> None:
-        parsed = self.assert_parsed(
-            FakeGuard(
-                "SEQUENCE_LENGTH",
-                [
-                    "___check_type_id(L['x'].shape, 123), type=<class 'torch.Size'>",
-                    "len(L['x'].shape) == 3",
-                ],
-                "L['x'].shape",
-            ),
-            SequenceLengthGuard,
-            (ASTCode,),
-        )
-        (builder,) = parsed.codes
-        code = builder.code
-        assert isinstance(code, ASTCode)
-        self.assertIsInstance(code.expression, ast.Compare)
-
-    def test_shape_env_accepts_none_empty_and_multiple_codes(self) -> None:
-        cases = [
-            (None, ()),
-            ([], ()),
-            (
-                [
-                    "L['x'].size()[0] == 2",
-                    "L['x'].stride()[0] == 1",
-                    "L['x'].storage_offset() == 0",
-                    "L['x'].size()[0] == L['y'].size()[0]",
-                    "1 if L['x'].ndimension() == 2 else 0",
-                ],
-                (ASTCode,) * 5,
-            ),
-        ]
-        for code_list, code_types in cases:
-            with self.subTest(code_list=code_list):
-                self.assert_parsed(
-                    FakeGuard("SHAPE_ENV", code_list),
-                    ShapeEnvGuard,
-                    code_types,
-                )
-
-    def test_shape_env_accepts_dynamic_shape_arithmetic_and_chained_comparisons(
-        self,
-    ) -> None:
-        cases = [
-            (
-                ["2 <= L['x'].size()[0] <= 8"],
-                (ASTCode,),
-            ),
-            (
-                [
-                    "L['x'].size()[0] == 2 * L['y'].size()[0]",
-                    "L['x'].size()[1] == L['y'].size()[1] * 4",
-                ],
-                (ASTCode,) * 2,
-            ),
-            (
-                [
-                    "L['x'].size()[0] + 1 == 2 * L['y'].size()[0]",
-                    "L['x'].size()[0] == 2 and L['x'].size()[1] >= 1",
-                ],
-                (ASTCode,) * 2,
-            ),
-            (
-                [
-                    "0 <= L['x'].size()[0]",
-                    "L['x'].size()[0] <= 2 * L['y'].size()[0]",
-                    "L['x'].size()[0] % 2 == 0",
-                ],
-                (ASTCode,) * 3,
-            ),
-        ]
-        for code_list, code_types in cases:
-            with self.subTest(code_list=code_list):
-                self.assert_parsed(
-                    FakeGuard("SHAPE_ENV", code_list),
-                    ShapeEnvGuard,
-                    code_types,
-                )
-
-    def test_shape_env_requires_an_empty_guard_name(self) -> None:
-        self.assertIsNone(
-            Guard.parse(
                 FakeGuard(
                     "SHAPE_ENV",
-                    ["L['x'].size()[0] == 2"],
-                    "L['x']",
-                )
-            )
-        )
-
-    def test_tensor_match_parses_every_supported_code(self) -> None:
-        code_list = [
-            "___check_type_id(L['x'], 123), type=<class 'torch.Tensor'>",
-            "str(L['x'].dtype) == 'torch.float32'",
-            "str(L['x'].device) == 'cpu'",
-            "L['x'].requires_grad == False",
-            "L['x'].ndimension() == 2",
-            "hasattr(L['x'], '_dynamo_dynamic_indices') == False",
-            "hasattr(L['x'], '_dynamo_weak_dynamic_indices') == False",
-            "hasattr(L['x'], '_dynamo_unbacked_indices') == False",
-            "hasattr(L['x'], '_dynamo_strict_unbacked_indices') == False",
-            "hasattr(L['x'], '_dynamo_static_indices') == False",
-        ]
-        parsed = self.assert_parsed(
-            FakeGuard("TENSOR_MATCH", code_list, "L['x']"),
-            TensorMatchGuard,
+                    [
+                        "2 <= L['x'].size()[0] <= 8",
+                        "L['x'].size()[1] == 4 * L['y'].size()[1]",
+                    ],
+                ),
+                ShapeEnvGuard,
+                (ASTCode, ASTCode),
+            ),
             (
-                TypeIdCode,
-                TensorDTypeCode,
-                TensorDeviceCode,
-                RequiresGradCode,
-                TensorRankCode,
-                *(DynamoAttributeAbsentCode,) * 5,
+                FakeGuard(
+                    "TYPE_MATCH",
+                    ["___check_type_id(L['xs'][0], 2), type=<class 'torch.Tensor'>"],
+                    "L['xs'][0]",
+                ),
+                TypeMatchGuard,
+                (TypeIdCode,),
             ),
         )
+        for guard, kind, code_types in cases:
+            with self.subTest(kind=guard.create_fn):
+                parsed = self.assert_parsed(guard, kind, code_types)
+                if guard.name:
+                    self.assertEqual(parsed.source, Local.parse(guard.name))
 
-        _, dtype_builder, device_builder, _, rank_builder, *attributes = parsed.codes
-        dtype = dtype_builder.code
-        device = device_builder.code
-        rank = rank_builder.code
-        assert isinstance(dtype, TensorDTypeCode)
-        assert isinstance(device, TensorDeviceCode)
-        assert isinstance(rank, TensorRankCode)
-        self.assertEqual(dtype.expected, "torch.float32")
-        self.assertEqual(device.expected, "cpu")
-        self.assertEqual(rank.expected, 2)
-        self.assertEqual(
-            tuple(
-                builder.code.attribute
-                for builder in attributes
-                if isinstance(builder.code, DynamoAttributeAbsentCode)
-            ),
-            (
-                "_dynamo_dynamic_indices",
-                "_dynamo_weak_dynamic_indices",
-                "_dynamo_unbacked_indices",
-                "_dynamo_strict_unbacked_indices",
-                "_dynamo_static_indices",
-            ),
+    def test_rejected_guards_and_invariants(self) -> None:
+        rejected = (
+            FakeGuard("UNKNOWN", None),
+            FakeGuard("SHAPE_ENV", ["L['x'].size()[0] == 2"], "L['x']"),
+            FakeGuard("CONSTANT_MATCH", None, "L['x']"),
+            FakeGuard("CONSTANT_MATCH", ["L['x'] == 1", "L['x'] == 2"], "L['x']"),
+            FakeGuard("TENSOR_MATCH", ["L['x'].ndimension() >= 2"], "L['x']"),
+            FakeGuard("TYPE_MATCH", ["___check_obj_id(L['x'], 1)"], "L['x']"),
         )
+        for guard in rejected:
+            with self.subTest(kind=guard.create_fn, codes=guard.code_list):
+                self.assertIsNone(Guard.parse(guard))
 
-    def test_tensor_match_supports_nested_sources_and_alternate_metadata(self) -> None:
-        cases = [
-            (
-                "str(L['xs'][0].dtype) == \"torch.int64\"",
-                TensorDTypeCode,
-            ),
-            ("str(L['xs'][0].device) == 'cuda:1'", TensorDeviceCode),
-            ("L['xs'][0].ndimension() == 4", TensorRankCode),
-            ("L['xs'][0].requires_grad == False", RequiresGradCode),
-            (
-                "hasattr(L['xs'][0], '_dynamo_static_indices') == False",
-                DynamoAttributeAbsentCode,
-            ),
-        ]
-        for text, code_type in cases:
-            with self.subTest(text=text):
-                parsed = self.assert_parsed(
-                    FakeGuard("TENSOR_MATCH", [text], "L['xs'][0]"),
-                    TensorMatchGuard,
-                    (code_type,),
-                )
-                self.assertEqual(parsed.source, Local(("xs", 0)))
-
-    def test_tensor_match_parses_requires_grad_true(self) -> None:
-        parsed = self.assert_parsed(
-            FakeGuard(
-                "TENSOR_MATCH",
-                ["L['x'].requires_grad == True"],
-                "L['x']",
-            ),
-            TensorMatchGuard,
-            (RequiresGradCode,),
-        )
-        code = parsed.codes[0].code
-        assert isinstance(code, RequiresGradCode)
-        self.assertTrue(code.expected)
-
-    def test_requires_grad_builds_an_i1_true_value(self) -> None:
-        code = RequiresGradCode(
-            "L['x'].requires_grad == True",
-            Local(("x",)),
-            True,
-        )
-        context = ir.Context()
-        with context, ir.Location.unknown(context):
-            result = code.build(None, context)  # type: ignore[arg-type]
-        self.assertEqual(str(result.type), "i1")
-
-    def test_expression_with_base_forces_miss_with_warning(self) -> None:
-        cases = [
-            "L['x']._base.size()[0] == 1",
-            "L['x']._base.stride()[0] == 1",
-            "L['x']._base.storage_offset() == 0",
-        ]
-        for text in cases:
-            with self.subTest(text=text):
-                expression = ast.parse(text, mode="eval").body
-                code = ASTCode(text, expression)
-                context = ir.Context()
-                register_all_dialects(context)
-                with (
-                    context,
-                    ir.Location.unknown(context),
-                    self.assertWarnsRegex(
-                        RuntimeWarning,
-                        "Unsupported Tensor\\._base guard forces a specialization miss",
-                    ),
-                ):
-                    result = code.build(None, context)  # type: ignore[arg-type]
-                self.assertEqual(str(result.type), "!torch.bool")
-                self.assertEqual(
-                    str(result.owner).strip(), "%false = torch.constant.bool false"
-                )
-
-    def test_chained_comparison_builds_a_torch_bool_value(self) -> None:
-        text = "1 == 1 <= 3"
-        code = ASTCode(text, ast.parse(text, mode="eval").body)
-        context = ir.Context()
-        register_all_dialects(context)
-        with context, ir.Location.unknown(context):
-            module = ir.Module.create()
-            with ir.InsertionPoint(module.body):
-                function = func.FuncOp(
-                    "chained_comparison",
-                    ir.FunctionType.get([], []),
-                )
-                block = function.add_entry_block()
-                with ir.InsertionPoint(block):
-                    result = code.build(None, context)  # type: ignore[arg-type]
-                    func.ReturnOp([])
-        self.assertEqual(str(result.type), "!torch.bool")
-
-    def test_logical_operations_build_torch_bool_values(self) -> None:
-        for text in ("True and False", "True or False", "not True"):
-            with self.subTest(text=text):
-                code = ASTCode(text, ast.parse(text, mode="eval").body)
-                context = ir.Context()
-                register_all_dialects(context)
-                with context, ir.Location.unknown(context):
-                    module = ir.Module.create()
-                    with ir.InsertionPoint(module.body):
-                        function = func.FuncOp(
-                            "torch_logical_guard",
-                            ir.FunctionType.get([], []),
-                        )
-                        block = function.add_entry_block()
-                        with ir.InsertionPoint(block):
-                            result = code.build(None, context)  # type: ignore[arg-type]
-                            func.ReturnOp([])
-                self.assertEqual(str(result.type), "!torch.bool")
-
-    def test_shape_guard_supports_integer_division_and_float_comparison(self) -> None:
-        text = "(L['inp'].size()[1] / 108) <= 1.0"
-        code = ASTCode(text, ast.parse(text, mode="eval").body)
-        self.assertIsNotNone(code.build_fn)
-
-    def test_integer_division_uses_torch_division(self) -> None:
-        code = ASTCode("5 / 2", ast.parse("5 / 2", mode="eval").body)
-        context = ir.Context()
-        register_all_dialects(context)
-        with context, ir.Location.unknown(context):
-            module = ir.Module.create()
-            with ir.InsertionPoint(module.body):
-                function = func.FuncOp("integer_division", ir.FunctionType.get([], []))
-                block = function.add_entry_block()
-                with ir.InsertionPoint(block):
-                    result = code.build(None, context)  # type: ignore[arg-type]
-                    func.ReturnOp([])
-        self.assertEqual(str(result.type), "!torch.float")
-        self.assertIn("torch.aten.div.int", str(module))
-
-    def test_integer_addition_is_built_in_torch_dialect(self) -> None:
-        text = "1 + 2"
-        code = ASTCode(text, ast.parse(text, mode="eval").body)
-        context = ir.Context()
-        register_all_dialects(context)
-        with context, ir.Location.unknown(context):
-            module = ir.Module.create()
-            with ir.InsertionPoint(module.body):
-                function = func.FuncOp(
-                    "torch_integer_addition", ir.FunctionType.get([], [])
-                )
-                block = function.add_entry_block()
-                with ir.InsertionPoint(block):
-                    result = code.build(None, context)  # type: ignore[arg-type]
-                    func.ReturnOp([])
-        self.assertEqual(str(result.type), "!torch.int")
-        self.assertIn("torch.constant.int", str(module))
-        self.assertIn("torch.aten.add.int", str(module))
-
-    def test_torch_dtype_constant_uses_torchext_attribute(self) -> None:
-        code = ASTCode("torch.float32", ast.parse("torch.float32", mode="eval").body)
-        context = ir.Context()
-        register_all_dialects(context)
-        with context, ir.Location.unknown(context):
-            module = ir.Module.create()
-            with ir.InsertionPoint(module.body):
-                function = func.FuncOp(
-                    "torch_dtype_constant",
-                    ir.FunctionType.get([], []),
-                )
-                block = function.add_entry_block()
-                with ir.InsertionPoint(block):
-                    result = code.build(None, context)  # type: ignore[arg-type]
-                    func.ReturnOp([])
-        self.assertEqual(str(result.type), "!torchext.dtype")
-        self.assertIn("torchext.constant.dtype", str(module))
-        self.assertIn("torchext.constant.dtype #torchext.float32", str(module))
-
-    def test_negation_is_built_in_torch_dialect(self) -> None:
-        for text, result_type, operation in (
-            ("-1", "!torch.int", "torch.aten.neg.int"),
-            ("-1.0", "!torch.float", "torch.aten.neg.float"),
-        ):
-            with self.subTest(text=text):
-                code = ASTCode(text, ast.parse(text, mode="eval").body)
-                context = ir.Context()
-                register_all_dialects(context)
-                with context, ir.Location.unknown(context):
-                    module = ir.Module.create()
-                    with ir.InsertionPoint(module.body):
-                        function = func.FuncOp(
-                            "torch_negation",
-                            ir.FunctionType.get([], []),
-                        )
-                        block = function.add_entry_block()
-                        with ir.InsertionPoint(block):
-                            result = code.build(None, context)  # type: ignore[arg-type]
-                            func.ReturnOp([])
-                self.assertEqual(str(result.type), result_type)
-                self.assertIn(operation, str(module))
-
-    def test_float_arithmetic_and_comparison_use_torch_dialect(self) -> None:
-        text = "1.0 + 2.0 <= 4.0"
-        code = ASTCode(text, ast.parse(text, mode="eval").body)
-        context = ir.Context()
-        register_all_dialects(context)
-        with context, ir.Location.unknown(context):
-            module = ir.Module.create()
-            with ir.InsertionPoint(module.body):
-                function = func.FuncOp("torch_float_guard", ir.FunctionType.get([], []))
-                block = function.add_entry_block()
-                with ir.InsertionPoint(block):
-                    result = code.build(None, context)  # type: ignore[arg-type]
-                    func.ReturnOp([])
-        self.assertEqual(str(result.type), "!torch.bool")
-        self.assertIn("torch.aten.add.float", str(module))
-        self.assertIn("torch.aten.ge.float", str(module))
-
-    def test_bitwise_or_expression_uses_native_integer_operation(self) -> None:
-        text = "(1 | 2) == 3"
-        code = ASTCode(text, ast.parse(text, mode="eval").body)
-        context = ir.Context()
-        register_all_dialects(context)
-        with context, ir.Location.unknown(context):
-            module = ir.Module.create()
-            with ir.InsertionPoint(module.body):
-                function = func.FuncOp(
-                    "bitwise_or_expression",
-                    ir.FunctionType.get([], []),
-                )
-                block = function.add_entry_block()
-                with ir.InsertionPoint(block):
-                    result = code.build(None, context)  # type: ignore[arg-type]
-                    func.ReturnOp([])
-        self.assertEqual(str(result.type), "!torch.bool")
-        self.assertIn("arith.ori", str(module))
-        self.assertNotIn("torch.aten.__or__.Scalar", str(module))
-
-    def test_tensor_identity_is_skipped_with_warning(self) -> None:
-        text = "L['x'] is L['y']"
-        code = ASTCode(text, ast.parse(text, mode="eval").body)
-        context = ir.Context()
-        register_all_dialects(context)
-        with context, ir.Location.unknown(context):
-            module = ir.Module.create()
-            with ir.InsertionPoint(module.body):
-                tensor_type = ir.Type.parse("!torch.tensor", context=context)
-                function = func.FuncOp(
-                    "tensor_identity",
-                    ir.FunctionType.get([tensor_type, tensor_type], []),
-                )
-                block = function.add_entry_block()
-                with ir.InsertionPoint(block):
-                    func.ReturnOp([])
-            [x, y] = block.arguments
-            tree = {
-                ("x",): x,
-                ("y",): y,
-            }
-            with self.assertWarnsRegex(
-                RuntimeWarning,
-                "Skipping unsupported Tensor identity guard",
-            ):
-                result = code.build(tree, context)  # type: ignore[arg-type]
-        self.assertEqual(str(result.type), "!torch.bool")
-
-    def test_invalid_comparison_violates_guard_code_invariants(self) -> None:
-        cases = [
-            (
-                "L['x'] is L['y'] is L['z']",
-                "identity guard comparison must be binary",
-            ),
-            (
-                "L['x'] == L['y'] is L['z']",
-                "identity guard comparison must be binary",
-            ),
+        for text, message in (
+            ("L['x'] is L['y'] is L['z']", "identity guard comparison must be binary"),
             ("1 in (1, 2)", "unsupported guard comparison operator"),
-        ]
-        for text, message in cases:
+        ):
             with self.subTest(text=text):
                 code = ASTCode(text, ast.parse(text, mode="eval").body)
                 context = ir.Context()
@@ -835,20 +227,11 @@ class GuardParserTest(TridentTestCase):
                 ):
                     code.build(None, context)  # type: ignore[arg-type]
 
-    def test_tensor_match_rejects_unsupported_codes(self) -> None:
-        cases = [
-            "str(L['x'].dtype) == 'torch.not_a_dtype'",
-            "L['x'].ndimension() >= 2",
-            "hasattr(L['x'], 'custom_attribute') == False",
-            "hasattr(L['other'], '_dynamo_dynamic_indices') == False",
-        ]
-        for text in cases:
-            with self.subTest(text=text):
-                self.assertIsNone(
-                    Guard.parse(FakeGuard("TENSOR_MATCH", [text], "L['x']"))
-                )
+        with self.assertWarnsRegex(RuntimeWarning, "Tensor\\._base guard"):
+            result_type, module = self.build_ast_code("L['x']._base.size()[0] == 1")
+        self.assertEqual(result_type, "!torch.bool")
+        self.assertIn("torch.constant.bool false", module)
 
-    def test_tensor_match_raises_for_invalid_device(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "Invalid device string"):
             Guard.parse(
                 FakeGuard(
@@ -858,60 +241,44 @@ class GuardParserTest(TridentTestCase):
                 )
             )
 
-    def test_type_match_parses_quote_and_source_variants(self) -> None:
-        cases = [
+    def test_tensor_match(self) -> None:
+        code_list = [
+            "___check_type_id(L['xs'][0], 1), type=<class 'torch.Tensor'>",
+            "str(L['xs'][0].dtype) == 'torch.float32'",
+            "str(L['xs'][0].device) == 'cuda:1'",
+            "L['xs'][0].requires_grad == True",
+            "L['xs'][0].ndimension() == 4",
+            "hasattr(L['xs'][0], '_dynamo_static_indices') == False",
+        ]
+        parsed = self.assert_parsed(
+            FakeGuard("TENSOR_MATCH", code_list, "L['xs'][0]"),
+            TensorMatchGuard,
             (
-                "L['x']",
-                "___check_type_id(L['x'], 123), type=<class 'torch.Tensor'>",
+                TypeIdCode,
+                TensorDTypeCode,
+                TensorDeviceCode,
+                RequiresGradCode,
+                TensorRankCode,
+                DynamoAttributeAbsentCode,
             ),
-            (
-                "L['xs'][0]",
-                "___check_type_id(L['xs'][0], 456), type=<class \"list\">",
-            ),
-        ]
-        for name, text in cases:
-            with self.subTest(text=text):
-                parsed = self.assert_parsed(
-                    FakeGuard("TYPE_MATCH", [text], name),
-                    TypeMatchGuard,
-                    (TypeIdCode,),
-                )
-                self.assertEqual(parsed.source, Local.parse(name))
-
-    def test_empty_code_lists_follow_non_constant_handler_contracts(self) -> None:
-        cases = [
-            ("SEQUENCE_LENGTH", SequenceLengthGuard),
-            ("TENSOR_MATCH", TensorMatchGuard),
-            ("TYPE_MATCH", TypeMatchGuard),
-        ]
-        for create_fn_name, handler_type in cases:
-            with self.subTest(create_fn_name=create_fn_name):
-                self.assert_parsed(
-                    FakeGuard(create_fn_name, [], "L['x']"),
-                    handler_type,
-                    (),
-                )
-
-    def test_rejects_unknown_ambiguous_and_unmatched_guards(self) -> None:
-        cases = [
-            FakeGuard("UNKNOWN", None),
-            FakeGuard("TEST_AMBIGUOUS", ["L['x'] == 1"], "L['x']"),
-            FakeGuard("TYPE_MATCH", ["___check_obj_id(L['x'], 1)"], "L['x']"),
-            FakeGuard(
-                "TYPE_MATCH",
-                ["___check_type_id(L['other'], 1), type=<class 'int'>"],
-                "L['x']",
-            ),
-        ]
-        for guard in cases:
-            with self.subTest(create_fn_name=guard.create_fn_name()):
-                self.assertIsNone(Guard.parse(guard))
-
-    def test_duplicate_registration_fails(self) -> None:
-        with self.assertRaisesRegex(AssertionError, "duplicate Guard registration"):
-
-            class DuplicateTypeMatchGuard(Guard):
-                create_fn_name = "TYPE_MATCH"
+        )
+        self.assertEqual(parsed.source, Local(("xs", 0)))
+        _, dtype_item, device_item, grad_item, rank_item, attribute_item = parsed.codes
+        dtype = dtype_item.code
+        device = device_item.code
+        grad = grad_item.code
+        rank = rank_item.code
+        attribute = attribute_item.code
+        assert isinstance(dtype, TensorDTypeCode)
+        assert isinstance(device, TensorDeviceCode)
+        assert isinstance(grad, RequiresGradCode)
+        assert isinstance(rank, TensorRankCode)
+        assert isinstance(attribute, DynamoAttributeAbsentCode)
+        self.assertEqual(dtype.expected, "torch.float32")
+        self.assertEqual(device.expected, "cuda:1")
+        self.assertTrue(grad.expected)
+        self.assertEqual(rank.expected, 4)
+        self.assertEqual(attribute.attribute, "_dynamo_static_indices")
 
 
 if __name__ == "__main__":

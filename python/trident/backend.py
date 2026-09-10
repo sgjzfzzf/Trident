@@ -7,6 +7,7 @@ import copy
 import gc
 import inspect
 import operator
+import os
 from collections.abc import Callable, Hashable, Sequence
 from typing import Any, Final, TypeAlias
 
@@ -207,8 +208,18 @@ class TridentGraphModule:
                 )
                 for name, value in bound.arguments.items()
             }
+            result = wrapped(*bound.args, **bound.kwargs)
+            # Bench/hack: skip TVM-FFI -> Torch result normalize (from_dlpack).
+            # Set TRIDENT_SKIP_RESULT_NORMALIZE=1 for pointwise host timing.
+            if os.environ.get("TRIDENT_SKIP_RESULT_NORMALIZE", "") not in (
+                "",
+                "0",
+                "false",
+                "False",
+            ):
+                return result
             return normalize(
-                wrapped(*bound.args, **bound.kwargs),
+                result,
                 lambda value: (
                     torch.from_dlpack(value)
                     if isinstance(value, tvm_ffi.Tensor)

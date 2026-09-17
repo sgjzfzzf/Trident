@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/Utils/TVMFFIUtils.h"
-#include "trident/core/Conversion/Utils/Check.h"
 #include "trident/core/Conversion/Utils/String.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
@@ -113,8 +112,11 @@ buildTVMFFIHandleCtorBody(mlir::OpBuilder &builder, mlir::Location loc,
   mlir::LLVM::LLVMStructType const byteArrayTy =
       mlir::LLVM::LLVMStructType::getLiteral(ctx, {ptrTy, i64Ty});
 
-  mlir::LLVM::LLVMFuncOp getGlobal =
-      TRIDENT_CHECK_FAILURE(getOrCreateTVMFFIFunctionGetGlobal(moduleOp));
+  mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getGlobal =
+      getOrCreateTVMFFIFunctionGetGlobal(moduleOp);
+  if (mlir::failed(getGlobal)) {
+    return mlir::failure();
+  }
 
   mlir::Value const namePtr = getString(builder, loc, funcName);
   mlir::Value const one =
@@ -134,7 +136,8 @@ buildTVMFFIHandleCtorBody(mlir::OpBuilder &builder, mlir::Location loc,
 
   mlir::Value const funcSlot =
       mlir::LLVM::AllocaOp::create(builder, loc, ptrTy, ptrTy, one);
-  mlir::LLVM::CallOp::create(builder, loc, getGlobal, {nameSlot, funcSlot});
+  mlir::LLVM::CallOp::create(builder, loc, getGlobal.value(),
+                             {nameSlot, funcSlot});
   mlir::LLVM::StoreOp::create(
       builder, loc, mlir::LLVM::LoadOp::create(builder, loc, ptrTy, funcSlot),
       mlir::LLVM::AddressOfOp::create(builder, loc, handleGlobal));
@@ -149,12 +152,15 @@ buildTVMFFIHandleDtorBody(mlir::OpBuilder &builder, mlir::Location loc,
   mlir::LLVM::LLVMPointerType const ptrTy =
       mlir::LLVM::LLVMPointerType::get(moduleOp.getContext());
 
-  mlir::LLVM::LLVMFuncOp decRef =
-      TRIDENT_CHECK_FAILURE(getOrCreateTVMFFIObjectDecRef(moduleOp));
+  mlir::FailureOr<mlir::LLVM::LLVMFuncOp> decRef =
+      getOrCreateTVMFFIObjectDecRef(moduleOp);
+  if (mlir::failed(decRef)) {
+    return mlir::failure();
+  }
   mlir::Value const handle = mlir::LLVM::LoadOp::create(
       builder, loc, ptrTy,
       mlir::LLVM::AddressOfOp::create(builder, loc, handleGlobal));
-  mlir::LLVM::CallOp::create(builder, loc, decRef, {handle});
+  mlir::LLVM::CallOp::create(builder, loc, decRef.value(), {handle});
   return mlir::success();
 }
 
@@ -213,32 +219,42 @@ mlir::FailureOr<mlir::Value>
 loadCachedTVMFFIGlobalHandle(mlir::OpBuilder &builder, mlir::Location loc,
                              mlir::ModuleOp moduleOp,
                              llvm::StringRef funcName) {
-  mlir::LLVM::GlobalOp handleGlobal =
-      TRIDENT_CHECK_FAILURE(getOrCreateTVMFFIGlobalHandle(moduleOp, funcName));
+  mlir::FailureOr<mlir::LLVM::GlobalOp> handleGlobal =
+      getOrCreateTVMFFIGlobalHandle(moduleOp, funcName);
+  if (mlir::failed(handleGlobal)) {
+    return mlir::failure();
+  }
 
-  mlir::LLVM::LLVMFuncOp ctor =
-      TRIDENT_CHECK_FAILURE(getOrCreateTVMFFIHandleLifecycle(
+  mlir::FailureOr<mlir::LLVM::LLVMFuncOp> ctor =
+      getOrCreateTVMFFIHandleLifecycle(
           moduleOp, "__trident_tvm_ffi_ctor_", funcName, "constructor",
           [&](mlir::OpBuilder &bodyBuilder,
               mlir::Location bodyLoc) -> mlir::LogicalResult {
             return buildTVMFFIHandleCtorBody(bodyBuilder, bodyLoc, moduleOp,
-                                             funcName, handleGlobal);
-          }));
-  mlir::LLVM::LLVMFuncOp dtor =
-      TRIDENT_CHECK_FAILURE(getOrCreateTVMFFIHandleLifecycle(
+                                             funcName, handleGlobal.value());
+          });
+  if (mlir::failed(ctor)) {
+    return mlir::failure();
+  }
+  mlir::FailureOr<mlir::LLVM::LLVMFuncOp> dtor =
+      getOrCreateTVMFFIHandleLifecycle(
           moduleOp, "__trident_tvm_ffi_dtor_", funcName, "destructor",
           [&](mlir::OpBuilder &bodyBuilder,
               mlir::Location bodyLoc) -> mlir::LogicalResult {
             return buildTVMFFIHandleDtorBody(bodyBuilder, bodyLoc, moduleOp,
-                                             handleGlobal);
-          }));
-  registerGlobalCtor(moduleOp, ctor);
-  registerGlobalDtor(moduleOp, dtor);
+                                             handleGlobal.value());
+          });
+  if (mlir::failed(dtor)) {
+    return mlir::failure();
+  }
+  registerGlobalCtor(moduleOp, ctor.value());
+  registerGlobalDtor(moduleOp, dtor.value());
 
   return mlir::LLVM::LoadOp::create(
              builder, loc,
              mlir::LLVM::LLVMPointerType::get(moduleOp.getContext()),
-             mlir::LLVM::AddressOfOp::create(builder, loc, handleGlobal))
+             mlir::LLVM::AddressOfOp::create(builder, loc,
+                                             handleGlobal.value()))
       .getResult();
 }
 
@@ -285,14 +301,21 @@ getTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
   mlir::LLVM::LLVMPointerType const ptrTy =
       mlir::LLVM::LLVMPointerType::get(ctx);
 
-  mlir::Value const handle = TRIDENT_CHECK_FAILURE(
-      loadCachedTVMFFIGlobalHandle(builder, loc, moduleOp, funcName));
+  mlir::FailureOr<mlir::Value> cachedHandle =
+      loadCachedTVMFFIGlobalHandle(builder, loc, moduleOp, funcName);
+  if (mlir::failed(cachedHandle)) {
+    return mlir::failure();
+  }
+  mlir::Value const handle = cachedHandle.value();
   // The cached reference belongs to the module, so retain one for the caller.
   // `FunctionGetGlobalOp` keeps its default `Owned` result contract, and the
   // ownership deallocation pass pairs this retain with a release.
-  mlir::LLVM::LLVMFuncOp incRef =
-      TRIDENT_CHECK_FAILURE(getOrCreateTVMFFIObjectIncRef(moduleOp));
-  mlir::LLVM::CallOp::create(builder, loc, incRef, {handle});
+  mlir::FailureOr<mlir::LLVM::LLVMFuncOp> incRef =
+      getOrCreateTVMFFIObjectIncRef(moduleOp);
+  if (mlir::failed(incRef)) {
+    return mlir::failure();
+  }
+  mlir::LLVM::CallOp::create(builder, loc, incRef.value(), {handle});
   // The constructor leaves the global null when the lookup failed, so the
   // status the caller checks is derived from the cached handle: zero, i.e.
   // success, exactly when a handle was resolved.
@@ -363,8 +386,12 @@ callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
   // This helper emits LLVM directly, so the ownership deallocation pass never
   // sees it. The module holds the cached reference for its whole lifetime and
   // the call cannot outlive it, so borrowing the handle is enough.
-  mlir::Value const handle = TRIDENT_CHECK_FAILURE(
-      loadCachedTVMFFIGlobalHandle(builder, loc, moduleOp, funcName));
+  mlir::FailureOr<mlir::Value> cachedHandle =
+      loadCachedTVMFFIGlobalHandle(builder, loc, moduleOp, funcName);
+  if (mlir::failed(cachedHandle)) {
+    return mlir::failure();
+  }
+  mlir::Value const handle = cachedHandle.value();
 
   mlir::Value const zero32 =
       mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, 0);

@@ -83,6 +83,7 @@ class AtenOpTest(TridentTestCase):
         cls._engine: execution_engine.ExecutionEngine = (
             execution_engine.ExecutionEngine(module, shared_libs=shared_libs)
         )
+        cls._engine.initialize()
         cls._ffi_funcs: dict[str, tvm_ffi.Function] = {}
 
     def get_ffi_func(self, func_name: str) -> tvm_ffi.Function:

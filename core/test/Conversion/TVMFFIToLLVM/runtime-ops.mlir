@@ -7,12 +7,17 @@
 
 // RUN: trident-core-opt %s -split-input-file -convert-tvm-ffi-to-llvm | FileCheck %s
 
+// The global function is resolved once at load time into a module-level
+// handle; call sites read that handle instead of repeating the lookup.
 // CHECK-DAG: llvm.func @TVMFFIFunctionCall(!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK-DAG: llvm.func @TVMFFIFunctionGetGlobal(!llvm.ptr, !llvm.ptr) -> i32
+// CHECK-DAG: llvm.mlir.global internal @__trident_tvm_ffi_handle_test.identity(#llvm.zero)
 // CHECK-LABEL: func.func @global_call(
 // CHECK-SAME: %[[GLOBAL_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[GLOBAL_NAME:[a-zA-Z0-9_]+]], %[[GLOBAL_HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK: %[[GLOBAL_HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[GLOBAL_HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
+// CHECK-NOT: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: %[[GLOBAL_HANDLE_ADDR:[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_test.identity : !llvm.ptr
+// CHECK: %[[GLOBAL_HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[GLOBAL_HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
+// CHECK: llvm.call @TVMFFIObjectIncRef(%[[GLOBAL_HANDLE]]) : (!llvm.ptr) -> i32
 // CHECK: %[[GLOBAL_ARGS:[a-zA-Z0-9_]+]] = llvm.alloca
 // CHECK: %[[GLOBAL_ARG_SLOT:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[GLOBAL_ARGS]][0]
 // CHECK: llvm.store %[[GLOBAL_ARG]], %[[GLOBAL_ARG_SLOT]]
@@ -25,6 +30,17 @@
 // CHECK: llvm.call @TVMFFIFunctionCall(%[[GLOBAL_HANDLE]], %[[GLOBAL_CALL_ARGS]], %[[GLOBAL_NARGS]], %[[GLOBAL_RESULT_SLOT]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK: %[[GLOBAL_RESULT:[a-zA-Z0-9_]+]] = llvm.load %[[GLOBAL_RESULT_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: return %[[GLOBAL_RESULT]] : !llvm.struct<(i32, i32, i64)>
+// The constructor performs the single lookup and fills the cache.
+// CHECK: llvm.func internal @__trident_tvm_ffi_ctor_test.identity()
+// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[CTOR_NAME:[a-zA-Z0-9_]+]], %[[CTOR_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
+// CHECK: %[[CTOR_HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[CTOR_SLOT]] : !llvm.ptr -> !llvm.ptr
+// CHECK: llvm.store %[[CTOR_HANDLE]], %{{[a-zA-Z0-9_]+}} : !llvm.ptr, !llvm.ptr
+// The destructor drops the load-time reference.
+// CHECK: llvm.func internal @__trident_tvm_ffi_dtor_test.identity()
+// CHECK: %[[DTOR_HANDLE:[a-zA-Z0-9_]+]] = llvm.load %{{[a-zA-Z0-9_]+}} : !llvm.ptr -> !llvm.ptr
+// CHECK: llvm.call @TVMFFIObjectDecRef(%[[DTOR_HANDLE]]) : (!llvm.ptr) -> i32
+// CHECK: llvm.mlir.global_ctors ctors = [@__trident_tvm_ffi_ctor_test.identity], priorities = [65535 : i32], data = [#llvm.zero]
+// CHECK: llvm.mlir.global_dtors dtors = [@__trident_tvm_ffi_dtor_test.identity], priorities = [65535 : i32], data = [#llvm.zero]
 func.func @global_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
   %callee, %get_success = tvm_ffi.FunctionGetGlobal "test.identity"
       : !tvm_ffi.function, i1
@@ -35,9 +51,14 @@ func.func @global_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
 
 // -----
 
+// A null cached handle means the load-time lookup failed, so the status the
+// caller checks is derived from it and its success check stays intact.
 // CHECK-LABEL: func.func @checked_global_call(
-// CHECK: %[[GET_STATUS:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionGetGlobal(%[[NAME:[a-zA-Z0-9_]+]], %[[HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
+// CHECK: %[[HANDLE_ADDR:[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_test.identity : !llvm.ptr
+// CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
+// CHECK: %[[NULL:[a-zA-Z0-9_]+]] = llvm.mlir.zero : !llvm.ptr
+// CHECK: %[[IS_NULL:[a-zA-Z0-9_]+]] = llvm.icmp "eq" %[[HANDLE]], %[[NULL]] : !llvm.ptr
+// CHECK: %[[GET_STATUS:[a-zA-Z0-9_]+]] = llvm.zext %[[IS_NULL]] : i1 to i32
 // CHECK: %[[GET_ZERO:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK: %[[GET_SUCCESS:[a-zA-Z0-9_]+]] = llvm.icmp "eq" %[[GET_STATUS]], %[[GET_ZERO]] : i32
 // CHECK: %[[CALL_STATUS:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[ARGS:[a-zA-Z0-9_]+]], %[[NARGS:[a-zA-Z0-9_]+]], %[[RESULT_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32

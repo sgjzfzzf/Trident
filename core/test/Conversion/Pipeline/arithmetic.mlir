@@ -9,20 +9,29 @@
 
 // CHECK-LABEL: llvm.func @torch.aten.mul.Scalar
 // CHECK-SAME: %[[MUL_ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[MUL_ARG1:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[MUL_NAME:[a-zA-Z0-9_]+]], %[[MUL_HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIFunctionCall(%[[MUL_HANDLE:[a-zA-Z0-9_]+]], %[[MUL_ARGS:[a-zA-Z0-9_]+]], %[[MUL_NARGS:[a-zA-Z0-9_]+]], %[[MUL_RET_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
+// The callee is resolved once at load time, so the dispatch reads the cached
+// handle rather than calling TVMFFIFunctionGetGlobal per invocation.
+// CHECK: %[[MUL_HANDLE_ADDR:[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_trident.aten.mul.Scalar : !llvm.ptr
+// CHECK: %[[MUL_HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[MUL_HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[MUL_HANDLE]], %[[MUL_ARGS:[a-zA-Z0-9_]+]], %[[MUL_NARGS:[a-zA-Z0-9_]+]], %[[MUL_RET_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK: %[[MUL_RET:[a-zA-Z0-9_]+]] = llvm.load %[[MUL_RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.return %[[MUL_RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @torch.aten.sub.Scalar
 // CHECK-SAME: %[[SUB_SCALAR_ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[SUB_SCALAR_ARG1:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[SUB_SCALAR_ARG2:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[SUB_SCALAR_NAME:[a-zA-Z0-9_]+]], %[[SUB_SCALAR_HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIFunctionCall(%[[SUB_SCALAR_HANDLE:[a-zA-Z0-9_]+]], %[[SUB_SCALAR_ARGS:[a-zA-Z0-9_]+]], %[[SUB_SCALAR_NARGS:[a-zA-Z0-9_]+]], %[[SUB_SCALAR_RET_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
+// The callee is resolved once at load time, so the dispatch reads the cached
+// handle rather than calling TVMFFIFunctionGetGlobal per invocation.
+// CHECK: %[[SUB_SCALAR_HANDLE_ADDR:[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_trident.aten.sub.Scalar : !llvm.ptr
+// CHECK: %[[SUB_SCALAR_HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[SUB_SCALAR_HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[SUB_SCALAR_HANDLE]], %[[SUB_SCALAR_ARGS:[a-zA-Z0-9_]+]], %[[SUB_SCALAR_NARGS:[a-zA-Z0-9_]+]], %[[SUB_SCALAR_RET_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK: %[[SUB_SCALAR_RET:[a-zA-Z0-9_]+]] = llvm.load %[[SUB_SCALAR_RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.return %[[SUB_SCALAR_RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @torch.aten.sub.Tensor
 // CHECK-SAME: %[[SUB_TENSOR_ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[SUB_TENSOR_ARG1:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[SUB_TENSOR_ARG2:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[SUB_TENSOR_NAME:[a-zA-Z0-9_]+]], %[[SUB_TENSOR_HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIFunctionCall(%[[SUB_TENSOR_HANDLE:[a-zA-Z0-9_]+]], %[[SUB_TENSOR_ARGS:[a-zA-Z0-9_]+]], %[[SUB_TENSOR_NARGS:[a-zA-Z0-9_]+]], %[[SUB_TENSOR_RET_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
+// The callee is resolved once at load time, so the dispatch reads the cached
+// handle rather than calling TVMFFIFunctionGetGlobal per invocation.
+// CHECK: %[[SUB_TENSOR_HANDLE_ADDR:[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_trident.aten.sub.Tensor : !llvm.ptr
+// CHECK: %[[SUB_TENSOR_HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[SUB_TENSOR_HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[SUB_TENSOR_HANDLE]], %[[SUB_TENSOR_ARGS:[a-zA-Z0-9_]+]], %[[SUB_TENSOR_NARGS:[a-zA-Z0-9_]+]], %[[SUB_TENSOR_RET_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK: %[[SUB_TENSOR_RET:[a-zA-Z0-9_]+]] = llvm.load %[[SUB_TENSOR_RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.return %[[SUB_TENSOR_RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_mul_scalar(

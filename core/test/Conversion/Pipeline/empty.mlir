@@ -10,10 +10,13 @@
 // This test covers the two empty tensor factories that use the AtenGen FFI
 // dispatch path: empty_like and empty.memory_format.
 
+// Each callee is resolved once at load time, so the dispatch reads the cached
+// handle instead of calling TVMFFIFunctionGetGlobal per invocation.
 // CHECK-LABEL: llvm.func @torch.aten.empty_like
 // CHECK-SAME: %[[EMPTY_LIKE_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: %[[EMPTY_LIKE_GETGLOBAL:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionGetGlobal(%[[EMPTY_LIKE_FUNCTION_NAME:[a-zA-Z0-9_]+]], %[[EMPTY_LIKE_HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK: %[[EMPTY_LIKE_HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[EMPTY_LIKE_HANDLE_SLOT]] : !llvm.ptr -> !llvm.ptr
+// CHECK-NOT: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: %[[EMPTY_LIKE_HANDLE_ADDR:[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_trident.aten.empty_like : !llvm.ptr
+// CHECK: %[[EMPTY_LIKE_HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[EMPTY_LIKE_HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
 // CHECK: llvm.call @TVMFFIFunctionCall(%[[EMPTY_LIKE_HANDLE]], %[[EMPTY_LIKE_ARGS:[a-zA-Z0-9_]+]], %[[EMPTY_LIKE_NARGS:[a-zA-Z0-9_]+]], %[[EMPTY_LIKE_RET_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK: %[[EMPTY_LIKE_RET:[a-zA-Z0-9_]+]] = llvm.load %[[EMPTY_LIKE_RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.return %[[EMPTY_LIKE_RET]] : !llvm.struct<(i32, i32, i64)>
@@ -39,8 +42,10 @@ tvm_ffi.func @empty_like(%arg0: !torch.vtensor<[200,200,26],f64>) -> !torch.vten
 
 // CHECK-LABEL: llvm.func @torch.aten.empty.memory_format
 // CHECK-SAME: %[[EMPTY_SHAPE_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[EMPTY_DTYPE_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[EMPTY_DEVICE_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[EMPTY_FUNCTION_NAME:[a-zA-Z0-9_]+]], %[[EMPTY_HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
-// CHECK: llvm.call @TVMFFIFunctionCall(%[[EMPTY_HANDLE:[a-zA-Z0-9_]+]], %[[EMPTY_ARGS_COPY:[a-zA-Z0-9_]+]], %[[EMPTY_NARGS:[a-zA-Z0-9_]+]], %[[EMPTY_RET_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
+// CHECK-NOT: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: %[[EMPTY_HANDLE_ADDR:[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_trident.aten.empty.memory_format : !llvm.ptr
+// CHECK: %[[EMPTY_HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[EMPTY_HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[EMPTY_HANDLE]], %[[EMPTY_ARGS_COPY:[a-zA-Z0-9_]+]], %[[EMPTY_NARGS:[a-zA-Z0-9_]+]], %[[EMPTY_RET_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK: %[[EMPTY_RET:[a-zA-Z0-9_]+]] = llvm.load %[[EMPTY_RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.return %[[EMPTY_RET]] : !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_empty(

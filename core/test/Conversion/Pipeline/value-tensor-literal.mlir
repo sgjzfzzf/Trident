@@ -11,7 +11,10 @@
 // non-splat attributes before copying the tensor to the current CUDA device.
 
 // CHECK-LABEL: llvm.func @torch.vtensor.literal.splat(
-// CHECK: llvm.call @TVMFFIFunctionGetGlobal(%[[SPLAT_NAME:[a-zA-Z0-9_]+]], %[[SPLAT_HANDLE_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr) -> i32
+// The runtime helpers are resolved once at load time, so the literal path
+// reads cached handles rather than calling TVMFFIFunctionGetGlobal.
+// CHECK-NOT: llvm.call @TVMFFIFunctionGetGlobal
+// CHECK: %[[SPLAT_HANDLE_ADDR:[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_trident.runtime.tensor_to_tvm_ffi_object : !llvm.ptr
 // CHECK: llvm.call @TVMFFIFunctionCall(%[[SPLAT_HANDLE:[a-zA-Z0-9_]+]], %[[SPLAT_RESULT_SLOT:[a-zA-Z0-9_]+]], %[[SPLAT_NARGS:[a-zA-Z0-9_]+]], %[[SPLAT_ARGS:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK: %[[SHAPE_DATA:[a-zA-Z0-9_]+]] = llvm.alloca %[[SHAPE_COUNT:[a-zA-Z0-9_]+]] x i64
 // CHECK: %[[LITERAL_DATA:[a-zA-Z0-9_]+]] = llvm.alloca %[[LITERAL_COUNT:[a-zA-Z0-9_]+]] x f32

@@ -161,7 +161,13 @@ tvm_ffi.func @no_wrapper() -> !torch.int {
 // INTERMEDIATE: [[GUARDED_RESULT:%[a-zA-Z0-9_]+]] = func.call @guarded([[GUARD_INT]], [[GUARD_BOOL]]) : (!torch.int, !torch.bool) -> !torch.int
 // INTERMEDIATE-NEXT: [[GUARDED_ABI_RESULT:%[a-zA-Z0-9_]+]] = builtin.unrealized_conversion_cast [[GUARDED_RESULT]] : !torch.int to !llvm.struct<(i32, i32, i64)>
 // INTERMEDIATE-NEXT: llvm.store [[GUARDED_ABI_RESULT]], [[RESULT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-// INTERMEDIATE: [[GUARD_EXCEPTION_DEC_REF:%[a-zA-Z0-9_]+]] = llvm.call @TVMFFIObjectDecRef([[GUARD_EXCEPTION_HANDLE:%[a-zA-Z0-9_]+]]) : (!llvm.ptr) -> i32
+// The exception constructor is reached through the cached module-level handle,
+// which the failure path retains for the call and releases afterwards.
+// INTERMEDIATE: [[GUARD_EXCEPTION_HANDLE_ADDR:%[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_trident.ffi.Exception : !llvm.ptr
+// INTERMEDIATE-NEXT: [[GUARD_EXCEPTION_HANDLE:%[a-zA-Z0-9_]+]] = llvm.load [[GUARD_EXCEPTION_HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
+// INTERMEDIATE-NEXT: [[GUARD_EXCEPTION_INC_REF:%[a-zA-Z0-9_]+]] = llvm.call @TVMFFIObjectIncRef([[GUARD_EXCEPTION_HANDLE]]) : (!llvm.ptr) -> i32
+// INTERMEDIATE: [[GUARD_EXCEPTION_STATUS:%[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionCall([[GUARD_EXCEPTION_HANDLE]], {{.*}}) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
+// INTERMEDIATE-NEXT: [[GUARD_EXCEPTION_DEC_REF:%[a-zA-Z0-9_]+]] = llvm.call @TVMFFIObjectDecRef([[GUARD_EXCEPTION_HANDLE]]) : (!llvm.ptr) -> i32
 // INTERMEDIATE-NEXT: [[GUARD_FAILURE_RESULT:%[a-zA-Z0-9_]+]] = llvm.load [[GUARD_FAILURE_RESULT_SLOT:%[a-zA-Z0-9_]+]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // INTERMEDIATE-NEXT: llvm.store [[GUARD_FAILURE_RESULT]], [[RESULT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // INTERMEDIATE-NEXT: }

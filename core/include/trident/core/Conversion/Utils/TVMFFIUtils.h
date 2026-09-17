@@ -17,6 +17,15 @@
 namespace trident::conversion::utils {
 
 /// Get an owned TVM FFI global function handle by name.
+///
+/// The name is resolved once per module: the handle and the status reported
+/// by `TVMFFIFunctionGetGlobal` are cached in module-level globals filled by a
+/// generated constructor, and a matching destructor drops that reference on
+/// unload. Call sites load the cached values instead of repeating the lookup,
+/// and retain the handle so the caller still owns the returned reference.
+///
+/// \return The cached function handle and the i32 status of the load-time
+///         lookup (zero on success).
 mlir::FailureOr<std::tuple<mlir::Value, mlir::Value>>
 getTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
                         mlir::ModuleOp moduleOp, llvm::StringRef funcName);
@@ -52,9 +61,9 @@ callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
 /// Call a TVM FFI global function with a pre-built contiguous args array
 /// and a runtime-determined number of arguments.
 ///
-/// Same pattern (GetGlobal -> Call -> DecRef) but the caller provides
-/// the args array already populated instead of individual slots, and
-/// \p numArgs is a runtime i32 Value instead of a compile-time constant.
+/// The caller provides the args array already populated instead of individual
+/// slots, and \p numArgs is a runtime i32 Value instead of a compile-time
+/// constant. The function handle comes from the module-level cache.
 ///
 /// \param argsArray A !llvm.ptr to a contiguous array of TVMFFIAny elements.
 /// \param numArgs   A runtime i32 value specifying how many elements to pass.

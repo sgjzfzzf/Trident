@@ -273,36 +273,8 @@ callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
 
   mlir::Value const numArgs = mlir::LLVM::ConstantOp::create(
       builder, loc, i32Ty, static_cast<int64_t>(numArgsCount));
-
-  // This helper emits LLVM directly, so the ownership deallocation pass never
-  // sees it. The module holds the cached reference for its whole lifetime and
-  // the call cannot outlive it, so borrowing the handle is enough.
-  mlir::Value const handle = TRIDENT_CHECK_FAILURE(
-      loadCachedTVMFFIGlobalHandle(builder, loc, moduleOp, funcName));
-
-  mlir::Value const zero32 =
-      mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, 0);
-  mlir::Value const resultSlot = mlir::LLVM::AllocaOp::create(
-      builder, loc, ptrTy, anyTy,
-      mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
-  mlir::LLVM::StoreOp::create(
-      builder, loc, zero32,
-      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, resultSlot,
-                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0}));
-  mlir::LLVM::StoreOp::create(
-      builder, loc, zero32,
-      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, resultSlot,
-                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 1}));
-  mlir::LLVM::StoreOp::create(
-      builder, loc, mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 0),
-      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, resultSlot,
-                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
-
-  if (mlir::failed(callTVMFFIFunction(builder, loc, moduleOp, handle, argsArray,
-                                      numArgs, resultSlot))) {
-    return mlir::failure();
-  }
-  return resultSlot;
+  return callTVMFFIGlobalFunction(builder, loc, moduleOp, funcName, argsArray,
+                                  numArgs);
 }
 
 mlir::FailureOr<std::tuple<mlir::Value, mlir::Value>>
@@ -376,4 +348,46 @@ callTVMFFIFunction(mlir::OpBuilder &builder, mlir::Location loc,
                                  {funcHandle, argsArray, numArgs, resultSlot});
   return call.getResult();
 }
+
+mlir::FailureOr<mlir::Value>
+callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
+                         mlir::ModuleOp moduleOp, llvm::StringRef funcName,
+                         mlir::Value argsArray, mlir::Value numArgs) {
+  mlir::MLIRContext *ctx = builder.getContext();
+  mlir::IntegerType const i32Ty = mlir::IntegerType::get(ctx, 32);
+  mlir::LLVM::LLVMStructType const anyTy =
+      tvm_ffi::TVMFFIABIType::getLLVMType(ctx);
+  mlir::IntegerType const i64Ty = mlir::IntegerType::get(ctx, 64);
+  mlir::LLVM::LLVMPointerType const ptrTy =
+      mlir::LLVM::LLVMPointerType::get(ctx);
+  // This helper emits LLVM directly, so the ownership deallocation pass never
+  // sees it. The module holds the cached reference for its whole lifetime and
+  // the call cannot outlive it, so borrowing the handle is enough.
+  mlir::Value const handle = TRIDENT_CHECK_FAILURE(
+      loadCachedTVMFFIGlobalHandle(builder, loc, moduleOp, funcName));
+
+  mlir::Value const zero32 =
+      mlir::LLVM::ConstantOp::create(builder, loc, i32Ty, 0);
+  mlir::Value resultSlot = mlir::LLVM::AllocaOp::create(
+      builder, loc, ptrTy, anyTy,
+      mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 1));
+  mlir::LLVM::StoreOp::create(
+      builder, loc, zero32,
+      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, resultSlot,
+                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 0}));
+  mlir::LLVM::StoreOp::create(
+      builder, loc, zero32,
+      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, resultSlot,
+                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 1}));
+  mlir::LLVM::StoreOp::create(
+      builder, loc, mlir::LLVM::ConstantOp::create(builder, loc, i64Ty, 0),
+      mlir::LLVM::GEPOp::create(builder, loc, ptrTy, anyTy, resultSlot,
+                                llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
+  if (mlir::failed(callTVMFFIFunction(builder, loc, moduleOp, handle, argsArray,
+                                      numArgs, resultSlot))) {
+    return mlir::failure();
+  }
+  return resultSlot;
+}
+
 } // namespace trident::conversion::utils

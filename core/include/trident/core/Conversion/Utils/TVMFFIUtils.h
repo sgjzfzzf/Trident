@@ -57,6 +57,23 @@ mlir::FailureOr<mlir::Value>
 callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
                          mlir::ModuleOp moduleOp, llvm::StringRef funcName,
                          llvm::ArrayRef<mlir::Value> args);
+
+/// Call a TVM FFI global function with a pre-built contiguous args array
+/// and a runtime-determined number of arguments.
+///
+/// The caller provides the args array already populated instead of individual
+/// slots, and \p numArgs is a runtime i32 Value instead of a compile-time
+/// constant. The function handle comes from the module-level cache.
+///
+/// \param argsArray A !llvm.ptr to a contiguous array of TVMFFIAny elements.
+/// \param numArgs   A runtime i32 value specifying how many elements to pass.
+/// \return A pointer to the result TVMFFIAny slot (!llvm.ptr to {i32,i32,i64})
+///         on the stack, or failure.
+mlir::FailureOr<mlir::Value>
+callTVMFFIGlobalFunction(mlir::OpBuilder &builder, mlir::Location loc,
+                         mlir::ModuleOp moduleOp, llvm::StringRef funcName,
+                         mlir::Value argsArray, mlir::Value numArgs);
+
 } // namespace trident::conversion::utils
 
 #endif // TRIDENT_CORE_CONVERSION_UTILS_TVMFFIUTILS_H_

@@ -68,6 +68,9 @@ class FrontendTest(TridentTestCase):
         device: torch.device = torch.device("cuda")
         first: torch.Tensor = empty_on_device(x, device)
         repeated: torch.Tensor = empty_on_device(x, device)
+        imported_module = f"{empty_on_device._sub_modules[0]}"
+        self.assertIn("torch.aten.empty_like", imported_module)
+        self.assertNotIn("torch.aten.empty_permuted", imported_module)
         torch.testing.assert_close(first, torch.zeros_like(x))
         torch.testing.assert_close(repeated, torch.zeros_like(x))
 

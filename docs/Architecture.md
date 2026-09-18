@@ -147,6 +147,11 @@ Trident exposes two entry points (`python/trident/compile.py`):
 Use `compile` for one-shot compilation when inputs are known and stable.
 Use `jit` when inputs may vary across calls.
 
+The exported program runs decomposition with an empty decomposition table.
+This keeps PyTorch's functionalization step, including mutation writeback, but
+preserves the exported ATen operators for Trident's generic ATen dispatch
+instead of lowering them to the default Core ATen decomposition set.
+
 The executor wrapper uses one recursive container normalizer with separate
 leaf converters for the Python-to-TVM-FFI input direction and the
 TVM-FFI-to-Python result direction. Result normalization converts a directly

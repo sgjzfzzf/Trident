@@ -692,7 +692,7 @@ class TridentGraphModule:
             kwargs,
             dynamic_shapes=dynamic_shapes,
             strict=False,
-        ).run_decompositions()
+        ).run_decompositions(decomp_table={})
         warmup_result = torch.fx.Interpreter(exported_program.module()).run(
             *pytree.tree_leaves(exported_program.example_inputs)
         )

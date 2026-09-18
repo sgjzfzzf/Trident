@@ -180,7 +180,8 @@ void populateDLPackToLLVMConversionPatterns(
 class DLPackToLLVMDialectInterface final
     : public mlir::ConvertToLLVMPatternInterface {
 public:
-  using ConvertToLLVMPatternInterface::ConvertToLLVMPatternInterface;
+  explicit DLPackToLLVMDialectInterface(mlir::Dialect *dialect)
+      : ConvertToLLVMPatternInterface(dialect) {}
 
   void populateConvertToLLVMConversionPatterns(
       mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,

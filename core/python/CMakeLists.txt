@@ -97,6 +97,7 @@ declare_mlir_python_sources(
   TridentCorePythonSources
   SOURCES
   compiler_utils.py
+  extras/fx_as_strided.py
   extras/fx_decomp_util.py
   extras/fx_importer.py
   fx.py)

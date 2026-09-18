@@ -19,7 +19,7 @@ else()
   ExternalProject_Add(
     llvm-project
     GIT_REPOSITORY https://github.com/llvm/llvm-project.git
-    GIT_TAG 977355be38d10c62c3d5498a64618ec926348252
+    GIT_TAG 10dbfc4863c9aea2fb237022c3f47fc24c02265e
     SOURCE_SUBDIR llvm
     INSTALL_DIR ${CMAKE_BINARY_DIR}/install/llvm-project
     CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}

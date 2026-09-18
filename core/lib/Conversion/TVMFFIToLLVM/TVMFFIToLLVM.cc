@@ -957,7 +957,8 @@ public:
 
 struct TVMFFIToLLVMDialectInterface final
     : public mlir::ConvertToLLVMPatternInterface {
-  using ConvertToLLVMPatternInterface::ConvertToLLVMPatternInterface;
+  explicit TVMFFIToLLVMDialectInterface(mlir::Dialect *dialect)
+      : ConvertToLLVMPatternInterface(dialect) {}
 
   void populateConvertToLLVMConversionPatterns(
       mlir::ConversionTarget &target, mlir::LLVMTypeConverter &typeConverter,

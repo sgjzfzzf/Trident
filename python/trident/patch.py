@@ -13,7 +13,6 @@ from contextvars import ContextVar, Token
 from types import TracebackType
 from typing import Any, Final, Self, TypeAlias, cast
 
-import numpy as np
 import torch
 import triton
 
@@ -350,26 +349,6 @@ class _GraphNodeImporterPatchManager:
             patches,
             fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE,
             {torch.dtype: "!torch.int"},
-        )
-        self._patch_mapping(
-            patches,
-            fx_importer.TORCH_DTYPE_TO_INT,
-            {torch.uint32: 28},
-        )
-        self._patch_mapping(
-            patches,
-            fx_importer.TORCH_DTYPE_TO_MLIR_TYPE,
-            {torch.uint32: lambda: ir.IntegerType.get_unsigned(32)},
-        )
-        self._patch_mapping(
-            patches,
-            fx_importer.TORCH_DTYPE_TO_MLIR_TYPE_ASM,
-            {torch.uint32: "ui32"},
-        )
-        self._patch_mapping(
-            patches,
-            fx_importer.TORCH_DTYPE_TO_NPY_TYPE,
-            {torch.uint32: np.uint32},
         )
         self._patch_mapping(
             patches,

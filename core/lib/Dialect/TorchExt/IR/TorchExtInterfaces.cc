@@ -8,6 +8,7 @@
 #include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include <cstdint>
+#include <dlpack/dlpack.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/STLFunctionalExtras.h>

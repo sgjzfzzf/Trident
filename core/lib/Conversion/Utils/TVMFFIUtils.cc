@@ -68,9 +68,9 @@ getOrCreateTVMFFIGlobalHandle(mlir::ModuleOp moduleOp,
 /// \p buildBody. \p description names the function in diagnostics.
 mlir::FailureOr<mlir::LLVM::LLVMFuncOp> getOrCreateTVMFFIHandleLifecycle(
     mlir::ModuleOp moduleOp, llvm::StringRef prefix, llvm::StringRef funcName,
-    llvm::StringRef description,
     llvm::function_ref<mlir::LogicalResult(mlir::OpBuilder &, mlir::Location)>
-        buildBody) {
+        buildBody,
+    llvm::StringRef description) {
   mlir::MLIRContext *ctx = moduleOp.getContext();
   mlir::Location const loc = moduleOp.getLoc();
   mlir::LLVM::LLVMFunctionType const functionType =
@@ -227,23 +227,25 @@ loadCachedTVMFFIGlobalHandle(mlir::OpBuilder &builder, mlir::Location loc,
 
   mlir::FailureOr<mlir::LLVM::LLVMFuncOp> ctor =
       getOrCreateTVMFFIHandleLifecycle(
-          moduleOp, "__trident_tvm_ffi_ctor_", funcName, "constructor",
+          moduleOp, "__trident_tvm_ffi_ctor_", funcName,
           [&](mlir::OpBuilder &bodyBuilder,
               mlir::Location bodyLoc) -> mlir::LogicalResult {
             return buildTVMFFIHandleCtorBody(bodyBuilder, bodyLoc, moduleOp,
                                              funcName, handleGlobal.value());
-          });
+          },
+          "constructor");
   if (mlir::failed(ctor)) {
     return mlir::failure();
   }
   mlir::FailureOr<mlir::LLVM::LLVMFuncOp> dtor =
       getOrCreateTVMFFIHandleLifecycle(
-          moduleOp, "__trident_tvm_ffi_dtor_", funcName, "destructor",
+          moduleOp, "__trident_tvm_ffi_dtor_", funcName,
           [&](mlir::OpBuilder &bodyBuilder,
               mlir::Location bodyLoc) -> mlir::LogicalResult {
             return buildTVMFFIHandleDtorBody(bodyBuilder, bodyLoc, moduleOp,
                                              handleGlobal.value());
-          });
+          },
+          "destructor");
   if (mlir::failed(dtor)) {
     return mlir::failure();
   }

@@ -234,7 +234,7 @@ public:
 
     rewriter.replaceOpWithNewOp<mlir::gpu::LaunchFuncOp>(
         op, op.getKernel(), gridSize, blockSize, dynamicSharedMemorySize,
-        operands, asyncObject, clusterSize);
+        operands, nullptr, mlir::ValueRange{}, asyncObject, clusterSize);
 
     return mlir::success();
   }

@@ -8,9 +8,19 @@
 #include "trident/core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "trident/core/Dialect/DLPack/IR/DLPackOps.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/DLPack/IR/DLPackTypes.h" // NOLINT(misc-include-cleaner)
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/TypeSwitch.h>             // NOLINT(misc-include-cleaner)
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h> // NOLINT(misc-include-cleaner)
-#include <mlir/IR/DialectImplementation.h>   // NOLINT(misc-include-cleaner)
+#include <mlir/Dialect/LLVMIR/LLVMTypes.h>
+#include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/IR/DialectImplementation.h> // NOLINT(misc-include-cleaner)
+#include <mlir/IR/Location.h>
+#include <mlir/IR/MLIRContext.h>
+#include <mlir/IR/OperationSupport.h>
+#include <mlir/IR/Region.h>
+#include <mlir/IR/ValueRange.h>
+#include <mlir/Support/LogicalResult.h>
+#include <optional>
 
 #include "trident/core/Dialect/DLPack/IR/DLPackDialect.cpp.inc"
 
@@ -24,7 +34,7 @@ namespace trident::dlpack {
 
 mlir::LogicalResult TensorDataOp::inferReturnTypes(
     mlir::MLIRContext *context, std::optional<mlir::Location>, mlir::ValueRange,
-    mlir::DictionaryAttr, mlir::OpaqueProperties, mlir::RegionRange,
+    mlir::DictionaryAttr, mlir::PropertyRef, mlir::RegionRange,
     llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
   inferredReturnTypes.push_back(mlir::LLVM::LLVMPointerType::get(context));
   return mlir::success();

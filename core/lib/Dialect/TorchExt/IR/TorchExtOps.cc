@@ -126,7 +126,7 @@ mlir::LogicalResult GetOp::verify() {
 
 mlir::LogicalResult GetOp::inferReturnTypes(
     mlir::MLIRContext *, std::optional<mlir::Location>,
-    mlir::ValueRange operands, mlir::DictionaryAttr, mlir::OpaqueProperties,
+    mlir::ValueRange operands, mlir::DictionaryAttr, mlir::PropertyRef,
     mlir::RegionRange, llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
   if (operands.size() != 1) {
     return mlir::failure();

@@ -8,11 +8,14 @@
 #include "TorchExtDialect.h"
 
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
+#include <mlir-c/IR.h>
+#include <mlir-c/Support.h>
 #include <mlir/Bindings/Python/IRCore.h>
-#include <mlir/Bindings/Python/Nanobind.h>
 #include <mlir/Bindings/Python/NanobindAdaptors.h> // NOLINT(misc-include-cleaner)
 #include <mlir/CAPI/IR.h>
 #include <mlir/CAPI/Support.h>
+#include <mlir/IR/Types.h>
+#include <mlir/Support/LLVM.h>
 #include <nanobind/nanobind.h>
 
 namespace nb = nanobind;

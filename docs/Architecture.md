@@ -152,13 +152,14 @@ This keeps PyTorch's functionalization step, including mutation writeback, but
 preserves the exported ATen operators for Trident's generic ATen dispatch
 instead of lowering them to the default Core ATen decomposition set.
 
-The executor wrapper uses one recursive container normalizer with separate
-leaf converters for the Python-to-TVM-FFI input direction and the
-TVM-FFI-to-Python result direction. Result normalization converts a directly
-returned `tvm_ffi.Tensor` to a `torch.Tensor` through DLPack. TVM FFI normally
-infers the desired tensor environment from Tensor inputs, but factory functions
-such as `arange` have no Tensor input from which to infer Torch. Explicit result
-conversion keeps the first compilation result and later cached results
+The generated kwargs wrapper binds arguments and supplies defaults once per
+call. Immutable `torch.device` and `torch.dtype` defaults are converted to TVM
+FFI values when the wrapper is created. Its target uses one recursive container
+normalizer with separate leaf converters for inputs and results. A directly
+returned `tvm_ffi.Tensor` becomes a `torch.Tensor` through DLPack. TVM FFI
+normally infers the desired tensor environment from Tensor inputs, but factory
+functions such as `arange` have no Tensor input from which to infer Torch.
+Explicit result conversion keeps the first compilation result and later cached results
 consistent without copying the tensor data.
 
 ## Specialization And Guard Strategy

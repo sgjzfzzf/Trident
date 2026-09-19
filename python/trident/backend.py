@@ -172,14 +172,6 @@ class TridentGraphModule:
             keep_alive_object=engine,
         )
 
-        wrapped: RuntimeCallable = (
-            tvm_ffi.utils.kwargs_wrapper.make_kwargs_wrapper_from_signature(
-                fn, inspect.signature(self.fn)
-            )
-        )
-
-        signature = inspect.signature(self.fn)
-
         def normalize(
             value: RuntimeValue,
             convert: Callable[[RuntimeValue], RuntimeValue],
@@ -194,24 +186,23 @@ class TridentGraphModule:
                 }
             return convert(value)
 
-        def f(*args: RuntimeValue, **kwargs: RuntimeValue) -> RuntimeValue:
-            bound = signature.bind(*args, **kwargs)
-            bound.apply_defaults()
-            bound.arguments = {
-                name: normalize(
-                    value,
-                    lambda element: (
-                        tvm_ffi.device(f"{element}")
-                        if isinstance(element, torch.device)
-                        else tvm_ffi.convert(element)
-                        if isinstance(element, torch.dtype)
-                        else element
-                    ),
-                )
-                for name, value in bound.arguments.items()
-            }
+        def invoke(*values: RuntimeValue) -> RuntimeValue:
             return normalize(
-                wrapped(*bound.args, **bound.kwargs),
+                fn(
+                    *(
+                        normalize(
+                            value,
+                            lambda element: (
+                                tvm_ffi.device(f"{element}")
+                                if isinstance(element, torch.device)
+                                else tvm_ffi.convert(element)
+                                if isinstance(element, torch.dtype)
+                                else element
+                            ),
+                        )
+                        for value in values
+                    )
+                ),
                 lambda value: (
                     torch.from_dlpack(value)
                     if isinstance(value, tvm_ffi.Tensor)
@@ -219,7 +210,24 @@ class TridentGraphModule:
                 ),
             )
 
-        return f
+        signature = inspect.signature(self.fn)
+        ffi_signature = signature.replace(
+            parameters=[
+                parameter.replace(
+                    default=(
+                        tvm_ffi.device(f"{parameter.default}")
+                        if isinstance(parameter.default, torch.device)
+                        else tvm_ffi.convert(parameter.default)
+                    )
+                )
+                if isinstance(parameter.default, (torch.device, torch.dtype))
+                else parameter
+                for parameter in signature.parameters.values()
+            ]
+        )
+        return tvm_ffi.utils.kwargs_wrapper.make_kwargs_wrapper_from_signature(
+            invoke, ffi_signature
+        )
 
     # ------------------------------------------------------------------ #
     # Internal: module merging

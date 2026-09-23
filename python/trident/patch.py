@@ -42,73 +42,45 @@ KernelValue: TypeAlias = (
 )
 KernelArgument: TypeAlias = torch.fx.Node | KernelValue
 
-_MISSING: Final[Any] = object()
 
+def _resolve_triton_binder_value(
+    name: str,
+    value: KernelArgument,
+) -> KernelValue:
+    if isinstance(value, torch.fx.Node):
+        assert "val" in value.meta, (
+            f"Triton binder argument {name} node {value.name} "
+            "does not contain metadata value"
+        )
+        metadata_value = value.meta["val"]
+        if isinstance(metadata_value, torch.Tensor):
+            return triton.MockTensor(dtype=metadata_value.dtype)
+        return _resolve_triton_binder_value(name, metadata_value)
 
-def _torch_int_to_i64(value: ir.Value, loc: ir.Location) -> ir.Value:
-    return torch_c.to_i64(
-        value,
-        loc=loc,
-    )
+    if isinstance(value, (torch.SymInt, torch.SymFloat, torch.SymBool)):
+        return _resolve_triton_binder_value(name, cast(KernelValue, value.node.hint))
+
+    if isinstance(value, tuple):
+        items = tuple(_resolve_triton_binder_value(name, item) for item in value)
+        if hasattr(value, "_fields"):
+            return type(value)(*items)
+        return items
+
+    if isinstance(value, list):
+        return [_resolve_triton_binder_value(name, item) for item in value]
+
+    if isinstance(value, dict):
+        return {
+            key: _resolve_triton_binder_value(name, item) for key, item in value.items()
+        }
+
+    return value
 
 
 class GraphNodeImporterTritonHopPatchState:
     def __init__(self, specialization_id: int = 0) -> None:
         self.specialization_id: int = specialization_id
         self._token: Token[GraphNodeImporterTritonHopPatchState | None] | None = None
-
-    @staticmethod
-    def _resolve_triton_binder_value(
-        name: str,
-        value: KernelArgument,
-        path: str = "",
-    ) -> KernelValue:
-        location = f"{name}{path}"
-        if isinstance(value, torch.fx.Node):
-            assert "val" in value.meta, (
-                f"Triton binder argument {location} node {value.name} "
-                "does not contain metadata value"
-            )
-            metadata_value = value.meta["val"]
-            if isinstance(metadata_value, torch.Tensor):
-                return triton.MockTensor(dtype=metadata_value.dtype)
-            return GraphNodeImporterTritonHopPatchState._resolve_triton_binder_value(
-                location, metadata_value
-            )
-
-        if isinstance(value, (torch.SymInt, torch.SymFloat, torch.SymBool)):
-            return GraphNodeImporterTritonHopPatchState._resolve_triton_binder_value(
-                location, cast(KernelValue, value.node.hint)
-            )
-
-        if isinstance(value, tuple):
-            items = tuple(
-                GraphNodeImporterTritonHopPatchState._resolve_triton_binder_value(
-                    name, item, f"{path}[{index}]"
-                )
-                for index, item in enumerate(value)
-            )
-            if hasattr(value, "_fields"):
-                return type(value)(*items)
-            return items
-
-        if isinstance(value, list):
-            return [
-                GraphNodeImporterTritonHopPatchState._resolve_triton_binder_value(
-                    name, item, f"{path}[{index}]"
-                )
-                for index, item in enumerate(value)
-            ]
-
-        if isinstance(value, dict):
-            return {
-                key: GraphNodeImporterTritonHopPatchState._resolve_triton_binder_value(
-                    name, item, f"{path}[{key!r}]"
-                )
-                for key, item in value.items()
-            }
-
-        return value
 
     @staticmethod
     def _import_kernel_value(
@@ -171,7 +143,7 @@ class GraphNodeImporterTritonHopPatchState:
                     )
                 )
                 assert imported_index is not None
-                index = _torch_int_to_i64(imported_index, loc)
+                index = torch_c.to_i64(imported_index, loc=loc)
                 if value.target is torch.ops.aten.sym_size.int:
                     native_value = torchext.tensor_size(tensor, index, loc=loc)
                 else:
@@ -293,12 +265,14 @@ class _GraphNodeImporterPatchManager:
     ) -> Any:
         """Replace one attribute and register its exact restoration."""
         attribute = value.__name__
-        original = getattr(target, attribute, _MISSING)
-        setattr(target, attribute, value)
-        if original is _MISSING:
+        try:
+            original = getattr(target, attribute)
+        except AttributeError:
+            setattr(target, attribute, value)
             patches.callback(delattr, target, attribute)
-        else:
-            patches.callback(setattr, target, attribute, original)
+            return None
+        setattr(target, attribute, value)
+        patches.callback(setattr, target, attribute, original)
         return original
 
     @staticmethod
@@ -479,7 +453,7 @@ def _import_hop_triton_kernel_wrapper(
     kernel_cache, kernel_key_cache, _, _, binder = function.device_caches[device]
     values = {**knodes, **constant_args}
     binder_args = {
-        parameter.name: GraphNodeImporterTritonHopPatchState._resolve_triton_binder_value(
+        parameter.name: _resolve_triton_binder_value(
             parameter.name, values[parameter.name]
         )
         for parameter in function.params
@@ -650,10 +624,10 @@ def _import_hop_triton_kernel_wrapper(
             self, loc, value
         )
         assert imported is not None
-        return _torch_int_to_i64(imported, loc)
+        return torch_c.to_i64(imported, loc=loc)
 
     def import_launch_constant(value: int) -> ir.Value:
-        return _torch_int_to_i64(torch_d.constant_int(value, loc=loc), loc)
+        return torch_c.to_i64(torch_d.constant_int(value, loc=loc), loc=loc)
 
     torchext.trident_kernel_launch(
         ir.Attribute.parse(f"@{binary_name}::@{kernel.metadata.name}"),

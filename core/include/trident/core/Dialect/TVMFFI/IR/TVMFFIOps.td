@@ -47,9 +47,10 @@ def TVMFFI_CallOp : TVMFFI_Op<"call", [TVMFFI_ObjectOwnershipOpInterface]> {
                        Variadic<AnyTVMFFIAnyABIOrTorchType>:$operands,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<DictArrayAttr>:$res_attrs);
-  let results = (outs Variadic<AnyTVMFFIAnyABIOrTorchType> : $results);
+  let results = (outs Variadic<AnyTVMFFIAnyABIOrTorchType> : $results,
+                      I1:$success);
   let assemblyFormat = "$callee `(` $operands `)` attr-dict `:` "
-                       "functional-type($operands, $results)";
+                       "functional-type($operands, $results) `,` type($success)";
 }
 
 def TVMFFI_CastOp

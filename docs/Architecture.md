@@ -376,6 +376,8 @@ ABI.  LLVM lowering consumes only the semantic TVMFFI representation.
 `tvm_ffi.FunctionGetGlobal` and `tvm_ffi.FunctionCall` always return an `i1`
 success value in addition to their semantic result.  LLVM lowering defines
 this value as the TVM FFI C ABI status being equal to zero.
+Calls to functions in the current module use `tvm_ffi.call`, which likewise
+returns an `i1` success value derived from the packed function's status code.
 `ConvertTorchToTVMFFI` checks both values with `cf.assert`, including the
 runtime calls used for array construction, element access, and length queries.
 Before calling a global function, it also casts the semantic function handle

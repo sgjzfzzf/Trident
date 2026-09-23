@@ -86,14 +86,19 @@ func.func @checked_global_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
 // CHECK: llvm.store %[[LOCAL_ARG]], %[[LOCAL_ARG_SLOT]]
 // CHECK: %[[LOCAL_RESULT_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca
 // CHECK: %[[LOCAL_CONTEXT:[a-zA-Z0-9_]+]] = llvm.mlir.zero : !llvm.ptr
-// CHECK: call @__tvm_ffi_callee(%[[LOCAL_CONTEXT]], %[[LOCAL_ARGS]], %[[LOCAL_NARGS]], %[[LOCAL_RESULT_SLOT]])
+// CHECK: %[[LOCAL_STATUS:[a-zA-Z0-9_]+]] = call @__tvm_ffi_callee(%[[LOCAL_CONTEXT]], %[[LOCAL_ARGS]], %[[LOCAL_NARGS]], %[[LOCAL_RESULT_SLOT]])
+// CHECK: %[[LOCAL_ZERO:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[LOCAL_SUCCESS:[a-zA-Z0-9_]+]] = llvm.icmp "eq" %[[LOCAL_STATUS]], %[[LOCAL_ZERO]] : i32
 // CHECK: %[[LOCAL_RESULT:[a-zA-Z0-9_]+]] = llvm.load %[[LOCAL_RESULT_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: cf.assert %[[LOCAL_SUCCESS]], "local TVM FFI call failed"
 // CHECK: return %[[LOCAL_RESULT]] : !llvm.struct<(i32, i32, i64)>
 func.func private @__tvm_ffi_callee(
     !llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 
 func.func @local_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
-  %result = tvm_ffi.call @callee(%arg) : (!tvm_ffi.int) -> !tvm_ffi.int
+  %result, %success = tvm_ffi.call @callee(%arg)
+      : (!tvm_ffi.int) -> !tvm_ffi.int, i1
+  cf.assert %success, "local TVM FFI call failed"
   return %result : !tvm_ffi.int
 }
 

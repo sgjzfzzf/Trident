@@ -163,11 +163,18 @@ public:
                                   llvm::ArrayRef<mlir::LLVM::GEPArg>{0, 2}));
 
     std::string const callee = llvm::formatv("__tvm_ffi_{0}", op.getCallee());
-    mlir::func::CallOp::create(
+    mlir::func::CallOp call = mlir::func::CallOp::create(
         rewriter, op.getLoc(), callee, mlir::TypeRange{i32Ty},
         {mlir::LLVM::ZeroOp::create(rewriter, op.getLoc(), ptrTy), slots, count,
          resultSlot});
-    rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(op, anyTy, resultSlot);
+    mlir::Value const zero =
+        mlir::LLVM::ConstantOp::create(rewriter, op.getLoc(), i32Ty, 0);
+    mlir::Value const success = mlir::LLVM::ICmpOp::create(
+        rewriter, op.getLoc(), mlir::LLVM::ICmpPredicate::eq, call.getResult(0),
+        zero);
+    rewriter.replaceOp(op, {mlir::LLVM::LoadOp::create(rewriter, op.getLoc(),
+                                                       anyTy, resultSlot),
+                            success});
     return mlir::success();
   }
 };

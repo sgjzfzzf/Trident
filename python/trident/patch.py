@@ -247,7 +247,6 @@ class _GraphNodeImporterPatchManager:
         self.refcount: int = 0
         self.patches: ExitStack | None = None
         self.original_import_symbolic_torch_op: Callable[..., None] | None = None
-        self.original_return_node_values: Callable[..., None] | None = None
         self._active_state: ContextVar[GraphNodeImporterTritonHopPatchState | None] = (
             ContextVar("trident_importer_patch_state", default=None)
         )
@@ -304,7 +303,7 @@ class _GraphNodeImporterPatchManager:
     def _install_patches(
         self,
         patches: ExitStack,
-    ) -> tuple[Callable[..., None], Callable[..., None]]:
+    ) -> Callable[..., None]:
         for patch in (
             _import_hop_triton_kernel_wrapper_functional,
             _import_hop_triton_kernel_wrapper_mutation,
@@ -313,11 +312,7 @@ class _GraphNodeImporterPatchManager:
         original_import_symbolic_torch_op = self._patch_attribute(
             patches, GraphNodeImporter, _import_symbolic_torch_op
         )
-        original_return_node_values = self._patch_attribute(
-            patches, GraphNodeImporter, return_node_values
-        )
         assert callable(original_import_symbolic_torch_op)
-        assert callable(original_return_node_values)
 
         self._patch_mapping(
             patches,
@@ -338,7 +333,7 @@ class _GraphNodeImporterPatchManager:
             fx_importer.SYMBOLIC_TORCH_OPS,
             {torch.sym_max, torch.sym_min, torch.sym_sum},
         )
-        return original_import_symbolic_torch_op, original_return_node_values
+        return original_import_symbolic_torch_op
 
     def apply(self, state: GraphNodeImporterTritonHopPatchState) -> None:
         with self.lock:
@@ -346,10 +341,9 @@ class _GraphNodeImporterPatchManager:
             if self.refcount == 0:
                 patches = ExitStack()
                 try:
-                    (
-                        self.original_import_symbolic_torch_op,
-                        self.original_return_node_values,
-                    ) = self._install_patches(patches)
+                    self.original_import_symbolic_torch_op = self._install_patches(
+                        patches
+                    )
                 except BaseException:
                     patches.close()
                     raise
@@ -372,7 +366,6 @@ class _GraphNodeImporterPatchManager:
                 patches.close()
                 self.patches = None
                 self.original_import_symbolic_torch_op = None
-                self.original_return_node_values = None
 
 
 _patch_manager = _GraphNodeImporterPatchManager()
@@ -667,26 +660,6 @@ def _import_hop_triton_kernel_wrapper_mutation(
     hop: Any,
 ) -> None:
     _import_hop_triton_kernel_wrapper(self, loc, node, hop)
-
-
-def return_node_values(
-    self: GraphNodeImporter,
-    loc: ir.Location,
-    nodes: list[torch.fx.Node | None],
-    constants: dict[int, KernelValue],
-) -> None:
-    """Fix constant output indices before delegating to the FX importer."""
-    original_return_node_values = _patch_manager.original_return_node_values
-    assert original_return_node_values is not None
-    compact_constants = {
-        compact_index: constants[original_index]
-        for compact_index, original_index in zip(
-            (index for index, node in enumerate(nodes) if node is None),
-            sorted(constants.keys()),
-            strict=True,
-        )
-    }
-    original_return_node_values(self, loc, nodes, compact_constants)
 
 
 def apply_patch(specialization_id: int = 0) -> GraphNodeImporterTritonHopPatchState:

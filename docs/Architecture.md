@@ -277,11 +277,10 @@ Triton higher-order ops (HOPs) like `triton_kernel_wrapper_mutation` are not nat
 supported by torch-mlir's `FxImporter`. Trident uses a scoped monkey-patch approach
 in `python/trident/patch.py` to inject this support at import time:
 
-- `patch_graph_node_importer_for_triton_hop()` temporarily adds
-  `_import_hop_triton_kernel_wrapper_mutation` and helper methods into
-  `GraphNodeImporter` before constructing `FxImporter`.
-- `unpatch_graph_node_importer_for_triton_hop()` restores the original class
-  state in a `try/finally` block, avoiding persistent global side effects.
+- `apply_patch()` temporarily adds the functional and mutation Triton kernel
+  wrapper handlers to `GraphNodeImporter` while `FxImporter` imports a program.
+  Its context manager restores the original class state on exit, avoiding
+  persistent global side effects.
 - Importer overrides use small attribute, mapping, and set helpers with a
   standard-library `ExitStack`. Mapping and set additions are applied in place
   without naming their owning module attributes, then reverted on exit.
@@ -291,6 +290,8 @@ in `python/trident/patch.py` to inject this support at import time:
   tensor types, dtype constants, and tensor literals. The scoped patch only
   adds the missing scalar `torch.dtype` mapping needed by Trident, and restores
   the original mapping contents when the import finishes.
+- The upstream importer also owns constant-output indexing, including graphs
+  with mutation outputs; Trident does not override that logic.
 - The patched import retrieves compiled kernels and runtime parameters from
   Triton JIT/Autotune results, sets `"gpu.container_module"` on the top-level
   module, materializes each kernel's cubin into a `gpu.binary` op, and emits

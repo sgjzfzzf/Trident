@@ -159,7 +159,7 @@ Use this when the op is exercised through Python functions decorated by `@triden
 - Confirm guards are produced as expected for dynamic shapes/dtypes/devices.
 
 2. FX import sanity
-- Ensure the scoped Triton HOP patch (`patch.py`) and node import logic can
+- Ensure the injected Triton `GraphNodeImporter` subclass and node import logic can
   represent the op.
 - If Triton higher-order ops are involved, confirm kernel metadata/runtime args
   are materialized correctly.
@@ -353,8 +353,9 @@ those operands directly to the `kind` recorded for each GPU kernel parameter.
 ### Triton Kernel Integration
 
 Triton kernel ops (`triton_kernel_wrapper_mutation`) are handled by the
-scoped monkey-patch in `python/trident/patch.py` during FX import (see
-Architecture.md FX Import And Triton Kernel Handling section). The patched import:
+injected `GraphNodeImporter` subclass in `python/trident/fx_importer.py` during FX
+import (see Architecture.md FX Import And Triton Kernel Handling section). The
+custom importer:
 
 1. Sets `"gpu.container_module"` on the top-level MLIR module.
 2. Materializes each kernel's cubin as a `gpu.binary` op.

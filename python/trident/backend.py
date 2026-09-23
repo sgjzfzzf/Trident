@@ -39,12 +39,11 @@ from trident.core.dialects import (
     tvm_ffi as tvm_ffi_d,
 )
 from trident.core.execution_engine import ExecutionEngine
-from trident.core.extras.fx_importer import FxImporter
 from trident.ffi import Exception
 
+from .fx_importer import TridentFxImporter
 from .guards import parse_guards
 from .input import InputTableBuilder
-from .patch import apply_patch
 
 RuntimeValue: TypeAlias = Any
 RuntimeArguments: TypeAlias = tuple[RuntimeValue, ...]
@@ -706,15 +705,16 @@ class TridentGraphModule:
         )
 
         # Step 2: Import FX -> MLIR  ----------------------------------------
-        with apply_patch(index):
-            importer: FxImporter = FxImporter(context=self.ctx)
-            main_func_name: Final[str] = f"main_{index}"
-            main_func: func.FuncOp = importer.import_program(
-                exported_program, func_name=main_func_name
-            )
-            with self.ctx:
-                main_func.attributes["sym_visibility"] = ir.StringAttr.get("private")
-            module: ir.Module = importer.module
+        importer: TridentFxImporter = TridentFxImporter(
+            context=self.ctx, specialization_id=index
+        )
+        main_func_name: Final[str] = f"main_{index}"
+        main_func: func.FuncOp = importer.import_program(
+            exported_program, func_name=main_func_name
+        )
+        with self.ctx:
+            main_func.attributes["sym_visibility"] = ir.StringAttr.get("private")
+        module: ir.Module = importer.module
 
         torch._dynamo.reset()
 

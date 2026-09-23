@@ -273,33 +273,24 @@ export-resolved global/default capture sources are filtered before IR emission.
 
 ## FX Import And Triton Kernel Handling
 
-Triton higher-order ops (HOPs) like `triton_kernel_wrapper_mutation` are not natively
-supported by torch-mlir's `FxImporter`. Trident uses a scoped monkey-patch approach
-in `python/trident/patch.py` to inject this support at import time:
+Triton higher-order ops (HOPs) like `triton_kernel_wrapper_mutation` are
+integrated through torch-mlir's `graph_node_importer_cls` injection point.
+`TridentFxImporter` supplies the `TridentGraphNodeImporter` subclass for the
+top-level graph and recursively imported child graphs. The subclass owns the
+Triton HOP handlers and symbolic integer conversions, while `TridentContextCache`
+provides the scalar `torch.dtype` type mapping. No torch-mlir classes or mapping
+tables are modified process-wide. This injection point is available in the
+torch-mlir revision pinned by `core/CMakeLists.txt`; that revision retains the
+LLVM gitlink pinned by the top-level `CMakeLists.txt`.
 
-- `apply_patch()` temporarily adds the functional and mutation Triton kernel
-  wrapper handlers to `GraphNodeImporter` while `FxImporter` imports a program.
-  Its context manager restores the original class state on exit, avoiding
-  persistent global side effects.
-- Importer overrides use small attribute, mapping, and set helpers with a
-  standard-library `ExitStack`. Mapping and set additions are applied in place
-  without naming their owning module attributes, then reverted on exit.
-  Context-local state keeps nested and concurrent specialization IDs isolated
-  while a shared reference count controls the process-global installation.
-- The upstream importer supplies the `torch.uint32` mappings for unsigned
-  tensor types, dtype constants, and tensor literals. The scoped patch only
-  adds the missing scalar `torch.dtype` mapping needed by Trident, and restores
-  the original mapping contents when the import finishes.
-- The upstream importer also owns constant-output indexing, including graphs
-  with mutation outputs; Trident does not override that logic.
-- The patched import retrieves compiled kernels and runtime parameters from
+- The injected importer retrieves compiled kernels and runtime parameters from
   Triton JIT/Autotune results, sets `"gpu.container_module"` on the top-level
   module, materializes each kernel's cubin into a `gpu.binary` op, and emits
   `torchext.TritonKernelLaunchOp` referencing the `gpu.binary` symbol.
 - Triton's binder returns a `(signature type, specialization descriptor)` pair
   per parameter. The importer preserves `D` descriptors as divisibility guards.
 - Dynamic integer expressions may contain `torch.sym_min`, `torch.sym_max`,
-  and `torch.sym_sum`. The scoped importer patch represents min/max as
+  and `torch.sym_sum`. The custom importer represents min/max as
   `torch.prim.min.int` and `torch.prim.max.int`, and expands a symbolic sum into
   a sequence of `torch.aten.add.int` operations. The Torch-to-TVMFFI conversion
   lowers these operations without resolving symbolic dimensions to trace-time

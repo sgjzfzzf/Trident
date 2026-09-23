@@ -71,7 +71,7 @@ else()
   FetchContent_Declare(
     torch-mlir
     GIT_REPOSITORY https://github.com/llvm/torch-mlir.git
-    GIT_TAG 2bbf33a0702bbf605a994a1c8834a0e70294ce23
+    GIT_TAG dfff0c964dc7d5b6ad008d561626f7fcacf0b9e7
     GIT_SUBMODULES "")
 endif()
 FetchContent_MakeAvailable(torch-mlir)

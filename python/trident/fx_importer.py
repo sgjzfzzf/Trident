@@ -5,13 +5,9 @@ from __future__ import annotations
 
 import ast
 import operator
-import threading
-from collections.abc import Callable, Mapping, MutableMapping, MutableSet
-from collections.abc import Set as AbstractSet
-from contextlib import ExitStack
-from contextvars import ContextVar, Token
-from types import TracebackType
-from typing import Any, Final, Self, TypeAlias, cast
+from collections.abc import Iterable
+from functools import partial
+from typing import Any, Final, TypeAlias, cast
 
 import torch
 import triton
@@ -27,7 +23,7 @@ from trident.core.dialects import (
     torch as torch_d,
 )
 from trident.core.extras import fx_importer
-from trident.core.extras.fx_importer import GraphNodeImporter
+from trident.core.extras.fx_importer import ContextCache, FxImporter, GraphNodeImporter
 
 KernelScalar: TypeAlias = None | bool | int | float | str | torch.dtype | torch.device
 KernelValue: TypeAlias = (
@@ -77,10 +73,17 @@ def _resolve_triton_binder_value(
     return value
 
 
-class GraphNodeImporterTritonHopPatchState:
-    def __init__(self, specialization_id: int = 0) -> None:
+class TridentGraphNodeImporter(GraphNodeImporter):
+    def __init__(
+        self,
+        fx_importer: Any,
+        context: ir.Context,
+        context_cache: Any,
+        block: ir.Block,
+        specialization_id: int = 0,
+    ) -> None:
+        super().__init__(fx_importer, context, context_cache, block)
         self.specialization_id: int = specialization_id
-        self._token: Token[GraphNodeImporterTritonHopPatchState | None] | None = None
 
     @staticmethod
     def _import_kernel_value(
@@ -122,10 +125,8 @@ class GraphNodeImporterTritonHopPatchState:
                     [arguments] = arguments
                 result = torch_d.constant_int(0, loc=loc)
                 for argument in arguments:
-                    imported = (
-                        GraphNodeImporterTritonHopPatchState._import_kernel_value(
-                            importer, loc, argument
-                        )
+                    imported = TridentGraphNodeImporter._import_kernel_value(
+                        importer, loc, argument
                     )
                     assert imported is not None
                     result = arithmetic_ops[operator.add](result, imported, loc=loc)
@@ -137,10 +138,8 @@ class GraphNodeImporterTritonHopPatchState:
             ):
                 tensor, index = value.args
                 tensor = importer._import_argument(loc, tensor)
-                imported_index = (
-                    GraphNodeImporterTritonHopPatchState._import_kernel_value(
-                        importer, loc, index
-                    )
+                imported_index = TridentGraphNodeImporter._import_kernel_value(
+                    importer, loc, index
                 )
                 assert imported_index is not None
                 index = torch_c.to_i64(imported_index, loc=loc)
@@ -155,7 +154,7 @@ class GraphNodeImporterTritonHopPatchState:
 
             if value.target in arithmetic_ops:
                 lhs, rhs = (
-                    GraphNodeImporterTritonHopPatchState._import_kernel_value(
+                    TridentGraphNodeImporter._import_kernel_value(
                         importer, loc, argument
                     )
                     for argument in value.args
@@ -166,7 +165,7 @@ class GraphNodeImporterTritonHopPatchState:
             if value.target is operator.pow:
                 base, exponent = value.args
                 assert isinstance(exponent, int) and exponent >= 0
-                base = GraphNodeImporterTritonHopPatchState._import_kernel_value(
+                base = TridentGraphNodeImporter._import_kernel_value(
                     importer, loc, base
                 )
                 assert base is not None
@@ -202,11 +201,8 @@ class GraphNodeImporterTritonHopPatchState:
         integer expressions through the same lowering used for launch grids.
         """
 
-        if (
-            GraphNodeImporterTritonHopPatchState._get_symbolic_integer(value)
-            is not None
-        ):
-            imported = GraphNodeImporterTritonHopPatchState._import_kernel_value(
+        if TridentGraphNodeImporter._get_symbolic_integer(value) is not None:
+            imported = TridentGraphNodeImporter._import_kernel_value(
                 importer, loc, value
             )
             assert imported is not None, (
@@ -227,194 +223,121 @@ class GraphNodeImporterTritonHopPatchState:
         else:
             return None
 
-    def __enter__(self) -> Self:
-        _patch_manager.apply(self)
-        return self
-
-    def __exit__(
+    def _import_symbolic_torch_op(
         self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> None:
-        _patch_manager.restore(self)
-
-
-class _GraphNodeImporterPatchManager:
-    """Own the process-global monkey-patch lifecycle."""
-
-    def __init__(self) -> None:
-        self.refcount: int = 0
-        self.patches: ExitStack | None = None
-        self.original_import_symbolic_torch_op: Callable[..., None] | None = None
-        self._active_state: ContextVar[GraphNodeImporterTritonHopPatchState | None] = (
-            ContextVar("trident_importer_patch_state", default=None)
-        )
-        self.lock: Final[threading.RLock] = threading.RLock()
-
-    @property
-    def active_state(self) -> GraphNodeImporterTritonHopPatchState | None:
-        return self._active_state.get()
-
-    @staticmethod
-    def _patch_attribute(
-        patches: ExitStack,
+        loc: ir.Location,
+        node: torch.fx.Node,
         target: Any,
-        value: Callable[..., Any],
-    ) -> Any:
-        """Replace one attribute and register its exact restoration."""
-        attribute = value.__name__
-        try:
-            original = getattr(target, attribute)
-        except AttributeError:
-            setattr(target, attribute, value)
-            patches.callback(delattr, target, attribute)
-            return None
-        setattr(target, attribute, value)
-        patches.callback(setattr, target, attribute, original)
-        return original
-
-    @staticmethod
-    def _patch_mapping(
-        patches: ExitStack,
-        mapping: MutableMapping[Any, Any],
-        additions: Mapping[Any, Any],
     ) -> None:
-        conflicts = mapping.keys() & additions.keys()
-        assert not conflicts, f"cannot patch existing mapping keys: {conflicts}"
-        original = mapping.copy()
-        patches.callback(mapping.update, original)
-        patches.callback(mapping.clear)
-        mapping.update(additions)
+        if target is operator.pow and isinstance(node.meta.get("val"), torch.SymInt):
+            base, exponent = node.args
+            assert isinstance(exponent, int) and exponent >= 0
+            base = self._import_argument(loc, base)
+            result = torch_d.constant_int(1, loc=loc)
+            for _ in range(exponent):
+                result = torch_d.aten_mul_int(result, base, loc=loc)
+            self.bind_node_value(node, result)
+        elif target is torch.sym_sum:
+            arguments = node.args
+            if len(arguments) == 1 and all(
+                isinstance(argument, (list, tuple)) for argument in arguments
+            ):
+                [arguments] = arguments
+            operands = [self._import_argument(loc, argument) for argument in arguments]
+            result = torch_d.constant_int(0, loc=loc)
+            for operand in operands:
+                result = torch_d.aten_add_int(result, operand, loc=loc)
+            self.bind_node_value(node, result)
+        elif target in (torch.sym_max, torch.sym_min):
+            lhs, rhs = (self._import_argument(loc, argument) for argument in node.args)
+            operation = (
+                torch_d.prim_max_int
+                if target is torch.sym_max
+                else torch_d.prim_min_int
+            )
+            self.bind_node_value(node, operation(lhs, rhs, loc=loc))
+        elif target in (operator.or_, operator.rshift):
+            lhs, rhs = (self._import_argument(loc, argument) for argument in node.args)
+            op_name = (
+                "torch.aten.__or__.int"
+                if target is operator.or_
+                else "torch.aten.__rshift__.int"
+            )
+            operation = torch_d.operator(
+                [torch_d.TorchIntType.get(loc.context)], op_name, [lhs, rhs], 0, loc=loc
+            )
+            self.bind_node_value(node, operation.result)
+        else:
+            super()._import_symbolic_torch_op(loc, node, target)
 
-    @staticmethod
-    def _patch_set(
-        patches: ExitStack,
-        values: MutableSet[Any],
-        additions: AbstractSet[Any],
+    def _import_hop_triton_kernel_wrapper_functional(
+        self, loc: ir.Location, node: torch.fx.Node, hop: Any
     ) -> None:
-        conflicts = values & additions
-        assert not conflicts, f"cannot patch existing set values: {conflicts}"
-        original = values.copy()
-        patches.callback(values.update, original)
-        patches.callback(values.clear)
-        values.update(additions)
+        _import_hop_triton_kernel_wrapper(self, loc, node, hop)
 
-    def _install_patches(
+    def _import_hop_triton_kernel_wrapper_mutation(
+        self, loc: ir.Location, node: torch.fx.Node, hop: Any
+    ) -> None:
+        _import_hop_triton_kernel_wrapper(self, loc, node, hop)
+
+    def import_nodes(
         self,
-        patches: ExitStack,
-    ) -> Callable[..., None]:
-        for patch in (
-            _import_hop_triton_kernel_wrapper_functional,
-            _import_hop_triton_kernel_wrapper_mutation,
-        ):
-            self._patch_attribute(patches, GraphNodeImporter, patch)
-        original_import_symbolic_torch_op = self._patch_attribute(
-            patches, GraphNodeImporter, _import_symbolic_torch_op
-        )
-        assert callable(original_import_symbolic_torch_op)
+        nodes: Iterable[torch.fx.Node],
+        *,
+        skip_placeholders_outputs: bool = False,
+        import_symbolic_shape_expressions: bool = False,
+    ) -> None:
+        with ir.InsertionPoint(self._b):
+            loc = ir.Location.unknown()
+            if import_symbolic_shape_expressions:
+                symbolic_guards = self._cc.get_symbolic_guards()
+                self._import_shape_symbols_with_guards(loc, symbolic_guards)
 
-        self._patch_mapping(
-            patches,
-            fx_importer.SCALAR_TYPE_TO_TORCH_MLIR_TYPE,
-            {torch.dtype: "!torch.int"},
-        )
-        self._patch_mapping(
-            patches,
-            fx_importer.PY_BUILTIN_TO_TORCH_OP,
-            {
-                operator.or_: torch.ops.aten.__or__,
-                operator.pow: torch.ops.aten.pow,
-                operator.rshift: torch.ops.aten.__rshift__,
-            },
-        )
-        self._patch_set(
-            patches,
-            fx_importer.SYMBOLIC_TORCH_OPS,
-            {torch.sym_max, torch.sym_min, torch.sym_sum},
-        )
-        return original_import_symbolic_torch_op
-
-    def apply(self, state: GraphNodeImporterTritonHopPatchState) -> None:
-        with self.lock:
-            assert state._token is None, "patch state is already active"
-            if self.refcount == 0:
-                patches = ExitStack()
-                try:
-                    self.original_import_symbolic_torch_op = self._install_patches(
-                        patches
+            num_placeholders = 0
+            for node in nodes:
+                node_loc = self._cc.get_node_location(node)
+                if node_loc is not None:
+                    loc = node_loc
+                if node.op == "placeholder" and not skip_placeholders_outputs:
+                    self.bind_node_value(node, self._b.arguments[num_placeholders])
+                    num_placeholders += 1
+                elif node.op == "call_function":
+                    target = node.target
+                    if target == operator.getitem:
+                        self._import_getitem(loc, node)
+                    elif (
+                        target in fx_importer.SYMBOLIC_TORCH_OPS
+                        or target
+                        in (
+                            torch.sym_max,
+                            torch.sym_min,
+                            torch.sym_sum,
+                        )
+                        or (
+                            fx_importer.is_symbolic(node.meta.get("val"))
+                            and fx_importer.is_builtin_function_or_method(target)
+                        )
+                    ):
+                        self._import_symbolic_torch_op(loc, node, target)
+                    elif isinstance(target, torch._ops.OpOverload):
+                        self._import_torch_op_overload(loc, node)
+                    elif isinstance(target, torch._ops.HigherOrderOperator):
+                        self._import_hop(loc, node, target)
+                    else:
+                        raise NotImplementedError(
+                            f"FIX ME: Unimplemented call_function: target={target}, {node.meta}"
+                        )
+                elif node.op == "output" and not skip_placeholders_outputs:
+                    output_arg = node.args[0]
+                    result_nodes = (
+                        output_arg
+                        if isinstance(output_arg, (list, tuple))
+                        else [output_arg]
                     )
-                except BaseException:
-                    patches.close()
-                    raise
-                self.patches = patches
-            self.refcount += 1
-            state._token = self._active_state.set(state)
-
-    def restore(self, state: GraphNodeImporterTritonHopPatchState) -> None:
-        with self.lock:
-            token = state._token
-            assert token is not None, "patch state is not active"
-            assert self.active_state is state, "patch contexts must exit in LIFO order"
-            self._active_state.reset(token)
-            state._token = None
-            assert self.refcount > 0
-            self.refcount -= 1
-            if self.refcount <= 0:
-                patches = self.patches
-                assert patches is not None
-                patches.close()
-                self.patches = None
-                self.original_import_symbolic_torch_op = None
-
-
-_patch_manager = _GraphNodeImporterPatchManager()
-
-
-def _import_symbolic_torch_op(
-    self: GraphNodeImporter,
-    loc: ir.Location,
-    node: torch.fx.Node,
-    target: Any,
-) -> None:
-    if target is operator.pow and isinstance(node.meta.get("val"), torch.SymInt):
-        base, exponent = node.args
-        assert isinstance(exponent, int) and exponent >= 0
-        base = self._import_argument(loc, base)
-        result = torch_d.constant_int(1, loc=loc)
-        for _ in range(exponent):
-            result = torch_d.aten_mul_int(
-                result,
-                base,
-                loc=loc,
-            )
-        self.bind_node_value(node, result)
-    elif target is torch.sym_sum:
-        arguments = node.args
-        if len(arguments) == 1 and all(
-            isinstance(argument, (list, tuple)) for argument in arguments
-        ):
-            [arguments] = arguments
-        operands = [self._import_argument(loc, argument) for argument in arguments]
-        result = torch_d.constant_int(0, loc=loc)
-        for operand in operands:
-            result = torch_d.aten_add_int(
-                result,
-                operand,
-                loc=loc,
-            )
-        self.bind_node_value(node, result)
-    elif target in (torch.sym_max, torch.sym_min):
-        lhs, rhs = (self._import_argument(loc, argument) for argument in node.args)
-        operation = (
-            torch_d.prim_max_int if target is torch.sym_max else torch_d.prim_min_int
-        )
-        result = operation(lhs, rhs, loc=loc)
-        self.bind_node_value(node, result)
-    else:
-        original = _patch_manager.original_import_symbolic_torch_op
-        assert original is not None
-        original(self, loc, node, target)
+                    operands = [self._import_argument(loc, arg) for arg in result_nodes]
+                    ir.Operation.create("func.return", operands=operands, loc=loc)
+                if import_symbolic_shape_expressions:
+                    self._create_bind_symbolic_shape_ops(loc, node)
 
 
 def _import_hop_triton_kernel_wrapper(
@@ -530,7 +453,7 @@ def _import_hop_triton_kernel_wrapper(
 
         if triton_type == "constexpr":
             if name in knodes:
-                operand = GraphNodeImporterTritonHopPatchState._import_kernel_argument(
+                operand = TridentGraphNodeImporter._import_kernel_argument(
                     self, loc, knodes[name]
                 )
             else:
@@ -560,7 +483,7 @@ def _import_hop_triton_kernel_wrapper(
                 raise RuntimeError(f"unsupported Triton argument type: {triton_type}")
 
             if name in knodes:
-                operand = GraphNodeImporterTritonHopPatchState._import_kernel_argument(
+                operand = TridentGraphNodeImporter._import_kernel_argument(
                     self, loc, knodes[name]
                 )
             elif name in bound_args:
@@ -588,9 +511,7 @@ def _import_hop_triton_kernel_wrapper(
     # graph module.  FX node names are unique within an imported graph, so the
     # pair is sufficient to keep binaries distinct after module merging.
     cubin = kernel.asm["cubin"]
-    active_state = _patch_manager.active_state
-    assert active_state is not None
-    binary_name: Final[str] = f"_trident_s{active_state.specialization_id}_{node.name}"
+    binary_name: Final[str] = f"_trident_s{self.specialization_id}_{node.name}"
     module_op = self.fx_importer.module.operation
     module_op.attributes["gpu.container_module"] = ir.UnitAttr.get()
     if all(
@@ -613,9 +534,7 @@ def _import_hop_triton_kernel_wrapper(
     grid_x, grid_y, grid_z = grid
 
     def import_launch_value(value: KernelArgument) -> ir.Value:
-        imported = GraphNodeImporterTritonHopPatchState._import_kernel_value(
-            self, loc, value
-        )
+        imported = TridentGraphNodeImporter._import_kernel_value(self, loc, value)
         assert imported is not None
         return torch_c.to_i64(imported, loc=loc)
 
@@ -644,23 +563,60 @@ def _import_hop_triton_kernel_wrapper(
         self.bind_node_value(node, operand, name)
 
 
-def _import_hop_triton_kernel_wrapper_functional(
-    self: GraphNodeImporter,
-    loc: ir.Location,
-    node: torch.fx.Node,
-    hop: Any,
-) -> None:
-    _import_hop_triton_kernel_wrapper(self, loc, node, hop)
+class TridentContextCache(ContextCache):
+    def value_info_to_type(
+        self,
+        val: Any,
+        *,
+        tensor_meta: Any = None,
+        mutable: bool = False,
+    ) -> ir.Type:
+        if isinstance(val, torch.dtype):
+            return self.torch_int_type
+        return super().value_info_to_type(val, tensor_meta=tensor_meta, mutable=mutable)
 
 
-def _import_hop_triton_kernel_wrapper_mutation(
-    self: GraphNodeImporter,
-    loc: ir.Location,
-    node: torch.fx.Node,
-    hop: Any,
-) -> None:
-    _import_hop_triton_kernel_wrapper(self, loc, node, hop)
+class TridentFxImporter(FxImporter):
+    def __init__(self, *, context: ir.Context, specialization_id: int):
+        super().__init__(
+            context=context,
+            graph_node_importer_cls=cast(
+                Any,
+                partial(TridentGraphNodeImporter, specialization_id=specialization_id),
+            ),
+        )
+        self._cc = TridentContextCache(self._c, py_attr_tracker=self._py_attr_tracker)
 
-
-def apply_patch(specialization_id: int = 0) -> GraphNodeImporterTritonHopPatchState:
-    return GraphNodeImporterTritonHopPatchState(specialization_id)
+    def _graph_to_function_meta(
+        self, graph: torch.fx.Graph
+    ) -> tuple[ir.FunctionType, ir.Location]:
+        input_types: list[ir.Type] = []
+        result_types: list[ir.Type] = []
+        loc: ir.Location | None = None
+        for node in graph.nodes:
+            if loc is None:
+                loc = self._cc.get_node_location(node)
+            if node.op == "placeholder":
+                input_types.append(self._cc.node_val_to_type(node))
+            elif node.op == "output":
+                output_arg = node.args[0]
+                result_nodes = (
+                    output_arg
+                    if isinstance(output_arg, (list, tuple))
+                    else [output_arg]
+                )
+                for result_node in result_nodes:
+                    if result_node is None:
+                        result_types.append(ir.Type.parse("!torch.none", self._c))
+                    elif isinstance(result_node, torch.Tensor):
+                        result_types.append(
+                            self._cc.tensor_to_vtensor_type(result_node)
+                        )
+                    elif isinstance(result_node, torch.fx.Node):
+                        result_types.append(self._cc.node_val_to_type(result_node))
+                    else:
+                        result_types.append(self._cc.value_info_to_type(result_node))
+        return (
+            ir.FunctionType.get(input_types, result_types, context=self._c),
+            loc or ir.Location.unknown(self._c),
+        )

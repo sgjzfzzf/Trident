@@ -5,17 +5,14 @@ import pkgutil
 
 __path__ = pkgutil.extend_path(__path__, __name__)
 
-from . import compiler_utils, execution_engine, fx, ir, passmanager, rewrite
+from . import execution_engine, ir, passmanager, rewrite
 from ._mlir_libs._trident import (
-    _convert_torch_type_to_tvm_ffi_type,  # noqa: F401
     register_all_dialects,
     register_all_passes,
 )
 
 __all__ = [
-    "compiler_utils",
     "execution_engine",
-    "fx",
     "ir",
     "passmanager",
     "register_all_dialects",

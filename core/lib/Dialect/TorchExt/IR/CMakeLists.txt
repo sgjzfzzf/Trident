@@ -8,7 +8,8 @@ add_mlir_dialect_library(
   MLIRTorchExtInterfacesIncGen
   LINK_LIBS
   PUBLIC
+  MLIRControlFlowDialect
   MLIRIR
   MLIRLLVMDialect
   MLIRSideEffectInterfaces
-  TorchMLIRTorchDialect)
+  TVMFFIDialect)

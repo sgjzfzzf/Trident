@@ -22,7 +22,6 @@
 #include <mlir/IR/ValueRange.h>
 #include <mlir/Support/LLVM.h>
 #include <optional>
-#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 namespace trident::tvm_ffi {
 
@@ -139,10 +138,6 @@ mlir::LogicalResult TensorLiteralOp::verify() {
 mlir::LogicalResult GetOp::verify() {
   mlir::Type const tvmFFIType = getOperand().getType();
   mlir::Type const resultType = getResult().getType();
-  if (mlir::isa<mlir::torch::Torch::BaseTensorType>(tvmFFIType) &&
-      mlir::isa<ObjectType>(resultType)) {
-    return mlir::success();
-  }
   if (auto nativeTypeInterface =
           mlir::dyn_cast<TVMFFINativeTypeInterface>(tvmFFIType);
       nativeTypeInterface &&
@@ -161,10 +156,6 @@ mlir::LogicalResult GetOp::inferReturnTypes(
     return mlir::failure();
   }
   mlir::Type const inputType = operands.front().getType();
-  if (mlir::isa<mlir::torch::Torch::BaseTensorType>(inputType)) {
-    inferredReturnTypes.push_back(ObjectType::get(inputType.getContext()));
-    return mlir::success();
-  }
   auto nativeTypeInterface =
       mlir::dyn_cast<TVMFFINativeTypeInterface>(inputType);
   if (!nativeTypeInterface) {

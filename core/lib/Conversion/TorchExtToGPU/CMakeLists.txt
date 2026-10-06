@@ -10,5 +10,4 @@ add_mlir_conversion_library(
   MLIRGPUDialect
   MLIRPass
   TorchExtDialect
-  TorchMLIRTorchConversionDialect
   TVMFFIDialect)

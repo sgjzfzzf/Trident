@@ -17,10 +17,10 @@ func.func @cast_rejects_incompatible_union(%arg: !tvm_ffi.int) {
 
 // -----
 
-func.func @cast_rejects_torch_operand(%arg: !torch.int) {
-  // expected-error@+1 {{'tvm_ffi.cast' op operand #0 must be TVM FFI value with a TVMFFIAny ABI representation, but got '!torch.int'}}
+func.func @cast_rejects_native_operand(%arg: i64) {
+  // expected-error@+1 {{'tvm_ffi.cast' op operand #0 must be TVM FFI value with a TVMFFIAny ABI representation, but got 'i64'}}
   %result = "tvm_ffi.cast"(%arg)
-      : (!torch.int) -> !tvm_ffi.any
+      : (i64) -> !tvm_ffi.any
   return
 }
 

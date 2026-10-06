@@ -16,7 +16,6 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h" // NOLINT(misc-include-cleaner)
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/STLExtras.h>
@@ -36,7 +35,6 @@
 #include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/InliningUtils.h>
 #include <string>
-#include <torch-mlir/Dialect/Torch/IR/TorchDialect.h> // NOLINT(misc-include-cleaner)
 
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.cpp.inc"
 

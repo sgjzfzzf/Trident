@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
-#include "torch-mlir/Dialect/Torch/IR/TorchTypes.h"
 #include "trident/core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident/core/Dialect/DLPack/IR/DLPackDialect.h"
@@ -45,9 +44,6 @@
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <optional>
-#include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
-#include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h>
-#include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionOps.h>
 #include <tuple>
 #include <utility>
 
@@ -247,101 +243,62 @@ public:
     mlir::ConversionTarget target(getContext());
     mlir::TypeConverter typeConverter;
     typeConverter.addConversion(
-        [](mlir::Type type) -> std::optional<mlir::Type> {
-          return llvm::TypeSwitch<mlir::Type, std::optional<mlir::Type>>(type)
-              .Case<mlir::torch::Torch::NonValueTensorType,
-                    mlir::torch::Torch::ValueTensorType>(
-                  [](mlir::Type type) -> std::optional<mlir::Type> {
-                    return mlir::LLVM::LLVMPointerType::get(type.getContext());
-                  })
-              .Case<mlir::torch::Torch::BoolType, mlir::torch::Torch::FloatType,
-                    mlir::torch::Torch::IntType, mlir::torch::Torch::StringType,
-                    mlir::torch::Torch::TupleType, mlir::IntegerType,
-                    mlir::FloatType>(
-                  [](mlir::Type type) -> std::optional<mlir::Type> {
-                    return type;
-                  })
-              .Default([](mlir::Type) -> std::optional<mlir::Type> {
-                return std::nullopt;
-              });
-        });
+        [](mlir::Type type) -> mlir::Type { return type; });
     typeConverter.addTargetMaterialization([](mlir::OpBuilder &builder,
                                               mlir::Type resultType,
                                               mlir::ValueRange inputs,
                                               mlir::Location loc)
                                                -> mlir::Value {
-      mlir::Value const input = inputs.front();
+      if (inputs.size() != 1) {
+        return {};
+      }
+      mlir::Value input = inputs.front();
+      if (mlir::isa<tvm_ffi::TensorType>(input.getType())) {
+        if (!mlir::isa<mlir::LLVM::LLVMPointerType>(resultType)) {
+          return {};
+        }
+        mlir::Value const object = tvm_ffi::GetOp::create(
+            builder, loc, tvm_ffi::ObjectType::get(builder.getContext()),
+            input);
+        mlir::Value const tensor = tvm_ffi::AsOp::create(
+            builder, loc, dlpack::DLTensorType::get(builder.getContext()),
+            object);
+        return dlpack::TensorDataOp::create(builder, loc, resultType, tensor);
+      }
+      if (mlir::isa<tvm_ffi::BoolType, tvm_ffi::IntType, tvm_ffi::FloatType>(
+              input.getType())) {
+        input = tvm_ffi::GetOp::create(builder, loc, input);
+      }
       mlir::Type const inputType = input.getType();
-      return llvm::TypeSwitch<mlir::Type, mlir::Value>(inputType)
-          .Case<mlir::torch::Torch::BaseTensorType>(
-              [&](mlir::Type) -> mlir::Value {
-                if (!mlir::isa<mlir::LLVM::LLVMPointerType>(resultType)) {
-                  return {};
-                }
-                mlir::Value const object = torchext::GetOp::create(
-                    builder, loc,
-                    tvm_ffi::ObjectType::get(builder.getContext()), input);
-                mlir::Value const tensor = tvm_ffi::AsOp::create(
-                    builder, loc,
-                    dlpack::DLTensorType::get(builder.getContext()), object);
-                return dlpack::TensorDataOp::create(builder, loc, resultType,
-                                                    tensor)
-                    .getResult();
-              })
-          .Case<mlir::torch::Torch::BoolType>([&](mlir::Type) -> mlir::Value {
-            auto target = mlir::dyn_cast<mlir::IntegerType>(resultType);
-            if (!target) {
-              return {};
-            }
-            mlir::Value const value =
-                mlir::torch::TorchConversion::ToI1Op::create(builder, loc,
-                                                             input);
-            return target.isInteger(1) ? value
-                                       : mlir::LLVM::ZExtOp::create(
-                                             builder, loc, resultType, value)
-                                             .getResult();
-          })
-          .Case<mlir::torch::Torch::IntType>([&](mlir::Type) -> mlir::Value {
-            auto target = mlir::dyn_cast<mlir::IntegerType>(resultType);
-            if (!target) {
-              return {};
-            }
-            mlir::Value const value =
-                mlir::torch::TorchConversion::ToI64Op::create(builder, loc,
-                                                              input);
-            return target.isInteger(64) ? value
-                                        : mlir::LLVM::TruncOp::create(
-                                              builder, loc, resultType, value)
-                                              .getResult();
-          })
-          .Case<mlir::torch::Torch::FloatType>([&](mlir::Type) -> mlir::Value {
-            auto target = mlir::dyn_cast<mlir::FloatType>(resultType);
-            if (!target) {
-              return {};
-            }
-            mlir::Value const value =
-                mlir::torch::TorchConversion::ToF64Op::create(builder, loc,
-                                                              input);
-            return target.isF64() ? value
-                                  : mlir::LLVM::FPTruncOp::create(
-                                        builder, loc, resultType, value)
-                                        .getResult();
-          })
-          .Default([](mlir::Type) -> mlir::Value { return {}; });
+      if (inputType == resultType) {
+        return input;
+      }
+      if (auto integer = mlir::dyn_cast<mlir::IntegerType>(inputType)) {
+        auto targetInteger = mlir::dyn_cast<mlir::IntegerType>(resultType);
+        if (!targetInteger) {
+          return {};
+        }
+        if (integer.getWidth() > targetInteger.getWidth()) {
+          return mlir::arith::TruncIOp::create(builder, loc, resultType, input);
+        }
+        if (integer.isInteger(1)) {
+          return mlir::arith::ExtUIOp::create(builder, loc, resultType, input);
+        }
+        return mlir::arith::ExtSIOp::create(builder, loc, resultType, input);
+      }
+      if (mlir::isa<mlir::FloatType>(inputType) &&
+          mlir::isa<mlir::FloatType>(resultType)) {
+        return mlir::arith::TruncFOp::create(builder, loc, resultType, input);
+      }
+      return {};
     });
 
     target.addIllegalOp<torchext::TritonKernelLaunchOp>();
-    target.addLegalOp<
-        mlir::gpu::LaunchFuncOp, mlir::torch::Torch::ConstantBoolOp,
-        mlir::torch::Torch::ConstantFloatOp, mlir::torch::Torch::ConstantIntOp,
-        mlir::torch::Torch::ConstantStrOp,
-        mlir::torch::Torch::PrimTupleConstructOp, torchext::EqOp,
-        torchext::GetOp>();
-    target.addLegalDialect<
-        mlir::arith::ArithDialect, mlir::cf::ControlFlowDialect,
-        mlir::gpu::GPUDialect, mlir::BuiltinDialect, mlir::func::FuncDialect,
-        mlir::LLVM::LLVMDialect, tvm_ffi::TVMFFIDialect, dlpack::DLPackDialect,
-        mlir::torch::TorchConversion::TorchConversionDialect>();
+    target.addLegalDialect<mlir::arith::ArithDialect,
+                           mlir::cf::ControlFlowDialect, mlir::gpu::GPUDialect,
+                           mlir::BuiltinDialect, mlir::func::FuncDialect,
+                           mlir::LLVM::LLVMDialect, tvm_ffi::TVMFFIDialect,
+                           dlpack::DLPackDialect>();
 
     mlir::RewritePatternSet patterns(&getContext());
     populateTorchExtToGPUConversionPatterns(target, patterns, typeConverter);

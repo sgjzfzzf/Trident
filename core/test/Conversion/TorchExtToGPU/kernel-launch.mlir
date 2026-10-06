@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s --convert-torchext-to-gpu --convert-torch-to-tvm-ffi --convert-tvm-ffi-to-func --convert-tvm-ffi-to-llvm --convert-dlpack-to-llvm -split-input-file | FileCheck %s
+// RUN: trident-core-opt %s --convert-torchext-to-gpu --convert-tvm-ffi-to-func --convert-tvm-ffi-to-llvm --convert-dlpack-to-llvm -split-input-file | FileCheck %s
 
 // CHECK-LABEL: module attributes {gpu.container_module}
 // CHECK: gpu.binary @kernel
@@ -40,8 +40,8 @@ module attributes { gpu.container_module } {
   gpu.binary @kernel [#gpu.object<#nvvm.target, "">]
 
   func.func @test_kernel_launch(
-    %tensor: !torch.vtensor<[4],f32>,
-    %scalar: !torch.int) {
+    %tensor: !tvm_ffi.tensor,
+    %scalar: !tvm_ffi.int) {
     %c32 = llvm.mlir.constant(32 : i64) : i64
     %c16 = llvm.mlir.constant(16 : i64) : i64
     %c128 = llvm.mlir.constant(128 : i64) : i64
@@ -51,7 +51,7 @@ module attributes { gpu.container_module } {
     torchext.trident_kernel_launch @kernel::@entry
       blocks in (%c32, %c16, %c1) : i64 threads in (%c128, %c1, %c1)
       dynamic_shared_memory_size %shmem
-      args (%tensor : !torch.vtensor<[4],f32> #torchext.variable_specialization<kind = !llvm.ptr, divisibility = 16>, %scalar : !torch.int #torchext.variable_specialization<kind = i64, divisibility = 16>)
+      args (%tensor : !tvm_ffi.tensor #torchext.variable_specialization<kind = !llvm.ptr, divisibility = 16>, %scalar : !tvm_ffi.int #torchext.variable_specialization<kind = i64, divisibility = 16>)
     func.return
   }
 }

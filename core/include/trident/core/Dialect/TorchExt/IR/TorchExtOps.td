@@ -14,7 +14,6 @@ include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/CastInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
-include "torch-mlir/Dialect/Torch/IR/TorchTypes.td"
 
 include "trident/core/Dialect/TorchExt/IR/TorchExtBase.td"
 include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.td"
@@ -24,139 +23,9 @@ include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.td"
 class TorchExt_Op<string mnemonic, list<Trait> traits = []>
     : Op<TorchExt_Dialect, mnemonic, traits>;
 
-class TorchExt_TensorIndexedMetadataOp<string mnemonic>
-    : TorchExt_Op<mnemonic, [Pure,
-        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let arguments = (ins AnyTorchTensorType:$tensor, I64:$index);
-  let results = (outs I64:$result);
-  let assemblyFormat = "$tensor `[` $index `]` attr-dict `:` type($tensor)";
-}
-
-def TorchExt_CastInputType
-    : AnyTypeOf<[AnyTorchType, TorchExt_DTypeType],
-                "Torch or TorchExt value accepted by torchext.cast">;
-
-def TorchExt_CastResultType
-    : AnyTypeOf<[Torch_AnyType, Torch_UnionType],
-                "Torch Any or Union value produced by torchext.cast">;
-
-def TorchExt_GetOperandType
-    : AnyTypeOf<[
-           Torch_BoolType, Torch_FloatType, Torch_IntType, TVMFFI_BoolType,
-           TVMFFI_FloatType, TVMFFI_IntType, TVMFFI_ArrayType,
-           TVMFFI_FunctionType, TVMFFI_StrType, TVMFFI_TensorType,
-           AnyTorchTensorType],
-          "Torch or TVM FFI value accepted by torchext.get">;
-
-def TorchExt_GetResultType
-    : AnyTypeOf<[AnyFloat, AnyInteger, LLVM_AnyPointer, TVMFFI_ObjectType],
-                "Native value produced by torchext.get">;
-
 def TorchExt_KernelOperandType
-    : AnyTypeOf<[
-      Torch_BoolType, Torch_FloatType, Torch_IntType, Torch_StringType,
-      Torch_TupleType, AnyTorchTensorType
-    ],
-                "Torch scalar, string, or tensor accepted by a Triton kernel launch">;
-
-def TorchExt_CastOp
-    : TorchExt_Op<"cast", [Pure,
-        DeclareOpInterfaceMethods<CastOpInterface>]> {
-  let summary = "Widen a Torch frontend value to Torch Any or Union";
-  let arguments = (ins TorchExt_CastInputType:$value);
-  let results = (outs TorchExt_CastResultType:$result);
-  let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
-}
-
-def TorchExt_ConvertOp
-    : TorchExt_Op<"convert", [Pure,
-        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Convert a wrapper dtype to a Torch ScalarType integer";
-  let description = [{
-    Converts a `!torchext.dtype` wrapper value to `!torch.int` for calling
-    native TorchMLIR Aten operations.  The operation is lowered through the
-    TVM FFI DLPack dtype representation and the Trident runtime conversion
-    helper.
-  }];
-
-  let arguments = (ins TorchExt_DTypeType:$operand);
-  let results = (outs Torch_IntType:$result);
-  let hasVerifier = 1;
-
-  let assemblyFormat = [{
-    $operand attr-dict `:` type($operand) `->` type($result)
-  }];
-}
-
-def TorchExt_ConstantDTypeOp
-    : TorchExt_Op<"constant.dtype", [Pure]> {
-  let summary = "Create a TorchExt dtype constant";
-  let arguments = (ins TorchExt_DTypeAttr:$value);
-  let results = (outs TorchExt_DTypeType:$result);
-  let assemblyFormat = "$value attr-dict";
-}
-
-def TorchExt_EqOp : TorchExt_Op<"eq", [Pure, SameTypeOperands]> {
-  let summary = "Compare two Torch semantic values for structural equality";
-  let arguments = (ins AnyTorchType:$lhs, AnyTorchType:$rhs);
-  let results = (outs I1:$result);
-  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs)";
-}
-
-def TorchExt_GetOp
-    : TorchExt_Op<"get", [Pure,
-        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Extract a native value from a Torch or TVM FFI value";
-  let arguments = (ins TorchExt_GetOperandType:$operand);
-  let results = (outs TorchExt_GetResultType:$result);
-  let hasVerifier = 1;
-  let assemblyFormat = [{
-    $operand attr-dict `:` type($operand) `->` type($result)
-  }];
-}
-
-def TorchExt_TensorDeviceOp : TorchExt_Op<"tensor.device", [Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Read DLPack device fields from a Torch tensor";
-  let arguments = (ins AnyTorchTensorType:$tensor);
-  let results = (outs I32:$device_type, I32:$device_index);
-  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
-}
-
-def TorchExt_TensorDimOp : TorchExt_Op<"tensor.dim", [Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Read the rank of a Torch tensor";
-  let arguments = (ins AnyTorchTensorType:$tensor);
-  let results = (outs I64:$result);
-  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
-}
-
-def TorchExt_TensorDTypeOp : TorchExt_Op<"tensor.dtype", [Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Read DLPack dtype fields from a Torch tensor";
-  let arguments = (ins AnyTorchTensorType:$tensor);
-  let results = (outs I8:$code, I8:$bits, I16:$lanes);
-  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
-}
-
-def TorchExt_TensorSizeOp
-    : TorchExt_TensorIndexedMetadataOp<"tensor.size"> {
-  let summary = "Read a Torch tensor dimension size";
-}
-
-def TorchExt_TensorStorageOffsetOp
-    : TorchExt_Op<"tensor.storage_offset", [Pure,
-        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Read a Torch tensor storage offset";
-  let arguments = (ins AnyTorchTensorType:$tensor);
-  let results = (outs I64:$result);
-  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
-}
-
-def TorchExt_TensorStrideOp
-    : TorchExt_TensorIndexedMetadataOp<"tensor.stride"> {
-  let summary = "Read a Torch tensor dimension stride";
-}
+    : AnyTypeOf<[AnyTVMFFISemanticType, I1, I64, F64],
+                "TVM FFI value or native scalar accepted by a Triton launch">;
 
 def TorchExt_TritonKernelLaunchOp
     : TorchExt_Op<"trident_kernel_launch", [
@@ -168,7 +37,7 @@ def TorchExt_TritonKernelLaunchOp
   let summary = "Launch a Torch kernel entry point";
   let description = [{
     Models launching a Torch kernel symbol with explicit grid/block sizes.
-    Operands use Torch-MLIR scalar and tensor types. Each operand's
+    Operands use TVM FFI semantic values or native scalars. Each operand's
     specialization attribute defines its runtime precondition. Constant
     specializations are guard-only, while variable specializations are passed
     to the compiled Triton kernel.

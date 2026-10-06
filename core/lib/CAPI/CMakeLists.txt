@@ -11,9 +11,6 @@ add_mlir_public_c_api_library(
   MLIRIR
   MLIRSupport
   TorchExtDialect
-  TorchMLIRCAPI
-  TorchMLIRTorchConversionDialect
-  TorchToTVMFFI
   TridentUtilsRegistration
   TVMFFIDialect)
 

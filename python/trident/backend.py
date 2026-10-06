@@ -14,26 +14,26 @@ import torch
 import tvm_ffi
 import tvm_ffi.utils
 from torch.export._trace import _extract_fake_inputs
-from torch.export.graph_signature import InputKind, SymIntArgument, TensorArgument
+from torch.export.graph_signature import (
+    InputKind,
+    SymBoolArgument,
+    SymFloatArgument,
+    SymIntArgument,
+    TensorArgument,
+)
 from torch.utils import _pytree as pytree
 
 from trident import capi_utils
 from trident.core import (
-    _convert_torch_type_to_tvm_ffi_type,
     ir,
     passmanager,
     register_all_dialects,
     register_all_passes,
 )
 from trident.core.dialects import (
-    builtin,
     func,
     llvm,
-    torchext,
     transform,
-)
-from trident.core.dialects import (
-    torch as torch_d,
 )
 from trident.core.dialects import (
     tvm_ffi as tvm_ffi_d,
@@ -44,6 +44,7 @@ from trident.ffi import Exception
 from .fx_importer import TridentFxImporter
 from .guards import parse_guards
 from .input import InputTableBuilder
+from .ir_utils import array, box, value_type
 
 RuntimeValue: TypeAlias = Any
 RuntimeArguments: TypeAlias = tuple[RuntimeValue, ...]
@@ -113,9 +114,6 @@ class TridentGraphModule:
             # (all specializations failed); compile a new one.
             return self.compile(*args, **kwargs)
         else:
-            # TODO: Preserve input/output aliasing when an ExportedProgram
-            # returns a mutated input. The current lowering writes the
-            # mutation back but may return a tensor with distinct storage.
             return result
 
     def __name__(self) -> str:
@@ -142,7 +140,7 @@ class TridentGraphModule:
         #    repeated-merging hangs).
         combined: ir.Module = self._build_combined_module()
 
-        # 2. Lower Torch / TVM-FFI -> LLVM.
+        # 2. Lower semantic TVM FFI and GPU IR to LLVM.
         with self.ctx:
             passmanager.PassManager.parse(
                 "builtin.module(trident-lowering-pipeline)",
@@ -175,6 +173,8 @@ class TridentGraphModule:
             value: RuntimeValue,
             convert: Callable[[RuntimeValue], RuntimeValue],
         ) -> RuntimeValue:
+            if isinstance(value, tvm_ffi.Array):
+                return [normalize(element, convert) for element in value]
             if isinstance(value, tuple):
                 return tuple(normalize(element, convert) for element in value)
             if isinstance(value, list):
@@ -186,7 +186,7 @@ class TridentGraphModule:
             return convert(value)
 
         def invoke(*values: RuntimeValue) -> RuntimeValue:
-            return normalize(
+            result = normalize(
                 fn(
                     *(
                         normalize(
@@ -208,6 +208,11 @@ class TridentGraphModule:
                     else value
                 ),
             )
+
+            if isinstance(result, Exception):
+                return result
+            leaves = [result] if self._output_spec.num_leaves == 1 else list(result)
+            return pytree.tree_unflatten(leaves, self._output_spec)
 
         signature = inspect.signature(self.fn)
         ffi_signature = signature.replace(
@@ -699,10 +704,12 @@ class TridentGraphModule:
             kwargs,
             dynamic_shapes=dynamic_shapes,
             strict=False,
-        ).run_decompositions(decomp_table={})
+        )
         warmup_result = torch.fx.Interpreter(exported_program.module()).run(
             *pytree.tree_leaves(exported_program.example_inputs)
         )
+
+        self._output_spec = pytree.tree_structure(warmup_result)
 
         # Step 2: Import FX -> MLIR  ----------------------------------------
         importer: TridentFxImporter = TridentFxImporter(
@@ -722,39 +729,18 @@ class TridentGraphModule:
         flat_types: Sequence[ir.Type] = main_func.type.inputs
 
         with self.ctx:
-            device_type = torch_d.TorchDeviceType.get(self.ctx)
-            dtype_type = torchext.DTypeType.get(self.ctx)
-
-        input_builder = InputTableBuilder.get(
-            exported_program,
-            signature,
-            bound.arguments,
-            flat_types,
-            lambda value: (
-                device_type
-                if isinstance(value, torch.device)
-                else dtype_type
-                if isinstance(value, torch.dtype)
-                else importer._cc.value_info_to_type(value)
-            ),
-            self.ctx,
-        )
+            input_builder = InputTableBuilder.get(
+                exported_program,
+                signature,
+                bound.arguments,
+                flat_types,
+                value_type,
+                self.ctx,
+            )
         param_types = input_builder.input_types
 
         with self.ctx:
-            # A main function may have multiple semantic results; those are
-            # packed into a Torch tuple before the wrapper widens every normal
-            # result to Torch Any.
-            normal_result_type: ir.Type
-            if len(main_func.type.results) == 1:
-                [normal_result_type] = main_func.type.results
-            else:
-                normal_result_type = torch_d.TorchTupleType.get(
-                    main_func.type.results,
-                    context=self.ctx,
-                )
-            wrapper_result_type = torch_d.TorchAnyType.get(self.ctx)
-            abi_result_type = _convert_torch_type_to_tvm_ffi_type(wrapper_result_type)
+            abi_result_type = ir.Type.parse("!tvm_ffi.any", self.ctx)
             ffi_type: ir.FunctionType = ir.FunctionType.get(
                 param_types, [abi_result_type]
             )
@@ -791,37 +777,30 @@ class TridentGraphModule:
                         if input_spec.kind == InputKind.USER_INPUT
                         and isinstance(
                             input_spec.arg,
-                            (TensorArgument, SymIntArgument),
+                            (
+                                TensorArgument,
+                                SymBoolArgument,
+                                SymFloatArgument,
+                                SymIntArgument,
+                            ),
                         )
                     ]
                     assert len(main_inputs) == len(flat_types), (
                         "unexpected number of reconstructed MLIR inputs: "
                         f"got {len(main_inputs)}, expected {len(flat_types)}"
                     )
-                    main_args: list[ir.Value] = [
-                        torchext.convert(main_arg)
-                        if isinstance(main_arg.type, torchext.DTypeType)
-                        else main_arg
-                        for _, main_arg in zip(flat_types, main_inputs)
-                    ]
+                    main_args = main_inputs
                     call_result: ir.Value | Sequence[ir.Value] = func.call(
                         main_func.type.results,
                         main_func_name,
                         main_args,
                     )
-                    result: ir.Value
-                    if isinstance(call_result, ir.Value):
-                        result = call_result
-                    else:
-                        result = torch_d.prim_TupleConstruct(
-                            normal_result_type,
-                            call_result,
-                        )
-                    normal_value = torchext.cast(wrapper_result_type, result)
-                    normal_abi_value = builtin.unrealized_conversion_cast(
-                        [abi_result_type], [normal_value]
+                    result = (
+                        call_result
+                        if isinstance(call_result, ir.Value)
+                        else array(list(call_result))
                     )
-                    tvm_ffi_d.return_([normal_abi_value])
+                    tvm_ffi_d.return_([tvm_ffi_d.cast(abi_result_type, box(result))])
 
                 with ir.InsertionPoint(failure_block):
                     exception = tvm_ffi_d.exception("GuardMatch")

@@ -11,11 +11,7 @@
 #include "trident/core/Conversion/TVMFFIToFunc/TVMFFIToFunc.h"
 #include "trident/core/Conversion/TVMFFIToLLVM/TVMFFIToLLVM.h"
 #include "trident/core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
-#include "trident/core/Conversion/TorchToCf/TorchToCf.h"
-#include "trident/core/Conversion/TorchToScf/TorchToScf.h"
-#include "trident/core/Conversion/TorchToTVMFFI/TorchToTVMFFI.h"
 #include "trident/core/Dialect/TVMFFI/Transforms/OwnershipDeallocation.h"
-#include "trident/core/Dialect/Torch/Transforms/GeneralizeAtenOps.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h" // NOLINT(misc-include-cleaner)
 #include <mlir/Conversion/ArithToLLVM/ArithToLLVM.h>
 #include <mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h>
@@ -31,7 +27,6 @@
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/Passes.h>
-#include <torch-mlir/Dialect/TorchConversion/IR/TorchConversionDialect.h> // NOLINT(misc-include-cleaner)
 
 namespace trident::conversion {
 
@@ -42,12 +37,8 @@ class TridentLoweringPipelinePass final
     : public impl::TridentLoweringPipelineBase<TridentLoweringPipelinePass> {
   void runOnOperation() final {
     mlir::PassManager pm(&getContext(), mlir::ModuleOp::getOperationName());
-    pm.addPass(torch::createGeneralizeAtenOps());
     pm.addPass(mlir::createInlinerPass());
     pm.addPass(createConvertTorchExtToGPU());
-    pm.addPass(createConvertTorchToCf());
-    pm.addPass(createConvertTorchToScf());
-    pm.addPass(createConvertTorchToTVMFFI());
     pm.addPass(mlir::createSCFToControlFlowPass());
     pm.addPass(createFinalizeTVMFFI());
     pm.addPass(tvm_ffi::createOwnershipDeallocation());

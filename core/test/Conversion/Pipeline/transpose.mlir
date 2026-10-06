@@ -7,7 +7,7 @@
 
 // RUN: trident-core-opt %s --trident-lowering-pipeline | FileCheck %s
 //
-// This test verifies that torch.aten.t (transpose view) is lowered through the
+// This test verifies that the ATen transpose view is lowered through the
 // AtenGen FFI dispatch path and exposed through the generated TVM FFI wrapper.
 //
 // NOTE: aten.t is a view op — its result aliases the operand's storage. This
@@ -15,7 +15,7 @@
 // runtime semantics of the transposed view (strides preserved across the
 // DLPack boundary) are exercised end-to-end by test/test_t.py.
 
-// CHECK-LABEL: llvm.func @torch.aten.t(
+// CHECK-LABEL: llvm.func @aten.t(
 // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // The callee is resolved once at load time, so the dispatch reads the cached
 // handle rather than calling TVMFFIFunctionGetGlobal per invocation.
@@ -29,12 +29,18 @@
 // CHECK: %[[WRAP_ARG:[a-zA-Z0-9_]+]] = llvm.load %[[WRAP_ARGS]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: %[[WRAP_RET:[a-zA-Z0-9_]+]] = llvm.call @t(%[[WRAP_ARG]]) : (!llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.store %[[WRAP_RET]], %[[WRAP_RESULT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-func.func @torch.aten.t(%arg0: !torch.vtensor<[2,3],f32>) -> !torch.vtensor<[3,2],f32> {
-  %0 = torch.aten.t %arg0 : !torch.vtensor<[2,3],f32> -> !torch.vtensor<[3,2],f32>
-  return %0 : !torch.vtensor<[3,2],f32>
+func.func @aten.t(%arg0: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
+  %call_0_handle, %call_0_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.t" : !tvm_ffi.function, i1
+  cf.assert %call_0_lookup, "lookup failed"
+  %0, %call_0_status = tvm_ffi.FunctionCall %call_0_handle(%arg0) : (!tvm_ffi.tensor) -> !tvm_ffi.tensor, i1
+  cf.assert %call_0_status, "call failed"
+  return %0 : !tvm_ffi.tensor
 }
 
-tvm_ffi.func @t(%arg0: !torch.vtensor<[2,3],f32>) -> !torch.vtensor<[3,2],f32> attributes {emit_tvm_ffi_abi} {
-  %0 = torch.aten.t %arg0 : !torch.vtensor<[2,3],f32> -> !torch.vtensor<[3,2],f32>
-  tvm_ffi.return %0 : !torch.vtensor<[3,2],f32>
+tvm_ffi.func @t(%arg0: !tvm_ffi.tensor) -> !tvm_ffi.tensor attributes {emit_tvm_ffi_abi} {
+  %call_0_handle, %call_0_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.t" : !tvm_ffi.function, i1
+  cf.assert %call_0_lookup, "lookup failed"
+  %0, %call_0_status = tvm_ffi.FunctionCall %call_0_handle(%arg0) : (!tvm_ffi.tensor) -> !tvm_ffi.tensor, i1
+  cf.assert %call_0_status, "call failed"
+  tvm_ffi.return %0 : !tvm_ffi.tensor
 }

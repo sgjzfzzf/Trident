@@ -44,8 +44,6 @@
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
-#include <torch-mlir/Dialect/Torch/IR/TorchDialect.h>
-#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 #include <torch/headeronly/macros/Export.h>
 #include <tvm/ffi/c_api.h>
 
@@ -928,10 +926,10 @@ public:
     mlir::populateReturnOpTypeConversionPattern(patterns, typeConverter);
     mlir::cf::populateCFStructuralTypeConversionsAndLegality(typeConverter,
                                                              patterns, target);
-    target.addLegalDialect<
-        mlir::BuiltinDialect, mlir::func::FuncDialect, mlir::LLVM::LLVMDialect,
-        mlir::arith::ArithDialect, mlir::gpu::GPUDialect, mlir::scf::SCFDialect,
-        mlir::cf::ControlFlowDialect, mlir::torch::Torch::TorchDialect>();
+    target.addLegalDialect<mlir::BuiltinDialect, mlir::func::FuncDialect,
+                           mlir::LLVM::LLVMDialect, mlir::arith::ArithDialect,
+                           mlir::gpu::GPUDialect, mlir::scf::SCFDialect,
+                           mlir::cf::ControlFlowDialect>();
     target.addDynamicallyLegalOp<mlir::func::FuncOp>(
         [&](mlir::func::FuncOp op) -> bool {
           return typeConverter.isSignatureLegal(op.getFunctionType());
@@ -990,10 +988,6 @@ void populateTVMFFIToLLVMConversionPatterns(
       return std::nullopt;
     }
   });
-  typeConverter.addConversion(
-      [](mlir::torch::Torch::BaseTensorType type) -> mlir::Type {
-        return tvm_ffi::TVMFFIABIType::getLLVMType(type.getContext());
-      });
   mlir::registerConversionPDLFunctions(patterns);
   populateGeneratedPDLLPatterns(patterns,
                                 mlir::PDLConversionConfig(&typeConverter));

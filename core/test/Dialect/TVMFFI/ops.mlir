@@ -66,12 +66,12 @@ func.func @get_tensor(%arg: !tvm_ffi.tensor) -> !tvm_ffi.object {
   return %value : !tvm_ffi.object
 }
 
-// DIALECT-LABEL: tvm_ffi.func @with_torch_int(
-// DIALECT-SAME: [[INT_ARG:%[a-zA-Z0-9_]+]]: !torch.int) -> !torch.int {
-// DIALECT-NEXT: tvm_ffi.return [[INT_ARG]] : !torch.int
+// DIALECT-LABEL: tvm_ffi.func @with_ffi_int(
+// DIALECT-SAME: [[INT_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.int) -> !tvm_ffi.int {
+// DIALECT-NEXT: tvm_ffi.return [[INT_ARG]] : !tvm_ffi.int
 // DIALECT-NEXT: }
-tvm_ffi.func @with_torch_int(%arg0: !torch.int) -> !torch.int {
-  tvm_ffi.return %arg0 : !torch.int
+tvm_ffi.func @with_ffi_int(%arg0: !tvm_ffi.int) -> !tvm_ffi.int {
+  tvm_ffi.return %arg0 : !tvm_ffi.int
 }
 
 // -----

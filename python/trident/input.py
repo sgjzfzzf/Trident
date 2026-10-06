@@ -12,13 +12,14 @@ import torch
 import torch.utils._pytree as pytree
 from torch.export.graph_signature import (
     InputKind,
+    SymBoolArgument,
+    SymFloatArgument,
     SymIntArgument,
     TensorArgument,
 )
 
 from trident.core import ir
-from trident.core.dialects import torch as torch_d
-from trident.core.dialects import torchext
+from trident.ir_utils import array_get, ffi_type
 
 InputPath: TypeAlias = Sequence[int | str]
 InputValue: TypeAlias = Any
@@ -113,28 +114,10 @@ class _InputNonLeafNode(_InputNode):
             parent = self.value
             if parent is None:
                 return None
-            if isinstance(parent.type, torch_d.TorchListType):
-                unpacked = torch_d.prim_ListUnpack(
-                    [node.type for _, node in self._children_iter], parent
-                )
-                results = (
-                    [unpacked] if isinstance(unpacked, ir.Value) else list(unpacked)
-                )
-                for (_, node), value in zip(self._children_iter, results, strict=True):
-                    node.value = value
-            elif isinstance(parent.type, torch_d.TorchTupleType):
-                unpacked = torch_d.prim_TupleUnpack(
-                    [node.type for _, node in self._children_iter], parent
-                )
-                results = (
-                    [unpacked] if isinstance(unpacked, ir.Value) else list(unpacked)
-                )
-                for (_, node), value in zip(self._children_iter, results, strict=True):
-                    node.value = value
-            else:
-                raise TypeError(
-                    f"unsupported guard container type: {parent.type}; expected a Torch list or tuple"
-                )
+            assert str(parent.type) == "!tvm_ffi.array", (
+                f"unsupported input container type: {parent.type}"
+            )
+            child.value = array_get(parent, index, child.type)
         return child
 
     def child(self, key: int | str) -> _InputNode | None:
@@ -250,11 +233,8 @@ class InputTableBuilder:
         def container_type(
             node_type: type, element_types: Sequence[ir.Type]
         ) -> ir.Type:
-            if node_type is tuple:
-                return torch_d.TorchTupleType.get(element_types, context=context)
-            assert node_type is list
-            [element_type] = {*element_types}
-            return torch_d.TorchListType.get(element_type)
+            assert node_type in (tuple, list)
+            return ffi_type("array")
 
         input_specs = exported_program.graph_signature.input_specs
         exported_input_values = pytree.tree_leaves(exported_program.example_inputs)
@@ -264,7 +244,10 @@ class InputTableBuilder:
 
         main_input_count = sum(
             input_spec.kind == InputKind.USER_INPUT
-            and isinstance(input_spec.arg, (TensorArgument, SymIntArgument))
+            and isinstance(
+                input_spec.arg,
+                (TensorArgument, SymBoolArgument, SymFloatArgument, SymIntArgument),
+            )
             for input_spec in input_specs
         )
         assert main_input_count == len(main_input_types), (
@@ -329,7 +312,15 @@ class InputTableBuilder:
                 type = (
                     next(main_input_type_iter)
                     if input_spec.kind == InputKind.USER_INPUT
-                    and isinstance(input_spec.arg, (TensorArgument, SymIntArgument))
+                    and isinstance(
+                        input_spec.arg,
+                        (
+                            TensorArgument,
+                            SymBoolArgument,
+                            SymFloatArgument,
+                            SymIntArgument,
+                        ),
+                    )
                     else value_type(value)
                 )
                 return InputNodeBuilder(type)
@@ -338,9 +329,6 @@ class InputTableBuilder:
                     f"dict parameters (path step {name!r}) are not yet supported by trident.jit"
                 )
                 children = [build_node(child, name) for child in node.children()]
-                assert not children or not all(
-                    isinstance(child.type, torchext.DTypeType) for child in children
-                ), "containers of multiple torch.dtype values are not supported"
                 return InputNodeBuilder(
                     container_type(node.type, [child.type for child in children]),
                     children=children,

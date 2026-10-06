@@ -44,10 +44,10 @@ def TVMFFI_AsOp : TVMFFI_Op<"as", [Pure]> {
 def TVMFFI_CallOp : TVMFFI_Op<"call", [TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Call a TVM FFI function defined in the current module";
   let arguments = (ins FlatSymbolRefAttr:$callee,
-                       Variadic<AnyTVMFFIAnyABIOrTorchType>:$operands,
+                       Variadic<AnyTVMFFIAnyABIType>:$operands,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<DictArrayAttr>:$res_attrs);
-  let results = (outs Variadic<AnyTVMFFIAnyABIOrTorchType> : $results,
+  let results = (outs Variadic<AnyTVMFFIAnyABIType> : $results,
                       I1:$success);
   let assemblyFormat = "$callee `(` $operands `)` attr-dict `:` "
                        "functional-type($operands, $results) `,` type($success)";
@@ -230,9 +230,7 @@ def TVMFFI_ReturnOp
     ```
   }];
 
-  // Torch types are accepted here as a transitional frontend boundary. The
-  // Torch-to-TVMFFI pass rewrites them before lifetime-sensitive operations.
-  let arguments = (ins Variadic<AnyTVMFFIAnyABIOrTorchType> : $operands);
+  let arguments = (ins Variadic<AnyTVMFFIAnyABIType> : $operands);
 
   let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
   let hasVerifier = 1;

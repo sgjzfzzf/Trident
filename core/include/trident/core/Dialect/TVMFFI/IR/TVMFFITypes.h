@@ -22,7 +22,6 @@
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/Types.h>
 #include <mlir/IR/Value.h>
-#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 namespace mlir::TypeTrait {
 

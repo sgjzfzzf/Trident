@@ -10,7 +10,6 @@
 #include "trident/core/Conversion/Utils/TVMFFIUtils.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h"
 #include <cstdint>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/STLExtras.h>
@@ -36,7 +35,6 @@
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/WalkResult.h>
 #include <string>
-#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 namespace trident::conversion {
 
@@ -59,29 +57,6 @@ llvm::SmallVector<int32_t> getExpectedTypeIndices(mlir::Type type) {
   }
   if (mlir::isa<tvm_ffi::TVMFFIABIType>(type)) {
     return {mlir::cast<tvm_ffi::TVMFFITypeIndexInterface>(type).getTypeIndex()};
-  }
-  if (mlir::isa<mlir::torch::Torch::BoolType>(type)) {
-    return {tvm_ffi::BoolType::getTypeIndex()};
-  } else if (mlir::isa<mlir::torch::Torch::IntType>(type)) {
-    return {tvm_ffi::IntType::getTypeIndex()};
-  } else if (mlir::isa<mlir::torch::Torch::FloatType>(type)) {
-    return {tvm_ffi::FloatType::getTypeIndex()};
-  } else if (mlir::isa<mlir::torch::Torch::NoneType>(type)) {
-    return {tvm_ffi::NoneType::getTypeIndex()};
-  } else if (mlir::isa<mlir::torch::Torch::StringType>(type)) {
-    return {tvm_ffi::RawStrType::getTypeIndex(),
-            tvm_ffi::SmallStrType::getTypeIndex(),
-            tvm_ffi::StrType::getTypeIndex()};
-  } else if (mlir::isa<mlir::torch::Torch::DeviceType>(type)) {
-    return {tvm_ffi::DeviceType::getTypeIndex()};
-  } else if (mlir::isa<torchext::DTypeType>(type)) {
-    return {tvm_ffi::DTypeType::getTypeIndex()};
-  } else if (mlir::isa<mlir::torch::Torch::ListType,
-                       mlir::torch::Torch::TupleType>(type)) {
-    return {tvm_ffi::ArrayType::getTypeIndex()};
-  } else if (mlir::isa<mlir::torch::Torch::NonValueTensorType,
-                       mlir::torch::Torch::ValueTensorType>(type)) {
-    return {tvm_ffi::TensorType::getTypeIndex()};
   }
   return {};
 }

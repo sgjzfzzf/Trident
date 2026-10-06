@@ -16,7 +16,6 @@
 #include <mlir/Interfaces/CastInterfaces.h>
 #include <mlir/Interfaces/InferTypeOpInterface.h>
 #include <mlir/Interfaces/SideEffectInterfaces.h>
-#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 #define GET_OP_CLASSES
 #include "trident/core/Dialect/TorchExt/IR/TorchExt.h.inc"

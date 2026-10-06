@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Core Lit tests
 
-The directory follows the LLVM and torch-mlir convention of organizing
+The directory follows the LLVM convention of organizing
 regression tests by the implementation layer under test:
 
 - `Dialect/<Dialect>/` covers parsing, printing, verification, and dialect

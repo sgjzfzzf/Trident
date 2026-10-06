@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s -generalize-aten-ops -convert-torch-to-tvm-ffi | FileCheck %s
-// RUN: trident-core-opt %s -generalize-aten-ops -convert-torch-to-tvm-ffi -convert-tvm-ffi-to-llvm | FileCheck %s --check-prefix=LLVM
+// RUN: trident-core-opt %s | FileCheck %s
+// RUN: trident-core-opt %s -convert-tvm-ffi-to-llvm | FileCheck %s --check-prefix=LLVM
 
 // CHECK-LABEL: func.func @int_bool(
 // CHECK-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !tvm_ffi.bool)
@@ -31,7 +31,9 @@
 // LLVM: %[[KIND_RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[KIND_INDEX]], %[[TYPE_RESULT]][1] : !llvm.struct<(i32, i32, i64)>
 // LLVM: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[INT]], %[[KIND_RESULT]][2] : !llvm.struct<(i32, i32, i64)>
 // LLVM: return %[[RESULT]] : !llvm.struct<(i32, i32, i64)>
-func.func @int_bool(%arg0: !torch.bool) -> !torch.int {
-  %0 = torch.aten.Int.bool %arg0 : !torch.bool -> !torch.int
-  return %0 : !torch.int
+func.func @int_bool(%arg0: !tvm_ffi.bool) -> !tvm_ffi.int {
+  %bool = tvm_ffi.get %arg0 : !tvm_ffi.bool -> i1
+  %int = arith.extui %bool : i1 to i64
+  %0 = tvm_ffi.to %int : i64 -> !tvm_ffi.int
+  return %0 : !tvm_ffi.int
 }

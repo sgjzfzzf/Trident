@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.29)
 
 project(TridentCore)
 
-include(FetchContent)
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -46,42 +44,20 @@ find_package(nanobind CONFIG REQUIRED)
 find_package(Torch CONFIG REQUIRED)
 find_package(tvm_ffi CONFIG REQUIRED)
 
-set(TORCH_MLIR_OUT_OF_TREE_BUILD
-    ON
-    CACHE BOOL "Force torch-mlir out-of-tree mode in nested builds" FORCE)
-set(TORCH_MLIR_PYTHON_PACKAGE_PREFIX
-    "trident.core.torch_mlir."
-    CACHE STRING "Torch-mlir python package prefix" FORCE)
-set(TORCH_MLIR_PYTHON_PACKAGES_DIR
-    "${CMAKE_BINARY_DIR}/python_packages"
-    CACHE PATH "Torch-mlir python package output dir" FORCE)
-
-set(TORCH_MLIR_ENABLE_STABLEHLO
-    OFF
-    CACHE BOOL "Disable StableHLO in torch-mlir" FORCE)
-set(TORCH_MLIR_ENABLE_TOSA
-    OFF
-    CACHE BOOL "Disable TOSA in torch-mlir" FORCE)
-
-set(_TRIDENT_TORCH_MLIR_SRC "${CMAKE_SOURCE_DIR}/../third_party/torch-mlir")
-if(EXISTS "${_TRIDENT_TORCH_MLIR_SRC}/CMakeLists.txt")
-  message(STATUS "Using local torch-mlir at ${_TRIDENT_TORCH_MLIR_SRC}")
-  FetchContent_Declare(torch-mlir SOURCE_DIR "${_TRIDENT_TORCH_MLIR_SRC}")
-else()
-  FetchContent_Declare(
-    torch-mlir
-    GIT_REPOSITORY https://github.com/llvm/torch-mlir.git
-    GIT_TAG dfff0c964dc7d5b6ad008d561626f7fcacf0b9e7
-    GIT_SUBMODULES "")
-endif()
-FetchContent_MakeAvailable(torch-mlir)
-
-unset(TORCH_MLIR_ENABLE_STABLEHLO)
-unset(TORCH_MLIR_ENABLE_TOSA)
+list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}" "${MLIR_CMAKE_DIR}")
+include(TableGen)
+include(HandleLLVMOptions)
+set(LLVM_RUNTIME_OUTPUT_INTDIR "${CMAKE_BINARY_DIR}/bin")
+set(LLVM_LIBRARY_OUTPUT_INTDIR "${CMAKE_BINARY_DIR}/lib")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set(CMAKE_DISABLE_PRECOMPILE_HEADERS ON)
 
 include(${LLVM_CMAKE_DIR}/AddLLVM.cmake)
 include(${MLIR_CMAKE_DIR}/AddMLIR.cmake)
 include(${MLIR_CMAKE_DIR}/AddMLIRPython.cmake)
+include(MLIRDetectPythonEnv)
+mlir_configure_python_dev_packages()
 
 include_directories(SYSTEM ${CUDAToolkit_INCLUDE_DIRS})
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
@@ -92,8 +68,6 @@ include_directories(SYSTEM ${tvm_ffi_DLPACK_INCLUDE_DIR})
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_BINARY_DIR}/include)
-include_directories(SYSTEM ${torch-mlir_SOURCE_DIR}/include)
-include_directories(SYSTEM ${torch-mlir_BINARY_DIR}/include)
 
 add_subdirectory(include)
 add_subdirectory(lib)

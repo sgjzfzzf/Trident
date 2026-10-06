@@ -7,12 +7,11 @@
 
 // RUN: trident-core-opt %s --trident-lowering-pipeline | FileCheck %s
 
-// This test verifies that torch.aten.all.dims, represented by a generic
-// torch.operator, is lowered through the AtenGen FFI dispatch path. In
+// This test verifies that the ATen all.dims call is lowered through the AtenGen FFI dispatch path. In
 // particular, the list-valued dimensions operand must be passed as an FFI
 // object and the tvm_ffi wrapper must unpack all three arguments.
 
-// CHECK-LABEL: llvm.func @torch.aten.all.dims(
+// CHECK-LABEL: llvm.func @aten.all.dims(
 // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // The first dispatch constructs the FFI Array for the list of dimensions.
 // CHECK: llvm.call @TVMFFIFunctionCall(%[[ARRAY_HANDLE:[a-zA-Z0-9_]+]], %[[ARRAY_ARGS:[a-zA-Z0-9_]+]], %[[ARRAY_ARG_COUNT:[a-zA-Z0-9_]+]], %[[ARRAY_RETURN_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
@@ -29,20 +28,32 @@
 // CHECK: %[[WRAPPER_RET:[a-zA-Z0-9_]+]] = llvm.call @all_dims(%[[WRAPPER_INPUT]]) : (!llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.store %[[WRAPPER_RET]], %[[WRAPPER_RESULT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 
-func.func @torch.aten.all.dims(%arg0: !torch.vtensor<[7,4,11,1],f32>) -> !torch.vtensor<[11,1],i1> {
-  %int1 = torch.constant.int 1
-  %int0 = torch.constant.int 0
-  %dims = torch.prim.ListConstruct %int1, %int0 : (!torch.int, !torch.int) -> !torch.list<int>
-  %false = torch.constant.bool false
-  %result = torch.operator "torch.aten.all.dims"(%arg0, %dims, %false) : (!torch.vtensor<[7,4,11,1],f32>, !torch.list<int>, !torch.bool) -> !torch.vtensor<[11,1],i1>
-  return %result : !torch.vtensor<[11,1],i1>
+func.func @aten.all.dims(%arg0: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
+  %int1 = tvm_ffi.constant.int 1
+  %int0 = tvm_ffi.constant.int 0
+  %call_dims_handle, %call_dims_lookup = tvm_ffi.FunctionGetGlobal "ffi.Array" : !tvm_ffi.function, i1
+  cf.assert %call_dims_lookup, "lookup failed"
+  %dims, %call_dims_status = tvm_ffi.FunctionCall %call_dims_handle(%int1, %int0) : (!tvm_ffi.int, !tvm_ffi.int) -> !tvm_ffi.array, i1
+  cf.assert %call_dims_status, "call failed"
+  %false = tvm_ffi.constant.bool false
+  %call_result_handle, %call_result_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.all.dims" : !tvm_ffi.function, i1
+  cf.assert %call_result_lookup, "lookup failed"
+  %result, %call_result_status = tvm_ffi.FunctionCall %call_result_handle(%arg0, %dims, %false) : (!tvm_ffi.tensor, !tvm_ffi.array, !tvm_ffi.bool) -> !tvm_ffi.tensor, i1
+  cf.assert %call_result_status, "call failed"
+  return %result : !tvm_ffi.tensor
 }
 
-tvm_ffi.func @all_dims(%arg0: !torch.vtensor<[7,4,11,1],f32>) -> !torch.vtensor<[11,1],i1> attributes {emit_tvm_ffi_abi} {
-  %int1 = torch.constant.int 1
-  %int0 = torch.constant.int 0
-  %dims = torch.prim.ListConstruct %int1, %int0 : (!torch.int, !torch.int) -> !torch.list<int>
-  %false = torch.constant.bool false
-  %result = torch.operator "torch.aten.all.dims"(%arg0, %dims, %false) : (!torch.vtensor<[7,4,11,1],f32>, !torch.list<int>, !torch.bool) -> !torch.vtensor<[11,1],i1>
-  tvm_ffi.return %result : !torch.vtensor<[11,1],i1>
+tvm_ffi.func @all_dims(%arg0: !tvm_ffi.tensor) -> !tvm_ffi.tensor attributes {emit_tvm_ffi_abi} {
+  %int1 = tvm_ffi.constant.int 1
+  %int0 = tvm_ffi.constant.int 0
+  %call_dims_handle, %call_dims_lookup = tvm_ffi.FunctionGetGlobal "ffi.Array" : !tvm_ffi.function, i1
+  cf.assert %call_dims_lookup, "lookup failed"
+  %dims, %call_dims_status = tvm_ffi.FunctionCall %call_dims_handle(%int1, %int0) : (!tvm_ffi.int, !tvm_ffi.int) -> !tvm_ffi.array, i1
+  cf.assert %call_dims_status, "call failed"
+  %false = tvm_ffi.constant.bool false
+  %call_result_handle, %call_result_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.all.dims" : !tvm_ffi.function, i1
+  cf.assert %call_result_lookup, "lookup failed"
+  %result, %call_result_status = tvm_ffi.FunctionCall %call_result_handle(%arg0, %dims, %false) : (!tvm_ffi.tensor, !tvm_ffi.array, !tvm_ffi.bool) -> !tvm_ffi.tensor, i1
+  cf.assert %call_result_status, "call failed"
+  tvm_ffi.return %result : !tvm_ffi.tensor
 }

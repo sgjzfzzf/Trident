@@ -16,16 +16,13 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h" // NOLINT(misc-include-cleaner)
-#include <llvm/ADT/TypeSwitch.h> // NOLINT(misc-include-cleaner)
-#include <llvm/Support/Casting.h>
+#include <llvm/ADT/TypeSwitch.h>           // NOLINT(misc-include-cleaner)
+#include <llvm/Support/Casting.h>          // NOLINT(misc-include-cleaner)
 #include <mlir/IR/Builders.h>              // NOLINT(misc-include-cleaner)
 #include <mlir/IR/BuiltinTypes.h>          // NOLINT(misc-include-cleaner)
 #include <mlir/IR/DialectImplementation.h> // NOLINT(misc-include-cleaner)
 #include <mlir/Support/LLVM.h>             // NOLINT(misc-include-cleaner)
 #include <mlir/Transforms/InliningUtils.h> // NOLINT(misc-include-cleaner)
-#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h> // NOLINT(misc-include-cleaner)
-
-using llvm::isa;
 
 // The ODS-generated definitions below use declarations from these headers
 // directly, so include-cleaner cannot infer their dependency from this file.

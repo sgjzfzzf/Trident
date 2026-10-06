@@ -5,8 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
 #include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include <cstdint>
 #include <dlpack/dlpack.h>
 #include <llvm/ADT/APInt.h>
@@ -15,19 +16,20 @@
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
+#include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h>
+#include <mlir/Dialect/LLVMIR/LLVMAttrs.h>
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/LLVMIR/LLVMTypes.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinAttributeInterfaces.h>
+#include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Diagnostics.h>
 #include <mlir/IR/Location.h>
 #include <mlir/IR/Types.h>
 #include <mlir/IR/Value.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
-#include <torch-mlir/Dialect/Torch/IR/TorchOps.h>
-#include <torch-mlir/Dialect/Torch/IR/TorchTypes.h>
 
 #include "trident/core/Dialect/TorchExt/IR/TorchExtInterfaces.cpp.inc"
 
@@ -142,23 +144,19 @@ mlir::Type getConstantValueType(mlir::Attribute value,
                                 mlir::MLIRContext *context) {
   return llvm::TypeSwitch<mlir::Attribute, mlir::Type>(value)
       .Case<mlir::StringAttr>([&](mlir::StringAttr) -> mlir::Type {
-        return mlir::torch::Torch::StringType::get(context);
+        return tvm_ffi::RawStrType::get(context);
       })
-      .Case<mlir::ArrayAttr>([&](mlir::ArrayAttr array) -> mlir::Type {
-        return mlir::torch::Torch::TupleType::get(
-            context, llvm::map_to_vector(
-                         array, [&](mlir::Attribute element) -> mlir::Type {
-                           return getConstantValueType(element, context);
-                         }));
+      .Case<mlir::ArrayAttr>([&](mlir::ArrayAttr) -> mlir::Type {
+        return tvm_ffi::ArrayType::get(context);
       })
       .Case<mlir::IntegerAttr>([&](mlir::IntegerAttr integer) -> mlir::Type {
         if (integer.getType().isInteger(1)) {
-          return mlir::torch::Torch::BoolType::get(context);
+          return tvm_ffi::BoolType::get(context);
         }
-        return mlir::torch::Torch::IntType::get(context);
+        return tvm_ffi::IntType::get(context);
       })
       .Case<mlir::FloatAttr>([&](mlir::FloatAttr) -> mlir::Type {
-        return mlir::torch::Torch::FloatType::get(context);
+        return tvm_ffi::FloatType::get(context);
       });
 }
 
@@ -166,27 +164,49 @@ mlir::Value buildConstantValue(mlir::OpBuilder &builder, mlir::Location loc,
                                mlir::Attribute value) {
   return llvm::TypeSwitch<mlir::Attribute, mlir::Value>(value)
       .Case<mlir::StringAttr>([&](mlir::StringAttr string) -> mlir::Value {
-        return mlir::torch::Torch::ConstantStrOp::create(builder, loc, string);
+        return tvm_ffi::ConstantRawStrOp::create(builder, loc, string);
       })
       .Case<mlir::ArrayAttr>([&](mlir::ArrayAttr array) -> mlir::Value {
         llvm::SmallVector<mlir::Value> const elements = llvm::map_to_vector(
             array, [&](mlir::Attribute element) -> mlir::Value {
               return buildConstantValue(builder, loc, element);
             });
-        return mlir::torch::Torch::PrimTupleConstructOp::create(
-            builder, loc, getConstantValueType(array, builder.getContext()),
-            elements);
+        tvm_ffi::FunctionGetGlobalOp handle =
+            tvm_ffi::FunctionGetGlobalOp::create(
+                builder, loc, tvm_ffi::FunctionType::get(builder.getContext()),
+                builder.getI1Type(), "ffi.Array");
+        mlir::cf::AssertOp::create(
+            builder, loc, handle.getSuccess(),
+            "TVMFFIFunctionGetGlobal failed for ffi.Array");
+        mlir::Type const pointerType =
+            mlir::LLVM::LLVMPointerType::get(builder.getContext());
+        mlir::Value const pointer =
+            mlir::UnrealizedConversionCastOp::create(builder, loc, pointerType,
+                                                     handle.getResult())
+                .getResult(0);
+        mlir::Value const null =
+            mlir::LLVM::ZeroOp::create(builder, loc, pointerType);
+        mlir::Value const nonNull = mlir::LLVM::ICmpOp::create(
+            builder, loc, mlir::LLVM::ICmpPredicate::ne, pointer, null);
+        mlir::cf::AssertOp::create(
+            builder, loc, nonNull,
+            "TVMFFIFunctionGetGlobal returned null for ffi.Array");
+        tvm_ffi::FunctionCallOp call = tvm_ffi::FunctionCallOp::create(
+            builder, loc, tvm_ffi::ArrayType::get(builder.getContext()),
+            builder.getI1Type(), handle.getResult(), elements);
+        mlir::cf::AssertOp::create(builder, loc, call.getSuccess(),
+                                   "TVMFFIFunctionCall failed for ffi.Array");
+        return call.getResult();
       })
       .Case<mlir::IntegerAttr>([&](mlir::IntegerAttr integer) -> mlir::Value {
         if (integer.getType().isInteger(1)) {
-          return mlir::torch::Torch::ConstantBoolOp::create(
+          return tvm_ffi::ConstantBoolOp::create(
               builder, loc, integer.getValue().getBoolValue());
         }
-        return mlir::torch::Torch::ConstantIntOp::create(builder, loc, integer);
+        return tvm_ffi::ConstantIntOp::create(builder, loc, integer);
       })
       .Case<mlir::FloatAttr>([&](mlir::FloatAttr floating) -> mlir::Value {
-        return mlir::torch::Torch::ConstantFloatOp::create(builder, loc,
-                                                           floating);
+        return tvm_ffi::ConstantFloatOp::create(builder, loc, floating);
       });
 }
 // NOLINTEND(misc-no-recursion)
@@ -207,7 +227,7 @@ mlir::Value ConstantSpecializationAttr::buildCheck(mlir::OpBuilder &builder,
                                                    mlir::Location loc,
                                                    mlir::Value operand) const {
   mlir::Value const expected = buildConstantValue(builder, loc, getValue());
-  return EqOp::create(builder, loc, operand, expected);
+  return tvm_ffi::EqOp::create(builder, loc, operand, expected);
 }
 
 mlir::Type ConstantSpecializationAttr::getTargetType() const {

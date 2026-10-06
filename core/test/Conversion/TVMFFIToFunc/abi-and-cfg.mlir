@@ -13,9 +13,9 @@
 
 // make_int: a single scalar result is cast to its converted (TVMFFIAny)
 // type and stored directly into %arg3.
-tvm_ffi.func @make_int() -> !torch.int attributes {emit_tvm_ffi_abi} {
-  %0 = torch.constant.int 42
-  tvm_ffi.return %0 : !torch.int
+tvm_ffi.func @make_int() -> !tvm_ffi.int attributes {emit_tvm_ffi_abi} {
+  %0 = tvm_ffi.constant.int 42
+  tvm_ffi.return %0 : !tvm_ffi.int
 }
 
 // -----
@@ -26,8 +26,8 @@ tvm_ffi.func @make_int() -> !torch.int attributes {emit_tvm_ffi_abi} {
 // * ffi.Array call helper + kTVMFFIArray re-tag + store into %arg3.
 // The input tensors are borrowed from the caller, so only the temporary
 // ffi.Array function handle is released here; no element DecRef is emitted.
-tvm_ffi.func @multi_return_three_tensors(%arg0: !torch.tensor, %arg1: !torch.tensor, %arg2: !torch.tensor) -> (!torch.tensor, !torch.tensor, !torch.tensor) attributes {emit_tvm_ffi_abi} {
-  tvm_ffi.return %arg0, %arg1, %arg2 : !torch.tensor, !torch.tensor, !torch.tensor
+tvm_ffi.func @multi_return_three_tensors(%arg0: !tvm_ffi.tensor, %arg1: !tvm_ffi.tensor, %arg2: !tvm_ffi.tensor) -> (!tvm_ffi.tensor, !tvm_ffi.tensor, !tvm_ffi.tensor) attributes {emit_tvm_ffi_abi} {
+  tvm_ffi.return %arg0, %arg1, %arg2 : !tvm_ffi.tensor, !tvm_ffi.tensor, !tvm_ffi.tensor
 }
 
 // -----
@@ -35,16 +35,16 @@ tvm_ffi.func @multi_return_three_tensors(%arg0: !torch.tensor, %arg1: !torch.ten
 // TVMFFIToFunc preserves CFG block argument types and forwards values directly.
 // The unified LLVM conversion later converts both the branch and block.
 // INTERMEDIATE-LABEL: func.func @branch_argument(
-// INTERMEDIATE: [[BRANCH_VALUE:%[a-zA-Z0-9_]+]] = torch.constant.int 7
-// INTERMEDIATE-NEXT: cf.br [[BRANCH_DEST:\^bb[0-9]+]]([[BRANCH_VALUE]] : !torch.int)
-// INTERMEDIATE: [[BRANCH_DEST]]([[BRANCH_BLOCK_ARG:%[a-zA-Z0-9_]+]]: !torch.int):
-// INTERMEDIATE-NEXT: return [[BRANCH_BLOCK_ARG]] : !torch.int
-tvm_ffi.func @branch_argument() -> !torch.int attributes {emit_tvm_ffi_abi} {
-  %value = torch.constant.int 7
-  cf.br ^bb1(%value : !torch.int)
+// INTERMEDIATE: [[BRANCH_VALUE:%[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 7
+// INTERMEDIATE-NEXT: cf.br [[BRANCH_DEST:\^bb[0-9]+]]([[BRANCH_VALUE]] : !tvm_ffi.int)
+// INTERMEDIATE: [[BRANCH_DEST]]([[BRANCH_BLOCK_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.int):
+// INTERMEDIATE-NEXT: return [[BRANCH_BLOCK_ARG]] : !tvm_ffi.int
+tvm_ffi.func @branch_argument() -> !tvm_ffi.int attributes {emit_tvm_ffi_abi} {
+  %value = tvm_ffi.constant.int 7
+  cf.br ^bb1(%value : !tvm_ffi.int)
 
-^bb1(%arg: !torch.int):
-  tvm_ffi.return %arg : !torch.int
+^bb1(%arg: !tvm_ffi.int):
+  tvm_ffi.return %arg : !tvm_ffi.int
 }
 
 // -----
@@ -52,25 +52,25 @@ tvm_ffi.func @branch_argument() -> !torch.int attributes {emit_tvm_ffi_abi} {
 // Both edges of a conditional branch carry their own destination operands.
 // INTERMEDIATE-LABEL: func.func @cond_branch_arguments(
 // INTERMEDIATE: [[COND:%[a-zA-Z0-9_]+]] = arith.constant true
-// INTERMEDIATE-NEXT: [[TRUE_VALUE:%[a-zA-Z0-9_]+]] = torch.constant.int 1
-// INTERMEDIATE-NEXT: [[FALSE_VALUE:%[a-zA-Z0-9_]+]] = torch.constant.int 2
-// INTERMEDIATE-NEXT: cf.cond_br [[COND]] weights([90, 10]), [[TRUE_DEST:\^bb[0-9]+]]([[TRUE_VALUE]] : !torch.int), [[FALSE_DEST:\^bb[0-9]+]]([[FALSE_VALUE]] : !torch.int)
-// INTERMEDIATE: [[TRUE_DEST]]([[TRUE_BLOCK_ARG:%[a-zA-Z0-9_]+]]: !torch.int):
-// INTERMEDIATE-NEXT: return [[TRUE_BLOCK_ARG]] : !torch.int
-// INTERMEDIATE: [[FALSE_DEST]]([[FALSE_BLOCK_ARG:%[a-zA-Z0-9_]+]]: !torch.int):
-// INTERMEDIATE-NEXT: return [[FALSE_BLOCK_ARG]] : !torch.int
-tvm_ffi.func @cond_branch_arguments() -> !torch.int attributes {emit_tvm_ffi_abi} {
+// INTERMEDIATE-NEXT: [[TRUE_VALUE:%[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 1
+// INTERMEDIATE-NEXT: [[FALSE_VALUE:%[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 2
+// INTERMEDIATE-NEXT: cf.cond_br [[COND]] weights([90, 10]), [[TRUE_DEST:\^bb[0-9]+]]([[TRUE_VALUE]] : !tvm_ffi.int), [[FALSE_DEST:\^bb[0-9]+]]([[FALSE_VALUE]] : !tvm_ffi.int)
+// INTERMEDIATE: [[TRUE_DEST]]([[TRUE_BLOCK_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.int):
+// INTERMEDIATE-NEXT: return [[TRUE_BLOCK_ARG]] : !tvm_ffi.int
+// INTERMEDIATE: [[FALSE_DEST]]([[FALSE_BLOCK_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.int):
+// INTERMEDIATE-NEXT: return [[FALSE_BLOCK_ARG]] : !tvm_ffi.int
+tvm_ffi.func @cond_branch_arguments() -> !tvm_ffi.int attributes {emit_tvm_ffi_abi} {
   %cond = arith.constant true
-  %true_value = torch.constant.int 1
-  %false_value = torch.constant.int 2
-  cf.cond_br %cond, ^true(%true_value : !torch.int),
-                         ^false(%false_value : !torch.int) {branch_weights = array<i32: 90, 10>}
+  %true_value = tvm_ffi.constant.int 1
+  %false_value = tvm_ffi.constant.int 2
+  cf.cond_br %cond, ^true(%true_value : !tvm_ffi.int),
+                         ^false(%false_value : !tvm_ffi.int) {branch_weights = array<i32: 90, 10>}
 
-^true(%true_arg: !torch.int):
-  tvm_ffi.return %true_arg : !torch.int
+^true(%true_arg: !tvm_ffi.int):
+  tvm_ffi.return %true_arg : !tvm_ffi.int
 
-^false(%false_arg: !torch.int):
-  tvm_ffi.return %false_arg : !torch.int
+^false(%false_arg: !tvm_ffi.int):
+  tvm_ffi.return %false_arg : !tvm_ffi.int
 }
 
 // -----
@@ -78,26 +78,26 @@ tvm_ffi.func @cond_branch_arguments() -> !torch.int attributes {emit_tvm_ffi_abi
 // Switch destinations and forwarded operands are lowered by the standard CF
 // interface using the shared LLVM type converter.
 // INTERMEDIATE-LABEL: func.func @switch_argument(
-// INTERMEDIATE-SAME: [[SWITCH_TENSOR:%[a-zA-Z0-9_]+]]: !tvm_ffi.tensor, [[DEFAULT_VALUE:%[a-zA-Z0-9_]+]]: !torch.int, [[CASE_VALUE:%[a-zA-Z0-9_]+]]: !torch.int) -> !torch.int {
+// INTERMEDIATE-SAME: [[SWITCH_TENSOR:%[a-zA-Z0-9_]+]]: !tvm_ffi.tensor, [[DEFAULT_VALUE:%[a-zA-Z0-9_]+]]: !tvm_ffi.int, [[CASE_VALUE:%[a-zA-Z0-9_]+]]: !tvm_ffi.int) -> !tvm_ffi.int {
 // INTERMEDIATE: [[SELECTOR:%[a-zA-Z0-9_]+]], [[DEVICE_INDEX:%[a-zA-Z0-9_]+]] = tvm_ffi.tensor.device [[SWITCH_TENSOR]] : !tvm_ffi.tensor
 // INTERMEDIATE-NEXT: cf.switch [[SELECTOR]] : i32, [
-// INTERMEDIATE-NEXT: default: [[SWITCH_MERGE:\^bb[0-9]+]]([[DEFAULT_VALUE]] : !torch.int),
-// INTERMEDIATE-NEXT: 1: [[SWITCH_MERGE]]([[CASE_VALUE]] : !torch.int)
+// INTERMEDIATE-NEXT: default: [[SWITCH_MERGE:\^bb[0-9]+]]([[DEFAULT_VALUE]] : !tvm_ffi.int),
+// INTERMEDIATE-NEXT: 1: [[SWITCH_MERGE]]([[CASE_VALUE]] : !tvm_ffi.int)
 // INTERMEDIATE-NEXT: ]
-// INTERMEDIATE: [[SWITCH_MERGE]]([[SWITCH_RESULT:%[a-zA-Z0-9_]+]]: !torch.int):
-// INTERMEDIATE-NEXT: return [[SWITCH_RESULT]] : !torch.int
+// INTERMEDIATE: [[SWITCH_MERGE]]([[SWITCH_RESULT:%[a-zA-Z0-9_]+]]: !tvm_ffi.int):
+// INTERMEDIATE-NEXT: return [[SWITCH_RESULT]] : !tvm_ffi.int
 tvm_ffi.func @switch_argument(
     %tensor: !tvm_ffi.tensor,
-    %default_value: !torch.int,
-    %case_value: !torch.int) -> !torch.int {
+    %default_value: !tvm_ffi.int,
+    %case_value: !tvm_ffi.int) -> !tvm_ffi.int {
   %selector, %device_index = tvm_ffi.tensor.device %tensor : !tvm_ffi.tensor
   cf.switch %selector : i32, [
-    default: ^merge(%default_value : !torch.int),
-    1: ^merge(%case_value : !torch.int)
+    default: ^merge(%default_value : !tvm_ffi.int),
+    1: ^merge(%case_value : !tvm_ffi.int)
   ]
 
-^merge(%value: !torch.int):
-  tvm_ffi.return %value : !torch.int
+^merge(%value: !tvm_ffi.int):
+  tvm_ffi.return %value : !tvm_ffi.int
 }
 
 // -----
@@ -129,11 +129,11 @@ tvm_ffi.func @forward_block_use() {
 // converted to func.func is generated.
 // FUNC-LABEL: func.func @no_wrapper
 // FUNC-NOT: func.func @__tvm_ffi_no_wrapper
-// FUNC: [[NO_WRAPPER_VALUE:%[a-zA-Z0-9_]+]] = torch.constant.int 3
-// FUNC-NEXT: return [[NO_WRAPPER_VALUE]] : !torch.int
-tvm_ffi.func @no_wrapper() -> !torch.int {
-  %value = torch.constant.int 3
-  tvm_ffi.return %value : !torch.int
+// FUNC: [[NO_WRAPPER_VALUE:%[a-zA-Z0-9_]+]] = tvm_ffi.constant.int 3
+// FUNC-NEXT: return [[NO_WRAPPER_VALUE]] : !tvm_ffi.int
+tvm_ffi.func @no_wrapper() -> !tvm_ffi.int {
+  %value = tvm_ffi.constant.int 3
+  tvm_ffi.return %value : !tvm_ffi.int
 }
 
 // -----
@@ -145,21 +145,21 @@ tvm_ffi.func @no_wrapper() -> !torch.int {
 // INTERMEDIATE: [[GUARD_TRUE:%[a-zA-Z0-9_]+]] = arith.constant true
 // INTERMEDIATE-NEXT: [[GUARD_INT_SLOT:%[a-zA-Z0-9_]+]] = llvm.getelementptr [[ARGS]][0] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
 // INTERMEDIATE-NEXT: [[GUARD_INT_ANY:%[a-zA-Z0-9_]+]] = llvm.load [[GUARD_INT_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// INTERMEDIATE-NEXT: [[GUARD_INT:%[a-zA-Z0-9_]+]] = builtin.unrealized_conversion_cast [[GUARD_INT_ANY]] : !llvm.struct<(i32, i32, i64)> to !torch.int
+// INTERMEDIATE-NEXT: [[GUARD_INT:%[a-zA-Z0-9_]+]] = builtin.unrealized_conversion_cast [[GUARD_INT_ANY]] : !llvm.struct<(i32, i32, i64)> to !tvm_ffi.int
 // INTERMEDIATE-NEXT: [[GUARD_INT_TYPE:%[a-zA-Z0-9_]+]] = llvm.extractvalue [[GUARD_INT_ANY]][0] : !llvm.struct<(i32, i32, i64)>
 // INTERMEDIATE-NEXT: [[GUARD_INT_KIND:%[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i32) : i32
 // INTERMEDIATE-NEXT: [[GUARD_INT_VALID:%[a-zA-Z0-9_]+]] = llvm.icmp "eq" [[GUARD_INT_TYPE]], [[GUARD_INT_KIND]] : i32
 // INTERMEDIATE-NEXT: [[GUARD_AFTER_INT:%[a-zA-Z0-9_]+]] = arith.andi [[GUARD_TRUE]], [[GUARD_INT_VALID]] : i1
 // INTERMEDIATE-NEXT: [[GUARD_BOOL_SLOT:%[a-zA-Z0-9_]+]] = llvm.getelementptr [[ARGS]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(i32, i32, i64)>
 // INTERMEDIATE-NEXT: [[GUARD_BOOL_ANY:%[a-zA-Z0-9_]+]] = llvm.load [[GUARD_BOOL_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// INTERMEDIATE-NEXT: [[GUARD_BOOL:%[a-zA-Z0-9_]+]] = builtin.unrealized_conversion_cast [[GUARD_BOOL_ANY]] : !llvm.struct<(i32, i32, i64)> to !torch.bool
+// INTERMEDIATE-NEXT: [[GUARD_BOOL:%[a-zA-Z0-9_]+]] = builtin.unrealized_conversion_cast [[GUARD_BOOL_ANY]] : !llvm.struct<(i32, i32, i64)> to !tvm_ffi.bool
 // INTERMEDIATE-NEXT: [[GUARD_BOOL_TYPE:%[a-zA-Z0-9_]+]] = llvm.extractvalue [[GUARD_BOOL_ANY]][0] : !llvm.struct<(i32, i32, i64)>
 // INTERMEDIATE-NEXT: [[GUARD_BOOL_KIND:%[a-zA-Z0-9_]+]] = llvm.mlir.constant(2 : i32) : i32
 // INTERMEDIATE-NEXT: [[GUARD_BOOL_VALID:%[a-zA-Z0-9_]+]] = llvm.icmp "eq" [[GUARD_BOOL_TYPE]], [[GUARD_BOOL_KIND]] : i32
 // INTERMEDIATE-NEXT: [[ALL_GUARDS_VALID:%[a-zA-Z0-9_]+]] = arith.andi [[GUARD_AFTER_INT]], [[GUARD_BOOL_VALID]] : i1
 // INTERMEDIATE-NEXT: scf.if [[ALL_GUARDS_VALID]] {
-// INTERMEDIATE: [[GUARDED_RESULT:%[a-zA-Z0-9_]+]] = func.call @guarded([[GUARD_INT]], [[GUARD_BOOL]]) : (!torch.int, !torch.bool) -> !torch.int
-// INTERMEDIATE-NEXT: [[GUARDED_ABI_RESULT:%[a-zA-Z0-9_]+]] = builtin.unrealized_conversion_cast [[GUARDED_RESULT]] : !torch.int to !llvm.struct<(i32, i32, i64)>
+// INTERMEDIATE: [[GUARDED_RESULT:%[a-zA-Z0-9_]+]] = func.call @guarded([[GUARD_INT]], [[GUARD_BOOL]]) : (!tvm_ffi.int, !tvm_ffi.bool) -> !tvm_ffi.int
+// INTERMEDIATE-NEXT: [[GUARDED_ABI_RESULT:%[a-zA-Z0-9_]+]] = builtin.unrealized_conversion_cast [[GUARDED_RESULT]] : !tvm_ffi.int to !llvm.struct<(i32, i32, i64)>
 // INTERMEDIATE-NEXT: llvm.store [[GUARDED_ABI_RESULT]], [[RESULT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
 // The exception constructor is reached through the cached module-level handle.
 // This path emits LLVM directly and is never seen by the ownership pass, so it
@@ -174,6 +174,6 @@ tvm_ffi.func @no_wrapper() -> !torch.int {
 // INTERMEDIATE-NEXT: }
 // INTERMEDIATE-NEXT: [[GUARD_STATUS:%[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
 // INTERMEDIATE-NEXT: return [[GUARD_STATUS]] : i32
-tvm_ffi.func @guarded(%arg0: !torch.int, %arg1: !torch.bool) -> !torch.int attributes {emit_tvm_ffi_abi} {
-  tvm_ffi.return %arg0 : !torch.int
+tvm_ffi.func @guarded(%arg0: !tvm_ffi.int, %arg1: !tvm_ffi.bool) -> !tvm_ffi.int attributes {emit_tvm_ffi_abi} {
+  tvm_ffi.return %arg0 : !tvm_ffi.int
 }

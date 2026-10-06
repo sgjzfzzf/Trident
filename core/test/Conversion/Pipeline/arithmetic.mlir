@@ -7,7 +7,7 @@
 
 // RUN: trident-core-opt %s --trident-lowering-pipeline | FileCheck %s
 
-// CHECK-LABEL: llvm.func @torch.aten.mul.Scalar
+// CHECK-LABEL: llvm.func @aten.mul.Scalar
 // CHECK-SAME: %[[MUL_ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[MUL_ARG1:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // The callee is resolved once at load time, so the dispatch reads the cached
 // handle rather than calling TVMFFIFunctionGetGlobal per invocation.
@@ -16,7 +16,7 @@
 // CHECK: llvm.call @TVMFFIFunctionCall(%[[MUL_HANDLE]], %[[MUL_ARGS:[a-zA-Z0-9_]+]], %[[MUL_NARGS:[a-zA-Z0-9_]+]], %[[MUL_RET_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK: %[[MUL_RET:[a-zA-Z0-9_]+]] = llvm.load %[[MUL_RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.return %[[MUL_RET]] : !llvm.struct<(i32, i32, i64)>
-// CHECK-LABEL: llvm.func @torch.aten.sub.Scalar
+// CHECK-LABEL: llvm.func @aten.sub.Scalar
 // CHECK-SAME: %[[SUB_SCALAR_ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[SUB_SCALAR_ARG1:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[SUB_SCALAR_ARG2:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // The callee is resolved once at load time, so the dispatch reads the cached
 // handle rather than calling TVMFFIFunctionGetGlobal per invocation.
@@ -25,7 +25,7 @@
 // CHECK: llvm.call @TVMFFIFunctionCall(%[[SUB_SCALAR_HANDLE]], %[[SUB_SCALAR_ARGS:[a-zA-Z0-9_]+]], %[[SUB_SCALAR_NARGS:[a-zA-Z0-9_]+]], %[[SUB_SCALAR_RET_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
 // CHECK: %[[SUB_SCALAR_RET:[a-zA-Z0-9_]+]] = llvm.load %[[SUB_SCALAR_RET_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.return %[[SUB_SCALAR_RET]] : !llvm.struct<(i32, i32, i64)>
-// CHECK-LABEL: llvm.func @torch.aten.sub.Tensor
+// CHECK-LABEL: llvm.func @aten.sub.Tensor
 // CHECK-SAME: %[[SUB_TENSOR_ARG0:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[SUB_TENSOR_ARG1:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[SUB_TENSOR_ARG2:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // The callee is resolved once at load time, so the dispatch reads the cached
 // handle rather than calling TVMFFIFunctionGetGlobal per invocation.
@@ -41,32 +41,50 @@
 // CHECK-LABEL: llvm.func @__tvm_ffi_sub_tensor(
 // CHECK: llvm.call @sub_tensor(%[[SUB_TENSOR_WRAPPER_INPUT:[a-zA-Z0-9_]+]], %[[SUB_TENSOR_WRAPPER_OTHER:[a-zA-Z0-9_]+]], %[[SUB_TENSOR_WRAPPER_ALPHA:[a-zA-Z0-9_]+]]) : (!llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
 
-func.func @torch.aten.mul.Scalar(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.float) -> !torch.vtensor<[2,3],f32> {
-  %0 = torch.aten.mul.Scalar %arg0, %arg1 : !torch.vtensor<[2,3],f32>, !torch.float -> !torch.vtensor<[2,3],f32>
-  return %0 : !torch.vtensor<[2,3],f32>
+func.func @aten.mul.Scalar(%arg0: !tvm_ffi.tensor, %arg1: !tvm_ffi.float) -> !tvm_ffi.tensor {
+  %call_0_handle, %call_0_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.mul.Scalar" : !tvm_ffi.function, i1
+  cf.assert %call_0_lookup, "lookup failed"
+  %0, %call_0_status = tvm_ffi.FunctionCall %call_0_handle(%arg0, %arg1) : (!tvm_ffi.tensor, !tvm_ffi.float) -> !tvm_ffi.tensor, i1
+  cf.assert %call_0_status, "call failed"
+  return %0 : !tvm_ffi.tensor
 }
 
-func.func @torch.aten.sub.Scalar(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.float, %arg2: !torch.float) -> !torch.vtensor<[2,3],f32> {
-  %0 = torch.aten.sub.Scalar %arg0, %arg1, %arg2 : !torch.vtensor<[2,3],f32>, !torch.float, !torch.float -> !torch.vtensor<[2,3],f32>
-  return %0 : !torch.vtensor<[2,3],f32>
+func.func @aten.sub.Scalar(%arg0: !tvm_ffi.tensor, %arg1: !tvm_ffi.float, %arg2: !tvm_ffi.float) -> !tvm_ffi.tensor {
+  %call_0_handle, %call_0_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.sub.Scalar" : !tvm_ffi.function, i1
+  cf.assert %call_0_lookup, "lookup failed"
+  %0, %call_0_status = tvm_ffi.FunctionCall %call_0_handle(%arg0, %arg1, %arg2) : (!tvm_ffi.tensor, !tvm_ffi.float, !tvm_ffi.float) -> !tvm_ffi.tensor, i1
+  cf.assert %call_0_status, "call failed"
+  return %0 : !tvm_ffi.tensor
 }
 
-func.func @torch.aten.sub.Tensor(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.vtensor<[2,3],f32>, %arg2: !torch.float) -> !torch.vtensor<[2,3],f32> {
-  %0 = torch.aten.sub.Tensor %arg0, %arg1, %arg2 : !torch.vtensor<[2,3],f32>, !torch.vtensor<[2,3],f32>, !torch.float -> !torch.vtensor<[2,3],f32>
-  return %0 : !torch.vtensor<[2,3],f32>
+func.func @aten.sub.Tensor(%arg0: !tvm_ffi.tensor, %arg1: !tvm_ffi.tensor, %arg2: !tvm_ffi.float) -> !tvm_ffi.tensor {
+  %call_0_handle, %call_0_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.sub.Tensor" : !tvm_ffi.function, i1
+  cf.assert %call_0_lookup, "lookup failed"
+  %0, %call_0_status = tvm_ffi.FunctionCall %call_0_handle(%arg0, %arg1, %arg2) : (!tvm_ffi.tensor, !tvm_ffi.tensor, !tvm_ffi.float) -> !tvm_ffi.tensor, i1
+  cf.assert %call_0_status, "call failed"
+  return %0 : !tvm_ffi.tensor
 }
 
-tvm_ffi.func @mul_scalar(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.float) -> !torch.vtensor<[2,3],f32> attributes {emit_tvm_ffi_abi} {
-  %0 = torch.aten.mul.Scalar %arg0, %arg1 : !torch.vtensor<[2,3],f32>, !torch.float -> !torch.vtensor<[2,3],f32>
-  tvm_ffi.return %0 : !torch.vtensor<[2,3],f32>
+tvm_ffi.func @mul_scalar(%arg0: !tvm_ffi.tensor, %arg1: !tvm_ffi.float) -> !tvm_ffi.tensor attributes {emit_tvm_ffi_abi} {
+  %call_0_handle, %call_0_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.mul.Scalar" : !tvm_ffi.function, i1
+  cf.assert %call_0_lookup, "lookup failed"
+  %0, %call_0_status = tvm_ffi.FunctionCall %call_0_handle(%arg0, %arg1) : (!tvm_ffi.tensor, !tvm_ffi.float) -> !tvm_ffi.tensor, i1
+  cf.assert %call_0_status, "call failed"
+  tvm_ffi.return %0 : !tvm_ffi.tensor
 }
 
-tvm_ffi.func @sub_scalar(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.float, %arg2: !torch.float) -> !torch.vtensor<[2,3],f32> attributes {emit_tvm_ffi_abi} {
-  %0 = torch.aten.sub.Scalar %arg0, %arg1, %arg2 : !torch.vtensor<[2,3],f32>, !torch.float, !torch.float -> !torch.vtensor<[2,3],f32>
-  tvm_ffi.return %0 : !torch.vtensor<[2,3],f32>
+tvm_ffi.func @sub_scalar(%arg0: !tvm_ffi.tensor, %arg1: !tvm_ffi.float, %arg2: !tvm_ffi.float) -> !tvm_ffi.tensor attributes {emit_tvm_ffi_abi} {
+  %call_0_handle, %call_0_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.sub.Scalar" : !tvm_ffi.function, i1
+  cf.assert %call_0_lookup, "lookup failed"
+  %0, %call_0_status = tvm_ffi.FunctionCall %call_0_handle(%arg0, %arg1, %arg2) : (!tvm_ffi.tensor, !tvm_ffi.float, !tvm_ffi.float) -> !tvm_ffi.tensor, i1
+  cf.assert %call_0_status, "call failed"
+  tvm_ffi.return %0 : !tvm_ffi.tensor
 }
 
-tvm_ffi.func @sub_tensor(%arg0: !torch.vtensor<[2,3],f32>, %arg1: !torch.vtensor<[2,3],f32>, %arg2: !torch.float) -> !torch.vtensor<[2,3],f32> attributes {emit_tvm_ffi_abi} {
-  %0 = torch.aten.sub.Tensor %arg0, %arg1, %arg2 : !torch.vtensor<[2,3],f32>, !torch.vtensor<[2,3],f32>, !torch.float -> !torch.vtensor<[2,3],f32>
-  tvm_ffi.return %0 : !torch.vtensor<[2,3],f32>
+tvm_ffi.func @sub_tensor(%arg0: !tvm_ffi.tensor, %arg1: !tvm_ffi.tensor, %arg2: !tvm_ffi.float) -> !tvm_ffi.tensor attributes {emit_tvm_ffi_abi} {
+  %call_0_handle, %call_0_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.sub.Tensor" : !tvm_ffi.function, i1
+  cf.assert %call_0_lookup, "lookup failed"
+  %0, %call_0_status = tvm_ffi.FunctionCall %call_0_handle(%arg0, %arg1, %arg2) : (!tvm_ffi.tensor, !tvm_ffi.tensor, !tvm_ffi.float) -> !tvm_ffi.tensor, i1
+  cf.assert %call_0_status, "call failed"
+  tvm_ffi.return %0 : !tvm_ffi.tensor
 }

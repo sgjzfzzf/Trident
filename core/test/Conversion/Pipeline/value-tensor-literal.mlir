@@ -10,7 +10,7 @@
 // Tensor literals use one stable CPU-staging path for both splat and
 // non-splat attributes before copying the tensor to the current CUDA device.
 
-// CHECK-LABEL: llvm.func @torch.vtensor.literal.splat(
+// CHECK-LABEL: llvm.func @tensor_literal.splat(
 // The runtime helpers are resolved once at load time, so the literal path
 // reads cached handles rather than calling TVMFFIFunctionGetGlobal.
 // CHECK-NOT: llvm.call @TVMFFIFunctionGetGlobal
@@ -22,33 +22,33 @@
 // CHECK: llvm.call @aoti_torch_empty_strided(%[[SPLAT_EMPTY_COUNT:[a-zA-Z0-9_]+]], %[[SPLAT_EMPTY_SHAPE:[a-zA-Z0-9_]+]], %[[SPLAT_EMPTY_STRIDES:[a-zA-Z0-9_]+]], %[[SPLAT_EMPTY_DTYPE:[a-zA-Z0-9_]+]], %[[SPLAT_EMPTY_DEVICE:[a-zA-Z0-9_]+]], %[[SPLAT_EMPTY_REQUIRES_GRAD:[a-zA-Z0-9_]+]], %[[SPLAT_EMPTY_OUTPUT:[a-zA-Z0-9_]+]]) : (i64, !llvm.ptr, !llvm.ptr, i32, i32, i32, !llvm.ptr) -> i32
 // CHECK: llvm.call @aoti_torch_copy_(%[[SPLAT_DESTINATION:[a-zA-Z0-9_]+]], %[[SPLAT_SOURCE:[a-zA-Z0-9_]+]], %[[SPLAT_NON_BLOCKING:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32) -> i32
 // CHECK: llvm.call @aoti_torch_delete_tensor_object(%[[SPLAT_SOURCE]]) : (!llvm.ptr) -> i32
-// CHECK-LABEL: llvm.func @torch.vtensor.literal.nonsplat(
+// CHECK-LABEL: llvm.func @tensor_literal.nonsplat(
 // CHECK: llvm.call @aoti_torch_create_tensor_from_blob(%[[NONSPLAT_DATA:[a-zA-Z0-9_]+]], %[[NONSPLAT_DATA_COUNT:[a-zA-Z0-9_]+]], %[[NONSPLAT_SHAPE:[a-zA-Z0-9_]+]], %[[NONSPLAT_STRIDES:[a-zA-Z0-9_]+]], %[[NONSPLAT_DTYPE:[a-zA-Z0-9_]+]], %[[NONSPLAT_DEVICE:[a-zA-Z0-9_]+]], %[[NONSPLAT_REQUIRES_GRAD:[a-zA-Z0-9_]+]], %[[NONSPLAT_MEMORY_FORMAT:[a-zA-Z0-9_]+]], %[[NONSPLAT_OUTPUT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, i64, !llvm.ptr, !llvm.ptr, i64, i32, i32, i32, !llvm.ptr) -> i32
 // CHECK-LABEL: llvm.func @__tvm_ffi_vtensor_literal_splat(
 // CHECK: llvm.call @vtensor_literal_splat() : () -> !llvm.struct<(i32, i32, i64)>
 // CHECK-LABEL: llvm.func @__tvm_ffi_vtensor_literal_nonsplat(
 // CHECK: llvm.call @vtensor_literal_nonsplat() : () -> !llvm.struct<(i32, i32, i64)>
 
-func.func @torch.vtensor.literal.splat() -> !torch.vtensor<[2,3],f32> {
-  %0 = torch.vtensor.literal(dense<1.250000e+00> : tensor<2x3xf32>) : !torch.vtensor<[2,3],f32>
-  return %0 : !torch.vtensor<[2,3],f32>
+func.func @tensor_literal.splat() -> !tvm_ffi.tensor {
+  %0 = tvm_ffi.tensor.literal dense<1.250000e+00> : tensor<2x3xf32> : !tvm_ffi.tensor
+  return %0 : !tvm_ffi.tensor
 }
 
-func.func @torch.vtensor.literal.nonsplat() -> !torch.vtensor<[2,3],f32> {
-  %0 = torch.vtensor.literal(dense<[[1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf32>) : !torch.vtensor<[2,3],f32>
-  return %0 : !torch.vtensor<[2,3],f32>
-}
-
-// The wrapper passes through the lowered TVMFFIAny result from the inner
-// function and stores it into the return slot expected by tvm_ffi.func.
-tvm_ffi.func @vtensor_literal_splat() -> !torch.vtensor<[2,3],f32> attributes {emit_tvm_ffi_abi} {
-  %0 = torch.vtensor.literal(dense<1.250000e+00> : tensor<2x3xf32>) : !torch.vtensor<[2,3],f32>
-  tvm_ffi.return %0 : !torch.vtensor<[2,3],f32>
+func.func @tensor_literal.nonsplat() -> !tvm_ffi.tensor {
+  %0 = tvm_ffi.tensor.literal dense<[[1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf32> : !tvm_ffi.tensor
+  return %0 : !tvm_ffi.tensor
 }
 
 // The wrapper passes through the lowered TVMFFIAny result from the inner
 // function and stores it into the return slot expected by tvm_ffi.func.
-tvm_ffi.func @vtensor_literal_nonsplat() -> !torch.vtensor<[2,3],f32> attributes {emit_tvm_ffi_abi} {
-  %0 = torch.vtensor.literal(dense<[[1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf32>) : !torch.vtensor<[2,3],f32>
-  tvm_ffi.return %0 : !torch.vtensor<[2,3],f32>
+tvm_ffi.func @vtensor_literal_splat() -> !tvm_ffi.tensor attributes {emit_tvm_ffi_abi} {
+  %0 = tvm_ffi.tensor.literal dense<1.250000e+00> : tensor<2x3xf32> : !tvm_ffi.tensor
+  tvm_ffi.return %0 : !tvm_ffi.tensor
+}
+
+// The wrapper passes through the lowered TVMFFIAny result from the inner
+// function and stores it into the return slot expected by tvm_ffi.func.
+tvm_ffi.func @vtensor_literal_nonsplat() -> !tvm_ffi.tensor attributes {emit_tvm_ffi_abi} {
+  %0 = tvm_ffi.tensor.literal dense<[[1.000000e+00, 2.000000e+00, 3.000000e+00], [4.000000e+00, 5.000000e+00, 6.000000e+00]]> : tensor<2x3xf32> : !tvm_ffi.tensor
+  tvm_ffi.return %0 : !tvm_ffi.tensor
 }

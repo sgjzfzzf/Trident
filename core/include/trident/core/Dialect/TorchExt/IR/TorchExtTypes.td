@@ -11,10 +11,7 @@
 include "mlir/IR/AttrTypeBase.td"
 include "trident/core/Dialect/TorchExt/IR/TorchExtBase.td"
 
-// Semantic wrapper type for a torch.dtype value.  It is intentionally kept
-// outside TorchMLIR's AnyTorchType set; wrapper lowering converts it to the
-// native TVM FFI dtype ABI before converting it to Torch's ScalarType integer
-// when calling a TorchMLIR Aten operation.
+// Legacy dtype attribute wrapper; runtime values use !tvm_ffi.dtype.
 def TorchExt_DTypeType : TypeDef<TorchExt_Dialect, "DType"> {
   let mnemonic = "dtype";
 }

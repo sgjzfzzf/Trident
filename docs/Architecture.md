@@ -58,7 +58,7 @@ DLPack does not expose Python wrapper identity or autograd view relationships.
 ## Triton kernels
 
 `triton_importer.py` resolves the compiled Triton kernel from its warmup cache,
-imports its cubin as `gpu.binary`, and emits `torchext.trident_kernel_launch`.
+imports its cubin as `gpu.binary`, and emits `tvm_ffi.kernel_launch`.
 Each specialization has a unique binary symbol. Operands retain semantic FFI
 values and carry constant or variable specialization attributes in source
 parameter order. Variable attributes record native ABI type and divisibility;
@@ -67,7 +67,7 @@ are used only to select the compiled kernel, never to substitute runtime shapes.
 Functional Triton wrapper outputs explicitly clone `tensors_to_clone` before
 launching; mutation wrappers use the original operands.
 
-`ConvertTorchExtToGPU` validates specialization attributes, branches to
+`ConvertTVMFFIToGPU` validates specialization attributes, branches to
 `GuardMatch` on failure, extracts tensor pointers and scalar values, and emits
 `gpu.launch_func` with the current TVM FFI CUDA stream. Constant operands are
 checked and omitted from the native kernel argument list. The ordinary inliner
@@ -99,7 +99,7 @@ initialization; call sites retain and release the cached reference.
 
 ## Source layout and validation
 
-`core/` contains the DLPack, TVM FFI and kernel-launch dialects, lowering passes,
+`core/` contains the DLPack and TVM FFI dialects, lowering passes,
 C API and Python bindings. `ffi/` generates ATen wrappers from dispatcher schemas
 and provides runtime conversion and exception helpers. Python import and guard
 tests live under `test/`; dialect, conversion and pipeline tests live under

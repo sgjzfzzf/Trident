@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s --convert-torchext-to-gpu --convert-tvm-ffi-to-func --convert-tvm-ffi-to-llvm -split-input-file | FileCheck %s
+// RUN: trident-core-opt %s --convert-tvm-ffi-to-gpu --convert-tvm-ffi-to-func --convert-tvm-ffi-to-llvm -split-input-file | FileCheck %s
 
 // Test get: !tvm_ffi.float -> f64 (extractvalue + bitcast)
 // CHECK-LABEL: func.func @cast_float_to_f64

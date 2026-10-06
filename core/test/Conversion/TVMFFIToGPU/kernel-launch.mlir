@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s --convert-torchext-to-gpu --convert-tvm-ffi-to-func --convert-tvm-ffi-to-llvm --convert-dlpack-to-llvm -split-input-file | FileCheck %s
+// RUN: trident-core-opt %s --convert-tvm-ffi-to-gpu --convert-tvm-ffi-to-func --convert-tvm-ffi-to-llvm --convert-dlpack-to-llvm -split-input-file | FileCheck %s
 
 // CHECK-LABEL: module attributes {gpu.container_module}
 // CHECK: gpu.binary @kernel
@@ -35,7 +35,7 @@
 // CHECK: dynamic_shared_memory_size %[[SHMEM]]
 // CHECK: args(%[[DATA_PTR]] : !llvm.ptr, %[[SCALAR_I64]] : i64, %[[ZERO]] : i64, %[[ZERO]] : i64)
 
-// CHECK-NOT: torchext.trident_kernel_launch
+// CHECK-NOT: tvm_ffi.kernel_launch
 module attributes { gpu.container_module } {
   gpu.binary @kernel [#gpu.object<#nvvm.target, "">]
 
@@ -48,10 +48,10 @@ module attributes { gpu.container_module } {
     %c1 = llvm.mlir.constant(1 : i64) : i64
     %shmem = llvm.mlir.constant(16384 : i32) : i32
 
-    torchext.trident_kernel_launch @kernel::@entry
+    tvm_ffi.kernel_launch @kernel::@entry
       blocks in (%c32, %c16, %c1) : i64 threads in (%c128, %c1, %c1)
       dynamic_shared_memory_size %shmem
-      args (%tensor : !tvm_ffi.tensor #torchext.variable_specialization<kind = !llvm.ptr, divisibility = 16>, %scalar : !tvm_ffi.int #torchext.variable_specialization<kind = i64, divisibility = 16>)
+      args (%tensor : !tvm_ffi.tensor #tvm_ffi.variable_specialization<kind = !llvm.ptr, divisibility = 16>, %scalar : !tvm_ffi.int #tvm_ffi.variable_specialization<kind = i64, divisibility = 16>)
     func.return
   }
 }

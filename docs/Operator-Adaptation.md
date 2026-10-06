@@ -73,13 +73,13 @@ select a kernel, but launch dimensions and runtime operands must use SSA values.
 ## Triton and kernel launch adaptation
 
 `python/trident/triton_importer.py` reuses the compiled Triton cache after warmup,
-imports `gpu.binary`, and emits `torchext.trident_kernel_launch`. Each source
+imports `gpu.binary`, and emits `tvm_ffi.kernel_launch`. Each source
 parameter has a constant or variable specialization attribute. The latter
 records native ABI type and optional divisibility; constexpr operands are checked
 and omitted from the native kernel call. Functional wrapper outputs clone only
 the specified tensors before launch.
 
-`ConvertTorchExtToGPU` runs after inlining and before ownership deallocation.
+`ConvertTVMFFIToGPU` runs after inlining and before ownership deallocation.
 It extracts native tensor data pointers and scalars from semantic operands,
 validates specializations, obtains the current stream through TVM FFI, and emits
 `gpu.launch_func`. A specialization failure must return the existing GuardMatch

@@ -16,14 +16,14 @@ def ConvertDLPackToLLVM : Pass<"convert-dlpack-to-llvm", "mlir::ModuleOp"> {
   ];
 }
 
-def ConvertTorchExtToGPU : Pass<"convert-torchext-to-gpu", "mlir::ModuleOp"> {
-  let summary = "Lower Torch Ext dialect operations to GPU dialect ";
-  let description = [{Lower TorchExt dialect operations to GPU dialect.}];
+def ConvertTVMFFIToGPU : Pass<"convert-tvm-ffi-to-gpu", "mlir::ModuleOp"> {
+  let summary = "Lower TVM FFI kernel launches to GPU dialect ";
+  let description = [{Lower TVM FFI kernel launches to GPU dialect.}];
   let dependentDialects = [
     "mlir::arith::ArithDialect", "mlir::cf::ControlFlowDialect",
     "trident::dlpack::DLPackDialect", "mlir::func::FuncDialect",
     "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect",
-    "trident::torchext::TorchExtDialect", "trident::tvm_ffi::TVMFFIDialect"
+    "trident::tvm_ffi::TVMFFIDialect"
   ];
 }
 
@@ -60,7 +60,6 @@ def TridentLoweringPipeline
   let summary = "Lower TVM FFI and GPU operations to LLVM dialect";
   let description = [{Lower TVM FFI and GPU operations to LLVM dialect.}];
   let dependentDialects = [
-    "trident::torchext::TorchExtDialect",
     "mlir::arith::ArithDialect", "mlir::LLVM::LLVMDialect",
     "mlir::scf::SCFDialect"
   ];

@@ -45,3 +45,5 @@ void registerTVMFFIObjectOwnershipExternalModels(
 }
 
 } // namespace trident::tvm_ffi
+
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttrInterfaces.cpp.inc"

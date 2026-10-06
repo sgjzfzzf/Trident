@@ -11,7 +11,7 @@ import torch
 import triton
 
 from trident.core import ir
-from trident.core.dialects import arith, gpu, torchext
+from trident.core.dialects import arith, gpu, tvm_ffi
 
 from .ir_utils import box, checked_call, constant, ffi_type, native, native_constant
 
@@ -132,7 +132,7 @@ def import_kernel(
     def constant_specialization(value: Any, name: str) -> ir.Attribute:
         value_attr = constant_value_attribute(value, name)
         return ir.Attribute.parse(
-            f"#torchext.constant_specialization<value = {value_attr}>"
+            f"#tvm_ffi.constant_specialization<value = {value_attr}>"
         )
 
     for parameter, (triton_type, specialization_descriptor), compiled_parameter in zip(
@@ -186,7 +186,7 @@ def import_kernel(
                 )
 
             specialization_attr = ir.Attribute.parse(
-                "#torchext.variable_specialization<"
+                "#tvm_ffi.variable_specialization<"
                 f"kind = {native_type}"
                 f"{', divisibility = 16' if specialization_descriptor == 'D' else ''}>"
             )
@@ -238,7 +238,7 @@ def import_kernel(
     def import_launch_constant(value: int) -> ir.Value:
         return native_constant(value)
 
-    torchext.trident_kernel_launch(
+    tvm_ffi.kernel_launch(
         ir.Attribute.parse(f"@{binary_name}::@{kernel.metadata.name}"),
         import_launch_value(grid_x),
         import_launch_value(grid_y),

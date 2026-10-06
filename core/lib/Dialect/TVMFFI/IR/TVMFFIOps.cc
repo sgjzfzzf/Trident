@@ -8,6 +8,7 @@
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/DLPack/IR/DLPackTypes.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
+#include <cassert>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/ADT/TypeSwitch.h>
@@ -15,6 +16,7 @@
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypeInterfaces.h>
 #include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/OpImplementation.h>
 #include <mlir/IR/OperationSupport.h>
 #include <mlir/IR/Region.h>
 #include <mlir/IR/Types.h>
@@ -169,6 +171,70 @@ mlir::LogicalResult AsOp::verify() {
   if (auto resultType = getResult().getType();
       !mlir::isa<dlpack::DLTensorType>(resultType)) {
     return emitOpError("unsupported object view type ") << resultType;
+  }
+  return mlir::success();
+}
+
+} // namespace trident::tvm_ffi
+
+namespace trident::tvm_ffi {
+
+mlir::ParseResult KernelLaunchOp::parseKernelArguments(
+    mlir::OpAsmParser &parser,
+    llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &operands,
+    llvm::SmallVectorImpl<mlir::Type> &types,
+    mlir::ArrayAttr &specializations) {
+  llvm::SmallVector<mlir::Attribute> parsedSpecializations;
+
+  do {
+    mlir::OpAsmParser::UnresolvedOperand operand;
+    if (parser.parseOperand(operand) || parser.parseColon()) {
+      return mlir::failure();
+    }
+
+    mlir::Type type;
+    if (parser.parseType(type)) {
+      return mlir::failure();
+    }
+
+    mlir::Attribute specialization;
+    if (parser.parseAttribute(specialization)) {
+      return mlir::failure();
+    }
+    parsedSpecializations.push_back(specialization);
+    operands.push_back(operand);
+    types.push_back(type);
+  } while (mlir::succeeded(parser.parseOptionalComma()));
+
+  specializations =
+      mlir::ArrayAttr::get(parser.getContext(), parsedSpecializations);
+  return mlir::success();
+}
+
+void KernelLaunchOp::printKernelArguments(mlir::OpAsmPrinter &printer,
+                                          mlir::Operation *op [[maybe_unused]],
+                                          mlir::OperandRange operands,
+                                          mlir::TypeRange types,
+                                          mlir::ArrayAttr specializations) {
+  assert(operands.size() == types.size());
+  assert(specializations.size() == operands.size());
+
+  llvm::interleaveComma(llvm::enumerate(llvm::zip(operands, types)),
+                        printer.getStream(), [&](auto indexedOperandAndType) {
+                          auto [index, operandsAndType] = indexedOperandAndType;
+                          auto [operand, type] = operandsAndType;
+                          printer.printOperand(operand);
+                          printer << " : ";
+                          printer.printType(type);
+                          printer << ' ';
+                          printer.printAttribute(specializations[index]);
+                        });
+}
+
+mlir::LogicalResult KernelLaunchOp::verify() {
+  if (getSpecializations().size() != getKernelOperands().size()) {
+    return emitOpError(
+        "specializations and kernel operands must have the same size");
   }
   return mlir::success();
 }

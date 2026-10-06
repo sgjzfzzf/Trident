@@ -10,7 +10,6 @@ add_mlir_public_c_api_library(
   DLPackDialect
   MLIRIR
   MLIRSupport
-  TorchExtDialect
   TridentUtilsRegistration
   TVMFFIDialect)
 

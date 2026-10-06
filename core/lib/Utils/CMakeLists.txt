@@ -13,7 +13,7 @@ add_mlir_library(
   MLIRRegisterAllPasses
   MLIRSCFDialect
   MLIRToLLVMIRTranslationRegistration
-  TorchExtToGPU
+  TVMFFIToGPU
   TridentPipeline
   TVMFFIDialect
   TVMFFIToLLVM)

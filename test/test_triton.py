@@ -42,7 +42,7 @@ class TritonTest(TridentTestCase):
             torch.testing.assert_close(add(x, y), x + y)
         self.assertEqual(len(add._sub_modules), 1)
         text = str(add._sub_modules[0])
-        self.assertIn("torchext.trident_kernel_launch", text)
+        self.assertIn("tvm_ffi.kernel_launch", text)
         self.assertIn("tvm_ffi.tensor.size", text)
         self.assertNotIn("!torch.", text)
 

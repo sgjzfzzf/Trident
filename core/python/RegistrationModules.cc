@@ -5,7 +5,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "dialects/torchext/TorchExtDialect.h"
 #include "trident-c/core/Registration.h"
 #include <mlir/Bindings/Python/IRCore.h>
 #include <mlir/InitAllTranslations.h>
@@ -32,5 +31,4 @@ NB_MODULE(_trident, m) {
 
   m.def("register_all_dialects", &registerAllDialects, nb::arg("context"));
   m.def("register_all_passes", &registerAllPasses);
-  mlir::python::MLIR_BINDINGS_PYTHON_DOMAIN::torchext::bindTorchExtTypes(m);
 }

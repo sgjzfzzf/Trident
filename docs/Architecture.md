@@ -1,492 +1,112 @@
-# Trident Architecture
-
-This document describes the core workflows in the current repository:
-
-- Build workflow: how the Python packaging entry points trigger CMake and external dependency builds.
-- Runtime workflow: how a Python function is transformed into MLIR/LLVM and then executed via JIT.
-
-## Pattern Rewriting Architecture
-
-Trident uses MLIR's generic DAG-to-DAG rewrite infrastructure for local IR
-transformations. Pattern definitions are split by the kind of reasoning they
-require:
-
-When constructing a pattern, use the following order of preference:
-
-1. DRR (`.td`) for a fixed, local DAG rewrite whose operands, results, types,
-   attributes, and builders can be expressed declaratively.
-2. PDLL (`.pdll`) when the match needs richer structural constraints, named
-   operations or values, or a small multi-operation rewrite that is awkward in
-   DRR.
-3. C++ only when the rewrite cannot be represented safely or clearly by either
-   declarative form.
-
-DRR and PDLL can be used in a conversion pass for type-independent local
-rewrites, but they do not receive conversion-specific remapped operands.
-C++ `ConversionPattern` implementations are required when a rewrite depends
-on `OpAdaptor`, `TypeConverter`, materializations, legality, region signature
-conversion, or other conversion state.
-
-C++ `RewritePattern` implementations also handle region movement, block
-creation, recursive cloning, or other imperative construction that is not
-appropriate for a declarative pattern.
-
-Dedicated analyses remain responsible for cross-region ownership, guards, ABI
-layout, and other global data-flow concerns.
-
-DRR sources are compiled at build time with MLIR TableGen, while PDLL sources
-are compiled with the repository's pinned `mlir-pdll` tool. Both produce
-headers under the build directory; generated files are never edited or
-committed. MLIR's `add_mlir_pdll_library` CMake helper should be used for PDLL
-generation instead of duplicating the `mlir-pdll` custom command. This keeps
-declarative matchers close to the rewrites they describe while preserving C++
-for control-flow and runtime-sensitive lowering.
-
-The current declarative rewrite examples include the DRR definition for
-`torch.prim.If.yield -> scf.yield` and PDLL definitions for specialized scalar,
-tensor-metadata, Torch-to-TVM-FFI constant, and integer min/max conversions. The
-generic
-ATen operation wrapper in `GeneralizeAtenOps.cc` remains in C++ because it
-must inspect dynamic operation names, copy arbitrary attributes, and reject
-region-bearing operations. The surrounding `torch.prim.If` rewrite also
-remains in C++ because it must inline regions and manage the replacement block.
-
-Torch-side structural comparisons remain `torchext.eq` until
-`ConvertTorchToTVMFFI` rewrites them to `tvm_ffi.eq`. TVMFFI equality accepts
-only values that already have a TVMFFIAny ABI representation; it is not a
-second spelling for an operation on Torch values. The conversion therefore
-does not carry a generic pattern that mutates arbitrary TVMFFI operations to
-consume remapped Torch operands. Each dialect owns its side of this boundary.
-
-## High-Level Components
-
-- Top-level CMake project
-  - Dependencies are orchestrated via `ExternalProject` in the root `CMakeLists.txt`:
-    - `llvm-project` (with MLIR + Python bindings enabled)
-    - `trident-core` (the core C++/MLIR implementation in this repo)
-    - `trident-ffi` (the FFI runtime layer — Exception ObjectRef and type stubs)
-- core
-  - Implements and exports Dialects/Passes/Runtime/Python bindings.
-  - Depends on torch-mlir, MLIR, LLVM, CUDAToolkit, Torch, and tvm_ffi.
-- ffi
-  - Lightweight C++ shared library (`libTridentFFI.so`) providing FFI-level types.
-  - Exports `trident.ffi.Exception` — an `ObjectRef`-based error type for composable error handling.
-  - Python stubs auto-generated via `tvm-ffi-stubgen` at build time.
-- Python package trident
-  - User-facing entry points: `jit` and `compile`.
-  - Core backend object: `TridentGraphModule`.
-  - Handles graph export/import, guard specialization, compilation, and execution dispatch.
-
-## Build Workflow
-
-```mermaid
-flowchart TD
-  A[uv pip install -e . or uv build] --> B[scikit-build-core]
-  B --> C[root CMakeLists]
-  C --> D[ExternalProject: llvm-project]
-  C --> E[ExternalProject: trident-core]
-  C --> F[ExternalProject: trident-ffi]
-  D --> G[install LLVM/MLIR to build/install/llvm-project]
-  G --> E
-  E --> H[build and install core to build/install/trident]
-  F --> I[build and install ffi to build/install/trident]
-  H --> J[install Python extension into trident]
-  I --> J
-```
-
-Build highlights:
-
-- `pyproject.toml` uses `scikit-build-core` as the build backend.
-- Build steps fetch and compile `llvm-project` and `torch-mlir`; first builds can take a long time.
-- `wheel.install-dir` is configured as `trident` so Python can import both `trident.core` and `trident.ffi` bindings directly.
-- The `ffi` subproject builds `libTridentFFI.so` and auto-generates `_ffi_api.py` stubs via `tvm-ffi-stubgen`.
-
-## Runtime Compilation Workflow
-
-Users typically decorate Python functions with `@trident.jit`. The call path is:
-
-```mermaid
-flowchart TD
-  A["user calls jitted function"] --> B["TridentGraphModule.__call__"]
-  B --> C{"executor returns Exception ObjectRef?"}
-  C -- "no" --> D["return normalized result"]
-  C -- "yes" --> E["compile(*args, **kwargs)"]
-  E --> F["torch._dynamo.export builds FX graph and guards"]
-  F --> G["FxImporter imports FX into MLIR"]
-  G --> H["create tvm_ffi.func wrapper and emit guard check chain"]
-  H --> I["store sub-module"]
-  I --> J["rebuild combined module + dispatcher"]
-  J --> K["merge all sub-modules"]
-  K --> L["run trident-lowering-pipeline"]
-  L --> M["build LLVM dispatcher"]
-  M --> N["ExecutionEngine JIT (opt_level=3)"]
-  N --> O["raw_lookup resolves __tvm_ffi_&lt;fn&gt;"]
-  O --> P["wrap as kwargs-aware callable"]
-  P --> B
-  D --> Q["return Torch Tensor/container results"]
-```
-
-### `compile` vs `jit`
-
-Trident exposes two entry points (`python/trident/compile.py`):
-
-- **`trident.compile(fn)`** — Returns a factory function. Each call creates a fresh
-  `TridentGraphModule`, compiles it once with the given arguments, and returns the
-  resulting callable. No recompilation on guard mismatch — the returned function
-  always uses the original specialization.
-
-- **`trident.jit(fn)`** — Returns a `TridentGraphModule` directly. Dynamic shape
-  tracing is enabled by default and can be disabled with
-  `@trident.jit(dynamic=False)`. Supports incremental specialization:
-  when the dispatcher returns an `Exception` ObjectRef (indicating all
-  specializations failed guard checks), the module automatically recompiles for
-  new input shapes/dtypes/devices (up to `max_compiles` times, default 2).
-  Supports both positional and keyword arguments via
-  `tvm_ffi.utils.kwargs_wrapper`.
-
-Use `compile` for one-shot compilation when inputs are known and stable.
-Use `jit` when inputs may vary across calls.
-
-The exported program runs decomposition with an empty decomposition table.
-This keeps PyTorch's functionalization step, including mutation writeback, but
-preserves the exported ATen operators for Trident's generic ATen dispatch
-instead of lowering them to the default Core ATen decomposition set.
-
-The generated kwargs wrapper binds arguments and supplies defaults once per
-call. Immutable `torch.device` and `torch.dtype` defaults are converted to TVM
-FFI values when the wrapper is created. Its target uses one recursive container
-normalizer with separate leaf converters for inputs and results. A directly
-returned `tvm_ffi.Tensor` becomes a `torch.Tensor` through DLPack. TVM FFI
-normally infers the desired tensor environment from Tensor inputs, but factory
-functions such as `arange` have no Tensor input from which to infer Torch.
-Explicit result conversion keeps the first compilation result and later cached results
-consistent without copying the tensor data.
-
-## Specialization And Guard Strategy
-
-Each `compile(*args, **kwargs)` produces a new sub-module with these properties:
-
-- The `main` function symbol is indexed to avoid collisions (for example `main_0`, `main_1`).
-- The exported `tvm_ffi.func` is also indexed (for example `<fn>_0`, `<fn>_1`).
-- Guards exported by Dynamo are converted to semantic check IR in the `tvm_ffi.func` body.
-- `torch._dynamo.reset()` is called after each FX import to release tracing resources.
-
-### `tvm_ffi.func` input reconstruction
-
-The `tvm_ffi.func` signature mirrors the *Python* function signature (one SSA
-argument per parameter; container parameters use Torch list/tuple types). This
-keeps `num_args` (as seen by the Python kwargs wrapper) equal to the number of
-SSA arguments, so tuple/list parameters do not overrun the FFI argument array.
-
-- `input.py::InputTableBuilder` combines `ExportedProgram.graph_signature`
-  with `ExportedProgram.call_spec.in_spec`. It records static
-  `InputNodeBuilder` recipes, exported input names, and wrapper types without
-  retaining IR values.
-- A builder binds the operands of each IR region to a fresh `InputTable` whose
-  nodes own their child trees and lazy region-local value builders. Guards
-  resolve sources with `table[path]`; Torch list and tuple inputs are unpacked
-  with `torch.prim.ListUnpack`/`torch.prim.TupleUnpack` and cached in the current
-  region. The Torch-to-TVMFFI conversion lowers these operations to ABI array
-  accesses at the backend boundary.
-- The guarded success region uses its own table to recursively flatten all
-  exported inputs in graph-signature order. The backend pairs those values
-  with the input specs and selects the operands consumed by `main_{i}`. Values
-  are not cached across regions, so every extracted SSA value is defined in
-  the region where it is consumed.
-- List and tuple construction, unpacking, and length checks lower directly to
-  checked `ffi.Array`, `ffi.ArrayGetItem`, and `ffi.ArraySize` function calls at
-  the Torch-to-TVMFFI boundary. There are no intermediate `tvm_ffi.array.*`
-  operations.
-- dict parameters are currently rejected during signature reconstruction by
-  an assertion (runtime `ffi.MapGetItem` exists; lowering support is future
-  work), and
-  keyword arguments must be passed in signature order (the flat tree order must
-  match the signature parameter order).
-- `ExportedProgram.call_spec.in_spec` is required. Export paths that do not
-  provide it are rejected during signature reconstruction.
-- `torch.device` and `torch.dtype` are globally registered as zero-leaf pytree
-  nodes when the input module is imported. Their values are stored in the tree
-  specification, omitted from the `ExportedProgram` inputs, and retained in the
-  outer wrapper for guard-based specialization. Wrapper calls convert them to
-  native TVM FFI values.
-- Initial-call results are evaluated with the FX interpreter so generated
-  Python parameter names cannot shadow constructors such as `device`.
-
-When runtime inputs change and guards no longer match:
-
-- A sub-function returns a `trident.ffi.Exception` ObjectRef (not a Python exception) via the FFI layer.
-- The outer dispatcher inspects the return type — if it is an `Exception`, it tries the next specialization.
-- If all specializations fail, the dispatcher returns an `Exception` to the Python caller.
-- `TridentGraphModule.__call__` detects the `Exception` ObjectRef and triggers recompilation.
-
-Triton kernel higher-order operations preserve symbolic integer launch-grid and
-kernel arguments as runtime values during FX import. This keeps launch bounds
-such as ``m``, ``N``, and ``OUT_N`` consistent with the actual tensor shape
-instead of substituting the concrete example hint from Dynamo.
-
-The `max_compiles` parameter (default 2) controls the recompilation limit per
-`TridentGraphModule`. Each new specialization appends a sub-module; the
-dispatcher tries them in creation order. Guard handling is split into two
-layers under `python/trident/guards`: `handlers/` selects behavior from Dynamo's
-`Guard.create_fn_name()`, while `codes/` parses one expression from the Guard's
-CodeList. Each Handler inherits from a common base class, registers itself when
-the subclass is defined, and declares a tuple of allowed Code classes. Every
-CodeList expression must match exactly one of those classes; zero or multiple
-matches are ignored instead of relying on parser order.
-
-Ordinary local sources are parsed from `Guard.name` with Python's AST into a
-root argument plus integer-index path. Code classes use source-aware regular
-expressions except for `ASTCode`, which uses an AST because shape expressions
-can combine multiple sources, arithmetic, and comparisons. Shape expressions
-may use integer division and floating-point constants. Integer operands use
-integer arithmetic, while floating-point or mixed operands are promoted to a
-common floating-point type. Guard AST lowering constructs Torch semantic scalar
-values for the frontend path; supported scalar operations and comparisons use
-Torch dialect operations and are converted during `ConvertTorchToTVMFFI`.
-Operations whose Torch form does not preserve the guard's existing semantics,
-such as Python integer division, or mixed numeric cases without a matching
-Torch overload, temporarily unwrap values to builtin MLIR numeric types. Each parsed Code
-object produces a delayed builder carrying its deduplication key, execution
-phase, and structural depth. The collection orders the builders and emits them
-in sequential CFG blocks with `cf.cond_br`, so they short-circuit before unsafe
-tensor or container metadata access. A failed branch returns the guard-match
-exception directly, while the final successful block invokes the compiled
-function.
-
-| Dynamo create function | Selected Code classes |
-|---|---|
-| `TYPE_MATCH` | Type-id validation; runtime type checking comes from the wrapper signature |
-| `TENSOR_MATCH` | Type-id, dtype, device, rank, requires-grad, and Dynamo-attribute Code classes |
-| `CONSTANT_MATCH` | Scalar constant Code class |
-| `SEQUENCE_LENGTH` | Type-id and runtime sequence-length Code classes |
-| `SHAPE_ENV` | AST shape-expression Code class |
-
-Integer-indexed container sources such as `L['s'][0]` are resolved through the
-same pytree structure used to reconstruct the wrapper signature. Unsupported
-create functions or expressions are represented as absent guards and do not
-emit check IR. Structural checks run from shallowest to deepest; value and
-shape checks follow. `SHAPE_ENV`
-is the sole builder that discovers sources from its expressions because its
-Dynamo `Guard.name` is empty and one guard can reference multiple tensors.
-Process-global ambient guards are registered as no-op Guard subclasses, while
-export-resolved global/default capture sources are filtered before IR emission.
-
-## FX Import And Triton Kernel Handling
-
-Triton higher-order ops (HOPs) like `triton_kernel_wrapper_mutation` are
-integrated through torch-mlir's `graph_node_importer_cls` injection point.
-`TridentFxImporter` supplies the `TridentGraphNodeImporter` subclass for the
-top-level graph and recursively imported child graphs. The subclass owns the
-Triton HOP handlers and symbolic integer conversions, while `TridentContextCache`
-provides the scalar `torch.dtype` type mapping. No torch-mlir classes or mapping
-tables are modified process-wide. This injection point is available in the
-torch-mlir revision pinned by `core/CMakeLists.txt`; that revision retains the
-LLVM gitlink pinned by the top-level `CMakeLists.txt`.
-
-- The injected importer retrieves compiled kernels and runtime parameters from
-  Triton JIT/Autotune results, sets `"gpu.container_module"` on the top-level
-  module, materializes each kernel's cubin into a `gpu.binary` op, and emits
-  `torchext.TritonKernelLaunchOp` referencing the `gpu.binary` symbol.
-- Triton's binder returns a `(signature type, specialization descriptor)` pair
-  per parameter. The importer preserves `D` descriptors as divisibility guards.
-- Dynamic integer expressions may contain `torch.sym_min`, `torch.sym_max`,
-  and `torch.sym_sum`. The custom importer represents min/max as
-  `torch.prim.min.int` and `torch.prim.max.int`, and expands a symbolic sum into
-  a sequence of `torch.aten.add.int` operations. The Torch-to-TVMFFI conversion
-  lowers these operations without resolving symbolic dimensions to trace-time
-  values. Symbolic integer multiplication, including products introduced by
-  dynamic `numel`, is likewise lowered directly to `arith.muli` instead of
-  relying on an ATen dispatcher wrapper. A symbolic integer power with a
-  nonnegative constant exponent is expanded into the same integer
-  multiplication sequence because `aten::pow.int` has floating-point runtime
-  semantics and cannot represent a `SymInt` result.
-- Launch operands remain Torch scalar or tensor values and follow the Triton
-  source parameter order, including explicit compile-time constants. Their
-  specialization attributes implement a common interface that materializes
-  each runtime precondition. The launch stores them directly in a typed
-  `specializations` array with exactly one entry per operand, and its custom
-  syntax prints each specialization immediately after the operand type.
-  `#torchext.variable_specialization` records the native Triton ABI type and an
-  optional divisibility guard. Boolean, integer, and
-  floating-point constexpr parameters receive
-  `#torchext.constant_specialization`; they are checked through
-  `torchext.eq`, which lowers to TVM FFI structural equality, before launch and
-  are omitted from the kernel ABI. Aggregate tuple constexpr parameters use
-  the same recursive structural check and are omitted from the launch operands
-  as well. Other constexpr value types fail import explicitly until a
-  corresponding specialization is implemented.
-- For autotune paths, computes/selects launch grids based on `best_config`.
-
-This integrates Triton kernel launches into the MLIR workflow without modifying
-torch-mlir source.
-
-Before `ConvertTorchExtToGPU`, the standard inliner moves private imported
-`main_*` bodies into their `tvm_ffi.func` wrappers. The TVMFFI dialect permits
-this inlining so specialization failures can return the wrapper's guard-match
-exception before an incompatible kernel is launched.
-
-Tensor `_base` metadata is not exposed by the TVM-FFI tensor ABI. If Dynamo
-emits a guard that depends on `_base`, Trident forces a conservative
-specialization miss instead of treating the unverifiable condition as true.
-
-## ATen Operator Dispatch (atengen)
-
-Trident uses an auto-generated wrapper layer for ATen operator dispatch via TVM FFI.
-The wrappers are built as `libTridentAtenFFI.so` in the `ffi` subproject:
-
-1. **Build-time codegen** (`ffi/lib/aten/atengen.py`):
-   - Queries all registered ATen operator schemas via `torch._C._jit_get_all_schemas()`.
-   - Generates `aten.gen.cc` from the Jinja2 template `ffi/lib/aten/aten.cc.j2`.
-   - Each wrapper registers a TVM FFI global function named `trident.aten.<op>.<overload>`
-     and internally uses `c10::Dispatcher::findSchemaOrThrow()` + `callBoxed()`.
-
-2. **MLIR lowering** (`Aten.cc` -> `ConvertAtenDispatcherOp`):
-   - Matches all `torch.aten.*` ops generically — no per-op C++ code needed.
-   - Rewrites the op name from `torch.aten.X.Y` to `trident.aten.X.Y`.
-   - Calls the corresponding TVM FFI global function via `callTVMFFIGlobalFunction()`.
-
-3. **Runtime dispatch** (`Function.h` / `Value.h`):
-   - Bidirectional conversion between `TVMFFIAny` and `c10::IValue` via type-driven
-     `buildValue<T>()` / `resolveValue<T>()`.
-   - Pushes IValues onto a `torch::jit::Stack`, calls `callBoxed()`, and pops results.
-
-This design decouples the MLIR lowering layer from `c10::Dispatcher` — the lowering
-only needs to know the `trident.aten.*` FFI symbol name, while the runtime wrapper
-handles all PyTorch type-system interaction.
-
-### TVMFFI semantic lowering
-
-Torch values cross the runtime boundary through the `tvm_ffi` dialect.  The
-`ConvertTorchToTVMFFI` pass converts scalar, device, tensor, list, and tuple
-types to their semantic TVMFFI counterparts (lists and tuples use
-`!tvm_ffi.array`), rewrites dispatcher calls to `tvm_ffi.FunctionGetGlobal` /
-`tvm_ffi.FunctionCall`, and emits
-explicit `tvm_ffi.ObjectIncRef`/`tvm_ffi.ObjectDecRef` operations for manually-managed
-objects.  `ConvertTVMFFIToLLVM` then lowers these operations to the TVM FFI
-ABI.  LLVM lowering consumes only the semantic TVMFFI representation.
-
-`tvm_ffi.FunctionGetGlobal` and `tvm_ffi.FunctionCall` always return an `i1`
-success value in addition to their semantic result.  LLVM lowering defines
-this value as the TVM FFI C ABI status being equal to zero.
-Calls to functions in the current module use `tvm_ffi.call`, which likewise
-returns an `i1` success value derived from the packed function's status code.
-`ConvertTorchToTVMFFI` checks both values with `cf.assert`, including the
-runtime calls used for array construction, element access, and length queries.
-Before calling a global function, it also casts the semantic function handle
-to its native pointer representation and asserts that the pointer is non-null.
-The lookup status reports whether the lookup operation itself failed; a
-successful status does not guarantee that the requested name was registered.
-`tvm_ffi.FunctionCall` borrows both its function handle and arguments; an owned
-handle returned by `tvm_ffi.FunctionGetGlobal` remains reusable and is released
-after its last use.
-
-Guard expressions use Torch scalar operations while they retain Torch
-semantics. Scalar overloads present in the Torch JIT schema are not necessarily
-registered c10 dispatcher operators and therefore may be absent from the
-atengen library. `GeneralizeAtenOps` lowers every scalar ATen operation emitted
-by `python/trident/guards/ast.py` to native arithmetic before the generic ATen
-FFI fallback. Integer bitwise-or is constructed directly with native arithmetic
-because `aten::__or__.Scalar` is a tensor dispatcher overload, not the Python
-integer operation needed by guards.
-
-Cross-dialect widening at a frontend boundary is represented by
-`torchext.cast`. Its operand is a Torch or TorchExt value and its result remains
-`!torch.any` or `!torch.union`, so the operation contains no TVM FFI types.
-`ConvertTorchToTVMFFI` converts both types and replaces the operation with
-`tvm_ffi.cast`. Torch unions are converted recursively; a union containing
-`!torch.any` becomes `!tvm_ffi.any`, while fully known alternatives become a
-precise TVM FFI union. Guarded wrappers widen every normal Torch result to
-`!torch.any` and expose `!tvm_ffi.any` at the ABI boundary. Guard failures
-construct a TVM FFI exception directly and widen it to the same ABI Any type,
-so Torch and TorchExt types do not encode exception semantics. A `tvm_ffi.cast`
-is therefore strictly semantic TVM FFI IR: its operand must have a TVM FFI ABI
-type, its result must be Any or Union, and a Union must contain the operand
-type.
-
-## TorchExt Dialect
-
-The `torchext` dialect bridges Torch semantics with MLIR-native types and GPU kernel
-launches. Its lowering is split across two passes in `trident-lowering-pipeline`:
-
-| Op | Lowered By | Purpose |
-|---|---|---|
-| `torch_c.to_i1`, `torch_c.to_i64`, `torch_c.to_f64` | `ConvertTorchToTVMFFI` | Custom-lowers Torch scalar conversion ops to `tvm_ffi.get` for typed scalar passing to Triton kernels. |
-| `torchext.cast` | `ConvertTorchToTVMFFI` | Widens a Torch or TorchExt value to Torch Any/Union; conversion then maps both sides to semantic TVM FFI types. |
-| `torchext.trident_kernel_launch` | `ConvertTorchExtToGPU` | Runs in the Torch phase before `ConvertTorchToTVMFFI`; accepts only Torch tensor/scalar arguments, converts each argument to the native type recorded by its specialization `kind`, and emits `gpu.launch_func`. Uses the TVMFFI stream API for CUDA stream management. |
-
-Reference counting for Torch objects (tensors, lists, tuples, optionals)
-backed by manually-managed resources is handled inside `ConvertTorchToTVMFFI`.
-TVMFFI operations expose owned, borrowed, retained, and consumed values through
-an ownership interface. After conversion, structured control flow is lowered
-to CF and `OwnershipDeallocation` tracks a separate reference-credit balance
-for every SSA value in each function CFG block. Every taken CFG edge retains
-the object values needed by its successor before releasing the source block's
-remaining credits. Multi-successor terminators use edge-specific trampoline
-blocks, and backedges follow the same protocol. Function returns likewise
-retain escaping objects before releasing local credits, so ownership transfers
-without making a returned owned object temporarily unreachable.
-
-## LLVM Dispatcher Semantics
-
-After lowering to LLVM, `TridentGraphModule` generates one unified entry point:
-
-- ABI signature: `i32 (ptr, ptr, i32, ptr)`
-- Calls `__tvm_ffi_<fn>_<i>` in order
-- Uses `TVMFFIErrorMoveFromRaised` / `TVMFFIErrorSetRaised` to read and restore raised errors
-- Guard failure is signaled by returning a `trident.ffi.Exception` ObjectRef (not by setting an error code)
-- If the return value is a normal result (not an Exception), the dispatcher returns immediately
-- If the return value is an Exception, the dispatcher continues to the next specialization
-- If all specializations fail, the dispatcher returns the Exception to the Python caller
-
-This provides runtime dispatch across multiple specializations under one stable symbol name.
-
-## C API Layer (`core/include/trident-c`)
-
-The `core/include/trident-c/core/` directory provides a C API bridge
-between the C++ MLIR implementation and the Python nanobind layer:
-
-- **`Registration.h`** — Exports `tridentCoreRegisterAllDialects()` and
-  `tridentCoreRegisterAllPasses()`, called from the Python registration
-  module during `register_all_dialects()` / `register_all_passes()`.
-
-- **`Dialects.h`** — Declares C API registration helpers for the `TorchExt`
-  and `TVMFFI` dialects, allowing Python to discover and use these custom
-  dialects via `trident.core.dialects`.
-
-This layer ensures the Python package can initialize all custom dialects and
-passes without directly linking against C++ MLIR internals.
-
-## FFI Subproject (`ffi/`)
-
-The `ffi/` directory is a separate CMake subproject that builds a lightweight shared
-library (`libTridentFFI.so`) providing FFI-level types for composable error handling:
-
-- **`include/trident/ffi/Exception.h`** — Declares `ExceptionObj` (heap-allocated,
-  ref-counted) and `Exception` (ObjectRef handle). Each Exception carries a `kind_`
-  string (e.g., `"GuardMatchException"`) for error classification.
-
-- **`lib/Exception.cc`** — Implements the Exception type and registers it with
-  TVM FFI via `TVM_FFI_STATIC_INIT_BLOCK`. Also exports `trident.ffi.Exception`
-  global constructor and `trident.ffi.GetExceptionIndex` for runtime type
-  resolution.
-
-- **`python/`** — Contains `_ffi_api.py` with `tvm-ffi-stubgen` directive blocks.
-  At build time, `tvm-ffi-stubgen` inspects `libTridentFFI.so` and fills in the
-  FFI bindings, which are then installed as `trident/ffi/` in the Python package.
-
-This separation keeps the FFI runtime layer independent of MLIR/LLVM, enabling
-lighter build times for the FFI library and cleaner dependency boundaries.
-
-## End-to-End Execution Summary
-
-1. The first call to a Python function triggers compilation.
-2. The FX graph is imported into MLIR and wrapped as a tvm_ffi callable.
-3. All existing specializations are merged and lowered to LLVM.
-4. A dispatcher is generated and JIT-compiled by `ExecutionEngine`.
-5. Later calls reuse existing specializations first; guard misses trigger incremental compilation.
-
-This design balances:
-
-- Incremental specialization for dynamic input shapes.
-- A unified TVM FFI calling interface.
-- A composable compilation path from MLIR pipelines to LLVM.
+<!-- Part of the Trident project, under the MIT License. -->
+<!-- SPDX-License-Identifier: MIT -->
+
+# Architecture
+
+Trident captures Python tensor programs with Dynamo and `torch.export`, imports
+FX directly into MLIR, and executes the lowered program through TVM FFI. The
+frontend owns the import; the build depends on LLVM/MLIR, PyTorch, CUDA and TVM
+FFI. The LLVM revision remains pinned in the top-level CMake file.
+
+## Frontend and symbolic values
+
+`python/trident/backend.py` captures a graph and its Dynamo guards. It exports
+without running functionalization or decompositions, executes a warmup to populate
+Triton's compilation cache, and calls `TridentFxImporter.import_program`.
+Warmup is the first execution, including its mutations; cached calls execute the
+compiled program. A private `func.func` holds the graph, and a public
+`tvm_ffi.func` checks guards and exposes the packed ABI. The Python executor
+converts runtime tensors through DLPack and reconstructs the output pytree.
+
+`fx_importer.py` maps FX nodes to SSA values. Tensors use `!tvm_ffi.tensor` and
+retain reference semantics: an in-place ATen call operates on the original
+object, and views keep their storage aliases. ATen calls use the schema to
+order positional and keyword arguments, fill defaults, select a scalar overload
+when FX recorded a Python scalar in a tensor overload, and name the existing
+`trident.aten.<operator>[.<overload>]` registry wrapper. Dtype arguments pass
+through `trident.runtime.tvm_ffi_to_torch_type` to obtain the integer expected by
+ATen's boxed schema. Multiple ATen results are retrieved from an FFI Array.
+
+SymInt, SymFloat and SymBool computations use native `i64`, `f64` and `i1` SSA.
+Input tensor dimensions bind symbols to `tvm_ffi.tensor.size`; explicit scalar
+nodes bind their expressions to imported SSA values. Composite shape expressions
+are evaluated from those bindings. Runtime expressions never use example hints;
+unbound symbols produce an explicit import error. Native scalars are boxed only
+at FFI calls, containers or function return boundaries. `torch.cond` imports its
+branches into `scf.if`, with native predicates and semantic result values.
+
+`ir_utils.py` shares scalar arithmetic, constants, boxing and checked calls with
+the guard frontend. Each call asserts lookup success, a non-null handle and call
+success. Integer division uses floor semantics; integer remainder follows
+`a - floor(a / b) * b`. Supported arithmetic follows the runtime's 64-bit scalar
+ABI. Unsupported scalar expressions or higher-order operators fail explicitly.
+
+## Guards and containers
+
+Guards are parsed into `Code`, `Guard` and collection objects under
+`python/trident/guards/`. `InputTableBuilder` maps function arguments and nested
+list/tuple paths to semantic values. Containers use `!tvm_ffi.array`; extraction
+calls `ffi.ArrayGetItem` lazily in the block that needs the element. Scalar guards
+use native arithmetic and comparisons; tensor metadata uses existing semantic
+metadata operations. Guard collections build short-circuit CFG branches. A
+failed specialization returns `!tvm_ffi.exception` widened to `!tvm_ffi.any`, so
+the dispatcher can try another specialization or request compilation.
+
+Tensor identity and `_base` guards retain their existing conservative handling;
+DLPack does not expose Python wrapper identity or autograd view relationships.
+
+## Triton kernels
+
+`triton_importer.py` resolves the compiled Triton kernel from its warmup cache,
+imports its cubin as `gpu.binary`, and emits `tvm_ffi.kernel_launch`.
+Each specialization has a unique binary symbol. Operands retain semantic FFI
+values and carry constant or variable specialization attributes in source
+parameter order. Variable attributes record native ABI type and divisibility;
+constant attributes include scalar, string and nested tuple values. Binder hints
+are used only to select the compiled kernel, never to substitute runtime shapes.
+Functional Triton wrapper outputs explicitly clone `tensors_to_clone` before
+launching; mutation wrappers use the original operands.
+
+`ConvertTVMFFIToGPU` validates specialization attributes, branches to
+`GuardMatch` on failure, extracts tensor pointers and scalar values, and emits
+`gpu.launch_func` with the current TVM FFI CUDA stream. Constant operands are
+checked and omitted from the native kernel argument list. The ordinary inliner
+runs first so these failure branches belong to the public guarded wrapper.
+
+## Lowering and ownership
+
+The lowering pipeline is:
+
+1. Inline private graph functions and lower kernel launches to GPU operations.
+2. Lower SCF to CFG and finalize semantic metadata operations.
+3. Insert ownership deallocation while semantic object types are available.
+4. Convert `tvm_ffi.func` to ordinary functions and packed ABI wrappers.
+5. Lower semantic values and DLPack to LLVM, followed by native arithmetic,
+   control flow and GPU conversions, canonicalization and cast reconciliation.
+
+The TVM FFI dialect distinguishes boxed values, owned runtime objects, borrowed
+objects and native pointers. Its ownership interfaces describe allocations,
+borrows, transfers and aliases; the ownership pass retains escaping borrowed
+values and releases owned values along CFG edges. The importer does not add
+manual reference counting. Runtime objects use the TVMFFIAny representation
+`!llvm.struct<(i32, i32, i64)>`; function handles are native pointers.
+
+`tvm_ffi.cast` widens a semantic ABI value to Any or a compatible union;
+`tvm_ffi.get` extracts a native scalar or borrowed object, and `tvm_ffi.to` boxes
+a native scalar. Metadata operations lower through DLPack. Tensor literals use
+the existing runtime staging path. Global function handles are cached at module
+initialization; call sites retain and release the cached reference.
+
+## Source layout and validation
+
+`core/` contains the DLPack and TVM FFI dialects, lowering passes,
+C API and Python bindings. `ffi/` generates ATen wrappers from dispatcher schemas
+and provides runtime conversion and exception helpers. Python import and guard
+tests live under `test/`; dialect, conversion and pipeline tests live under
+`core/test/`. Operator work follows [Operator-Adaptation.md](Operator-Adaptation.md).
+
+Build with the editable command in the repository contributor guide, then run
+`python -m unittest discover -s test -p 'test_*.py'` and
+`cmake --build build/core --target check-trident-core`. A standalone core build
+uses an installed MLIR CMake package; it does not fetch another compiler frontend.
+CUDA is required by GPU execution tests.

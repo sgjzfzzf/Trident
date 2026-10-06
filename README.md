@@ -90,6 +90,6 @@ Source files in this repository use MIT SPDX headers (`SPDX-License-Identifier: 
 
 ## Notes
 
-- Initial builds can take a long time because LLVM/MLIR and torch-mlir are
+- Initial builds can take a long time because LLVM/MLIR is
 	built/fetched as dependencies.
 - GPU/CUDA availability is expected by the provided examples/tests.

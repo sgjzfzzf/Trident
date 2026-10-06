@@ -12,8 +12,6 @@
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/CommonTypeConstraints.td"
-include "torch-mlir/Dialect/Torch/IR/TorchTypes.td"
-include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIBase.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.td"
 
@@ -135,9 +133,6 @@ def AnyTVMFFIGetOperandType : AnyTypeOf<[
   TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_FloatType,
   TVMFFI_FunctionType, TVMFFI_IntType, TVMFFI_StrType, TVMFFI_TensorType
 ], "TVM FFI value with a native type">;
-def AnyTVMFFIAnyABIOrTorchType : AnyTypeOf<[
-  AnyTVMFFIAnyABIType, AnyTorchType, TorchExt_DTypeType
-], "TVM FFI ABI value or a Torch frontend value">;
 def AnyTVMFFIObjectOrAnyType : AnyTypeOf<[
   TVMFFI_AnyType, TVMFFI_ArrayType, TVMFFI_ExceptionType,
   TVMFFI_FunctionType, TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType

@@ -1,0 +1,39 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Trident project, under the MIT License.
+// SPDX-License-Identifier: MIT
+//
+//===----------------------------------------------------------------------===//
+
+// RUN: trident-core-opt %s | FileCheck %s
+// RUN: trident-core-opt %s -convert-tvm-ffi-to-llvm | FileCheck %s --check-prefix=LLVM
+
+// CHECK-LABEL: func.func @int_bool(
+// CHECK-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !tvm_ffi.bool)
+// CHECK: %[[BOOL:[a-zA-Z0-9_]+]] = tvm_ffi.get %[[ARG]] : !tvm_ffi.bool -> i1
+// CHECK: %[[INT:[a-zA-Z0-9_]+]] = arith.extui %[[BOOL]] : i1 to i64
+// CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = tvm_ffi.to %[[INT]] : i64 -> !tvm_ffi.int
+// CHECK: return %[[RESULT]] : !tvm_ffi.int
+
+// LLVM-LABEL: func.func @int_bool(
+// LLVM-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>)
+// LLVM-NOT: builtin.unrealized_conversion_cast
+// LLVM-NOT: ConvertUnrealizedIntCastOp
+// LLVM-NOT: tvm_ffi.to
+// LLVM-NOT: torch_c.from_i64
+// LLVM: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
+// LLVM: %[[BOOL:[a-zA-Z0-9_]+]] = llvm.trunc %[[PAYLOAD]] : i64 to i1
+// LLVM: %[[INT:[a-zA-Z0-9_]+]] = arith.extui %[[BOOL]] : i1 to i64
+// LLVM: %[[UNDEF_RESULT:[a-zA-Z0-9_]+]] = llvm.mlir.undef : !llvm.struct<(i32, i32, i64)>
+// LLVM: %[[TYPE_INDEX:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i32) : i32
+// LLVM: %[[TYPE_RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[TYPE_INDEX]], %[[UNDEF_RESULT]][0] : !llvm.struct<(i32, i32, i64)>
+// LLVM: %[[KIND_INDEX:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
+// LLVM: %[[KIND_RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[KIND_INDEX]], %[[TYPE_RESULT]][1] : !llvm.struct<(i32, i32, i64)>
+// LLVM: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[INT]], %[[KIND_RESULT]][2] : !llvm.struct<(i32, i32, i64)>
+// LLVM: return %[[RESULT]] : !llvm.struct<(i32, i32, i64)>
+func.func @int_bool(%arg0: !tvm_ffi.bool) -> !tvm_ffi.int {
+  %bool = tvm_ffi.get %arg0 : !tvm_ffi.bool -> i1
+  %int = arith.extui %bool : i1 to i64
+  %0 = tvm_ffi.to %int : i64 -> !tvm_ffi.int
+  return %0 : !tvm_ffi.int
+}

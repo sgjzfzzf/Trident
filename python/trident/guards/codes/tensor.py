@@ -13,7 +13,8 @@ import torch
 import tvm_ffi
 
 from trident.core import ir
-from trident.core.dialects import arith, torchext
+from trident.core.dialects import arith
+from trident.core.dialects import tvm_ffi as ffi
 from trident.input import InputTable
 
 from ..local import Local
@@ -70,7 +71,7 @@ class TensorDTypeCode(GuardCode):
         tensor = source.resolve(tree)
         if tensor is None:
             return super().build(tree, context)
-        metadata = torchext.tensor_dtype(tensor)
+        metadata = ffi.tensor_dtype(tensor)
         dtype = tvm_ffi.convert(self.dtype)
         i1 = ir.IntegerType.get_signless(1, context)
         return reduce(
@@ -141,7 +142,7 @@ class TensorDeviceCode(GuardCode):
         if tensor is None:
             return super().build(tree, context)
         i32 = ir.IntegerType.get_signless(32, context)
-        metadata = torchext.tensor_device(tensor)
+        metadata = ffi.tensor_device(tensor)
         i1 = ir.IntegerType.get_signless(1, context)
         [index, type_code] = metadata
         device_type = tvm_ffi.device(self.device.type).dlpack_device_type()
@@ -220,7 +221,7 @@ class TensorRankCode(GuardCode):
         tensor = source.resolve(tree)
         if tensor is None:
             return super().build(tree, context)
-        actual = torchext.tensor_dim(tensor)
+        actual = ffi.tensor_dim(tensor)
         return arith.cmpi(
             arith.CmpIPredicate.eq,
             actual,

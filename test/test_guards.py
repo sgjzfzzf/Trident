@@ -88,22 +88,22 @@ class GuardTest(TridentTestCase):
         cases = (
             (
                 "(1 | 2) == 3",
-                "!torch.bool",
+                "i1",
                 ("arith.ori",),
                 ("torch.aten.__or__.Scalar",),
             ),
-            ("1 == 1 <= 3", "!torch.bool", ("torch.aten.le.int",), ()),
+            ("1 == 1 <= 3", "i1", ("arith.cmpi",), ()),
             (
                 "1.0 + 2.0 <= 4.0",
-                "!torch.bool",
-                ("torch.aten.add.float", "torch.aten.ge.float"),
+                "i1",
+                ("arith.addf", "arith.cmpf"),
                 (),
             ),
-            ("1 + 2", "!torch.int", ("torch.aten.add.int",), ()),
-            ("5 / 2", "!torch.float", ("torch.aten.div.int",), ()),
-            ("True and not False", "!torch.bool", ("torch.aten.__not__",), ()),
-            ("-1", "!torch.int", ("torch.aten.neg.int",), ()),
-            ("torch.float32", "!torchext.dtype", ("#torchext.float32",), ()),
+            ("1 + 2", "i64", ("arith.addi",), ()),
+            ("5 / 2", "f64", ("arith.divf",), ()),
+            ("True and not False", "i1", ("arith.xori",), ()),
+            ("-1", "i64", ("arith.subi",), ()),
+            ("torch.float32", "!tvm_ffi.dtype", ("tvm_ffi.constant.dtype",), ()),
         )
         for text, result_type, expected, excluded in cases:
             with self.subTest(text=text):
@@ -229,8 +229,8 @@ class GuardTest(TridentTestCase):
 
         with self.assertWarnsRegex(RuntimeWarning, "Tensor\\._base guard"):
             result_type, module = self.build_ast_code("L['x']._base.size()[0] == 1")
-        self.assertEqual(result_type, "!torch.bool")
-        self.assertIn("torch.constant.bool false", module)
+        self.assertEqual(result_type, "i1")
+        self.assertIn("arith.constant false", module)
 
         with self.assertRaisesRegex(RuntimeError, "Invalid device string"):
             Guard.parse(

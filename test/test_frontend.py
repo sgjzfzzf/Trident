@@ -14,6 +14,72 @@ from test.base import TridentTestCase
 
 
 class FrontendTest(TridentTestCase):
+    def test_argument_specialization(self) -> None:
+        @trident.jit
+        def empty_on_device(
+            x: torch.Tensor,
+            device: torch.device,
+        ) -> torch.Tensor:
+            return torch.empty_like(x, device=device).zero_()
+
+        @trident.jit
+        def empty_with_dtype(
+            x: torch.Tensor,
+            dtype: torch.dtype,
+        ) -> torch.Tensor:
+            return torch.empty_like(x, dtype=dtype).zero_()
+
+        x: torch.Tensor = torch.randn(4, device="cuda")
+        device: torch.device = torch.device("cuda")
+        first: torch.Tensor = empty_on_device(x, device)
+        repeated: torch.Tensor = empty_on_device(x, device)
+        imported_module = f"{empty_on_device._sub_modules[0]}"
+        self.assertIn("trident.aten.empty_like", imported_module)
+        self.assertNotIn("trident.aten.empty_permuted", imported_module)
+        torch.testing.assert_close(first, torch.zeros_like(x))
+        torch.testing.assert_close(repeated, torch.zeros_like(x))
+
+        cpu_result: torch.Tensor = empty_on_device(x, torch.device("cpu"))
+        self.assertEqual(cpu_result.device, torch.device("cpu"))
+        torch.testing.assert_close(cpu_result, torch.zeros_like(cpu_result))
+
+        for dtype in (torch.float32, torch.float16):
+            result: torch.Tensor = empty_with_dtype(x, dtype)
+            self.assertEqual(result.dtype, dtype)
+            torch.testing.assert_close(result, torch.zeros_like(result))
+        self.assertEqual(len(empty_with_dtype._sub_modules), 2)
+
+    def test_cached_result_and_writeback(self) -> None:
+        @trident.jit
+        def create_arange() -> torch.Tensor:
+            return torch.arange(0, 64, 2, dtype=torch.float32, device="cuda")
+
+        @trident.jit
+        def increment_in_place(x: torch.Tensor) -> torch.Tensor:
+            x.add_(1)
+            return x
+
+        expected = torch.arange(0, 64, 2, dtype=torch.float32, device="cuda")
+        first = create_arange()
+        second = create_arange()
+
+        self.assertEqual(len(create_arange._sub_modules), 1)
+        wrapper_module = f"{create_arange._sub_modules[0]}"
+        self.assertIn("tvm_ffi.cast", wrapper_module)
+        self.assertIn("-> !tvm_ffi.any", wrapper_module)
+        self.assertNotIn("!torch.union<", wrapper_module)
+        self.assertIsInstance(first, torch.Tensor)
+        self.assertIsInstance(second, torch.Tensor)
+        torch.testing.assert_close(first, expected)
+        torch.testing.assert_close(second.cpu(), expected.cpu())
+
+        x = torch.randn(4, device="cuda")
+        expected_writeback = x + 1
+        result = increment_in_place(x)
+
+        torch.testing.assert_close(x, expected_writeback)
+        torch.testing.assert_close(result, expected_writeback)
+
     def test_container_inputs_unpack(self) -> None:
         @trident.jit
         def list_add(x: torch.Tensor, values: list[torch.Tensor]) -> torch.Tensor:
@@ -49,71 +115,19 @@ class FrontendTest(TridentTestCase):
             with self.subTest(container=name):
                 torch.testing.assert_close(function(x, values), expected)
 
-    def test_argument_specialization(self) -> None:
+    def test_string_specialization(self) -> None:
         @trident.jit
-        def empty_on_device(
-            x: torch.Tensor,
-            device: torch.device,
-        ) -> torch.Tensor:
-            return torch.empty_like(x, device=device).zero_()
-
-        @trident.jit
-        def empty_with_dtype(
-            x: torch.Tensor,
-            dtype: torch.dtype,
-        ) -> torch.Tensor:
-            return torch.empty_like(x, dtype=dtype).zero_()
-
-        x: torch.Tensor = torch.randn(4, device="cuda")
-        device: torch.device = torch.device("cuda")
-        first: torch.Tensor = empty_on_device(x, device)
-        repeated: torch.Tensor = empty_on_device(x, device)
-        imported_module = f"{empty_on_device._sub_modules[0]}"
-        self.assertIn("torch.aten.empty_like", imported_module)
-        self.assertNotIn("torch.aten.empty_permuted", imported_module)
-        torch.testing.assert_close(first, torch.zeros_like(x))
-        torch.testing.assert_close(repeated, torch.zeros_like(x))
-
-        cpu_result: torch.Tensor = empty_on_device(x, torch.device("cpu"))
-        self.assertEqual(cpu_result.device, torch.device("cpu"))
-        torch.testing.assert_close(cpu_result, torch.zeros_like(cpu_result))
-
-        for dtype in (torch.float32, torch.float16):
-            result: torch.Tensor = empty_with_dtype(x, dtype)
-            self.assertEqual(result.dtype, dtype)
-            torch.testing.assert_close(result, torch.zeros_like(result))
-        self.assertEqual(len(empty_with_dtype._sub_modules), 2)
-
-    def test_cached_result_and_writeback(self) -> None:
-        @trident.jit
-        def create_arange() -> torch.Tensor:
-            return torch.arange(0, 64, 2, dtype=torch.float32, device="cuda")
-
-        @trident.jit
-        def increment_in_place(x: torch.Tensor) -> torch.Tensor:
-            x.add_(1)
-            return x
-
-        expected = torch.arange(0, 64, 2, dtype=torch.float32, device="cuda")
-        first = create_arange()
-        second = create_arange()
-
-        self.assertEqual(len(create_arange._sub_modules), 1)
-        wrapper_module = f"{create_arange._sub_modules[0]}"
-        self.assertIn("torchext.cast", wrapper_module)
-        self.assertIn("-> !tvm_ffi.any", wrapper_module)
-        self.assertNotIn("!torch.union<", wrapper_module)
-        self.assertIsInstance(first, torch.Tensor)
-        self.assertIsInstance(second, torch.Tensor)
-        torch.testing.assert_close(first, expected)
-        torch.testing.assert_close(second.cpu(), expected.cpu())
+        def named(x: torch.Tensor, name: str):
+            return name, x + 1
 
         x = torch.randn(4, device="cuda")
-        expected_writeback = x + 1
-        result = increment_in_place(x)
-
-        torch.testing.assert_close(x, expected_writeback)
-        torch.testing.assert_close(result, expected_writeback)
+        for name in ("x", "a string longer than the inline ABI storage"):
+            first = named(x, name)
+            repeated = named(x, name)
+            self.assertEqual(first[0], name)
+            self.assertEqual(repeated[0], name)
+            torch.testing.assert_close(repeated[1], x + 1)
+        self.assertEqual(len(named._sub_modules), 2)
 
 
 if __name__ == "__main__":

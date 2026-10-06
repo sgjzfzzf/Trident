@@ -12,7 +12,7 @@
 
 // Each callee is resolved once at load time, so the dispatch reads the cached
 // handle instead of calling TVMFFIFunctionGetGlobal per invocation.
-// CHECK-LABEL: llvm.func @torch.aten.empty_like
+// CHECK-LABEL: llvm.func @aten.empty_like
 // CHECK-SAME: %[[EMPTY_LIKE_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // CHECK-NOT: llvm.call @TVMFFIFunctionGetGlobal
 // CHECK: %[[EMPTY_LIKE_HANDLE_ADDR:[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_trident.aten.empty_like : !llvm.ptr
@@ -25,22 +25,28 @@
 // CHECK: %[[EMPTY_LIKE_WRAPPER_ARG:[a-zA-Z0-9_]+]] = llvm.load %[[EMPTY_LIKE_WRAPPER_ARGS]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: %[[EMPTY_LIKE_WRAPPER_RET:[a-zA-Z0-9_]+]] = llvm.call @empty_like(%[[EMPTY_LIKE_WRAPPER_ARG]]) : (!llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.store %[[EMPTY_LIKE_WRAPPER_RET]], %[[EMPTY_LIKE_WRAPPER_RESULT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-func.func @torch.aten.empty_like(%arg0: !torch.vtensor<[200,200,26],f64>) -> !torch.vtensor<[200,200,26],f64> {
-  %none = torch.constant.none
-  %false = torch.constant.bool false
-  %0 = torch.aten.empty_like %arg0, %none, %none, %none, %false, %none : !torch.vtensor<[200,200,26],f64>, !torch.none, !torch.none, !torch.none, !torch.bool, !torch.none -> !torch.vtensor<[200,200,26],f64>
-  return %0 : !torch.vtensor<[200,200,26],f64>
+func.func @aten.empty_like(%arg0: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
+  %none = tvm_ffi.constant.none
+  %false = tvm_ffi.constant.bool false
+  %call_0_handle, %call_0_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.empty_like" : !tvm_ffi.function, i1
+  cf.assert %call_0_lookup, "lookup failed"
+  %0, %call_0_status = tvm_ffi.FunctionCall %call_0_handle(%arg0, %none, %none, %none, %false, %none) : (!tvm_ffi.tensor, !tvm_ffi.none, !tvm_ffi.none, !tvm_ffi.none, !tvm_ffi.bool, !tvm_ffi.none) -> !tvm_ffi.tensor, i1
+  cf.assert %call_0_status, "call failed"
+  return %0 : !tvm_ffi.tensor
 }
 
 // tvm_ffi.func wrapper: calls the registered ATen wrapper through TVM FFI.
-tvm_ffi.func @empty_like(%arg0: !torch.vtensor<[200,200,26],f64>) -> !torch.vtensor<[200,200,26],f64> attributes {emit_tvm_ffi_abi} {
-  %none = torch.constant.none
-  %false = torch.constant.bool false
-  %0 = torch.aten.empty_like %arg0, %none, %none, %none, %false, %none : !torch.vtensor<[200,200,26],f64>, !torch.none, !torch.none, !torch.none, !torch.bool, !torch.none -> !torch.vtensor<[200,200,26],f64>
-  tvm_ffi.return %0 : !torch.vtensor<[200,200,26],f64>
+tvm_ffi.func @empty_like(%arg0: !tvm_ffi.tensor) -> !tvm_ffi.tensor attributes {emit_tvm_ffi_abi} {
+  %none = tvm_ffi.constant.none
+  %false = tvm_ffi.constant.bool false
+  %call_0_handle, %call_0_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.empty_like" : !tvm_ffi.function, i1
+  cf.assert %call_0_lookup, "lookup failed"
+  %0, %call_0_status = tvm_ffi.FunctionCall %call_0_handle(%arg0, %none, %none, %none, %false, %none) : (!tvm_ffi.tensor, !tvm_ffi.none, !tvm_ffi.none, !tvm_ffi.none, !tvm_ffi.bool, !tvm_ffi.none) -> !tvm_ffi.tensor, i1
+  cf.assert %call_0_status, "call failed"
+  tvm_ffi.return %0 : !tvm_ffi.tensor
 }
 
-// CHECK-LABEL: llvm.func @torch.aten.empty.memory_format
+// CHECK-LABEL: llvm.func @aten.empty.memory_format
 // CHECK-SAME: %[[EMPTY_SHAPE_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[EMPTY_DTYPE_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[EMPTY_DEVICE_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // CHECK-NOT: llvm.call @TVMFFIFunctionGetGlobal
 // CHECK: %[[EMPTY_HANDLE_ADDR:[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_trident.aten.empty.memory_format : !llvm.ptr
@@ -53,17 +59,23 @@ tvm_ffi.func @empty_like(%arg0: !torch.vtensor<[200,200,26],f64>) -> !torch.vten
 // CHECK: %[[EMPTY_WRAPPER_SHAPE:[a-zA-Z0-9_]+]] = llvm.load %[[EMPTY_WRAPPER_ARGS]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
 // CHECK: %[[EMPTY_WRAPPER_RET:[a-zA-Z0-9_]+]] = llvm.call @empty(%[[EMPTY_WRAPPER_SHAPE]], %[[EMPTY_WRAPPER_DEVICE:[a-zA-Z0-9_]+]], %[[EMPTY_WRAPPER_DTYPE:[a-zA-Z0-9_]+]]) : (!llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>, !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)>
 // CHECK: llvm.store %[[EMPTY_WRAPPER_RET]], %[[EMPTY_WRAPPER_RESULT]] : !llvm.struct<(i32, i32, i64)>, !llvm.ptr
-func.func @torch.aten.empty.memory_format(%shape: !torch.list<int>, %dtype: !torch.int, %device: !torch.Device) -> !torch.vtensor<[?,?],f64> {
-  %none = torch.constant.none
-  %layout = torch.constant.int 0
-  %0 = torch.aten.empty.memory_format %shape, %dtype, %layout, %device, %none, %none : !torch.list<int>, !torch.int, !torch.int, !torch.Device, !torch.none, !torch.none -> !torch.vtensor<[?,?],f64>
-  return %0 : !torch.vtensor<[?,?],f64>
+func.func @aten.empty.memory_format(%shape: !tvm_ffi.array, %dtype: !tvm_ffi.int, %device: !tvm_ffi.device) -> !tvm_ffi.tensor {
+  %none = tvm_ffi.constant.none
+  %layout = tvm_ffi.constant.int 0
+  %call_0_handle, %call_0_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.empty.memory_format" : !tvm_ffi.function, i1
+  cf.assert %call_0_lookup, "lookup failed"
+  %0, %call_0_status = tvm_ffi.FunctionCall %call_0_handle(%shape, %dtype, %layout, %device, %none, %none) : (!tvm_ffi.array, !tvm_ffi.int, !tvm_ffi.int, !tvm_ffi.device, !tvm_ffi.none, !tvm_ffi.none) -> !tvm_ffi.tensor, i1
+  cf.assert %call_0_status, "call failed"
+  return %0 : !tvm_ffi.tensor
 }
 
 // tvm_ffi.func wrapper: unpacks shape, device, and dtype from TVM FFI args.
-tvm_ffi.func @empty(%shape: !torch.list<int>, %device: !torch.Device, %dtype: !torch.int) -> !torch.tensor attributes {emit_tvm_ffi_abi} {
-  %none = torch.constant.none
-  %layout = torch.constant.int 0
-  %0 = torch.aten.empty.memory_format %shape, %dtype, %layout, %device, %none, %none : !torch.list<int>, !torch.int, !torch.int, !torch.Device, !torch.none, !torch.none -> !torch.vtensor<[?,?],f64>
-  tvm_ffi.return %0 : !torch.vtensor<[?,?],f64>
+tvm_ffi.func @empty(%shape: !tvm_ffi.array, %device: !tvm_ffi.device, %dtype: !tvm_ffi.int) -> !tvm_ffi.tensor attributes {emit_tvm_ffi_abi} {
+  %none = tvm_ffi.constant.none
+  %layout = tvm_ffi.constant.int 0
+  %call_0_handle, %call_0_lookup = tvm_ffi.FunctionGetGlobal "trident.aten.empty.memory_format" : !tvm_ffi.function, i1
+  cf.assert %call_0_lookup, "lookup failed"
+  %0, %call_0_status = tvm_ffi.FunctionCall %call_0_handle(%shape, %dtype, %layout, %device, %none, %none) : (!tvm_ffi.array, !tvm_ffi.int, !tvm_ffi.int, !tvm_ffi.device, !tvm_ffi.none, !tvm_ffi.none) -> !tvm_ffi.tensor, i1
+  cf.assert %call_0_status, "call failed"
+  tvm_ffi.return %0 : !tvm_ffi.tensor
 }

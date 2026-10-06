@@ -3,8 +3,11 @@ add_mlir_dialect_library(
   TVMFFIDialect.cc
   TVMFFIInterfaces.cc
   TVMFFIOps.cc
+  TVMFFISpecialization.cc
   TVMFFITypes.cc
   DEPENDS
+  MLIRTVMFFIAttrDefsIncGen
+  MLIRTVMFFIAttrInterfacesIncGen
   MLIRTVMFFIIncGen
   MLIRTVMFFIInterfacesIncGen
   MLIRTVMFFITypeInterfacesIncGen
@@ -12,9 +15,11 @@ add_mlir_dialect_library(
   LINK_LIBS
   PUBLIC
   DLPackDialect
+  MLIRControlFlowDialect
   MLIRControlFlowInterfaces
   MLIRFuncDialect
   MLIRIR
+  MLIRLLVMDialect
   MLIRSideEffectInterfaces
   tvm_ffi::shared)
 

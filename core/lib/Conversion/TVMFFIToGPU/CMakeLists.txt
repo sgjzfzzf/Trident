@@ -1,0 +1,12 @@
+add_mlir_conversion_library(
+  TVMFFIToGPU
+  TVMFFIToGPU.cc
+  DEPENDS
+  MLIRConversionPassIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRArithDialect
+  MLIRControlFlowDialect
+  MLIRGPUDialect
+  MLIRPass
+  TVMFFIDialect)

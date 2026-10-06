@@ -16,46 +16,13 @@ def ConvertDLPackToLLVM : Pass<"convert-dlpack-to-llvm", "mlir::ModuleOp"> {
   ];
 }
 
-def ConvertTorchExtToGPU : Pass<"convert-torchext-to-gpu", "mlir::ModuleOp"> {
-  let summary = "Lower Torch Ext dialect operations to GPU dialect ";
-  let description = [{Lower TorchExt dialect operations to GPU dialect.}];
+def ConvertTVMFFIToGPU : Pass<"convert-tvm-ffi-to-gpu", "mlir::ModuleOp"> {
+  let summary = "Lower TVM FFI kernel launches to GPU dialect ";
+  let description = [{Lower TVM FFI kernel launches to GPU dialect.}];
   let dependentDialects = [
     "mlir::arith::ArithDialect", "mlir::cf::ControlFlowDialect",
     "trident::dlpack::DLPackDialect", "mlir::func::FuncDialect",
     "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect",
-    "mlir::torch::TorchConversion::TorchConversionDialect",
-    "trident::torchext::TorchExtDialect", "trident::tvm_ffi::TVMFFIDialect"
-  ];
-}
-
-def ConvertTorchToCf : Pass<"convert-torch-to-cf", "mlir::ModuleOp"> {
-  let summary = "Lower Torch dialect runtime ops to ControlFlow dialect";
-  let description = [{Lower Torch dialect runtime ops to ControlFlow dialect.}];
-  let dependentDialects = ["mlir::cf::ControlFlowDialect"];
-}
-
-def ConvertTorchToScf : Pass<"trident-convert-torch-to-scf", "mlir::ModuleOp"> {
-  let summary = "Lower Torch conditional control flow to SCF";
-  let description = [{
-    Lowers torch.prim.If and torch.prim.If.yield while preserving result types.
-  }];
-  let dependentDialects = [
-    "mlir::scf::SCFDialect",
-    "mlir::torch::TorchConversion::TorchConversionDialect",
-    "trident::torchext::TorchExtDialect"
-  ];
-}
-
-def ConvertTorchToTVMFFI : Pass<"convert-torch-to-tvm-ffi", "mlir::ModuleOp"> {
-  let summary = "Expose Torch runtime calls and ownership in TVM FFI IR";
-  let description = [{
-    Rewrites Torch ATen dispatcher calls to tvm_ffi.FunctionGetGlobal /
-    tvm_ffi.FunctionCall. Torch list and tuple
-    values share !tvm_ffi.array, and object results carry explicit ownership.
-  }];
-  let dependentDialects = [
-    "mlir::cf::ControlFlowDialect", "mlir::LLVM::LLVMDialect",
-    "mlir::torch::TorchConversion::TorchConversionDialect",
     "trident::tvm_ffi::TVMFFIDialect"
   ];
 }
@@ -90,13 +57,10 @@ def FinalizeTVMFFI : Pass<"finalize-tvm-ffi", "mlir::ModuleOp"> {
 
 def TridentLoweringPipeline
     : Pass<"trident-lowering-pipeline", "mlir::ModuleOp"> {
-  let summary = "Lower Torch dialect operations to LLVM dialect";
-  let description = [{Lower Torch dialect operations to LLVM dialect.}];
+  let summary = "Lower TVM FFI and GPU operations to LLVM dialect";
+  let description = [{Lower TVM FFI and GPU operations to LLVM dialect.}];
   let dependentDialects = [
-    "trident::torchext::TorchExtDialect",
     "mlir::arith::ArithDialect", "mlir::LLVM::LLVMDialect",
-    "mlir::scf::SCFDialect",
-    "mlir::torch::Torch::TorchDialect",
-    "mlir::torch::TorchConversion::TorchConversionDialect"
+    "mlir::scf::SCFDialect"
   ];
 }

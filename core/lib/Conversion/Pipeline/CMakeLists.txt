@@ -1,5 +1,5 @@
 add_mlir_conversion_library(
-  TorchPipeline
+  TridentPipeline
   Pipeline.cc
   DEPENDS
   MLIRConversionPassIncGen
@@ -8,7 +8,6 @@ add_mlir_conversion_library(
   OwnershipDeallocation
   DLPackToLLVM
   FinalizeTVMFFI
-  GeneralizeAtenOps
   MLIRArithToLLVM
   MLIRControlFlowToLLVM
   MLIRFuncToLLVM
@@ -16,9 +15,6 @@ add_mlir_conversion_library(
   MLIRPass
   MLIRTransforms
   MLIRSCFToControlFlow
-  TorchExtToGPU
-  TorchToCf
-  TorchToScf
-  TorchToTVMFFI
+  TVMFFIToGPU
   TVMFFIToFunc
   TVMFFIToLLVM)

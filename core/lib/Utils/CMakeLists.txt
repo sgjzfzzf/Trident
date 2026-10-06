@@ -8,19 +8,12 @@ add_mlir_library(
   DLPackDialect
   DLPackToLLVM
   FinalizeTVMFFI
-  GeneralizeAtenOps
   MLIRRegisterAllDialects
   MLIRRegisterAllExtensions
   MLIRRegisterAllPasses
   MLIRSCFDialect
   MLIRToLLVMIRTranslationRegistration
-  TorchExtToGPU
-  TorchMLIRCAPI
-  TorchMLIRTorchConversionDialect
-  TorchMLIRTorchOnnxToTorch
-  TorchMLIRConversionUtils
-  TorchPipeline
-  TorchToCf
-  TorchToTVMFFI
+  TVMFFIToGPU
+  TridentPipeline
   TVMFFIDialect
   TVMFFIToLLVM)

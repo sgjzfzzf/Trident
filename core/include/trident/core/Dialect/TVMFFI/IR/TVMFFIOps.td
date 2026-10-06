@@ -21,6 +21,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIBase.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.td"
+include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttrs.td"
 
 class TVMFFI_Op<string mnemonic, list<Trait> traits = []>
     : Op<TVMFFI_Dialect, mnemonic, traits>;
@@ -44,10 +45,10 @@ def TVMFFI_AsOp : TVMFFI_Op<"as", [Pure]> {
 def TVMFFI_CallOp : TVMFFI_Op<"call", [TVMFFI_ObjectOwnershipOpInterface]> {
   let summary = "Call a TVM FFI function defined in the current module";
   let arguments = (ins FlatSymbolRefAttr:$callee,
-                       Variadic<AnyTVMFFIAnyABIOrTorchType>:$operands,
+                       Variadic<AnyTVMFFIAnyABIType>:$operands,
                        OptionalAttr<DictArrayAttr>:$arg_attrs,
                        OptionalAttr<DictArrayAttr>:$res_attrs);
-  let results = (outs Variadic<AnyTVMFFIAnyABIOrTorchType> : $results,
+  let results = (outs Variadic<AnyTVMFFIAnyABIType> : $results,
                       I1:$success);
   let assemblyFormat = "$callee `(` $operands `)` attr-dict `:` "
                        "functional-type($operands, $results) `,` type($success)";
@@ -230,9 +231,7 @@ def TVMFFI_ReturnOp
     ```
   }];
 
-  // Torch types are accepted here as a transitional frontend boundary. The
-  // Torch-to-TVMFFI pass rewrites them before lifetime-sensitive operations.
-  let arguments = (ins Variadic<AnyTVMFFIAnyABIOrTorchType> : $operands);
+  let arguments = (ins Variadic<AnyTVMFFIAnyABIType> : $operands);
 
   let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
   let hasVerifier = 1;
@@ -320,5 +319,74 @@ def TVMFFI_ToOp
   let hasVerifier = 1;
   let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
 }
+
+def TVMFFI_KernelOperandType
+    : AnyTypeOf<[AnyTVMFFISemanticType, I1, I64, F64],
+                "TVM FFI value or native scalar accepted by a Triton launch">;
+
+def TVMFFI_KernelLaunchOp
+    : TVMFFI_Op<"kernel_launch", [
+  AttrSizedOperandSegments, AllTypesMatch<[
+    "gridSizeX", "gridSizeY", "gridSizeZ", "blockSizeX", "blockSizeY",
+    "blockSizeZ"
+  ]>
+]> {
+  let summary = "Launch a compiled kernel entry point";
+  let description = [{
+    Models launching a compiled kernel symbol with explicit grid/block sizes.
+    Operands use TVM FFI semantic values or native scalars. Each operand's
+    specialization attribute defines its runtime precondition. Constant
+    specializations are guard-only, while variable specializations are passed
+    to the compiled Triton kernel.
+
+    Optionally supports cluster-level parallelism via `clusterSizeX`,
+    `clusterSizeY`, and `clusterSizeZ` arguments. When present, the kernel
+    is launched with the specified thread-block cluster size. This feature
+    is exclusive to certain architectures (e.g. NVIDIA Hopper and later).
+}];
+
+let arguments = (ins SymbolRefAttr:$kernel,
+                   I64:$gridSizeX,
+                   I64:$gridSizeY,
+                   I64:$gridSizeZ,
+                   I64:$blockSizeX,
+                   I64:$blockSizeY,
+                   I64:$blockSizeZ,
+                   Optional<I64>:$clusterSizeX,
+                   Optional<I64>:$clusterSizeY,
+                   Optional<I64>:$clusterSizeZ,
+                   Optional<I32>:$dynamicSharedMemorySize,
+                   Variadic<TVMFFI_KernelOperandType>:$kernelOperands,
+                   TVMFFI_KernelSpecializationArrayAttr:$specializations);
+let results = (outs);
+let hasVerifier = 1;
+
+let extraClassDeclaration = [{
+    /// Returns true if cluster size is specified.
+    bool hasClusterSize();
+    static ::mlir::ParseResult parseKernelArguments(
+        ::mlir::OpAsmParser &parser,
+        ::llvm::SmallVectorImpl<::mlir::OpAsmParser::UnresolvedOperand> &operands,
+        ::llvm::SmallVectorImpl<::mlir::Type> &types,
+        ::mlir::ArrayAttr &specializations);
+    static void printKernelArguments(
+        ::mlir::OpAsmPrinter &printer,
+        ::mlir::Operation *op [[maybe_unused]],
+        ::mlir::OperandRange operands, ::mlir::TypeRange types,
+        ::mlir::ArrayAttr specializations);
+  }];
+
+  let assemblyFormat = [{
+    $kernel
+    (`clusters` `in` `(` $clusterSizeX^ `,` $clusterSizeY `,` $clusterSizeZ `)`)?
+    `blocks` `in` `(` $gridSizeX `,` $gridSizeY `,` $gridSizeZ `)`
+    `:` type($gridSizeX)
+    `threads` `in` `(` $blockSizeX `,` $blockSizeY `,` $blockSizeZ `)`
+    (`dynamic_shared_memory_size` $dynamicSharedMemorySize^)?
+    `args` `(` custom<KernelArguments>($kernelOperands, type($kernelOperands), $specializations) `)`
+    prop-dict attr-dict
+}];
+}
+
 
 #endif // TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIOPS_TD_

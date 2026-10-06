@@ -9,6 +9,7 @@
 #define TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIINTERFACES_H_
 
 #include <cstdint>
+#include <mlir/IR/Builders.h>
 #include <mlir/IR/DialectRegistry.h>
 #include <mlir/IR/OpDefinition.h>
 
@@ -31,5 +32,7 @@ void registerTVMFFIObjectOwnershipExternalModels(
 } // namespace trident::tvm_ffi
 
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.h.inc"
+
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttrInterfaces.h.inc"
 
 #endif // TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIINTERFACES_H_

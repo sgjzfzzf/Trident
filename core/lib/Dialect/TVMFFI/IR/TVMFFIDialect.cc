@@ -14,9 +14,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttrs.h" // NOLINT(misc-include-cleaner)
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtTypes.h" // NOLINT(misc-include-cleaner)
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/STLExtras.h>
@@ -36,9 +36,11 @@
 #include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/InliningUtils.h>
 #include <string>
-#include <torch-mlir/Dialect/Torch/IR/TorchDialect.h> // NOLINT(misc-include-cleaner)
 
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.cpp.inc"
+
+#define GET_ATTRDEF_CLASSES
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttrs.cpp.inc"
 
 #define GET_TYPEDEF_CLASSES
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.cpp.inc"
@@ -100,6 +102,10 @@ bool UnionType::contains(mlir::Type type) const {
 
 void TVMFFIDialect::initialize() {
   addInterfaces<TVMFFIInlinerInterface>();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttrs.cpp.inc"
+      >();
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.cpp.inc"

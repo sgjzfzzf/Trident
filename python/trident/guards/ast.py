@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import operator
 import warnings
 from collections.abc import Callable
 from functools import reduce
@@ -13,26 +14,25 @@ from typing import Any, ClassVar, TypeAlias
 import torch
 
 from trident.core import ir
-from trident.core.dialects import arith, torch_c, torchext
-from trident.core.dialects import torch as torch_d
-from trident.core.dialects.torch import (
-    TorchBoolType,
-    TorchFloatType,
-    TorchIntType,
-    TorchListType,
-    TorchNonValueTensorType,
-    TorchTupleType,
-    TorchValueTensorType,
-)
+from trident.core.dialects import arith
+from trident.core.dialects import tvm_ffi as ffi
 from trident.input import InputTable
+from trident.ir_utils import (
+    binary,
+    checked_call,
+    constant,
+    equal,
+    ffi_type,
+    native,
+    native_constant,
+)
 
 from .local import Local
 
 GuardBuildFn: TypeAlias = Callable[[InputTable, ir.Context], ir.Value]
 TensorMetadataFn: TypeAlias = Callable[[ir.Value], ir.Value]
-TensorIndexedMetadataFn: TypeAlias = Callable[[ir.Type, ir.Value, ir.Value], ir.Value]
-TorchOperationFn: TypeAlias = Callable[[ir.Value, ir.Value], ir.Value]
-TorchOperationKey: TypeAlias = type[ast.operator | ast.cmpop] | str
+TensorIndexedMetadataFn: TypeAlias = Callable[[ir.Value, ir.Value], ir.Value]
+ScalarOperationKey: TypeAlias = type[ast.operator | ast.cmpop] | str
 
 
 class _SkipGuard(Exception):
@@ -42,309 +42,134 @@ class _SkipGuard(Exception):
 
 
 class ASTVisitor(ast.NodeVisitor):
-    """Compose delayed IR builders from supported Dynamo guard AST nodes."""
+    """Compose delayed native/TVM FFI builders from Dynamo guard expressions."""
 
-    _torch_ops: ClassVar[
-        dict[
-            type[ast.operator | ast.cmpop] | str,
-            tuple[
-                TorchOperationFn | None,
-                TorchOperationFn | None,
-            ],
-        ]
-    ] = {
-        ast.Add: (torch_d.aten_add_int, torch_d.aten_add_float),
-        ast.Sub: (torch_d.aten_sub_int, torch_d.aten_sub_float),
-        ast.Mult: (torch_d.aten_mul_int, torch_d.aten_mul_float),
-        ast.Div: (torch_d.aten_div_int, torch_d.aten_div_float),
-        ast.FloorDiv: (torch_d.aten_floordiv_int, None),
-        ast.Mod: (torch_d.aten_remainder_int, None),
-        ast.BitOr: (
-            lambda lhs, rhs: torch_c.from_i64(
-                arith.ori(
-                    torch_c.to_i64(lhs, loc=lhs.owner.location),
-                    torch_c.to_i64(rhs, loc=rhs.owner.location),
-                )
-            ),
-            None,
-        ),
-        ast.Eq: (torch_d.aten_eq_int, torch_d.aten_eq_float),
-        ast.NotEq: (
-            torch_d.aten_ne_int,
-            lambda lhs, rhs: torch_d.aten___not__(torch_d.aten_eq_float(lhs, rhs)),
-        ),
-        ast.Lt: (torch_d.aten_lt_int, torch_d.aten_lt_float),
-        ast.LtE: (
-            torch_d.aten_le_int,
-            lambda lhs, rhs: torch_d.aten_ge_float(rhs, lhs),
-        ),
-        ast.Gt: (torch_d.aten_gt_int, torch_d.aten_gt_float),
-        ast.GtE: (torch_d.aten_ge_int, torch_d.aten_ge_float),
-        "min": (torch_d.prim_min_int, None),
-        "max": (torch_d.prim_max_int, None),
+    _scalar_ops: ClassVar[dict[ScalarOperationKey, Callable[..., Any]]] = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.FloorDiv: operator.floordiv,
+        ast.Mod: operator.mod,
+        ast.BitOr: operator.or_,
+        ast.Eq: operator.eq,
+        ast.NotEq: operator.ne,
+        ast.Lt: operator.lt,
+        ast.LtE: operator.le,
+        ast.Gt: operator.gt,
+        ast.GtE: operator.ge,
+        "min": min,
+        "max": max,
     }
-
-    @staticmethod
-    def _build_binary_template(
-        lhs: GuardBuildFn,
-        rhs: GuardBuildFn,
-        operation_key: TorchOperationKey,
-    ) -> GuardBuildFn:
-        def build(tree: InputTable, context: ir.Context) -> ir.Value:
-            lhs_raw = ASTVisitor._value(lhs, tree, context)
-            rhs_raw = ASTVisitor._value(rhs, tree, context)
-            integer_operation, float_operation = ASTVisitor._torch_ops[operation_key]
-            operation = None
-            if isinstance(lhs_raw.type, TorchIntType) and isinstance(
-                rhs_raw.type, TorchIntType
-            ):
-                operation = integer_operation
-            elif isinstance(lhs_raw.type, TorchFloatType) and isinstance(
-                rhs_raw.type, TorchFloatType
-            ):
-                operation = float_operation
-            assert operation is not None, (
-                "unsupported Torch numeric operation for guard operands"
-            )
-            return operation(lhs_raw, rhs_raw)
-
-        return build
-
-    @staticmethod
-    def _build_compare_template(
-        lhs: GuardBuildFn,
-        rhs: GuardBuildFn,
-        operation_key: TorchOperationKey,
-    ) -> GuardBuildFn:
-        def build(tree: InputTable, context: ir.Context) -> ir.Value:
-            raw_lhs = ASTVisitor._value(lhs, tree, context)
-            raw_rhs = ASTVisitor._value(rhs, tree, context)
-            integer_operation, float_operation = ASTVisitor._torch_ops[operation_key]
-            operation = (
-                integer_operation
-                if isinstance(raw_lhs.type, TorchIntType)
-                and isinstance(raw_rhs.type, TorchIntType)
-                else float_operation
-                if isinstance(raw_lhs.type, TorchFloatType)
-                and isinstance(raw_rhs.type, TorchFloatType)
-                else None
-            )
-            assert operation is not None, (
-                "unsupported Torch comparison operation for guard operands"
-            )
-            return operation(raw_lhs, raw_rhs)
-
-        return build
 
     def __init__(self, text: str) -> None:
         self.text = text
 
+    @staticmethod
+    def _build_binary_template(
+        lhs: GuardBuildFn, rhs: GuardBuildFn, operation_key: ScalarOperationKey
+    ) -> GuardBuildFn:
+        def build(tree: InputTable, context: ir.Context) -> ir.Value:
+            return binary(
+                ASTVisitor._scalar_ops[operation_key],
+                lhs(tree, context),
+                rhs(tree, context),
+            )
+
+        return build
+
     def _build_comparison(
-        self,
-        operation: ast.cmpop,
-        lhs: GuardBuildFn,
-        rhs: GuardBuildFn,
+        self, operation: ast.cmpop, lhs: GuardBuildFn, rhs: GuardBuildFn
     ) -> GuardBuildFn:
         if isinstance(operation, ast.Eq):
-            integer_operation, float_operation = self._torch_ops[type(operation)]
-            if integer_operation is not None:
-
-                def build(tree: InputTable, context: ir.Context) -> ir.Value:
-                    [lhs_value, rhs_value] = [
-                        torchext.convert(value)
-                        if isinstance(value.type, torchext.DTypeType)
-                        else value
-                        for value in (
-                            self._value(lhs, tree, context),
-                            self._value(rhs, tree, context),
-                        )
-                    ]
-                    if isinstance(lhs_value.type, TorchIntType) and isinstance(
-                        rhs_value.type, TorchIntType
-                    ):
-                        return integer_operation(lhs_value, rhs_value)
-                    if (
-                        float_operation is not None
-                        and isinstance(lhs_value.type, TorchFloatType)
-                        and isinstance(rhs_value.type, TorchFloatType)
-                    ):
-                        return float_operation(lhs_value, rhs_value)
-                    equality = torchext.eq(lhs_value, rhs_value)
-                    return torch_c.from_i1(equality, loc=equality.owner.location)
-
-                return build
-
-            def build(tree: InputTable, context: ir.Context) -> ir.Value:
-                equality = torchext.eq(
-                    self._value(lhs, tree, context),
-                    self._value(rhs, tree, context),
-                )
-                return torch_c.from_i1(equality, loc=equality.owner.location)
-
-            return build
-        return self._build_compare_template(
-            lhs,
-            rhs,
-            type(operation),
-        )
+            return lambda tree, context: equal(lhs(tree, context), rhs(tree, context))
+        return self._build_binary_template(lhs, rhs, type(operation))
 
     def _build_identity(self, lhs: Local, rhs: Local) -> GuardBuildFn:
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
-            lhs_value = lhs.resolve(tree)
-            rhs_value = rhs.resolve(tree)
+            lhs_value, rhs_value = lhs.resolve(tree), rhs.resolve(tree)
             assert lhs_value is not None and rhs_value is not None, (
                 f"guard source cannot be resolved: {self.text!r}"
             )
-            if not all(
-                isinstance(
-                    value.type,
-                    (TorchNonValueTensorType, TorchValueTensorType),
-                )
-                for value in (lhs_value, rhs_value)
+            if (
+                str(lhs_value.type) != "!tvm_ffi.tensor"
+                or str(rhs_value.type) != "!tvm_ffi.tensor"
             ):
-                equality = torchext.eq(lhs_value, rhs_value)
-                return torch_c.from_i1(equality, loc=equality.owner.location)
+                return equal(lhs_value, rhs_value)
             warnings.warn(
-                "Skipping unsupported Tensor identity guard; object identity "
-                f"will not be validated: {self.text!r}",
+                f"Skipping unsupported Tensor identity guard; object identity will not be validated: {self.text!r}",
                 RuntimeWarning,
                 stacklevel=2,
             )
-            return self._true(context)
+            return native_constant(True)
 
         return build
 
     @staticmethod
     def _build_logical_and(lhs: ir.Value, rhs: ir.Value) -> ir.Value:
-        return torch_d.aten___and___bool(lhs, rhs)
+        return arith.andi(native(lhs), native(rhs))
 
     @staticmethod
     def _build_logical_not(value: ir.Value) -> ir.Value:
-        return torch_d.aten___not__(value)
+        return arith.xori(native(value), native_constant(True))
 
     @staticmethod
     def _build_logical_or(lhs: ir.Value, rhs: ir.Value) -> ir.Value:
-        return torch_d.aten___or___bool(lhs, rhs)
+        return arith.ori(native(lhs), native(rhs))
 
     @staticmethod
     def _build_negate(value: ir.Value) -> ir.Value:
-        assert isinstance(value.type, (TorchFloatType, TorchIntType))
-        if isinstance(value.type, TorchFloatType):
-            return torch_d.aten_neg_float(value)
-        return torch_d.aten_neg_int(value)
+        value = native(value)
+        return (
+            arith.negf(value)
+            if str(value.type) == "f64"
+            else arith.subi(native_constant(0), value)
+        )
 
     def _build_not_sequence(self, source: Local) -> GuardBuildFn:
-        def length(tree: InputTable, context: ir.Context) -> ir.Value:
+        def build(tree: InputTable, context: ir.Context) -> ir.Value:
             value = source.resolve(tree)
             assert value is not None, f"guard source cannot be resolved: {self.text!r}"
-            length_value = self._sequence_length(value)
-            if length_value.type == ir.IntegerType.get_signless(64, context):
-                return torch_c.from_i64(
-                    length_value,
-                    loc=length_value.owner.location,
-                )
-            return length_value
+            return binary(operator.eq, self._sequence_length(value), native_constant(0))
 
-        constant = self._constant(0)
-        assert constant is not None
-        return self._build_comparison(ast.Eq(), length, constant)
+        return build
 
     @staticmethod
-    def _sequence_length(value: ir.Value) -> ir.Value | None:
-        if isinstance(value.type, TorchTupleType):
-            return torch_d.constant_int(len(value.type.types))
-        elif isinstance(value.type, TorchListType):
-            return torch_d.aten_len_t(value)
+    def _sequence_length(value: ir.Value) -> ir.Value:
+        return native(checked_call("ffi.ArraySize", [value], ffi_type("int")))
 
     @staticmethod
     def _build_select(
-        condition: ir.Value,
-        true_value: ir.Value,
-        false_value: ir.Value,
+        condition: ir.Value, true_value: ir.Value, false_value: ir.Value
     ) -> ir.Value:
-        context = condition.context
-        true_value, false_value = [
-            (
-                torch_c.to_i1(value, loc=value.owner.location)
-                if isinstance(value.type, TorchBoolType)
-                else torch_c.to_i64(value, loc=value.owner.location)
-                if isinstance(value.type, TorchIntType)
-                else torch_c.to_f64(value, loc=value.owner.location)
-                if isinstance(value.type, TorchFloatType)
-                else value
-            )
-            for value in (true_value, false_value)
-        ]
-        selected = arith.select(condition, true_value, false_value)
-        if selected.type == ir.IntegerType.get_signless(1, context):
-            return torch_c.from_i1(selected, loc=selected.owner.location)
-        if selected.type == ir.IntegerType.get_signless(64, context):
-            return torch_c.from_i64(selected, loc=selected.owner.location)
-        if selected.type == ir.F64Type.get(context):
-            return torch_c.from_f64(selected, loc=selected.owner.location)
-        return selected
+        return arith.select(native(condition), native(true_value), native(false_value))
 
     def _build_tensor_indexed_metadata(
-        self,
-        source: Local,
-        operation: TensorIndexedMetadataFn,
-        index: int,
+        self, source: Local, operation: TensorIndexedMetadataFn, index: int
     ) -> GuardBuildFn:
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
             tensor = source.resolve(tree)
             assert tensor is not None, f"guard source cannot be resolved: {self.text!r}"
-            dimension = torch_d.constant_int(index)
-            if isinstance(dimension.type, TorchIntType):
-                dimension = torch_c.to_i64(
-                    dimension,
-                    loc=dimension.owner.location,
-                )
-            result = operation(tensor, dimension)
-            if result.type == ir.IntegerType.get_signless(64, context):
-                return torch_c.from_i64(result, loc=result.owner.location)
-            return result
+            return operation(tensor, native_constant(index))
 
         return build
 
     def _build_tensor_metadata(
-        self,
-        source: Local,
-        operation: TensorMetadataFn,
+        self, source: Local, operation: TensorMetadataFn
     ) -> GuardBuildFn:
         def build(tree: InputTable, context: ir.Context) -> ir.Value:
             tensor = source.resolve(tree)
             assert tensor is not None, f"guard source cannot be resolved: {self.text!r}"
-            result = operation(tensor)
-            if result.type == ir.IntegerType.get_signless(64, context):
-                return torch_c.from_i64(result, loc=result.owner.location)
-            return result
+            return operation(tensor)
 
         return build
 
     @staticmethod
     def _constant(value: Any) -> GuardBuildFn | None:
-        if value is None:
-            return lambda _, context: torch_d.constant_none()
-        if isinstance(value, torch.device):
-            return lambda _, context: torch_d.constant_device(
-                ir.StringAttr.get(f"{value}", context=context),
-            )
-        if isinstance(value, torch.dtype):
-            return lambda _, context: torchext.constant_dtype(
-                torchext.dtype(value, context=context),
-            )
-        if isinstance(value, bool):
-            return lambda _, context: torch_d.constant_bool(value)
-        if isinstance(value, int):
-            return lambda _, context: torch_d.constant_int(value)
-        if isinstance(value, float):
-            return lambda _, context: torch_d.constant_float(
-                ir.FloatAttr.get(ir.F64Type.get(context), value),
-            )
-        if isinstance(value, str):
-            return lambda _, context: torch_d.constant_str(
-                ir.StringAttr.get(value, context),
-            )
+        if value is None or isinstance(
+            value, (torch.device, torch.dtype, bool, int, float, str)
+        ):
+            return lambda _, context: constant(value)
         return None
 
     def _error(self, message: str) -> GuardBuildFn:
@@ -376,11 +201,11 @@ class ASTVisitor(ast.NodeVisitor):
 
     @staticmethod
     def _false(context: ir.Context) -> ir.Value:
-        return torch_d.constant_bool(False)
+        return native_constant(False)
 
     @staticmethod
     def _true(context: ir.Context) -> ir.Value:
-        return torch_d.constant_bool(True)
+        return native_constant(True)
 
     @staticmethod
     def _value(
@@ -404,7 +229,7 @@ class ASTVisitor(ast.NodeVisitor):
         if node.func.attr == "storage_offset":
             return self._skip_storage_offset()
         operations = {
-            "ndimension": torchext.tensor_dim,
+            "ndimension": ffi.tensor_dim,
         }
         operation = operations.get(node.func.attr)
         return self._build_tensor_metadata(source, operation) if operation else None
@@ -441,7 +266,7 @@ class ASTVisitor(ast.NodeVisitor):
         return None
 
     def visit_BinOp(self, node: ast.BinOp) -> GuardBuildFn | None:
-        if type(node.op) not in self._torch_ops:
+        if type(node.op) not in self._scalar_ops:
             return None
         lhs = self.visit(node.left)
         rhs = self.visit(node.right)
@@ -524,7 +349,7 @@ class ASTVisitor(ast.NodeVisitor):
             return None
         return self._build_tensor_metadata(
             source,
-            torchext.tensor_dim if is_tensor_shape else self._sequence_length,
+            ffi.tensor_dim if is_tensor_shape else self._sequence_length,
         )
 
     def visit_Compare(self, node: ast.Compare) -> GuardBuildFn | None:
@@ -564,7 +389,7 @@ class ASTVisitor(ast.NodeVisitor):
             return reduce(
                 self._build_logical_and,
                 (comparison(tree, context) for comparison in comparison_builders),
-                torch_d.constant_bool(True),
+                native_constant(True),
             )
 
         return build
@@ -621,8 +446,8 @@ class ASTVisitor(ast.NodeVisitor):
         if source is None:
             return None
         operations = {
-            "size": torchext.tensor_size,
-            "stride": torchext.tensor_stride,
+            "size": ffi.tensor_size,
+            "stride": ffi.tensor_stride,
         }
         operation = operations.get(call.func.attr)
         if operation is None:

@@ -5,7 +5,6 @@ add_mlir_conversion_library(
   MLIRConversionPassIncGen
   LINK_LIBS
   PUBLIC
-  OwnershipDeallocation
   DLPackToLLVM
   FinalizeTVMFFI
   MLIRArithToLLVM
@@ -13,8 +12,9 @@ add_mlir_conversion_library(
   MLIRFuncToLLVM
   MLIRGPUToGPURuntimeTransforms
   MLIRPass
-  MLIRTransforms
   MLIRSCFToControlFlow
-  TorchExtToGPU
+  MLIRTransforms
+  OwnershipDeallocation
   TVMFFIToFunc
+  TVMFFIToGPU
   TVMFFIToLLVM)

@@ -6,4 +6,5 @@
 #
 # ===----------------------------------------------------------------------=== #
 
+from .._mlir_libs._tvm_ffi import *
 from ._tvm_ffi_ops_gen import *

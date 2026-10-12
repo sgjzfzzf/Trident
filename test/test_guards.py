@@ -11,14 +11,15 @@ from dataclasses import dataclass
 
 from torch._guards import GuardSource
 from trident.core import ir, register_all_dialects
+from trident.core.dialects import tvm_ffi as tvm_ffi_d
 from trident.guards.codes import (
     ASTCode,
     ConstantCode,
     DynamoAttributeAbsentCode,
     GuardCode,
     RequiresGradCode,
-    TensorDeviceCode,
     TensorDTypeCode,
+    TensorDeviceCode,
     TensorRankCode,
     TypeIdCode,
 )
@@ -61,7 +62,7 @@ class GuardTest(TridentTestCase):
         self.assertEqual(tuple(type(item.code) for item in parsed.codes), code_types)
         return parsed
 
-    def build_ast_code(self, text: str) -> tuple[str, str]:
+    def build_ast_code(self, text: str) -> tuple[ir.Type, str]:
         """Insert a guard expression into a textually parsed IR fixture."""
         context = ir.Context()
         register_all_dialects(context)
@@ -80,7 +81,7 @@ class GuardTest(TridentTestCase):
             with ir.InsertionPoint(block.operations[-1]):
                 code = ASTCode(text, ast.parse(text, mode="eval").body)
                 result = code.build(None, context)  # type: ignore[arg-type]
-            result_type = str(result.type)
+            result_type = result.type
             module_text = str(module)
         return result_type, module_text
 
@@ -88,27 +89,36 @@ class GuardTest(TridentTestCase):
         cases = (
             (
                 "(1 | 2) == 3",
-                "i1",
+                (ir.IntegerType, 1),
                 ("arith.ori",),
                 ("torch.aten.__or__.Scalar",),
             ),
-            ("1 == 1 <= 3", "i1", ("arith.cmpi",), ()),
+            ("1 == 1 <= 3", (ir.IntegerType, 1), ("arith.cmpi",), ()),
             (
                 "1.0 + 2.0 <= 4.0",
-                "i1",
+                (ir.IntegerType, 1),
                 ("arith.addf", "arith.cmpf"),
                 (),
             ),
-            ("1 + 2", "i64", ("arith.addi",), ()),
-            ("5 / 2", "f64", ("arith.divf",), ()),
-            ("True and not False", "i1", ("arith.xori",), ()),
-            ("-1", "i64", ("arith.subi",), ()),
-            ("torch.float32", "!tvm_ffi.dtype", ("tvm_ffi.constant.dtype",), ()),
+            ("1 + 2", (ir.IntegerType, 64), ("arith.addi",), ()),
+            ("5 / 2", (ir.F64Type, None), ("arith.divf",), ()),
+            ("True and not False", (ir.IntegerType, 1), ("arith.xori",), ()),
+            ("-1", (ir.IntegerType, 64), ("arith.subi",), ()),
+            (
+                "torch.float32",
+                (tvm_ffi_d.DTypeType, None),
+                ("tvm_ffi.constant.dtype",),
+                (),
+            ),
         )
         for text, result_type, expected, excluded in cases:
             with self.subTest(text=text):
                 actual_type, module = self.build_ast_code(text)
-                self.assertEqual(actual_type, result_type)
+                type_class, width = result_type
+                self.assertIsInstance(actual_type, type_class)
+                if width is not None:
+                    self.assertTrue(actual_type.is_signless)
+                    self.assertEqual(actual_type.width, width)
                 for operation in expected:
                     self.assertIn(operation, module)
                 for operation in excluded:
@@ -229,7 +239,9 @@ class GuardTest(TridentTestCase):
 
         with self.assertWarnsRegex(RuntimeWarning, "Tensor\\._base guard"):
             result_type, module = self.build_ast_code("L['x']._base.size()[0] == 1")
-        self.assertEqual(result_type, "i1")
+        self.assertIsInstance(result_type, ir.IntegerType)
+        self.assertTrue(result_type.is_signless)
+        self.assertEqual(result_type.width, 1)
         self.assertIn("arith.constant false", module)
 
         with self.assertRaisesRegex(RuntimeError, "Invalid device string"):

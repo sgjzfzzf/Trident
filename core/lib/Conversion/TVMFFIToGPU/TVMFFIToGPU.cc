@@ -6,23 +6,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "trident/core/Conversion/TorchExtToGPU/TorchExtToGPU.h"
+#include "trident/core/Conversion/TVMFFIToGPU/TVMFFIToGPU.h"
 #include "trident/core/Conversion/Utils/AOTICAPIDescriptors.h"
 #include "trident/core/Conversion/Utils/TVMFFICAPIDescriptors.h"
 #include "trident/core/Dialect/DLPack/IR/DLPackDialect.h"
 #include "trident/core/Dialect/DLPack/IR/DLPackOps.h"
 #include "trident/core/Dialect/DLPack/IR/DLPackTypes.h"
-#include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttrs.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIDialect.h" // NOLINT(misc-include-cleaner)
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtDialect.h" // NOLINT(misc-include-cleaner)
-#include "trident/core/Dialect/TorchExt/IR/TorchExtInterfaces.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtOps.h"
 #include <dlpack/dlpack.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
-#include <llvm/ADT/SmallVectorExtras.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Conversion/LLVMCommon/TypeConverter.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
@@ -44,72 +41,56 @@
 #include <mlir/Support/LogicalResult.h>
 #include <mlir/Transforms/DialectConversion.h>
 #include <optional>
-#include <tuple>
 #include <utility>
 
 namespace trident::conversion {
 
-#define GEN_PASS_DEF_CONVERTTORCHEXTTOGPU
+#define GEN_PASS_DEF_CONVERTTVMFFITOGPU
 #include "trident/core/Conversion/Passes.h.inc"
 
-/// Converts torch_ext.trident_kernel_launch to gpu.launch_func.
-class ConvertTritonKernelLaunchOp final
-    : public mlir::OpConversionPattern<torchext::TritonKernelLaunchOp> {
+/// Converts tvm_ffi.kernel_launch to gpu.launch_func.
+class ConvertKernelLaunchOp final
+    : public mlir::OpConversionPattern<tvm_ffi::KernelLaunchOp> {
 public:
-  ConvertTritonKernelLaunchOp(mlir::TypeConverter &typeConverter,
-                              mlir::MLIRContext *context)
-      : mlir::OpConversionPattern<torchext::TritonKernelLaunchOp>(typeConverter,
-                                                                  context) {}
+  ConvertKernelLaunchOp(mlir::TypeConverter &typeConverter,
+                        mlir::MLIRContext *context)
+      : mlir::OpConversionPattern<tvm_ffi::KernelLaunchOp>(typeConverter,
+                                                           context) {}
 
   mlir::LogicalResult
-  matchAndRewrite(torchext::TritonKernelLaunchOp op, OpAdaptor adaptor,
+  matchAndRewrite(tvm_ffi::KernelLaunchOp op, OpAdaptor adaptor,
                   mlir::ConversionPatternRewriter &rewriter) const override {
     mlir::Location const loc = op.getLoc();
     mlir::ArrayAttr const specializations = op.getSpecializationsAttr();
-    using OperandAndSpecialization =
-        std::tuple<mlir::Value, torchext::SpecializationAttrInterface>;
     auto materializeOperand =
-        [&](torchext::SpecializationAttrInterface specialization,
-            mlir::Value source) -> OperandAndSpecialization {
-      mlir::Value operand = source;
+        [&](tvm_ffi::SpecializationAttrInterface specialization,
+            mlir::Value source) -> mlir::Value {
       mlir::Type const kind = specialization.getTargetType();
-      if (operand.getType() != kind) {
-        operand = getTypeConverter()->materializeTargetConversion(
-            rewriter, loc, kind, operand);
-      }
-      return {operand, specialization};
+      return source.getType() == kind
+                 ? source
+                 : getTypeConverter()->materializeTargetConversion(
+                       rewriter, loc, kind, source);
     };
 
     tvm_ffi::FuncOp function = op->getParentOfType<tvm_ffi::FuncOp>();
     if (function) {
-      llvm::SmallVector<OperandAndSpecialization> operandsAndSpecializations;
+      mlir::Value allChecks = mlir::LLVM::ConstantOp::create(
+          rewriter, loc, rewriter.getI1Type(), 1);
       for (auto [specialization, source] :
            llvm::zip(specializations
-                         .getAsRange<torchext::SpecializationAttrInterface>(),
+                         .getAsRange<tvm_ffi::SpecializationAttrInterface>(),
                      op.getKernelOperands())) {
-        auto [operand, checkedSpecialization] =
-            materializeOperand(specialization, source);
+        mlir::Value const operand = materializeOperand(specialization, source);
         if (!operand) {
           return op.emitOpError(
               "failed to materialize a native kernel operand");
         }
-        operandsAndSpecializations.emplace_back(operand, checkedSpecialization);
+        if (mlir::Value const check =
+                specialization.buildCheck(rewriter, loc, operand)) {
+          allChecks =
+              mlir::arith::AndIOp::create(rewriter, loc, allChecks, check);
+        }
       }
-      mlir::Value const allChecks = llvm::accumulate(
-          operandsAndSpecializations,
-          mlir::LLVM::ConstantOp::create(rewriter, loc, rewriter.getI1Type(), 1)
-              .getResult(),
-          [&](mlir::Value accumulated,
-              const OperandAndSpecialization &it) -> mlir::Value {
-            auto [operand, specialization] = it;
-            mlir::Value const check =
-                specialization.buildCheck(rewriter, loc, operand);
-            if (!check) {
-              return accumulated;
-            }
-            return mlir::arith::AndIOp::create(rewriter, loc, accumulated,
-                                               check);
-          });
 
       mlir::FunctionType const functionType = function.getFunctionType();
       if (functionType.getNumResults() != 1) {
@@ -156,22 +137,18 @@ public:
     // objects and must not outlive or cross blocks independently of them.
     // Add a block-transfer check for borrowed values so future conversions
     // cannot accidentally reuse the guard materialization in this block.
-    llvm::SmallVector<OperandAndSpecialization> operandsAndSpecializations;
-    for (auto [specialization, source] : llvm::make_filter_range(
-             llvm::zip(specializations
-                           .getAsRange<torchext::SpecializationAttrInterface>(),
-                       op.getKernelOperands()),
-             [](auto argument) -> bool {
-               auto [specialization, _] = argument;
-               return !mlir::isa<torchext::ConstantSpecializationAttr>(
-                   specialization);
-             })) {
-      auto [operand, checkedSpecialization] =
-          materializeOperand(specialization, source);
+    llvm::SmallVector<mlir::Value> operands;
+    for (auto [specialization, source] : llvm::zip(
+             specializations.getAsRange<tvm_ffi::SpecializationAttrInterface>(),
+             op.getKernelOperands())) {
+      if (mlir::isa<tvm_ffi::ConstantSpecializationAttr>(specialization)) {
+        continue;
+      }
+      mlir::Value const operand = materializeOperand(specialization, source);
       if (!operand) {
         return op.emitOpError("failed to materialize a native kernel operand");
       }
-      operandsAndSpecializations.emplace_back(operand, checkedSpecialization);
+      operands.push_back(operand);
     }
     mlir::gpu::KernelDim3 const gridSize{
         adaptor.getGridSizeX(), adaptor.getGridSizeY(), adaptor.getGridSizeZ()};
@@ -219,11 +196,6 @@ public:
                                    mlir::ValueRange{cuda, deviceIndex})
             .getResult();
 
-    llvm::SmallVector<mlir::Value> operands = llvm::map_to_vector(
-        operandsAndSpecializations, [](auto it) -> mlir::Value {
-          auto [operand, _] = it;
-          return operand;
-        });
     mlir::Value const nullPointer =
         mlir::LLVM::ConstantOp::create(rewriter, loc, rewriter.getI64Type(), 0);
     operands.append(2, nullPointer);
@@ -236,8 +208,8 @@ public:
   }
 };
 
-class ConvertTorchExtToGPUPass final
-    : public impl::ConvertTorchExtToGPUBase<ConvertTorchExtToGPUPass> {
+class ConvertTVMFFIToGPUPass final
+    : public impl::ConvertTVMFFIToGPUBase<ConvertTVMFFIToGPUPass> {
 public:
   void runOnOperation() final {
     mlir::ConversionTarget target(getContext());
@@ -265,7 +237,7 @@ public:
             object);
         return dlpack::TensorDataOp::create(builder, loc, resultType, tensor);
       }
-      if (mlir::isa<tvm_ffi::BoolType, tvm_ffi::IntType, tvm_ffi::FloatType>(
+      if (mlir::isa<tvm_ffi::BoolType, tvm_ffi::FloatType, tvm_ffi::IntType>(
               input.getType())) {
         input = tvm_ffi::GetOp::create(builder, loc, input);
       }
@@ -293,15 +265,15 @@ public:
       return {};
     });
 
-    target.addIllegalOp<torchext::TritonKernelLaunchOp>();
-    target.addLegalDialect<mlir::arith::ArithDialect,
-                           mlir::cf::ControlFlowDialect, mlir::gpu::GPUDialect,
-                           mlir::BuiltinDialect, mlir::func::FuncDialect,
-                           mlir::LLVM::LLVMDialect, tvm_ffi::TVMFFIDialect,
-                           dlpack::DLPackDialect>();
+    target.addIllegalOp<tvm_ffi::KernelLaunchOp>();
+    target
+        .addLegalDialect<dlpack::DLPackDialect, mlir::BuiltinDialect,
+                         mlir::LLVM::LLVMDialect, mlir::arith::ArithDialect,
+                         mlir::cf::ControlFlowDialect, mlir::func::FuncDialect,
+                         mlir::gpu::GPUDialect, tvm_ffi::TVMFFIDialect>();
 
     mlir::RewritePatternSet patterns(&getContext());
-    populateTorchExtToGPUConversionPatterns(target, patterns, typeConverter);
+    populateTVMFFIToGPUConversionPatterns(target, patterns, typeConverter);
 
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
@@ -310,11 +282,10 @@ public:
   }
 };
 
-void populateTorchExtToGPUConversionPatterns(
-    mlir::ConversionTarget &, mlir::RewritePatternSet &patterns,
-    mlir::TypeConverter &typeConverter) {
-  patterns.add<ConvertTritonKernelLaunchOp>(typeConverter,
-                                            patterns.getContext());
+void populateTVMFFIToGPUConversionPatterns(mlir::ConversionTarget &,
+                                           mlir::RewritePatternSet &patterns,
+                                           mlir::TypeConverter &typeConverter) {
+  patterns.add<ConvertKernelLaunchOp>(typeConverter, patterns.getContext());
 }
 
 } // namespace trident::conversion

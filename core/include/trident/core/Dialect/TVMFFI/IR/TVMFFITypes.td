@@ -68,14 +68,14 @@ def TVMFFI_BoolType
     : TVMFFIIndexed_Type<"Bool", "bool", 2,
                          [DeclareTypeInterfaceMethods<
                              TVMFFI_NativeTypeInterface>]>;
-def TVMFFI_DeviceType
-    : TVMFFIIndexed_Type<"Device", "device", 6>;
 def TVMFFI_DTypeType
     : TVMFFIIndexed_Type<"DType", "dtype", 5, [], [{
     static ::mlir::Value build(::mlir::OpBuilder &builder,
                                ::mlir::Location loc, int64_t code,
                                int64_t bits, int64_t lanes = 1);
   }]>;
+def TVMFFI_DeviceType
+    : TVMFFIIndexed_Type<"Device", "device", 6>;
 def TVMFFI_ExceptionType
     : TVMFFIObject_Type<"Exception", "exception",
                         [DeclareTypeInterfaceMethods<
@@ -117,30 +117,26 @@ def TVMFFI_UnionType : TVMFFIABI_Type<"Union", "union"> {
 }
 
 def AnyTVMFFIAnyABIType : AnyTypeOf<[
-  TVMFFI_AnyType, TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_DeviceType,
-  TVMFFI_DTypeType, TVMFFI_ExceptionType, TVMFFI_FloatType,
+  TVMFFI_AnyType, TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_DTypeType,
+  TVMFFI_DeviceType, TVMFFI_ExceptionType, TVMFFI_FloatType,
   TVMFFI_FunctionType, TVMFFI_IntType, TVMFFI_NoneType, TVMFFI_ObjectType,
   TVMFFI_RawStrType, TVMFFI_SmallStrType, TVMFFI_StrType, TVMFFI_TensorType,
   TVMFFI_UnionType
 ], "TVM FFI value with a TVMFFIAny ABI representation">;
-def AnyTVMFFICastResultType : AnyTypeOf<[
-  TVMFFI_AnyType, TVMFFI_UnionType
-], "widened TVM FFI any or union value">;
-def AnyTVMFFIGetResultType : AnyTypeOf<[
-  AnyType, TVMFFI_ObjectType
-], "TVM FFI get result">;
+def AnyTVMFFICastResultType : AnyTypeOf<[TVMFFI_AnyType, TVMFFI_UnionType], "widened TVM FFI any or union value">;
 def AnyTVMFFIGetOperandType : AnyTypeOf<[
-  TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_FloatType,
-  TVMFFI_FunctionType, TVMFFI_IntType, TVMFFI_StrType, TVMFFI_TensorType
+  TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_FloatType, TVMFFI_FunctionType,
+  TVMFFI_IntType, TVMFFI_StrType, TVMFFI_TensorType
 ], "TVM FFI value with a native type">;
+def AnyTVMFFIGetResultType : AnyTypeOf<[AnyType, TVMFFI_ObjectType], "TVM FFI get result">;
 def AnyTVMFFIObjectOrAnyType : AnyTypeOf<[
-  TVMFFI_AnyType, TVMFFI_ArrayType, TVMFFI_ExceptionType,
-  TVMFFI_FunctionType, TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType
+  TVMFFI_AnyType, TVMFFI_ArrayType, TVMFFI_ExceptionType, TVMFFI_FunctionType,
+  TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType
 ], "TVM FFI object value or !tvm_ffi.any">;
 def AnyTVMFFISemanticType : AnyTypeOf<[
-  TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_DeviceType, TVMFFI_DTypeType,
-  TVMFFI_FloatType,
-  TVMFFI_IntType, TVMFFI_NoneType, TVMFFI_RawStrType, TVMFFI_SmallStrType,
-  TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType
+  TVMFFI_ArrayType, TVMFFI_BoolType, TVMFFI_DTypeType, TVMFFI_DeviceType,
+  TVMFFI_FloatType, TVMFFI_IntType, TVMFFI_NoneType, TVMFFI_RawStrType,
+  TVMFFI_SmallStrType, TVMFFI_StrType, TVMFFI_TensorType, TVMFFI_UnionType
 ], "TVM FFI semantic value">;
+
 #endif

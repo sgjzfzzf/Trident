@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: trident-core-opt %s --convert-torchext-to-gpu --convert-tvm-ffi-to-func --convert-tvm-ffi-to-llvm -split-input-file | FileCheck %s
+// RUN: trident-core-opt %s --convert-tvm-ffi-to-gpu --convert-tvm-ffi-to-func --convert-tvm-ffi-to-llvm -split-input-file | FileCheck %s
 
 // Test get: !tvm_ffi.float -> f64 (extractvalue + bitcast)
 // CHECK-LABEL: func.func @cast_float_to_f64
@@ -21,19 +21,7 @@ func.func @cast_float_to_f64(%arg0: !tvm_ffi.float) -> f64 {
 }
 
 // -----
-// Test get: !tvm_ffi.int -> i64 (extractvalue)
-// CHECK-LABEL: func.func @cast_int_to_i64
-// CHECK-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[PLD:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
-// CHECK-NOT: llvm.trunc
-// CHECK-NOT: torch_c.to_i64
-// CHECK: return %[[PLD]] : i64
-func.func @cast_int_to_i64(%arg0: !tvm_ffi.int) -> i64 {
-  %0 = tvm_ffi.get %arg0 : !tvm_ffi.int -> i64
-  return %0 : i64
-}
 
-// -----
 // Test the kernel-argument construction shape: !tvm_ffi.int -> i64 -> i32
 // CHECK-LABEL: func.func @cast_int_to_i32
 // CHECK-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>
@@ -46,4 +34,18 @@ func.func @cast_int_to_i32(%arg0: !tvm_ffi.int) -> i32 {
   %native = tvm_ffi.get %arg0 : !tvm_ffi.int -> i64
   %0 = llvm.trunc %native : i64 to i32
   return %0 : i32
+}
+
+// -----
+
+// Test get: !tvm_ffi.int -> i64 (extractvalue)
+// CHECK-LABEL: func.func @cast_int_to_i64
+// CHECK-SAME: %[[ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>
+// CHECK: %[[PLD:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[ARG]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK-NOT: llvm.trunc
+// CHECK-NOT: torch_c.to_i64
+// CHECK: return %[[PLD]] : i64
+func.func @cast_int_to_i64(%arg0: !tvm_ffi.int) -> i64 {
+  %0 = tvm_ffi.get %arg0 : !tvm_ffi.int -> i64
+  return %0 : i64
 }

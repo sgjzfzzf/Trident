@@ -15,10 +15,6 @@ class DuplicateInputGuard(Guard):
     code_types = (ASTCode,)
 
     @classmethod
-    def validate_code_list(cls, texts: list[str]) -> bool:
-        return len(texts) == 1
-
-    @classmethod
     def parse_codes(
         cls,
         texts: list[str],
@@ -27,3 +23,7 @@ class DuplicateInputGuard(Guard):
         if source is None:
             return None
         return super().parse_codes(texts, source)
+
+    @classmethod
+    def validate_code_list(cls, texts: list[str]) -> bool:
+        return len(texts) == 1

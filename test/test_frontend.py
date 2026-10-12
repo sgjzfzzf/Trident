@@ -43,7 +43,7 @@ class FrontendTest(TridentTestCase):
         self.assertEqual(cpu_result.device, torch.device("cpu"))
         torch.testing.assert_close(cpu_result, torch.zeros_like(cpu_result))
 
-        for dtype in (torch.float32, torch.float16):
+        for dtype in (torch.float32, torch.float16, torch.float32):
             result: torch.Tensor = empty_with_dtype(x, dtype)
             self.assertEqual(result.dtype, dtype)
             torch.testing.assert_close(result, torch.zeros_like(result))
@@ -113,7 +113,8 @@ class FrontendTest(TridentTestCase):
             ("tuple", tuple_add, (first, second), x + first + second),
         ):
             with self.subTest(container=name):
-                torch.testing.assert_close(function(x, values), expected)
+                for _ in range(2):
+                    torch.testing.assert_close(function(x, values), expected)
 
     def test_string_specialization(self) -> None:
         @trident.jit

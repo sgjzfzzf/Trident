@@ -41,11 +41,11 @@ public:
   using ::mlir::Type::Type;
 
   bool isObject() const;
-  static int getTypeIndex();
+  static bool classof(::mlir::Type type);
   static ::mlir::LLVM::LLVMStructType getLLVMType(::mlir::MLIRContext *context);
+  static int getTypeIndex();
   static ::mlir::Value load(::mlir::OpBuilder &builder, ::mlir::Location loc,
                             ::mlir::Value slot);
-  static bool classof(::mlir::Type type);
 };
 
 class TVMFFIObjectType : public TVMFFIABIType {

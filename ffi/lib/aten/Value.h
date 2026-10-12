@@ -39,6 +39,7 @@
 #include <tvm/ffi/container/tensor.h>
 #include <tvm/ffi/function.h>
 #include <tvm/ffi/type_traits.h>
+#include <type_traits>
 #include <utility>
 
 namespace trident::runtime {
@@ -95,7 +96,9 @@ template <> struct TypePtrOf<c10::VarType> {
 //===----------------------------------------------------------------------===//
 
 /// Primary template — never instantiated directly.
-template <typename T> struct Value;
+template <typename T> struct Value {
+  static_assert(!std::is_same_v<T, T>, "Unsupported ATen value type");
+};
 
 //===----------------------------------------------------------------------===//
 // TRIDENT_RUNTIME_UNIMPL — stub helper for unimplemented types
@@ -112,11 +115,238 @@ template <typename T> struct Value;
   }
 
 //===----------------------------------------------------------------------===//
-// Value specializations — ordered by c10::TypeKind
+// Value specializations — ordered alphabetically by c10 type name
 //===----------------------------------------------------------------------===//
 
-TRIDENT_RUNTIME_UNIMPL(AnyType);
+// --- AnyClassType ---
+template <typename ElemTy>
+struct Value<Contain<c10::AnyClassType, SubTypes<ElemTy>>> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &) {
+    throw std::runtime_error("ClassType build not yet implemented");
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&) {
+    throw std::runtime_error("ClassType resolve not yet implemented");
+  }
+};
+
 TRIDENT_RUNTIME_UNIMPL(AnyEnumType);
+
+TRIDENT_RUNTIME_UNIMPL(AnyType);
+
+// --- BoolType ---
+template <> struct Value<c10::BoolType> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
+    return any.cast<bool>();
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
+    return val.toBool();
+  }
+};
+
+TRIDENT_RUNTIME_UNIMPL(CapsuleType);
+
+TRIDENT_RUNTIME_UNIMPL(ComplexType);
+
+// --- DeviceObjType ---
+template <> struct Value<c10::DeviceObjType> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
+    const DLDevice dl = any.cast<DLDevice>();
+    return at::dlDeviceToTorchDevice(dl.device_type, dl.device_id);
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
+    return at::torchDeviceToDLDevice(val.toDevice());
+  }
+};
+
+// --- DictType ---
+template <typename KeyTy, typename ValTy>
+struct Value<Contain<c10::DictType, SubTypes<KeyTy, ValTy>>> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
+    tvm::ffi::Map<tvm::ffi::Any, tvm::ffi::Any> map =
+        any.cast<tvm::ffi::Map<tvm::ffi::Any, tvm::ffi::Any>>();
+    c10::impl::GenericDict result(TypePtrOf<KeyTy>::get(),
+                                  TypePtrOf<ValTy>::get());
+    for (auto &[k, v] : map) {
+      result.insert(Value<KeyTy>::build(tvm::ffi::AnyView(k)),
+                    Value<ValTy>::build(tvm::ffi::AnyView(v)));
+    }
+    return result;
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
+    c10::impl::GenericDict dict = val.toGenericDict();
+    tvm::ffi::Map<tvm::ffi::Any, tvm::ffi::Any> map;
+    for (auto &kv : dict) {
+      map.Set(Value<KeyTy>::resolve(c10::IValue(kv.key())),
+              Value<ValTy>::resolve(c10::IValue(kv.value())));
+    }
+    return map;
+  }
+};
+
+// --- FloatType ---
+template <> struct Value<c10::FloatType> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
+    return any.cast<double>();
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
+    return val.toDouble();
+  }
+};
+
+// --- FutureType ---
+template <typename ElemTy>
+struct Value<Contain<c10::FutureType, SubTypes<ElemTy>>> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &) {
+    throw std::runtime_error("FutureType build not yet implemented");
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&) {
+    throw std::runtime_error("FutureType resolve not yet implemented");
+  }
+};
+
+TRIDENT_RUNTIME_UNIMPL(GeneratorType);
+
+// --- IntType ---
+template <> struct Value<c10::IntType> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
+    return any.cast<int64_t>();
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&val) { return val.toInt(); }
+};
+
+// --- LayoutType ---
+template <> struct Value<c10::LayoutType> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
+    return any.cast<int64_t>();
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
+    return static_cast<int64_t>(val.toLayout());
+  }
+};
+
+// --- ListType ---
+template <typename ElemTy>
+struct Value<Contain<c10::ListType, SubTypes<ElemTy>>> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
+    tvm::ffi::Array<tvm::ffi::Any> array =
+        any.cast<tvm::ffi::Array<tvm::ffi::Any>>();
+    c10::impl::GenericList result(TypePtrOf<ElemTy>::get());
+    for (const tvm::ffi::Any &elem : array) {
+      result.emplace_back(Value<ElemTy>::build(tvm::ffi::AnyView(elem)));
+    }
+    return result;
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
+    c10::List<c10::IValue> list = std::move(val).toList();
+    tvm::ffi::Array<tvm::ffi::Any> array;
+    for (c10::IValue elem : list) {
+      array.emplace_back(Value<ElemTy>::resolve(std::move(elem)));
+    }
+    return array;
+  }
+};
+
+// --- MemoryFormatType ---
+template <> struct Value<c10::MemoryFormatType> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
+    return static_cast<c10::MemoryFormat>(any.cast<int64_t>());
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
+    return static_cast<int64_t>(val.toMemoryFormat());
+  }
+};
+
+TRIDENT_RUNTIME_UNIMPL(NoneType);
+
+// --- NumberType ---
+template <> struct Value<c10::NumberType> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
+    if (std::optional<int64_t> i = any.as<int64_t>()) {
+      return *i;
+    } else if (std::optional<double> f = any.as<double>()) {
+      return *f;
+    } else if (std::optional<bool> b = any.as<bool>()) {
+      return *b;
+    } else {
+      return any.cast<int64_t>();
+    }
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
+    c10::Scalar s = val.toScalar();
+    if (s.isBoolean()) {
+      return s.toBool();
+    } else if (s.isIntegral(false)) {
+      return s.to<int64_t>();
+    } else {
+      return s.to<double>();
+    }
+  }
+};
+
+// --- OptionalType ---
+template <typename ElemTy>
+struct Value<Contain<c10::OptionalType, SubTypes<ElemTy>>> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
+    return any.type_index() == kTVMFFINone ? c10::IValue()
+                                           : Value<ElemTy>::build(any);
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
+    return val.isNone() ? tvm::ffi::Any()
+                        : Value<ElemTy>::resolve(std::move(val));
+  }
+};
+
+TRIDENT_RUNTIME_UNIMPL(QSchemeType);
+
+// --- RRefType ---
+template <typename ElemTy>
+struct Value<Contain<c10::RRefType, SubTypes<ElemTy>>> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &) {
+    throw std::runtime_error("RRefType build not yet implemented");
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&) {
+    throw std::runtime_error("RRefType resolve not yet implemented");
+  }
+};
+
+// --- ScalarTypeType ---
+template <> struct Value<c10::ScalarTypeType> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
+    if (std::optional<DLDataType> dtype = any.try_cast<DLDataType>()) {
+      if (dtype->lanes != 1) {
+        throw std::runtime_error("Aten dtype must have exactly one lane");
+      }
+      int32_t scalarType = tvm::ffi::Function::GetGlobalRequired(
+                               "trident.runtime.tvm_ffi_to_torch_type")(*dtype)
+                               .cast<int32_t>();
+      if (scalarType < 0) {
+        throw std::runtime_error("unsupported TVM FFI dtype");
+      }
+      return static_cast<c10::ScalarType>(scalarType);
+    } else {
+      return static_cast<c10::ScalarType>(any.cast<int64_t>());
+    }
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
+    return static_cast<int64_t>(val.toScalarType());
+  }
+};
+
+TRIDENT_RUNTIME_UNIMPL(StorageType);
+
+TRIDENT_RUNTIME_UNIMPL(StreamObjType);
+
+// --- StringType ---
+template <> struct Value<c10::StringType> {
+  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
+    return any.cast<std::string>();
+  }
+  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
+    return val.toStringRef();
+  }
+};
+
+TRIDENT_RUNTIME_UNIMPL(SymBoolType);
 
 // --- TensorType ---
 template <> struct Value<c10::TensorType> {
@@ -128,8 +358,6 @@ template <> struct Value<c10::TensorType> {
         at::toDLPack(std::move(val).toTensor()));
   }
 };
-
-TRIDENT_RUNTIME_UNIMPL(StorageType);
 
 // --- TupleType (variadic for multiple returns) ---
 template <typename... ElemTys>
@@ -159,229 +387,7 @@ private:
   }
 };
 
-// --- ListType ---
-template <typename ElemTy>
-struct Value<Contain<c10::ListType, SubTypes<ElemTy>>> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
-    tvm::ffi::Array<tvm::ffi::Any> array =
-        any.cast<tvm::ffi::Array<tvm::ffi::Any>>();
-    c10::impl::GenericList result(TypePtrOf<ElemTy>::get());
-    for (const tvm::ffi::Any &elem : array) {
-      result.emplace_back(Value<ElemTy>::build(tvm::ffi::AnyView(elem)));
-    }
-    return result;
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
-    c10::List<c10::IValue> list = std::move(val).toList();
-    tvm::ffi::Array<tvm::ffi::Any> array;
-    for (c10::IValue elem : list) {
-      array.emplace_back(Value<ElemTy>::resolve(std::move(elem)));
-    }
-    return array;
-  }
-};
-
-// --- DictType ---
-template <typename KeyTy, typename ValTy>
-struct Value<Contain<c10::DictType, SubTypes<KeyTy, ValTy>>> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
-    tvm::ffi::Map<tvm::ffi::Any, tvm::ffi::Any> map =
-        any.cast<tvm::ffi::Map<tvm::ffi::Any, tvm::ffi::Any>>();
-    c10::impl::GenericDict result(TypePtrOf<KeyTy>::get(),
-                                  TypePtrOf<ValTy>::get());
-    for (auto &[k, v] : map) {
-      result.insert(Value<KeyTy>::build(tvm::ffi::AnyView(k)),
-                    Value<ValTy>::build(tvm::ffi::AnyView(v)));
-    }
-    return result;
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
-    c10::impl::GenericDict dict = val.toGenericDict();
-    tvm::ffi::Map<tvm::ffi::Any, tvm::ffi::Any> map;
-    for (auto &kv : dict) {
-      map.Set(Value<KeyTy>::resolve(c10::IValue(kv.key())),
-              Value<ValTy>::resolve(c10::IValue(kv.value())));
-    }
-    return map;
-  }
-};
-
-// --- NumberType ---
-template <> struct Value<c10::NumberType> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
-    if (std::optional<int64_t> i = any.as<int64_t>()) {
-      return *i;
-    } else if (std::optional<double> f = any.as<double>()) {
-      return *f;
-    } else if (std::optional<bool> b = any.as<bool>()) {
-      return *b;
-    } else {
-      return any.cast<int64_t>();
-    }
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
-    c10::Scalar s = val.toScalar();
-    if (s.isBoolean()) {
-      return s.toBool();
-    } else if (s.isIntegral(false)) {
-      return s.to<int64_t>();
-    } else {
-      return s.to<double>();
-    }
-  }
-};
-
-// --- FloatType ---
-template <> struct Value<c10::FloatType> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
-    return any.cast<double>();
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
-    return val.toDouble();
-  }
-};
-
-TRIDENT_RUNTIME_UNIMPL(ComplexType);
-
-// --- FutureType ---
-template <typename ElemTy>
-struct Value<Contain<c10::FutureType, SubTypes<ElemTy>>> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &) {
-    throw std::runtime_error("FutureType build not yet implemented");
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&) {
-    throw std::runtime_error("FutureType resolve not yet implemented");
-  }
-};
-
-// --- RRefType ---
-template <typename ElemTy>
-struct Value<Contain<c10::RRefType, SubTypes<ElemTy>>> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &) {
-    throw std::runtime_error("RRefType build not yet implemented");
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&) {
-    throw std::runtime_error("RRefType resolve not yet implemented");
-  }
-};
-
-// --- IntType ---
-template <> struct Value<c10::IntType> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
-    return any.cast<int64_t>();
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&val) { return val.toInt(); }
-};
-
-TRIDENT_RUNTIME_UNIMPL(NoneType);
-
-// --- StringType ---
-template <> struct Value<c10::StringType> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
-    return any.cast<std::string>();
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
-    return val.toStringRef();
-  }
-};
-
-TRIDENT_RUNTIME_UNIMPL(GeneratorType);
-
-// --- BoolType ---
-template <> struct Value<c10::BoolType> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
-    return any.cast<bool>();
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
-    return val.toBool();
-  }
-};
-
-// --- OptionalType ---
-template <typename ElemTy>
-struct Value<Contain<c10::OptionalType, SubTypes<ElemTy>>> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
-    return any.type_index() == kTVMFFINone ? c10::IValue()
-                                           : Value<ElemTy>::build(any);
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
-    return val.isNone() ? tvm::ffi::Any()
-                        : Value<ElemTy>::resolve(std::move(val));
-  }
-};
-
 TRIDENT_RUNTIME_UNIMPL(VarType);
-
-// --- DeviceObjType ---
-template <> struct Value<c10::DeviceObjType> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
-    const DLDevice dl = any.cast<DLDevice>();
-    return at::dlDeviceToTorchDevice(dl.device_type, dl.device_id);
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
-    return at::torchDeviceToDLDevice(val.toDevice());
-  }
-};
-
-TRIDENT_RUNTIME_UNIMPL(StreamObjType);
-TRIDENT_RUNTIME_UNIMPL(CapsuleType);
-TRIDENT_RUNTIME_UNIMPL(QSchemeType);
-
-// --- ScalarTypeType ---
-template <> struct Value<c10::ScalarTypeType> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
-    if (std::optional<DLDataType> dtype = any.try_cast<DLDataType>()) {
-      if (dtype->lanes != 1) {
-        throw std::runtime_error("Aten dtype must have exactly one lane");
-      }
-      int32_t scalarType = tvm::ffi::Function::GetGlobalRequired(
-                               "trident.runtime.tvm_ffi_to_torch_type")(*dtype)
-                               .cast<int32_t>();
-      if (scalarType < 0) {
-        throw std::runtime_error("unsupported TVM FFI dtype");
-      }
-      return static_cast<c10::ScalarType>(scalarType);
-    } else {
-      return static_cast<c10::ScalarType>(any.cast<int64_t>());
-    }
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
-    return static_cast<int64_t>(val.toScalarType());
-  }
-};
-
-// --- LayoutType ---
-template <> struct Value<c10::LayoutType> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
-    return any.cast<int64_t>();
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
-    return static_cast<int64_t>(val.toLayout());
-  }
-};
-
-// --- MemoryFormatType ---
-template <> struct Value<c10::MemoryFormatType> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &any) {
-    return static_cast<c10::MemoryFormat>(any.cast<int64_t>());
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&val) {
-    return static_cast<int64_t>(val.toMemoryFormat());
-  }
-};
-
-// --- AnyClassType ---
-template <typename ElemTy>
-struct Value<Contain<c10::AnyClassType, SubTypes<ElemTy>>> {
-  static inline c10::IValue build(const tvm::ffi::AnyView &) {
-    throw std::runtime_error("ClassType build not yet implemented");
-  }
-  static inline tvm::ffi::Any resolve(c10::IValue &&) {
-    throw std::runtime_error("ClassType resolve not yet implemented");
-  }
-};
-
-TRIDENT_RUNTIME_UNIMPL(SymBoolType);
 
 #undef TRIDENT_RUNTIME_UNIMPL
 

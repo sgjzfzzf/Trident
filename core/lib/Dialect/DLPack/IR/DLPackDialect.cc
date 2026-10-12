@@ -32,14 +32,6 @@
 
 namespace trident::dlpack {
 
-mlir::LogicalResult TensorDataOp::inferReturnTypes(
-    mlir::MLIRContext *context, std::optional<mlir::Location>, mlir::ValueRange,
-    mlir::DictionaryAttr, mlir::PropertyRef, mlir::RegionRange,
-    llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
-  inferredReturnTypes.push_back(mlir::LLVM::LLVMPointerType::get(context));
-  return mlir::success();
-}
-
 void DLPackDialect::initialize() {
   addTypes<
 #define GET_TYPEDEF_LIST
@@ -49,6 +41,14 @@ void DLPackDialect::initialize() {
 #define GET_OP_LIST
 #include "trident/core/Dialect/DLPack/IR/DLPack.cpp.inc"
       >();
+}
+
+mlir::LogicalResult TensorDataOp::inferReturnTypes(
+    mlir::MLIRContext *context, std::optional<mlir::Location>, mlir::ValueRange,
+    mlir::DictionaryAttr, mlir::PropertyRef, mlir::RegionRange,
+    llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
+  inferredReturnTypes.push_back(mlir::LLVM::LLVMPointerType::get(context));
+  return mlir::success();
 }
 
 } // namespace trident::dlpack

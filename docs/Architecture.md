@@ -17,10 +17,16 @@ Warmup is the first execution, including its mutations; cached calls execute the
 compiled program. A private `func.func` holds the graph, and a public
 `tvm_ffi.func` checks guards and exposes the packed ABI. The Python executor
 converts runtime tensors through DLPack and reconstructs the output pytree.
+The LLVM dispatcher tries packed specializations in order, reads their ABI
+result tags, releases guard exceptions before retrying, and propagates runtime
+call failures. ABI field reads and calls share local builders.
 
-`fx_importer.py` maps FX nodes to SSA values. Tensors use `!tvm_ffi.tensor` and
-retain reference semantics: an in-place ATen call operates on the original
-object, and views keep their storage aliases. ATen calls use the schema to
+`importer.py` maps FX nodes to SSA values. Tensors use `!tvm_ffi.tensor` and
+retain reference semantics. Graph traversal binds call results through one path;
+call dispatch handles scalar operations, ATen and higher-order operators.
+ATen schema selection and argument conversion are separate helpers.
+An in-place ATen call operates on the original object, and views keep their
+storage aliases. ATen calls use the schema to
 order positional and keyword arguments, fill defaults, select a scalar overload
 when FX recorded a Python scalar in a tensor overload, and name the existing
 `trident.aten.<operator>[.<overload>]` registry wrapper. Dtype arguments pass
@@ -35,18 +41,32 @@ unbound symbols produce an explicit import error. Native scalars are boxed only
 at FFI calls, containers or function return boundaries. `torch.cond` imports its
 branches into `scf.if`, with native predicates and semantic result values.
 
-`ir_utils.py` shares scalar arithmetic, constants, boxing and checked calls with
-the guard frontend. Each call asserts lookup success, a non-null handle and call
-success. Integer division uses floor semantics; integer remainder follows
+`ir.py` shares scalar arithmetic, constants, boxing and checked calls with
+the guard frontend. Its binary operation mappings also define the supported
+FX scalar operations; the importer only normalizes symbolic min/max aliases.
+Each call asserts lookup success, a non-null handle and call success. Integer
+division uses floor semantics; integer remainder follows
 `a - floor(a / b) * b`. Supported arithmetic follows the runtime's 64-bit scalar
 ABI. Unsupported scalar expressions or higher-order operators fail explicitly.
+
+TVM FFI types have concrete Python bindings exported by
+`trident.core.dialects.tvm_ffi`. Their TypeID registrations automatically cast
+parsed types and operation value types to classes such as `BoolType`, `IntType`
+and `TensorType`. Python type inspection uses `isinstance`, integer width and
+signedness, or MLIR Type equality, rather than textual spellings. Native scalar
+boxing remains limited to signless i1/i64 and f64. Internal TVM FFI type
+construction uses `.get()`; `UnionType.get()` verifies members and exposes them
+through its read-only `types` tuple. `ffi_type(name)` remains a textual
+compatibility constructor.
 
 ## Guards and containers
 
 Guards are parsed into `Code`, `Guard` and collection objects under
 `python/trident/guards/`. `InputTableBuilder` maps function arguments and nested
 list/tuple paths to semantic values. Containers use `!tvm_ffi.array`; extraction
-calls `ffi.ArrayGetItem` lazily in the block that needs the element. Scalar guards
+calls `ffi.ArrayGetItem` lazily in the block that needs the element.
+A single input-node implementation handles leaves and containers; each fresh
+table owns its cached values so extraction remains local to its region. Scalar guards
 use native arithmetic and comparisons; tensor metadata uses existing semantic
 metadata operations. Guard collections build short-circuit CFG branches. A
 failed specialization returns `!tvm_ffi.exception` widened to `!tvm_ffi.any`, so
@@ -57,8 +77,11 @@ DLPack does not expose Python wrapper identity or autograd view relationships.
 
 ## Triton kernels
 
-`triton_importer.py` resolves the compiled Triton kernel from its warmup cache,
-imports its cubin as `gpu.binary`, and emits `torchext.trident_kernel_launch`.
+`importer.py` resolves the compiled Triton kernel from its warmup cache,
+imports its cubin as `gpu.binary`, and emits `tvm_ffi.kernel_launch`.
+Cache resolution, specialization attributes and binary insertion are separate
+helpers; kernel import assembles operands, clones functional outputs and emits
+the launch, then returns its output dictionary to graph traversal.
 Each specialization has a unique binary symbol. Operands retain semantic FFI
 values and carry constant or variable specialization attributes in source
 parameter order. Variable attributes record native ABI type and divisibility;
@@ -67,7 +90,7 @@ are used only to select the compiled kernel, never to substitute runtime shapes.
 Functional Triton wrapper outputs explicitly clone `tensors_to_clone` before
 launching; mutation wrappers use the original operands.
 
-`ConvertTorchExtToGPU` validates specialization attributes, branches to
+`ConvertTVMFFIToGPU` validates specialization attributes, branches to
 `GuardMatch` on failure, extracts tensor pointers and scalar values, and emits
 `gpu.launch_func` with the current TVM FFI CUDA stream. Constant operands are
 checked and omitted from the native kernel argument list. The ordinary inliner
@@ -99,7 +122,7 @@ initialization; call sites retain and release the cached reference.
 
 ## Source layout and validation
 
-`core/` contains the DLPack, TVM FFI and kernel-launch dialects, lowering passes,
+`core/` contains the DLPack and TVM FFI dialects, lowering passes,
 C API and Python bindings. `ffi/` generates ATen wrappers from dispatcher schemas
 and provides runtime conversion and exception helpers. Python import and guard
 tests live under `test/`; dialect, conversion and pipeline tests live under

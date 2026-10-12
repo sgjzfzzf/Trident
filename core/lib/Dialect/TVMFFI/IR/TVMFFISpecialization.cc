@@ -5,11 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttrs.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFIOps.h"
 #include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.h"
-#include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.h"
 #include <cstdint>
-#include <dlpack/dlpack.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/STLFunctionalExtras.h>
@@ -31,141 +30,15 @@
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
 
-#include "trident/core/Dialect/TorchExt/IR/TorchExtInterfaces.cpp.inc"
-
-namespace trident::torchext {
-
-DLDataType BFloat16Attr::getDLPackDType() const { return {kDLBfloat, 16, 1}; }
-
-DLDataType BoolAttr::getDLPackDType() const { return {kDLBool, 8, 1}; }
-
-DLDataType Float4E2M1FNX2Attr::getDLPackDType() const {
-  return {kDLFloat4_e2m1fn, 4, 2};
-}
-
-DLDataType Float8E4M3FNAttr::getDLPackDType() const {
-  return {kDLFloat8_e4m3fn, 8, 1};
-}
-
-DLDataType Float8E4M3FNUZAttr::getDLPackDType() const {
-  return {kDLFloat8_e4m3fnuz, 8, 1};
-}
-
-DLDataType Float8E5M2Attr::getDLPackDType() const {
-  return {kDLFloat8_e5m2, 8, 1};
-}
-
-DLDataType Float8E5M2FNUZAttr::getDLPackDType() const {
-  return {kDLFloat8_e5m2fnuz, 8, 1};
-}
-
-DLDataType Float8E8M0FNUAttr::getDLPackDType() const {
-  return {kDLFloat8_e8m0fnu, 8, 1};
-}
-
-DLDataType Complex32Attr::getDLPackDType() const { return {kDLComplex, 32, 1}; }
-
-DLDataType Complex64Attr::getDLPackDType() const { return {kDLComplex, 64, 1}; }
-
-DLDataType Complex128Attr::getDLPackDType() const {
-  return {kDLComplex, 128, 1};
-}
-
-DLDataType Float16Attr::getDLPackDType() const { return {kDLFloat, 16, 1}; }
-
-DLDataType Float32Attr::getDLPackDType() const { return {kDLFloat, 32, 1}; }
-
-DLDataType Float64Attr::getDLPackDType() const { return {kDLFloat, 64, 1}; }
-
-DLDataType Int8Attr::getDLPackDType() const { return {kDLInt, 8, 1}; }
-
-DLDataType Int1Attr::getDLPackDType() const { return {kDLInt, 1, 1}; }
-
-DLDataType Int2Attr::getDLPackDType() const { return {kDLInt, 2, 1}; }
-
-DLDataType Int3Attr::getDLPackDType() const { return {kDLInt, 3, 1}; }
-
-DLDataType Int4Attr::getDLPackDType() const { return {kDLInt, 4, 1}; }
-
-DLDataType Int5Attr::getDLPackDType() const { return {kDLInt, 5, 1}; }
-
-DLDataType Int6Attr::getDLPackDType() const { return {kDLInt, 6, 1}; }
-
-DLDataType Int7Attr::getDLPackDType() const { return {kDLInt, 7, 1}; }
-
-DLDataType Int16Attr::getDLPackDType() const { return {kDLInt, 16, 1}; }
-
-DLDataType Int32Attr::getDLPackDType() const { return {kDLInt, 32, 1}; }
-
-DLDataType Int64Attr::getDLPackDType() const { return {kDLInt, 64, 1}; }
-
-DLDataType UInt8Attr::getDLPackDType() const { return {kDLUInt, 8, 1}; }
-
-DLDataType UInt1Attr::getDLPackDType() const { return {kDLUInt, 1, 1}; }
-
-DLDataType UInt2Attr::getDLPackDType() const { return {kDLUInt, 2, 1}; }
-
-DLDataType UInt3Attr::getDLPackDType() const { return {kDLUInt, 3, 1}; }
-
-DLDataType UInt4Attr::getDLPackDType() const { return {kDLUInt, 4, 1}; }
-
-DLDataType UInt5Attr::getDLPackDType() const { return {kDLUInt, 5, 1}; }
-
-DLDataType UInt6Attr::getDLPackDType() const { return {kDLUInt, 6, 1}; }
-
-DLDataType UInt7Attr::getDLPackDType() const { return {kDLUInt, 7, 1}; }
-
-DLDataType UInt16Attr::getDLPackDType() const { return {kDLUInt, 16, 1}; }
-
-DLDataType UInt32Attr::getDLPackDType() const { return {kDLUInt, 32, 1}; }
-
-DLDataType UInt64Attr::getDLPackDType() const { return {kDLUInt, 64, 1}; }
+namespace trident::tvm_ffi {
 
 namespace {
 
 // Recursive traversal mirrors the nested tuple attribute structure.
 // NOLINTBEGIN(misc-no-recursion)
-bool isValidConstantValue(mlir::Attribute value) {
-  if (mlir::isa<mlir::StringAttr>(value)) {
-    return true;
-  }
-  if (auto array = mlir::dyn_cast<mlir::ArrayAttr>(value)) {
-    return llvm::all_of(array, isValidConstantValue);
-  }
-  auto typed = mlir::dyn_cast<mlir::TypedAttr>(value);
-  if (!typed) {
-    return false;
-  }
-  mlir::Type const type = typed.getType();
-  return type.isInteger(1) || type.isInteger(64) || type.isF64();
-}
-
-mlir::Type getConstantValueType(mlir::Attribute value,
-                                mlir::MLIRContext *context) {
-  return llvm::TypeSwitch<mlir::Attribute, mlir::Type>(value)
-      .Case<mlir::StringAttr>([&](mlir::StringAttr) -> mlir::Type {
-        return tvm_ffi::RawStrType::get(context);
-      })
-      .Case<mlir::ArrayAttr>([&](mlir::ArrayAttr) -> mlir::Type {
-        return tvm_ffi::ArrayType::get(context);
-      })
-      .Case<mlir::IntegerAttr>([&](mlir::IntegerAttr integer) -> mlir::Type {
-        if (integer.getType().isInteger(1)) {
-          return tvm_ffi::BoolType::get(context);
-        }
-        return tvm_ffi::IntType::get(context);
-      })
-      .Case<mlir::FloatAttr>([&](mlir::FloatAttr) -> mlir::Type {
-        return tvm_ffi::FloatType::get(context);
-      });
-}
-
 mlir::Value buildConstantValue(mlir::OpBuilder &builder, mlir::Location loc,
                                mlir::Attribute value) {
   return llvm::TypeSwitch<mlir::Attribute, mlir::Value>(value)
-      .Case<mlir::StringAttr>([&](mlir::StringAttr string) -> mlir::Value {
-        return tvm_ffi::ConstantRawStrOp::create(builder, loc, string);
-      })
       .Case<mlir::ArrayAttr>([&](mlir::ArrayAttr array) -> mlir::Value {
         llvm::SmallVector<mlir::Value> const elements = llvm::map_to_vector(
             array, [&](mlir::Attribute element) -> mlir::Value {
@@ -198,6 +71,9 @@ mlir::Value buildConstantValue(mlir::OpBuilder &builder, mlir::Location loc,
                                    "TVMFFIFunctionCall failed for ffi.Array");
         return call.getResult();
       })
+      .Case<mlir::FloatAttr>([&](mlir::FloatAttr floating) -> mlir::Value {
+        return tvm_ffi::ConstantFloatOp::create(builder, loc, floating);
+      })
       .Case<mlir::IntegerAttr>([&](mlir::IntegerAttr integer) -> mlir::Value {
         if (integer.getType().isInteger(1)) {
           return tvm_ffi::ConstantBoolOp::create(
@@ -205,23 +81,48 @@ mlir::Value buildConstantValue(mlir::OpBuilder &builder, mlir::Location loc,
         }
         return tvm_ffi::ConstantIntOp::create(builder, loc, integer);
       })
-      .Case<mlir::FloatAttr>([&](mlir::FloatAttr floating) -> mlir::Value {
-        return tvm_ffi::ConstantFloatOp::create(builder, loc, floating);
+      .Case<mlir::StringAttr>([&](mlir::StringAttr string) -> mlir::Value {
+        return tvm_ffi::ConstantRawStrOp::create(builder, loc, string);
       });
+}
+
+mlir::Type getConstantValueType(mlir::Attribute value,
+                                mlir::MLIRContext *context) {
+  return llvm::TypeSwitch<mlir::Attribute, mlir::Type>(value)
+      .Case<mlir::ArrayAttr>([&](mlir::ArrayAttr) -> mlir::Type {
+        return tvm_ffi::ArrayType::get(context);
+      })
+      .Case<mlir::FloatAttr>([&](mlir::FloatAttr) -> mlir::Type {
+        return tvm_ffi::FloatType::get(context);
+      })
+      .Case<mlir::IntegerAttr>([&](mlir::IntegerAttr integer) -> mlir::Type {
+        if (integer.getType().isInteger(1)) {
+          return tvm_ffi::BoolType::get(context);
+        }
+        return tvm_ffi::IntType::get(context);
+      })
+      .Case<mlir::StringAttr>([&](mlir::StringAttr) -> mlir::Type {
+        return tvm_ffi::RawStrType::get(context);
+      });
+}
+
+bool isValidConstantValue(mlir::Attribute value) {
+  if (mlir::isa<mlir::StringAttr>(value)) {
+    return true;
+  }
+  if (auto array = mlir::dyn_cast<mlir::ArrayAttr>(value)) {
+    return llvm::all_of(array, isValidConstantValue);
+  }
+  auto typed = mlir::dyn_cast<mlir::TypedAttr>(value);
+  if (!typed) {
+    return false;
+  }
+  mlir::Type const type = typed.getType();
+  return type.isInteger(1) || type.isInteger(64) || type.isF64();
 }
 // NOLINTEND(misc-no-recursion)
 
 } // namespace
-
-mlir::LogicalResult ConstantSpecializationAttr::verify(
-    llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-    mlir::Attribute value) {
-  if (isValidConstantValue(value)) {
-    return mlir::success();
-  }
-  return emitError() << "constant specialization requires an i1, i64, f64, "
-                        "string, or tuple value";
-}
 
 mlir::Value ConstantSpecializationAttr::buildCheck(mlir::OpBuilder &builder,
                                                    mlir::Location loc,
@@ -234,6 +135,16 @@ mlir::Type ConstantSpecializationAttr::getTargetType() const {
   return getConstantValueType(getValue(), getContext());
 }
 
+mlir::LogicalResult ConstantSpecializationAttr::verify(
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+    mlir::Attribute value) {
+  if (isValidConstantValue(value)) {
+    return mlir::success();
+  }
+  return emitError() << "constant specialization requires an i1, i64, f64, "
+                        "string, or tuple value";
+}
+
 mlir::Value VariableSpecializationAttr::buildCheck(mlir::OpBuilder &builder,
                                                    mlir::Location loc,
                                                    mlir::Value operand) const {
@@ -243,11 +154,6 @@ mlir::Value VariableSpecializationAttr::buildCheck(mlir::OpBuilder &builder,
   }
   mlir::Value const value =
       llvm::TypeSwitch<mlir::Type, mlir::Value>(operand.getType())
-          .Case<mlir::LLVM::LLVMPointerType>(
-              [&](mlir::LLVM::LLVMPointerType) -> mlir::Value {
-                return mlir::LLVM::PtrToIntOp::create(
-                    builder, loc, builder.getI64Type(), operand);
-              })
           .Case<mlir::IntegerType>([&](mlir::IntegerType type) -> mlir::Value {
             return type.isInteger(64)
                        ? operand
@@ -255,6 +161,11 @@ mlir::Value VariableSpecializationAttr::buildCheck(mlir::OpBuilder &builder,
                              builder, loc, builder.getI64Type(), operand)
                              .getResult();
           })
+          .Case<mlir::LLVM::LLVMPointerType>(
+              [&](mlir::LLVM::LLVMPointerType) -> mlir::Value {
+                return mlir::LLVM::PtrToIntOp::create(
+                    builder, loc, builder.getI64Type(), operand);
+              })
           .Default([&](mlir::Type) -> mlir::Value {
             return mlir::UnrealizedConversionCastOp::create(
                        builder, loc, builder.getI64Type(), operand)
@@ -276,4 +187,4 @@ mlir::Type VariableSpecializationAttr::getTargetType() const {
   return getKind().getValue();
 }
 
-} // namespace trident::torchext
+} // namespace trident::tvm_ffi

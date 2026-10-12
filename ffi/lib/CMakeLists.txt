@@ -5,12 +5,17 @@
 #
 # ===----------------------------------------------------------------------===//
 
+find_library(
+  TRIDENT_TORCH_PYTHON_LIBRARY torch_python
+  PATHS "${TORCH_INSTALL_PREFIX}/lib"
+  NO_DEFAULT_PATH REQUIRED)
+
 add_library(TridentFFI SHARED Exception.cc Runtime.cc)
 target_include_directories(TridentFFI PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(
   TridentFFI
   PUBLIC ${TORCH_LIBRARIES} tvm_ffi::header
-  PRIVATE tvm_ffi::shared)
+  PRIVATE Python3::Python ${TRIDENT_TORCH_PYTHON_LIBRARY} tvm_ffi::shared)
 
 # --------------------------------------------------------------------------- #
 # ATen operator wrappers exposed through the TVM FFI global function table.

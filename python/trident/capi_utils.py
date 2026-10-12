@@ -20,6 +20,13 @@ def _trident_pkg_dir() -> pathlib.Path:
     return (im.distribution("trident")._path.parent / "trident").resolve()
 
 
+def find_aten_ffi_library() -> str:
+    """Find the generated ATen TVM FFI wrapper library."""
+    aten_ffi_lib: pathlib.Path = _trident_pkg_dir() / "lib" / "libTridentAtenFFI.so"
+    assert aten_ffi_lib.is_file(), f"missing Trident ATen FFI library: {aten_ffi_lib}"
+    return f"{aten_ffi_lib}"
+
+
 def find_ffi_exception_library() -> str:
     """Find the Trident FFI library.
 
@@ -34,13 +41,6 @@ def find_ffi_exception_library() -> str:
         f"missing Trident FFI Exception library: {ffi_exception_lib}"
     )
     return f"{ffi_exception_lib}"
-
-
-def find_aten_ffi_library() -> str:
-    """Find the generated ATen TVM FFI wrapper library."""
-    aten_ffi_lib: pathlib.Path = _trident_pkg_dir() / "lib" / "libTridentAtenFFI.so"
-    assert aten_ffi_lib.is_file(), f"missing Trident ATen FFI library: {aten_ffi_lib}"
-    return f"{aten_ffi_lib}"
 
 
 def find_mlir_cuda_runtime_library() -> str:

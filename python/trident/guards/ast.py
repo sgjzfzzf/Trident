@@ -15,14 +15,13 @@ import torch
 
 from trident.core import ir
 from trident.core.dialects import arith
-from trident.core.dialects import tvm_ffi as ffi
+from trident.core.dialects import tvm_ffi as tvm_ffi_d
 from trident.input import InputTable
-from trident.ir_utils import (
+from trident.ir import (
     binary,
     checked_call,
     constant,
     equal,
-    ffi_type,
     native,
     native_constant,
 )
@@ -35,31 +34,25 @@ TensorIndexedMetadataFn: TypeAlias = Callable[[ir.Value, ir.Value], ir.Value]
 ScalarOperationKey: TypeAlias = type[ast.operator | ast.cmpop] | str
 
 
-class _SkipGuard(Exception):
-    def __init__(self, result: bool):
-        super().__init__(result)
-        self.result = result
-
-
 class ASTVisitor(ast.NodeVisitor):
     """Compose delayed native/TVM FFI builders from Dynamo guard expressions."""
 
     _scalar_ops: ClassVar[dict[ScalarOperationKey, Callable[..., Any]]] = {
         ast.Add: operator.add,
-        ast.Sub: operator.sub,
-        ast.Mult: operator.mul,
-        ast.Div: operator.truediv,
-        ast.FloorDiv: operator.floordiv,
-        ast.Mod: operator.mod,
         ast.BitOr: operator.or_,
+        ast.Div: operator.truediv,
         ast.Eq: operator.eq,
-        ast.NotEq: operator.ne,
-        ast.Lt: operator.lt,
-        ast.LtE: operator.le,
+        ast.FloorDiv: operator.floordiv,
         ast.Gt: operator.gt,
         ast.GtE: operator.ge,
-        "min": min,
+        ast.Lt: operator.lt,
+        ast.LtE: operator.le,
+        ast.Mod: operator.mod,
+        ast.Mult: operator.mul,
+        ast.NotEq: operator.ne,
+        ast.Sub: operator.sub,
         "max": max,
+        "min": min,
     }
 
     def __init__(self, text: str) -> None:
@@ -91,9 +84,8 @@ class ASTVisitor(ast.NodeVisitor):
             assert lhs_value is not None and rhs_value is not None, (
                 f"guard source cannot be resolved: {self.text!r}"
             )
-            if (
-                str(lhs_value.type) != "!tvm_ffi.tensor"
-                or str(rhs_value.type) != "!tvm_ffi.tensor"
+            if not isinstance(lhs_value.type, tvm_ffi_d.TensorType) or not isinstance(
+                rhs_value.type, tvm_ffi_d.TensorType
             ):
                 return equal(lhs_value, rhs_value)
             warnings.warn(
@@ -122,7 +114,7 @@ class ASTVisitor(ast.NodeVisitor):
         value = native(value)
         return (
             arith.negf(value)
-            if str(value.type) == "f64"
+            if isinstance(value.type, ir.F64Type)
             else arith.subi(native_constant(0), value)
         )
 
@@ -133,10 +125,6 @@ class ASTVisitor(ast.NodeVisitor):
             return binary(operator.eq, self._sequence_length(value), native_constant(0))
 
         return build
-
-    @staticmethod
-    def _sequence_length(value: ir.Value) -> ir.Value:
-        return native(checked_call("ffi.ArraySize", [value], ffi_type("int")))
 
     @staticmethod
     def _build_select(
@@ -178,6 +166,14 @@ class ASTVisitor(ast.NodeVisitor):
 
         return build
 
+    @staticmethod
+    def _false(context: ir.Context) -> ir.Value:
+        return native_constant(False)
+
+    @staticmethod
+    def _sequence_length(value: ir.Value) -> ir.Value:
+        return native(checked_call("ffi.ArraySize", [value], tvm_ffi_d.IntType.get()))
+
     def _skip_base(self) -> GuardBuildFn:
         def build(_: InputTable, context: ir.Context) -> ir.Value:
             warnings.warn(
@@ -198,10 +194,6 @@ class ASTVisitor(ast.NodeVisitor):
             raise _SkipGuard(True)
 
         return build
-
-    @staticmethod
-    def _false(context: ir.Context) -> ir.Value:
-        return native_constant(False)
 
     @staticmethod
     def _true(context: ir.Context) -> ir.Value:
@@ -229,7 +221,7 @@ class ASTVisitor(ast.NodeVisitor):
         if node.func.attr == "storage_offset":
             return self._skip_storage_offset()
         operations = {
-            "ndimension": ffi.tensor_dim,
+            "ndimension": tvm_ffi_d.tensor_dim,
         }
         operation = operations.get(node.func.attr)
         return self._build_tensor_metadata(source, operation) if operation else None
@@ -314,7 +306,7 @@ class ASTVisitor(ast.NodeVisitor):
                 return None
             return self._constant(value)
 
-        operations = {"min", "max"}
+        operations = {"max", "min"}
         if (
             isinstance(node.func, ast.Name)
             and len(node.args) == 2
@@ -349,7 +341,7 @@ class ASTVisitor(ast.NodeVisitor):
             return None
         return self._build_tensor_metadata(
             source,
-            ffi.tensor_dim if is_tensor_shape else self._sequence_length,
+            tvm_ffi_d.tensor_dim if is_tensor_shape else self._sequence_length,
         )
 
     def visit_Compare(self, node: ast.Compare) -> GuardBuildFn | None:
@@ -446,8 +438,8 @@ class ASTVisitor(ast.NodeVisitor):
         if source is None:
             return None
         operations = {
-            "size": ffi.tensor_size,
-            "stride": ffi.tensor_stride,
+            "size": tvm_ffi_d.tensor_size,
+            "stride": tvm_ffi_d.tensor_stride,
         }
         operation = operations.get(call.func.attr)
         if operation is None:
@@ -478,3 +470,9 @@ class ASTVisitor(ast.NodeVisitor):
                 self._value(operand, tree, context),
             )
         return None
+
+
+class _SkipGuard(Exception):
+    def __init__(self, result: bool):
+        super().__init__(result)
+        self.result = result

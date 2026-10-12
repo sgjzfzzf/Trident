@@ -13,15 +13,9 @@ if TYPE_CHECKING:
     import torch._guards
 
 
+# Define the common handler before its registered subclasses.
 class IgnoredGuard(Guard):
     """Base implementation for ambient guards with no wrapper IR check."""
-
-    @classmethod
-    def parse_source(
-        cls,
-        guard: torch._guards.Guard,
-    ) -> Local | None:
-        return None
 
     @classmethod
     def parse_codes(
@@ -30,6 +24,13 @@ class IgnoredGuard(Guard):
         source: Local | None,
     ) -> list[GuardBuilder]:
         return []
+
+    @classmethod
+    def parse_source(
+        cls,
+        guard: torch._guards.Guard,
+    ) -> Local | None:
+        return None
 
 
 class AutogradSavedTensorsHooksGuard(IgnoredGuard):

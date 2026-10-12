@@ -15,8 +15,8 @@
 // Standard C library function descriptors.
 namespace trident::conversion::utils {
 
-TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(malloc, Malloc)
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(free, Free)
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(malloc, Malloc)
 
 } // namespace trident::conversion::utils
 

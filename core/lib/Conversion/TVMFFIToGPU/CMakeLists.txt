@@ -1,6 +1,6 @@
 add_mlir_conversion_library(
-  TorchExtToGPU
-  TorchExtToGPU.cc
+  TVMFFIToGPU
+  TVMFFIToGPU.cc
   DEPENDS
   MLIRConversionPassIncGen
   LINK_LIBS
@@ -9,5 +9,4 @@ add_mlir_conversion_library(
   MLIRControlFlowDialect
   MLIRGPUDialect
   MLIRPass
-  TorchExtDialect
   TVMFFIDialect)

@@ -12,7 +12,7 @@ from trident.input import InputTable
 
 from ..ast import ASTVisitor
 from ..local import Local
-from .base import GuardBuilder, GuardBuildFn, GuardCode
+from .base import GuardBuildFn, GuardBuilder, GuardCode
 
 
 class ConstantCode(GuardCode):
@@ -25,6 +25,24 @@ class ConstantCode(GuardCode):
         super().__init__(text, source)
         self.expression: Final[ast.expr] = expression
         self.build_fn: Final[GuardBuildFn | None] = ASTVisitor(text).visit(expression)
+
+    @override
+    def build(
+        self,
+        tree: InputTable,
+        context: ir.Context,
+    ) -> ir.Value:
+        if self.build_fn is None:
+            return super().build(tree, context)
+        return self.build_fn(tree, context)
+
+    @property
+    def key(self) -> Hashable:
+        return (
+            "constant",
+            self.source,
+            ast.dump(self.expression, include_attributes=False),
+        )
 
     @classmethod
     def parse(
@@ -59,24 +77,6 @@ class ConstantCode(GuardCode):
             return cls(text, source, expression)
         else:
             return None
-
-    @property
-    def key(self) -> Hashable:
-        return (
-            "constant",
-            self.source,
-            ast.dump(self.expression, include_attributes=False),
-        )
-
-    @override
-    def build(
-        self,
-        tree: InputTable,
-        context: ir.Context,
-    ) -> ir.Value:
-        if self.build_fn is None:
-            return super().build(tree, context)
-        return self.build_fn(tree, context)
 
     def to_builder(self) -> GuardBuilder:
         assert self.build_fn is not None, (

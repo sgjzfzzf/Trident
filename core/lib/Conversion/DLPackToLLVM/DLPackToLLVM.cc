@@ -33,6 +33,49 @@ namespace trident::conversion {
 #define GEN_PASS_DEF_CONVERTDLPACKTOLLVM
 #include "trident/core/Conversion/Passes.h.inc"
 
+class ConvertTensorDTypeOp final
+    : public mlir::OpConversionPattern<dlpack::TensorDTypeOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(dlpack::TensorDTypeOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    mlir::Value const dtype = mlir::LLVM::ExtractValueOp::create(
+        rewriter, op.getLoc(),
+        mlir::LLVM::LLVMStructType::getLiteral(
+            rewriter.getContext(), {rewriter.getI8Type(), rewriter.getI8Type(),
+                                    rewriter.getI16Type()}),
+        adaptor.getTensor(), llvm::ArrayRef<int64_t>{3});
+    mlir::Value const code = mlir::LLVM::ExtractValueOp::create(
+        rewriter, op.getLoc(), rewriter.getI8Type(), dtype,
+        llvm::ArrayRef<int64_t>{0});
+    mlir::Value const bits = mlir::LLVM::ExtractValueOp::create(
+        rewriter, op.getLoc(), rewriter.getI8Type(), dtype,
+        llvm::ArrayRef<int64_t>{1});
+    mlir::Value const lanes = mlir::LLVM::ExtractValueOp::create(
+        rewriter, op.getLoc(), rewriter.getI16Type(), dtype,
+        llvm::ArrayRef<int64_t>{2});
+    rewriter.replaceOp(op, {code, bits, lanes});
+    return mlir::success();
+  }
+};
+
+class ConvertTensorDataOp final
+    : public mlir::OpConversionPattern<dlpack::TensorDataOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(dlpack::TensorDataOp op, OpAdaptor adaptor,
+                  mlir::ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<mlir::LLVM::ExtractValueOp>(
+        op, mlir::LLVM::LLVMPointerType::get(rewriter.getContext()),
+        adaptor.getTensor(), llvm::ArrayRef<int64_t>{0});
+    return mlir::success();
+  }
+};
+
 class ConvertTensorDeviceOp final
     : public mlir::OpConversionPattern<dlpack::TensorDeviceOp> {
 public:
@@ -72,49 +115,6 @@ public:
         llvm::ArrayRef<int64_t>{2});
     rewriter.replaceOpWithNewOp<mlir::LLVM::SExtOp>(op, rewriter.getI64Type(),
                                                     ndim);
-    return mlir::success();
-  }
-};
-
-class ConvertTensorDataOp final
-    : public mlir::OpConversionPattern<dlpack::TensorDataOp> {
-public:
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(dlpack::TensorDataOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<mlir::LLVM::ExtractValueOp>(
-        op, mlir::LLVM::LLVMPointerType::get(rewriter.getContext()),
-        adaptor.getTensor(), llvm::ArrayRef<int64_t>{0});
-    return mlir::success();
-  }
-};
-
-class ConvertTensorDTypeOp final
-    : public mlir::OpConversionPattern<dlpack::TensorDTypeOp> {
-public:
-  using OpConversionPattern::OpConversionPattern;
-
-  mlir::LogicalResult
-  matchAndRewrite(dlpack::TensorDTypeOp op, OpAdaptor adaptor,
-                  mlir::ConversionPatternRewriter &rewriter) const override {
-    mlir::Value const dtype = mlir::LLVM::ExtractValueOp::create(
-        rewriter, op.getLoc(),
-        mlir::LLVM::LLVMStructType::getLiteral(
-            rewriter.getContext(), {rewriter.getI8Type(), rewriter.getI8Type(),
-                                    rewriter.getI16Type()}),
-        adaptor.getTensor(), llvm::ArrayRef<int64_t>{3});
-    mlir::Value const code = mlir::LLVM::ExtractValueOp::create(
-        rewriter, op.getLoc(), rewriter.getI8Type(), dtype,
-        llvm::ArrayRef<int64_t>{0});
-    mlir::Value const bits = mlir::LLVM::ExtractValueOp::create(
-        rewriter, op.getLoc(), rewriter.getI8Type(), dtype,
-        llvm::ArrayRef<int64_t>{1});
-    mlir::Value const lanes = mlir::LLVM::ExtractValueOp::create(
-        rewriter, op.getLoc(), rewriter.getI16Type(), dtype,
-        llvm::ArrayRef<int64_t>{2});
-    rewriter.replaceOp(op, {code, bits, lanes});
     return mlir::success();
   }
 };
@@ -208,8 +208,8 @@ public:
     mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
         patterns, typeConverter);
     mlir::populateReturnOpTypeConversionPattern(patterns, typeConverter);
-    target.addLegalDialect<mlir::BuiltinDialect, mlir::func::FuncDialect,
-                           mlir::LLVM::LLVMDialect>();
+    target.addLegalDialect<mlir::BuiltinDialect, mlir::LLVM::LLVMDialect,
+                           mlir::func::FuncDialect>();
     target.addDynamicallyLegalOp<mlir::func::FuncOp>(
         [&](mlir::func::FuncOp op) -> bool {
           return typeConverter.isSignatureLegal(op.getFunctionType());

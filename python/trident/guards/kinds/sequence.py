@@ -16,17 +16,10 @@ if TYPE_CHECKING:
 
 class SequenceLengthGuard(Guard):
     create_fn_name = "SEQUENCE_LENGTH"
-    code_types = (TypeIdCode, ASTCode)
-
-    @classmethod
-    def parse_source(cls, guard: torch._guards.Guard) -> Local | None:
-        try:
-            expression = ast.parse(guard.name, mode="eval").body
-        except SyntaxError:
-            return None
-        if isinstance(expression, ast.Attribute) and expression.attr == "shape":
-            return Local.from_expression(expression.value)
-        return Local.from_expression(expression)
+    code_types = (
+        ASTCode,
+        TypeIdCode,
+    )
 
     @classmethod
     def parse_codes(
@@ -55,3 +48,13 @@ class SequenceLengthGuard(Guard):
                 return None
             parsed_codes.append(type_code.to_builder())
         return parsed_codes
+
+    @classmethod
+    def parse_source(cls, guard: torch._guards.Guard) -> Local | None:
+        try:
+            expression = ast.parse(guard.name, mode="eval").body
+        except SyntaxError:
+            return None
+        if isinstance(expression, ast.Attribute) and expression.attr == "shape":
+            return Local.from_expression(expression.value)
+        return Local.from_expression(expression)

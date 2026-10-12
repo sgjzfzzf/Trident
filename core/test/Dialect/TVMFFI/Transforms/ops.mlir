@@ -7,16 +7,6 @@
 
 // RUN: trident-core-opt %s -split-input-file -ownership-deallocation | FileCheck %s --check-prefix=OWNERSHIP
 
-// Object-valued return operands are retained for the caller before local
-// ownership credits are released.
-// OWNERSHIP-LABEL: tvm_ffi.func @return_tensor(
-// OWNERSHIP-SAME: [[RETURN_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
-// OWNERSHIP-NEXT: tvm_ffi.ObjectIncRef [[RETURN_ARG]] : !tvm_ffi.tensor
-// OWNERSHIP-NEXT: tvm_ffi.return [[RETURN_ARG]] : !tvm_ffi.tensor
-tvm_ffi.func @return_tensor(%arg: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
-  tvm_ffi.return %arg : !tvm_ffi.tensor
-}
-
 // A generic object returned by tvm_ffi.get is a borrowed view and is not
 // tracked by this pass.
 // OWNERSHIP-LABEL: tvm_ffi.func @get_object(
@@ -26,4 +16,14 @@ tvm_ffi.func @return_tensor(%arg: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
 tvm_ffi.func @get_object(%arg: !tvm_ffi.tensor) -> !tvm_ffi.object {
   %object = tvm_ffi.get %arg : !tvm_ffi.tensor -> !tvm_ffi.object
   tvm_ffi.return %object : !tvm_ffi.object
+}
+
+// Object-valued return operands are retained for the caller before local
+// ownership credits are released.
+// OWNERSHIP-LABEL: tvm_ffi.func @return_tensor(
+// OWNERSHIP-SAME: [[RETURN_ARG:%[a-zA-Z0-9_]+]]: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
+// OWNERSHIP-NEXT: tvm_ffi.ObjectIncRef [[RETURN_ARG]] : !tvm_ffi.tensor
+// OWNERSHIP-NEXT: tvm_ffi.return [[RETURN_ARG]] : !tvm_ffi.tensor
+tvm_ffi.func @return_tensor(%arg: !tvm_ffi.tensor) -> !tvm_ffi.tensor {
+  tvm_ffi.return %arg : !tvm_ffi.tensor
 }

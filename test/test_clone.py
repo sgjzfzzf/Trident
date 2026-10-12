@@ -12,11 +12,6 @@ from test.base import AtenOpTest
 
 
 class CloneTest(AtenOpTest):
-    @classmethod
-    @override
-    def op_name(cls) -> str:
-        return "clone"
-
     @staticmethod
     def make_transposed_input() -> torch.Tensor:
         """Return a non-contiguous tensor matching the wrapper's static shape."""
@@ -25,6 +20,11 @@ class CloneTest(AtenOpTest):
         if result.is_contiguous():
             raise AssertionError("test input must be non-contiguous")
         return result
+
+    @classmethod
+    @override
+    def op_name(cls) -> str:
+        return "clone"
 
     def test_clone_contiguous_materializes_storage(self) -> None:
         """Contiguous clone allocates independent storage with normalized strides."""

@@ -7,6 +7,34 @@
 
 // RUN: trident-core-opt %s -finalize-tvm-ffi -convert-tvm-ffi-to-llvm -convert-dlpack-to-llvm | FileCheck %s
 
+// CHECK-LABEL: func.func @tensor_dtype_and_device(
+// CHECK-SAME: %[[TENSOR2:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>)
+// CHECK: %[[DTYPE_PAYLOAD:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[TENSOR2]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK: %[[DTYPE_TENSOR_PTR:[a-zA-Z0-9_]+]] = llvm.inttoptr %[[DTYPE_PAYLOAD]] : i64 to !llvm.ptr
+// CHECK: %[[DTYPE_DLTENSOR_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[DTYPE_TENSOR_PTR]][24] : (!llvm.ptr) -> !llvm.ptr, i8
+// CHECK: %[[DTYPE_DLTENSOR:[a-zA-Z0-9_]+]] = llvm.load %[[DTYPE_DLTENSOR_PTR]] : !llvm.ptr -> !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
+// CHECK: %[[DTYPE:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DTYPE_DLTENSOR]][3] : !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
+// CHECK: %[[CODE:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DTYPE]][0] : !llvm.struct<(i8, i8, i16)>
+// CHECK: %[[BITS:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DTYPE]][1] : !llvm.struct<(i8, i8, i16)>
+// CHECK: %[[LANES:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DTYPE]][2] : !llvm.struct<(i8, i8, i16)>
+// CHECK: %[[DEVICE_PAYLOAD:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[TENSOR2]][2] : !llvm.struct<(i32, i32, i64)>
+// CHECK: %[[DEVICE_TENSOR_PTR:[a-zA-Z0-9_]+]] = llvm.inttoptr %[[DEVICE_PAYLOAD]] : i64 to !llvm.ptr
+// CHECK: %[[DEVICE_DLTENSOR_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[DEVICE_TENSOR_PTR]][24] : (!llvm.ptr) -> !llvm.ptr, i8
+// CHECK: %[[DEVICE_DLTENSOR:[a-zA-Z0-9_]+]] = llvm.load %[[DEVICE_DLTENSOR_PTR]] : !llvm.ptr -> !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
+// CHECK: %[[DEVICE:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DEVICE_DLTENSOR]][1] : !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
+// CHECK: %[[DEVICE_TYPE:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DEVICE]][0] : !llvm.struct<(i32, i32)>
+// CHECK: %[[DEVICE_INDEX:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DEVICE]][1] : !llvm.struct<(i32, i32)>
+// CHECK: return %[[CODE]], %[[BITS]], %[[LANES]], %[[DEVICE_TYPE]], %[[DEVICE_INDEX]]
+func.func @tensor_dtype_and_device(%tensor: !tvm_ffi.tensor)
+    -> (i8, i8, i16, i32, i32) {
+  %code, %bits, %lanes = tvm_ffi.tensor.dtype %tensor : !tvm_ffi.tensor
+  %device_type, %device_index = tvm_ffi.tensor.device %tensor : !tvm_ffi.tensor
+  return %code, %bits, %lanes, %device_type, %device_index
+      : i8, i8, i16, i32, i32
+}
+
+// -----
+
 // CHECK-LABEL: func.func @tensor_metadata(
 // CHECK-SAME: %[[TENSOR:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[INDEX:[a-zA-Z0-9_]+]]: i64)
 // CHECK: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[TENSOR]][2] : !llvm.struct<(i32, i32, i64)>
@@ -42,32 +70,4 @@ func.func @tensor_metadata(%tensor: !tvm_ffi.tensor, %index: i64)
   %stride = tvm_ffi.tensor.stride %tensor[%index] : !tvm_ffi.tensor
   %offset = tvm_ffi.tensor.storage_offset %tensor : !tvm_ffi.tensor
   return %dim, %size, %stride, %offset : i64, i64, i64, i64
-}
-
-// -----
-
-// CHECK-LABEL: func.func @tensor_dtype_and_device(
-// CHECK-SAME: %[[TENSOR2:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>)
-// CHECK: %[[DTYPE_PAYLOAD:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[TENSOR2]][2] : !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[DTYPE_TENSOR_PTR:[a-zA-Z0-9_]+]] = llvm.inttoptr %[[DTYPE_PAYLOAD]] : i64 to !llvm.ptr
-// CHECK: %[[DTYPE_DLTENSOR_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[DTYPE_TENSOR_PTR]][24] : (!llvm.ptr) -> !llvm.ptr, i8
-// CHECK: %[[DTYPE_DLTENSOR:[a-zA-Z0-9_]+]] = llvm.load %[[DTYPE_DLTENSOR_PTR]] : !llvm.ptr -> !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
-// CHECK: %[[DTYPE:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DTYPE_DLTENSOR]][3] : !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
-// CHECK: %[[CODE:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DTYPE]][0] : !llvm.struct<(i8, i8, i16)>
-// CHECK: %[[BITS:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DTYPE]][1] : !llvm.struct<(i8, i8, i16)>
-// CHECK: %[[LANES:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DTYPE]][2] : !llvm.struct<(i8, i8, i16)>
-// CHECK: %[[DEVICE_PAYLOAD:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[TENSOR2]][2] : !llvm.struct<(i32, i32, i64)>
-// CHECK: %[[DEVICE_TENSOR_PTR:[a-zA-Z0-9_]+]] = llvm.inttoptr %[[DEVICE_PAYLOAD]] : i64 to !llvm.ptr
-// CHECK: %[[DEVICE_DLTENSOR_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[DEVICE_TENSOR_PTR]][24] : (!llvm.ptr) -> !llvm.ptr, i8
-// CHECK: %[[DEVICE_DLTENSOR:[a-zA-Z0-9_]+]] = llvm.load %[[DEVICE_DLTENSOR_PTR]] : !llvm.ptr -> !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
-// CHECK: %[[DEVICE:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DEVICE_DLTENSOR]][1] : !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
-// CHECK: %[[DEVICE_TYPE:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DEVICE]][0] : !llvm.struct<(i32, i32)>
-// CHECK: %[[DEVICE_INDEX:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[DEVICE]][1] : !llvm.struct<(i32, i32)>
-// CHECK: return %[[CODE]], %[[BITS]], %[[LANES]], %[[DEVICE_TYPE]], %[[DEVICE_INDEX]]
-func.func @tensor_dtype_and_device(%tensor: !tvm_ffi.tensor)
-    -> (i8, i8, i16, i32, i32) {
-  %code, %bits, %lanes = tvm_ffi.tensor.dtype %tensor : !tvm_ffi.tensor
-  %device_type, %device_index = tvm_ffi.tensor.device %tensor : !tvm_ffi.tensor
-  return %code, %bits, %lanes, %device_type, %device_index
-      : i8, i8, i16, i32, i32
 }

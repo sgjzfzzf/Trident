@@ -7,6 +7,15 @@
 
 // RUN: trident-core-opt %s -split-input-file -verify-diagnostics
 
+func.func @cast_rejects_concrete_result(%arg: !tvm_ffi.int) {
+  // expected-error@+1 {{'tvm_ffi.cast' op result #0 must be widened TVM FFI any or union value, but got '!tvm_ffi.int'}}
+  %result = "tvm_ffi.cast"(%arg)
+      : (!tvm_ffi.int) -> !tvm_ffi.int
+  return
+}
+
+// -----
+
 func.func @cast_rejects_incompatible_union(%arg: !tvm_ffi.int) {
   // expected-error@+1 {{'tvm_ffi.cast' op operand type '!tvm_ffi.int' and result type '!tvm_ffi.union<!tvm_ffi.float, !tvm_ffi.exception>' are cast incompatible}}
   %result = tvm_ffi.cast %arg
@@ -26,38 +35,9 @@ func.func @cast_rejects_native_operand(%arg: i64) {
 
 // -----
 
-func.func @cast_rejects_concrete_result(%arg: !tvm_ffi.int) {
-  // expected-error@+1 {{'tvm_ffi.cast' op result #0 must be widened TVM FFI any or union value, but got '!tvm_ffi.int'}}
-  %result = "tvm_ffi.cast"(%arg)
-      : (!tvm_ffi.int) -> !tvm_ffi.int
-  return
-}
-
-// -----
-
-// expected-error@+1 {{union requires at least two member types}}
-func.func @single_member_union(%arg: !tvm_ffi.union<!tvm_ffi.int>)
-
-// -----
-
 // expected-error@+2 {{union member types must be unique}}
 func.func @duplicate_union_member(
     %arg: !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.int>)
-
-// -----
-
-func.func @invalid_dtype_constant() {
-  // expected-error@+1 {{dtype result requires [code, bits, lanes]}}
-  %value = "tvm_ffi.constant.dtype"() <{value = [1, 2]}> : () -> !tvm_ffi.dtype
-  return
-}
-
-// -----
-
-// expected-error@+1 {{'tvm_ffi.func' op must have public visibility}}
-tvm_ffi.func private @private_function() {
-  tvm_ffi.return
-}
 
 // -----
 
@@ -66,15 +46,6 @@ tvm_ffi.func @empty_any_return() -> !tvm_ffi.any {
   tvm_ffi.return
 }
 
-// -----
-
-tvm_ffi.func @invalid_union_return()
-    -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.bool> {
-  %value = "tvm_ffi.constant.float"() <{value = 1.0 : f64}>
-      : () -> !tvm_ffi.float
-  // expected-error@+1 {{operand type is not a member of the result type}}
-  tvm_ffi.return %value : !tvm_ffi.float
-}
 // -----
 
 func.func @get_int_width(%arg: !tvm_ffi.int) {
@@ -90,6 +61,36 @@ func.func @get_unsupported_array(%arg: !tvm_ffi.array) {
   %value = "tvm_ffi.get"(%arg) : (!tvm_ffi.array) -> i64
   return
 }
+
+// -----
+
+func.func @invalid_dtype_constant() {
+  // expected-error@+1 {{dtype result requires [code, bits, lanes]}}
+  %value = "tvm_ffi.constant.dtype"() <{value = [1, 2]}> : () -> !tvm_ffi.dtype
+  return
+}
+
+// -----
+
+tvm_ffi.func @invalid_union_return()
+    -> !tvm_ffi.union<!tvm_ffi.int, !tvm_ffi.bool> {
+  %value = "tvm_ffi.constant.float"() <{value = 1.0 : f64}>
+      : () -> !tvm_ffi.float
+  // expected-error@+1 {{operand type is not a member of the result type}}
+  tvm_ffi.return %value : !tvm_ffi.float
+}
+
+// -----
+
+// expected-error@+1 {{'tvm_ffi.func' op must have public visibility}}
+tvm_ffi.func private @private_function() {
+  tvm_ffi.return
+}
+
+// -----
+
+// expected-error@+1 {{union requires at least two member types}}
+func.func @single_member_union(%arg: !tvm_ffi.union<!tvm_ffi.int>)
 
 // -----
 

@@ -15,9 +15,9 @@ def get_autotune_config() -> list[triton.Config]:
     return [
         triton.Config(
             {
+                "BLOCK_SIZE_K": 64,
                 "BLOCK_SIZE_M": 128,
                 "BLOCK_SIZE_N": 256,
-                "BLOCK_SIZE_K": 64,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=3,
@@ -25,9 +25,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 32,
                 "BLOCK_SIZE_M": 64,
                 "BLOCK_SIZE_N": 256,
-                "BLOCK_SIZE_K": 32,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=4,
@@ -35,9 +35,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 32,
                 "BLOCK_SIZE_M": 128,
                 "BLOCK_SIZE_N": 128,
-                "BLOCK_SIZE_K": 32,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=4,
@@ -45,9 +45,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 32,
                 "BLOCK_SIZE_M": 128,
                 "BLOCK_SIZE_N": 64,
-                "BLOCK_SIZE_K": 32,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=4,
@@ -55,9 +55,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 32,
                 "BLOCK_SIZE_M": 64,
                 "BLOCK_SIZE_N": 128,
-                "BLOCK_SIZE_K": 32,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=4,
@@ -65,9 +65,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 32,
                 "BLOCK_SIZE_M": 128,
                 "BLOCK_SIZE_N": 32,
-                "BLOCK_SIZE_K": 32,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=4,
@@ -75,9 +75,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 32,
                 "BLOCK_SIZE_M": 64,
                 "BLOCK_SIZE_N": 32,
-                "BLOCK_SIZE_K": 32,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=5,
@@ -85,9 +85,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 32,
                 "BLOCK_SIZE_M": 32,
                 "BLOCK_SIZE_N": 64,
-                "BLOCK_SIZE_K": 32,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=5,
@@ -95,9 +95,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 128,
                 "BLOCK_SIZE_M": 128,
                 "BLOCK_SIZE_N": 256,
-                "BLOCK_SIZE_K": 128,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=3,
@@ -105,9 +105,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 128,
                 "BLOCK_SIZE_M": 256,
                 "BLOCK_SIZE_N": 128,
-                "BLOCK_SIZE_K": 128,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=3,
@@ -115,9 +115,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 128,
                 "BLOCK_SIZE_M": 256,
                 "BLOCK_SIZE_N": 64,
-                "BLOCK_SIZE_K": 128,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=4,
@@ -125,9 +125,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 128,
                 "BLOCK_SIZE_M": 64,
                 "BLOCK_SIZE_N": 256,
-                "BLOCK_SIZE_K": 128,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=4,
@@ -135,9 +135,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 128,
                 "BLOCK_SIZE_M": 128,
                 "BLOCK_SIZE_N": 128,
-                "BLOCK_SIZE_K": 128,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=4,
@@ -145,9 +145,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 64,
                 "BLOCK_SIZE_M": 128,
                 "BLOCK_SIZE_N": 64,
-                "BLOCK_SIZE_K": 64,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=4,
@@ -155,9 +155,9 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 64,
                 "BLOCK_SIZE_M": 64,
                 "BLOCK_SIZE_N": 128,
-                "BLOCK_SIZE_K": 64,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=4,
@@ -165,15 +165,69 @@ def get_autotune_config() -> list[triton.Config]:
         ),
         triton.Config(
             {
+                "BLOCK_SIZE_K": 64,
                 "BLOCK_SIZE_M": 128,
                 "BLOCK_SIZE_N": 32,
-                "BLOCK_SIZE_K": 64,
                 "GROUP_SIZE_M": 8,
             },
             num_stages=4,
             num_warps=4,
         ),
     ]
+
+
+@triton.jit
+def leaky_relu(x):
+    return tl.where(x >= 0, x, 0.01 * x)
+
+
+def main() -> None:
+    torch.manual_seed(0)
+    a: torch.Tensor = torch.randn((512, 512), device=DEVICE, dtype=torch.float16)
+    b: torch.Tensor = torch.randn((512, 512), device=DEVICE, dtype=torch.float16)
+
+    torch_output: torch.Tensor = torch.matmul(a, b)
+
+    triton_output: torch.Tensor = matmul_triton(a, b, "")
+    torch.testing.assert_close(triton_output, torch_output, atol=1e-2, rtol=1e-2)
+
+    output_jit: torch.Tensor = matmul_jit(a, b)
+    torch.testing.assert_close(output_jit, torch_output, atol=1e-2, rtol=1e-2)
+
+
+def matmul_impl(a: torch.Tensor, b: torch.Tensor, activation: str = "") -> torch.Tensor:
+    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
+    assert a.is_contiguous(), "Matrix A must be contiguous"
+    M, K = a.shape
+    K, N = b.shape
+    c: torch.Tensor = torch.empty((M, N), device=a.device, dtype=torch.float16)
+    matmul_kernel[
+        lambda META: (
+            triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
+            1,
+            1,
+        )
+    ](
+        a,
+        b,
+        c,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
+        ACTIVATION=activation,
+    )
+    return c
+
+
+@trident.jit
+def matmul_jit(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    return matmul_impl(a, b, "")
 
 
 @triton.autotune(
@@ -240,65 +294,11 @@ def matmul_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
-@triton.jit
-def leaky_relu(x):
-    return tl.where(x >= 0, x, 0.01 * x)
-
-
 def matmul_triton(
     a: torch.Tensor, b: torch.Tensor, activation: str = ""
 ) -> torch.Tensor:
     """Direct Triton path."""
     return matmul_impl(a, b, activation)
-
-
-@trident.jit
-def matmul_jit(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    return matmul_impl(a, b, "")
-
-
-def matmul_impl(a: torch.Tensor, b: torch.Tensor, activation: str = "") -> torch.Tensor:
-    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
-    assert a.is_contiguous(), "Matrix A must be contiguous"
-    M, K = a.shape
-    K, N = b.shape
-    c: torch.Tensor = torch.empty((M, N), device=a.device, dtype=torch.float16)
-    matmul_kernel[
-        lambda META: (
-            triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
-            1,
-            1,
-        )
-    ](
-        a,
-        b,
-        c,
-        M,
-        N,
-        K,
-        a.stride(0),
-        a.stride(1),
-        b.stride(0),
-        b.stride(1),
-        c.stride(0),
-        c.stride(1),
-        ACTIVATION=activation,
-    )
-    return c
-
-
-def main() -> None:
-    torch.manual_seed(0)
-    a: torch.Tensor = torch.randn((512, 512), device=DEVICE, dtype=torch.float16)
-    b: torch.Tensor = torch.randn((512, 512), device=DEVICE, dtype=torch.float16)
-
-    torch_output: torch.Tensor = torch.matmul(a, b)
-
-    triton_output: torch.Tensor = matmul_triton(a, b, "")
-    torch.testing.assert_close(triton_output, torch_output, atol=1e-2, rtol=1e-2)
-
-    output_jit: torch.Tensor = matmul_jit(a, b)
-    torch.testing.assert_close(output_jit, torch_output, atol=1e-2, rtol=1e-2)
 
 
 if __name__ == "__main__":

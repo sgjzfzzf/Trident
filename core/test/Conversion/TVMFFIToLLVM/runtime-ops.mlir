@@ -7,6 +7,106 @@
 
 // RUN: trident-core-opt %s -split-input-file -convert-tvm-ffi-to-llvm | FileCheck %s
 
+// A null cached handle means the load-time lookup failed, so the status the
+// caller checks is derived from it and its success check stays intact.
+// CHECK-LABEL: func.func @checked_global_call(
+// CHECK: %[[HANDLE_ADDR:[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_test.identity : !llvm.ptr
+// CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
+// CHECK: %[[NULL:[a-zA-Z0-9_]+]] = llvm.mlir.zero : !llvm.ptr
+// CHECK: %[[IS_NULL:[a-zA-Z0-9_]+]] = llvm.icmp "eq" %[[HANDLE]], %[[NULL]] : !llvm.ptr
+// CHECK: %[[GET_STATUS:[a-zA-Z0-9_]+]] = llvm.zext %[[IS_NULL]] : i1 to i32
+// CHECK: %[[GET_ZERO:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[GET_SUCCESS:[a-zA-Z0-9_]+]] = llvm.icmp "eq" %[[GET_STATUS]], %[[GET_ZERO]] : i32
+// CHECK: %[[INITIAL_RESULT:[a-zA-Z0-9_]+]] = llvm.mlir.zero : !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.store %[[INITIAL_RESULT]], %[[RESULT_SLOT:[a-zA-Z0-9_]+]]
+// CHECK: %[[CALL_STATUS:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[ARGS:[a-zA-Z0-9_]+]], %[[NARGS:[a-zA-Z0-9_]+]], %[[RESULT_SLOT]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
+// CHECK: %[[CALL_ZERO:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = llvm.icmp "eq" %[[CALL_STATUS]], %[[CALL_ZERO]] : i32
+// CHECK: cf.assert %[[GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed"
+// CHECK: cf.assert %[[CALL_SUCCESS]], "TVMFFIFunctionCall failed"
+func.func @checked_global_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
+  %callee, %get_success = tvm_ffi.FunctionGetGlobal "test.identity"
+      : !tvm_ffi.function, i1
+  %result, %call_success = tvm_ffi.FunctionCall %callee(%arg)
+      : (!tvm_ffi.int) -> !tvm_ffi.int, i1
+  cf.assert %get_success, "TVMFFIFunctionGetGlobal failed"
+  cf.assert %call_success, "TVMFFIFunctionCall failed"
+  return %result : !tvm_ffi.int
+}
+
+// -----
+
+// CHECK-LABEL: func.func @equal(
+// CHECK-SAME: %[[LHS:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[RHS:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> i1 {
+// CHECK: %[[LHS_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca
+// CHECK: %[[RHS_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca
+// CHECK: llvm.store %[[LHS]], %[[LHS_SLOT]]
+// CHECK: llvm.store %[[RHS]], %[[RHS_SLOT]]
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[HANDLE:[a-zA-Z0-9_]+]], %[[ARGS:[a-zA-Z0-9_]+]], %[[NARGS:[a-zA-Z0-9_]+]], %[[RESULT_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
+// CHECK: %[[RESULT_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[RESULT_SLOT]][0, 2]
+// CHECK: %[[RESULT_I64:[a-zA-Z0-9_]+]] = llvm.load %[[RESULT_PTR]] : !llvm.ptr -> i64
+// CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.trunc %[[RESULT_I64]] : i64 to i32
+// CHECK: %[[ZERO:[a-zA-Z0-9_]+]] = arith.constant 0 : i32
+// CHECK: %[[EQUAL:[a-zA-Z0-9_]+]] = arith.cmpi ne, %[[RESULT]], %[[ZERO]] : i32
+// CHECK: return %[[EQUAL]] : i1
+func.func @equal(%lhs: !tvm_ffi.bool, %rhs: !tvm_ffi.bool) -> i1 {
+  %equal = tvm_ffi.eq %lhs, %rhs : !tvm_ffi.bool, !tvm_ffi.bool
+  return %equal : i1
+}
+
+// -----
+
+// CHECK-LABEL: func.func @exception() -> !llvm.struct<(i32, i32, i64)> {
+// CHECK: %[[MESSAGE_SIZE:[a-zA-Z0-9_]+]] = llvm.mlir.constant(11 : i64) : i64
+// CHECK: %[[MESSAGE_PTR:[a-zA-Z0-9_]+]] = llvm.alloca %[[MESSAGE_SIZE]] x i8 : (i64) -> !llvm.ptr
+// CHECK: %[[MESSAGE_END_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[MESSAGE_PTR]][10] : (!llvm.ptr) -> !llvm.ptr, i8
+// CHECK: %[[MESSAGE_END:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i8) : i8
+// CHECK: llvm.store %[[MESSAGE_END]], %[[MESSAGE_END_PTR]] : i8, !llvm.ptr
+// CHECK: %[[UNDEF:[a-zA-Z0-9_]+]] = llvm.mlir.undef
+// CHECK: %[[KIND:[a-zA-Z0-9_]+]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK: %[[WITH_KIND:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[KIND]], %[[UNDEF]][0]
+// CHECK: %[[AUX:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK: %[[WITH_AUX:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[AUX]], %[[WITH_KIND]][1]
+// CHECK: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.ptrtoint %[[MESSAGE_PTR]] : !llvm.ptr to i64
+// CHECK: %[[EXCEPTION_ARG:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[PAYLOAD]], %[[WITH_AUX]][2]
+// CHECK: llvm.store %[[EXCEPTION_ARG]], %[[SOURCE:[a-zA-Z0-9_]+]]
+// CHECK: %[[COPY:[a-zA-Z0-9_]+]] = llvm.load %[[SOURCE]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.store %[[COPY]], %[[CALL_ARG:[a-zA-Z0-9_]+]]
+// CHECK: llvm.call @TVMFFIFunctionCall(%[[EXCEPTION_HANDLE:[a-zA-Z0-9_]+]], %[[EXCEPTION_ARGS:[a-zA-Z0-9_]+]], %[[EXCEPTION_NARGS:[a-zA-Z0-9_]+]], %[[RESULT_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
+// CHECK: %[[EXCEPTION_RESULT:[a-zA-Z0-9_]+]] = llvm.load %[[RESULT_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
+// CHECK: return %[[EXCEPTION_RESULT]] : !llvm.struct<(i32, i32, i64)>
+func.func @exception() -> !tvm_ffi.exception {
+  %value = tvm_ffi.exception "GuardMatch" : !tvm_ffi.exception
+  return %value : !tvm_ffi.exception
+}
+
+// -----
+
+// CHECK-LABEL: func.func @function_refs(
+// CHECK-SAME: %[[FUNCTION:[a-zA-Z0-9_]+]]: !llvm.ptr) {
+// CHECK-NEXT: llvm.call @TVMFFIObjectIncRef(%[[FUNCTION]]) : (!llvm.ptr) -> i32
+// CHECK-NEXT: llvm.call @TVMFFIObjectDecRef(%[[FUNCTION]]) : (!llvm.ptr) -> i32
+// CHECK-NEXT: return
+func.func @function_refs(%function: !tvm_ffi.function) {
+  tvm_ffi.ObjectIncRef %function : !tvm_ffi.function
+  tvm_ffi.ObjectDecRef %function : !tvm_ffi.function
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @get_bool(
+// CHECK-SAME: %[[BOOL:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> i1 {
+// CHECK: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[BOOL]][2]
+// CHECK-NEXT: %[[VALUE:[a-zA-Z0-9_]+]] = llvm.trunc %[[PAYLOAD]] : i64 to i1
+// CHECK-NEXT: return %[[VALUE]] : i1
+func.func @get_bool(%value: !tvm_ffi.bool) -> i1 {
+  %result = tvm_ffi.get %value : !tvm_ffi.bool -> i1
+  return %result : i1
+}
+
+// -----
+
 // The global function is resolved once at load time into a module-level
 // handle; call sites read that handle instead of repeating the lookup.
 // CHECK-DAG: llvm.func @TVMFFIFunctionCall(!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
@@ -51,33 +151,6 @@ func.func @global_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
 
 // -----
 
-// A null cached handle means the load-time lookup failed, so the status the
-// caller checks is derived from it and its success check stays intact.
-// CHECK-LABEL: func.func @checked_global_call(
-// CHECK: %[[HANDLE_ADDR:[a-zA-Z0-9_]+]] = llvm.mlir.addressof @__trident_tvm_ffi_handle_test.identity : !llvm.ptr
-// CHECK: %[[HANDLE:[a-zA-Z0-9_]+]] = llvm.load %[[HANDLE_ADDR]] : !llvm.ptr -> !llvm.ptr
-// CHECK: %[[NULL:[a-zA-Z0-9_]+]] = llvm.mlir.zero : !llvm.ptr
-// CHECK: %[[IS_NULL:[a-zA-Z0-9_]+]] = llvm.icmp "eq" %[[HANDLE]], %[[NULL]] : !llvm.ptr
-// CHECK: %[[GET_STATUS:[a-zA-Z0-9_]+]] = llvm.zext %[[IS_NULL]] : i1 to i32
-// CHECK: %[[GET_ZERO:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK: %[[GET_SUCCESS:[a-zA-Z0-9_]+]] = llvm.icmp "eq" %[[GET_STATUS]], %[[GET_ZERO]] : i32
-// CHECK: %[[CALL_STATUS:[a-zA-Z0-9_]+]] = llvm.call @TVMFFIFunctionCall(%[[HANDLE]], %[[ARGS:[a-zA-Z0-9_]+]], %[[NARGS:[a-zA-Z0-9_]+]], %[[RESULT_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// CHECK: %[[CALL_ZERO:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK: %[[CALL_SUCCESS:[a-zA-Z0-9_]+]] = llvm.icmp "eq" %[[CALL_STATUS]], %[[CALL_ZERO]] : i32
-// CHECK: cf.assert %[[GET_SUCCESS]], "TVMFFIFunctionGetGlobal failed"
-// CHECK: cf.assert %[[CALL_SUCCESS]], "TVMFFIFunctionCall failed"
-func.func @checked_global_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
-  %callee, %get_success = tvm_ffi.FunctionGetGlobal "test.identity"
-      : !tvm_ffi.function, i1
-  %result, %call_success = tvm_ffi.FunctionCall %callee(%arg)
-      : (!tvm_ffi.int) -> !tvm_ffi.int, i1
-  cf.assert %get_success, "TVMFFIFunctionGetGlobal failed"
-  cf.assert %call_success, "TVMFFIFunctionCall failed"
-  return %result : !tvm_ffi.int
-}
-
-// -----
-
 // CHECK-LABEL: func.func @local_call(
 // CHECK-SAME: %[[LOCAL_ARG:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> !llvm.struct<(i32, i32, i64)> {
 // CHECK: %[[LOCAL_NARGS:[a-zA-Z0-9_]+]] = llvm.mlir.constant(1 : i32) : i32
@@ -85,6 +158,8 @@ func.func @checked_global_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
 // CHECK: %[[LOCAL_ARG_SLOT:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[LOCAL_ARGS]][0]
 // CHECK: llvm.store %[[LOCAL_ARG]], %[[LOCAL_ARG_SLOT]]
 // CHECK: %[[LOCAL_RESULT_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca
+// CHECK: %[[LOCAL_INITIAL_RESULT:[a-zA-Z0-9_]+]] = llvm.mlir.zero : !llvm.struct<(i32, i32, i64)>
+// CHECK: llvm.store %[[LOCAL_INITIAL_RESULT]], %[[LOCAL_RESULT_SLOT]]
 // CHECK: %[[LOCAL_CONTEXT:[a-zA-Z0-9_]+]] = llvm.mlir.zero : !llvm.ptr
 // CHECK: %[[LOCAL_STATUS:[a-zA-Z0-9_]+]] = call @__tvm_ffi_callee(%[[LOCAL_CONTEXT]], %[[LOCAL_ARGS]], %[[LOCAL_NARGS]], %[[LOCAL_RESULT_SLOT]])
 // CHECK: %[[LOCAL_ZERO:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
@@ -104,32 +179,6 @@ func.func @local_call(%arg: !tvm_ffi.int) -> !tvm_ffi.int {
 
 // -----
 
-// CHECK-LABEL: func.func @exception() -> !llvm.struct<(i32, i32, i64)> {
-// CHECK: %[[MESSAGE_SIZE:[a-zA-Z0-9_]+]] = llvm.mlir.constant(11 : i64) : i64
-// CHECK: %[[MESSAGE_PTR:[a-zA-Z0-9_]+]] = llvm.alloca %[[MESSAGE_SIZE]] x i8 : (i64) -> !llvm.ptr
-// CHECK: %[[MESSAGE_END_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[MESSAGE_PTR]][10] : (!llvm.ptr) -> !llvm.ptr, i8
-// CHECK: %[[MESSAGE_END:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i8) : i8
-// CHECK: llvm.store %[[MESSAGE_END]], %[[MESSAGE_END_PTR]] : i8, !llvm.ptr
-// CHECK: %[[UNDEF:[a-zA-Z0-9_]+]] = llvm.mlir.undef
-// CHECK: %[[KIND:[a-zA-Z0-9_]+]] = llvm.mlir.constant(8 : i32) : i32
-// CHECK: %[[WITH_KIND:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[KIND]], %[[UNDEF]][0]
-// CHECK: %[[AUX:[a-zA-Z0-9_]+]] = llvm.mlir.constant(0 : i32) : i32
-// CHECK: %[[WITH_AUX:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[AUX]], %[[WITH_KIND]][1]
-// CHECK: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.ptrtoint %[[MESSAGE_PTR]] : !llvm.ptr to i64
-// CHECK: %[[EXCEPTION_ARG:[a-zA-Z0-9_]+]] = llvm.insertvalue %[[PAYLOAD]], %[[WITH_AUX]][2]
-// CHECK: llvm.store %[[EXCEPTION_ARG]], %[[SOURCE:[a-zA-Z0-9_]+]]
-// CHECK: %[[COPY:[a-zA-Z0-9_]+]] = llvm.load %[[SOURCE]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: llvm.store %[[COPY]], %[[CALL_ARG:[a-zA-Z0-9_]+]]
-// CHECK: llvm.call @TVMFFIFunctionCall(%[[EXCEPTION_HANDLE:[a-zA-Z0-9_]+]], %[[EXCEPTION_ARGS:[a-zA-Z0-9_]+]], %[[EXCEPTION_NARGS:[a-zA-Z0-9_]+]], %[[RESULT_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// CHECK: %[[EXCEPTION_RESULT:[a-zA-Z0-9_]+]] = llvm.load %[[RESULT_SLOT]] : !llvm.ptr -> !llvm.struct<(i32, i32, i64)>
-// CHECK: return %[[EXCEPTION_RESULT]] : !llvm.struct<(i32, i32, i64)>
-func.func @exception() -> !tvm_ffi.exception {
-  %value = tvm_ffi.exception "GuardMatch" : !tvm_ffi.exception
-  return %value : !tvm_ffi.exception
-}
-
-// -----
-
 // CHECK-LABEL: func.func @object_refs(
 // CHECK-SAME: %[[OBJECT:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) {
 // CHECK: %[[INC_BITS:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[OBJECT]][2]
@@ -143,49 +192,4 @@ func.func @object_refs(%object: !tvm_ffi.tensor) {
   tvm_ffi.ObjectIncRef %object : !tvm_ffi.tensor
   tvm_ffi.ObjectDecRef %object : !tvm_ffi.tensor
   return
-}
-
-// -----
-
-// CHECK-LABEL: func.func @function_refs(
-// CHECK-SAME: %[[FUNCTION:[a-zA-Z0-9_]+]]: !llvm.ptr) {
-// CHECK-NEXT: llvm.call @TVMFFIObjectIncRef(%[[FUNCTION]]) : (!llvm.ptr) -> i32
-// CHECK-NEXT: llvm.call @TVMFFIObjectDecRef(%[[FUNCTION]]) : (!llvm.ptr) -> i32
-// CHECK-NEXT: return
-func.func @function_refs(%function: !tvm_ffi.function) {
-  tvm_ffi.ObjectIncRef %function : !tvm_ffi.function
-  tvm_ffi.ObjectDecRef %function : !tvm_ffi.function
-  return
-}
-
-// -----
-
-// CHECK-LABEL: func.func @get_bool(
-// CHECK-SAME: %[[BOOL:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> i1 {
-// CHECK: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.extractvalue %[[BOOL]][2]
-// CHECK-NEXT: %[[VALUE:[a-zA-Z0-9_]+]] = llvm.trunc %[[PAYLOAD]] : i64 to i1
-// CHECK-NEXT: return %[[VALUE]] : i1
-func.func @get_bool(%value: !tvm_ffi.bool) -> i1 {
-  %result = tvm_ffi.get %value : !tvm_ffi.bool -> i1
-  return %result : i1
-}
-
-// -----
-
-// CHECK-LABEL: func.func @equal(
-// CHECK-SAME: %[[LHS:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>, %[[RHS:[a-zA-Z0-9_]+]]: !llvm.struct<(i32, i32, i64)>) -> i1 {
-// CHECK: %[[LHS_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca
-// CHECK: %[[RHS_SLOT:[a-zA-Z0-9_]+]] = llvm.alloca
-// CHECK: llvm.store %[[LHS]], %[[LHS_SLOT]]
-// CHECK: llvm.store %[[RHS]], %[[RHS_SLOT]]
-// CHECK: llvm.call @TVMFFIFunctionCall(%[[HANDLE:[a-zA-Z0-9_]+]], %[[ARGS:[a-zA-Z0-9_]+]], %[[NARGS:[a-zA-Z0-9_]+]], %[[RESULT_SLOT:[a-zA-Z0-9_]+]]) : (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr) -> i32
-// CHECK: %[[RESULT_PTR:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[RESULT_SLOT]][0, 2]
-// CHECK: %[[RESULT_I64:[a-zA-Z0-9_]+]] = llvm.load %[[RESULT_PTR]] : !llvm.ptr -> i64
-// CHECK: %[[RESULT:[a-zA-Z0-9_]+]] = llvm.trunc %[[RESULT_I64]] : i64 to i32
-// CHECK: %[[ZERO:[a-zA-Z0-9_]+]] = arith.constant 0 : i32
-// CHECK: %[[EQUAL:[a-zA-Z0-9_]+]] = arith.cmpi ne, %[[RESULT]], %[[ZERO]] : i32
-// CHECK: return %[[EQUAL]] : i1
-func.func @equal(%lhs: !tvm_ffi.bool, %rhs: !tvm_ffi.bool) -> i1 {
-  %equal = tvm_ffi.eq %lhs, %rhs : !tvm_ffi.bool, !tvm_ffi.bool
-  return %equal : i1
 }

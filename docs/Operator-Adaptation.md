@@ -12,8 +12,10 @@ import or lowering pipeline.
 
 `ffi/lib/aten/atengen.py` enumerates dispatcher schemas and generates registered
 `trident.aten.<name>[.<overload>]` wrappers. Do not edit generated wrappers.
-`TridentFxImporter._aten` orders arguments from the schema, fills defaults and
-emits a checked `tvm_ffi.FunctionCall`. Most ATen operators therefore need no
+`_select_aten_schema` selects the applicable ATen overload.
+`TridentFxImporter._aten_argument` resolves schema arguments, fills defaults and
+converts enums and dtypes. `_aten` handles metadata operations and emits a
+checked `tvm_ffi.FunctionCall`. Most ATen operators therefore need no
 individual import pattern. Tensor aliases and mutations follow the boxed ATen
 call directly; the frontend does not functionalize the graph.
 
@@ -23,6 +25,12 @@ shape arithmetic belongs in native SSA, including comparisons, floor division,
 remainder and boolean operations. Metadata reads use `tvm_ffi.tensor.size`,
 `stride`, `dim`, `device`, `dtype` or `storage_offset`. Dtype values must be
 converted to ATen's integer enum when the schema expects it.
+
+Layout and memory-format constants are converted at import time through
+`trident.runtime.torch_enum_to_int`. This TVM FFI helper reads the native enum
+from PyTorch's internal Python types, avoiding a frontend numeric mapping.
+It must be built against the installed PyTorch; these interfaces are not part
+of PyTorch's stable ABI. The generated IR receives an ordinary integer constant.
 
 For a new operator:
 
@@ -46,7 +54,15 @@ boxing, `tvm_ffi.get` for scalar extraction, and `tvm_ffi.cast` for widening an 
 value to Any or a compatible union. Do not introduce frontend types into these
 operations. Every checked registry call must assert lookup status, non-null
 handle and call status before using its result. Shared Python builders live in
-`python/trident/ir_utils.py`.
+`python/trident/ir.py`.
+
+Use the concrete Python type bindings when constructing or inspecting MLIR
+types: for example, `tvm_ffi_d.TensorType.get()` and
+`isinstance(value.type, tvm_ffi_d.TensorType)`. For native integers, inspect both
+`IntegerType.width` and `IntegerType.is_signless` when the ABI requires a specific
+signless width. Build unions with `UnionType.get(types, context=...)`; invalid,
+duplicate or cross-context members raise `ValueError`. Type printing is for IR
+text and diagnostics, not type dispatch.
 
 Ownership is handled by operation interfaces and the deallocation pass before
 ABI lowering. Mark an allocation, borrow, alias or transfer accurately rather
@@ -72,14 +88,17 @@ select a kernel, but launch dimensions and runtime operands must use SSA values.
 
 ## Triton and kernel launch adaptation
 
-`python/trident/triton_importer.py` reuses the compiled Triton cache after warmup,
-imports `gpu.binary`, and emits `torchext.trident_kernel_launch`. Each source
-parameter has a constant or variable specialization attribute. The latter
+`python/trident/importer.py` reuses the compiled Triton cache after warmup,
+imports `gpu.binary`, and emits `tvm_ffi.kernel_launch`. `_resolve_triton_kernel`
+isolates cache and autotuner lookup; `_triton_specialization` builds parameter
+attributes, and `_import_binary` inserts the module-level binary. `_import_kernel`
+returns its output dictionary for the common graph result-binding path. Each
+source parameter has a constant or variable specialization attribute. The latter
 records native ABI type and optional divisibility; constexpr operands are checked
 and omitted from the native kernel call. Functional wrapper outputs clone only
 the specified tensors before launch.
 
-`ConvertTorchExtToGPU` runs after inlining and before ownership deallocation.
+`ConvertTVMFFIToGPU` runs after inlining and before ownership deallocation.
 It extracts native tensor data pointers and scalars from semantic operands,
 validates specializations, obtains the current stream through TVM FFI, and emits
 `gpu.launch_func`. A specialization failure must return the existing GuardMatch

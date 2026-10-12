@@ -8,16 +8,25 @@
 #include <ATen/DLConvertor.h>
 #include <ATen/core/TensorBody.h>
 #include <ATen/ops/empty_strided.h>
+#include <Python.h> // IWYU pragma: keep
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
 #include <dlpack/dlpack.h>
 #include <new>
+#include <optional>
+#include <pystate.h>
+#include <pytypedefs.h>
 #include <stdexcept>
+#include <torch/csrc/Layout.h>
+#include <torch/csrc/MemoryFormat.h>
 #include <torch/csrc/inductor/aoti_torch/c/macros.h>
 #include <torch/csrc/inductor/aoti_torch/c/shim.h>
+#include <tvm/ffi/any.h>
 #include <tvm/ffi/base_details.h>
+#include <tvm/ffi/c_api.h>
 #include <tvm/ffi/container/tensor.h>
+#include <tvm/ffi/error.h>
 #include <tvm/ffi/reflection/registry.h>
 
 // X-Macro: (DLDataTypeCode, bits, aoti_torch_dtype_* function name)
@@ -49,25 +58,22 @@
 TVM_FFI_STATIC_INIT_BLOCK() {
   namespace refl = tvm::ffi::reflection;
   refl::GlobalDef()
-      .def("trident.runtime.tvm_ffi_to_torch_type",
-           [](DLDataType dtype) -> int32_t {
-#define X(dlpack_code, dlpack_bits, torch_fn)                                  \
-  if (dtype.code == (dlpack_code) && dtype.bits == (dlpack_bits)) {            \
-    return torch_fn();                                                         \
-  }
-             TRIDENT_TVMFFI_DTYPE_PAIR(X)
-#undef X
-             return -1;
+      .def("trident.runtime.tensor_clone",
+           [](const tvm::ffi::Tensor &source) -> tvm::ffi::Tensor {
+             const at::Tensor source_tensor = at::fromDLPack(source.ToDLPack());
+             const at::Tensor result = at::empty_strided(
+                 source_tensor.sizes(), source_tensor.strides(),
+                 source_tensor.options());
+             result.copy_(source_tensor);
+             return tvm::ffi::Tensor::FromDLPack(at::toDLPack(result));
            })
-      .def("trident.runtime.tvm_ffi_device_to_torch_device_type",
-           [](int32_t dl_device_type) -> int32_t {
-#define X(dlpack_device, torch_fn)                                             \
-  if (dl_device_type == (dlpack_device)) {                                     \
-    return torch_fn();                                                         \
-  }
-             TRIDENT_TVMFFI_DEVICE_PAIR(X)
-#undef X
-             throw std::runtime_error("unsupported DLPack device type");
+      .def("trident.runtime.tensor_copy_",
+           [](const tvm::ffi::Tensor &destination,
+              const tvm::ffi::Tensor &source) {
+             const at::Tensor destination_tensor =
+                 at::fromDLPack(destination.ToDLPack());
+             const at::Tensor source_tensor = at::fromDLPack(source.ToDLPack());
+             destination_tensor.copy_(source_tensor);
            })
       .def("trident.runtime.tensor_to_tvm_ffi_object",
            [](void *input_ptr) -> tvm::ffi::Tensor {
@@ -140,22 +146,56 @@ TVM_FFI_STATIC_INIT_BLOCK() {
              };
              return tvm::ffi::Tensor::FromDLPack(managed);
            })
-      .def("trident.runtime.tensor_clone",
-           [](const tvm::ffi::Tensor &source) -> tvm::ffi::Tensor {
-             const at::Tensor source_tensor = at::fromDLPack(source.ToDLPack());
-             const at::Tensor result = at::empty_strided(
-                 source_tensor.sizes(), source_tensor.strides(),
-                 source_tensor.options());
-             result.copy_(source_tensor);
-             return tvm::ffi::Tensor::FromDLPack(at::toDLPack(result));
+      .def("trident.runtime.torch_enum_to_int",
+           [](const tvm::ffi::AnyView &value) -> int64_t {
+             if (value.type_index() != kTVMFFIOpaquePyObject) {
+               TVM_FFI_THROW(TypeError)
+                   << "expected torch.layout or torch.memory_format";
+             }
+             const TVMFFIAny data = value.CopyToTVMFFIAny();
+             // The opaque cell follows the TVM FFI object header. The owning
+             // argument keeps its Python object alive for this call.
+             const TVMFFIOpaqueObjectCell *cell =
+                 reinterpret_cast<const TVMFFIOpaqueObjectCell *>(
+                     static_cast<const TVMFFIObject *>(data.v_obj) + 1);
+             const PyGILState_STATE gil = PyGILState_Ensure();
+             PyObject *object = static_cast<PyObject *>(cell->handle);
+             std::optional<int64_t> result;
+             // Only non-throwing type checks and enum reads occur while holding
+             // the GIL.
+             if (THPLayout_Check(object)) {
+               result = static_cast<int64_t>(
+                   reinterpret_cast<THPLayout *>(object)->layout);
+             } else if (THPMemoryFormat_Check(object)) {
+               result = static_cast<int64_t>(
+                   reinterpret_cast<THPMemoryFormat *>(object)->memory_format);
+             }
+             PyGILState_Release(gil);
+             if (result) {
+               return *result;
+             }
+             TVM_FFI_THROW(TypeError)
+                 << "expected torch.layout or torch.memory_format";
            })
-      .def("trident.runtime.tensor_copy_",
-           [](const tvm::ffi::Tensor &destination,
-              const tvm::ffi::Tensor &source) {
-             const at::Tensor destination_tensor =
-                 at::fromDLPack(destination.ToDLPack());
-             const at::Tensor source_tensor = at::fromDLPack(source.ToDLPack());
-             destination_tensor.copy_(source_tensor);
+      .def("trident.runtime.tvm_ffi_device_to_torch_device_type",
+           [](int32_t dl_device_type) -> int32_t {
+#define X(dlpack_device, torch_fn)                                             \
+  if (dl_device_type == (dlpack_device)) {                                     \
+    return torch_fn();                                                         \
+  }
+             TRIDENT_TVMFFI_DEVICE_PAIR(X)
+#undef X
+             throw std::runtime_error("unsupported DLPack device type");
+           })
+      .def("trident.runtime.tvm_ffi_to_torch_type",
+           [](DLDataType dtype) -> int32_t {
+#define X(dlpack_code, dlpack_bits, torch_fn)                                  \
+  if (dtype.code == (dlpack_code) && dtype.bits == (dlpack_bits)) {            \
+    return torch_fn();                                                         \
+  }
+             TRIDENT_TVMFFI_DTYPE_PAIR(X)
+#undef X
+             return -1;
            });
 }
 

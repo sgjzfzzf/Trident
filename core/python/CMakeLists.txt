@@ -7,8 +7,8 @@ set(TRIDENT_CORE_PYTHON_OUTPUT_ROOT "${CMAKE_BINARY_DIR}/python_packages/core")
 add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=trident.core.")
 
 set(TRIDENT_CORE_MLIR_SOURCE_COMPONENTS
-    MLIRPythonSources MLIRPythonExtension.Core
-    MLIRPythonExtension.RegisterEverything)
+    MLIRPythonExtension.Core MLIRPythonExtension.RegisterEverything
+    MLIRPythonSources)
 
 declare_mlir_python_sources(TridentCorePythonExtensions)
 
@@ -19,13 +19,23 @@ declare_mlir_python_extension(
   ADD_TO_PARENT
   TridentCorePythonExtensions
   SOURCES
-  dialects/torchext/TorchExtDialect.cc
   RegistrationModules.cc
   EMBED_CAPI_LINK_LIBS
   TridentCoreCAPI
   PRIVATE_LINK_LIBS
-  MLIRToLLVMIRTranslationRegistration
-  LLVMSupport)
+  LLVMSupport
+  MLIRToLLVMIRTranslationRegistration)
+
+declare_mlir_python_extension(
+  TridentCorePythonExtensions.TVMFFI
+  MODULE_NAME
+  _tvm_ffi
+  ADD_TO_PARENT
+  TridentCorePythonExtensions
+  SOURCES
+  dialects/TVMFFITypes.cc
+  EMBED_CAPI_LINK_LIBS
+  TridentCoreCAPI)
 
 list(APPEND TRIDENT_CORE_MLIR_SOURCE_COMPONENTS TridentCorePythonExtensions)
 
@@ -63,18 +73,7 @@ declare_mlir_python_sources(
   TridentCorePythonSources
   SOURCES
   __init__.py
-  dialects/torchext.py
   dialects/tvm_ffi.py)
-
-declare_mlir_dialect_python_bindings(
-  ADD_TO_PARENT
-  TridentCorePythonSources.Core
-  ROOT_DIR
-  "${CMAKE_CURRENT_SOURCE_DIR}"
-  TD_FILE
-  dialects/TorchExtOpsPyBind.td
-  DIALECT_NAME
-  torchext)
 
 declare_mlir_dialect_python_bindings(
   ADD_TO_PARENT
@@ -96,7 +95,6 @@ add_mlir_python_sources_target(
   ${TRIDENT_CORE_PYTHON_OUTPUT_ROOT}
   SOURCES_TARGETS
   TridentCorePythonSources.Core
-  TridentCorePythonSources.Core.torchext.ops_gen
   TridentCorePythonSources.Core.tvm_ffi.ops_gen)
 
 build_nanobind_lib(

@@ -62,6 +62,7 @@ void materializeReferences(
 
 } // namespace
 
+// EdgePlan must be complete before BlockPlan stores its edge plans.
 class EdgePlan final {
 public:
   explicit EdgePlan(uint32_t successorIndex, mlir::Block *target,
@@ -125,28 +126,6 @@ EdgePlan::EdgePlan(uint32_t successorIndex, mlir::Block *target,
       forwardedOperands(forwardedOperands), retainedValues(retainedValues),
       credits(std::cref(credits)) {}
 
-void EdgePlan::materialize(mlir::Operation *terminator) const {
-  const llvm::SmallVector<mlir::Type> argumentTypes = llvm::map_to_vector(
-      forwardedOperands, [](const mlir::Value operand) -> mlir::Type {
-        return operand.getType();
-      });
-  const llvm::SmallVector<mlir::Location> argumentLocations =
-      llvm::map_to_vector(forwardedOperands,
-                          [](const mlir::Value operand) -> mlir::Location {
-                            return operand.getLoc();
-                          });
-  mlir::OpBuilder builder(terminator);
-  // Put edge-specific reference operations in a dedicated trampoline block.
-  mlir::Block *edgeBlock =
-      builder.createBlock(target, argumentTypes, argumentLocations);
-  terminator->setSuccessor(edgeBlock, successorIndex);
-
-  materializeReferences(builder, terminator->getLoc(), retainedValues,
-                        credits.get());
-  mlir::cf::BranchOp::create(builder, terminator->getLoc(), target,
-                             edgeBlock->getArguments());
-}
-
 mlir::LogicalResult BlockPlan::analyze() {
   if (!block->isEntryBlock()) {
     // Every object entering a block establishes one local ownership credit.
@@ -181,8 +160,8 @@ mlir::LogicalResult BlockPlan::analyze() {
     for (auto [index, result] : llvm::make_filter_range(
              llvm::enumerate(operation.getResults()),
              [&operation](const auto &indexedResult) -> bool {
-               return !mlir::isa<mlir::SelectLikeOpInterface,
-                                 mlir::CastOpInterface>(operation) &&
+               return !mlir::isa<mlir::CastOpInterface,
+                                 mlir::SelectLikeOpInterface>(operation) &&
                       isObjectCapableType(indexedResult.value().getType());
              })) {
       if (!ownership) {
@@ -269,18 +248,26 @@ mlir::LogicalResult BlockPlan::analyze() {
   return mlir::success();
 }
 
-OwnershipDeallocator
-OwnershipDeallocator::build(mlir::FunctionOpInterface function) {
-  mlir::Region &region = function.getFunctionBody();
-  // Preserve IR order while liveness sets only provide membership queries.
-  llvm::SmallVector<mlir::Value> regionValues;
-  for (mlir::Block &block : region) {
-    llvm::append_range(regionValues, block.getArguments());
-    for (mlir::Operation &operation : block) {
-      llvm::append_range(regionValues, operation.getResults());
-    }
-  }
-  return OwnershipDeallocator(region, mlir::Liveness(function), regionValues);
+void EdgePlan::materialize(mlir::Operation *terminator) const {
+  const llvm::SmallVector<mlir::Type> argumentTypes = llvm::map_to_vector(
+      forwardedOperands, [](const mlir::Value operand) -> mlir::Type {
+        return operand.getType();
+      });
+  const llvm::SmallVector<mlir::Location> argumentLocations =
+      llvm::map_to_vector(forwardedOperands,
+                          [](const mlir::Value operand) -> mlir::Location {
+                            return operand.getLoc();
+                          });
+  mlir::OpBuilder builder(terminator);
+  // Put edge-specific reference operations in a dedicated trampoline block.
+  mlir::Block *edgeBlock =
+      builder.createBlock(target, argumentTypes, argumentLocations);
+  terminator->setSuccessor(edgeBlock, successorIndex);
+
+  materializeReferences(builder, terminator->getLoc(), retainedValues,
+                        credits.get());
+  mlir::cf::BranchOp::create(builder, terminator->getLoc(), target,
+                             edgeBlock->getArguments());
 }
 
 void BlockPlan::materialize() const {
@@ -299,6 +286,20 @@ void BlockPlan::materialize() const {
       edge.materialize(terminator);
     }
   }
+}
+
+OwnershipDeallocator
+OwnershipDeallocator::build(mlir::FunctionOpInterface function) {
+  mlir::Region &region = function.getFunctionBody();
+  // Preserve IR order while liveness sets only provide membership queries.
+  llvm::SmallVector<mlir::Value> regionValues;
+  for (mlir::Block &block : region) {
+    llvm::append_range(regionValues, block.getArguments());
+    for (mlir::Operation &operation : block) {
+      llvm::append_range(regionValues, operation.getResults());
+    }
+  }
+  return OwnershipDeallocator(region, mlir::Liveness(function), regionValues);
 }
 
 mlir::LogicalResult OwnershipDeallocator::run() {

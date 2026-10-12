@@ -11,6 +11,22 @@ import triton.language as tl
 DEVICE = triton.runtime.driver.active.get_active_torch_device()
 
 
+def add_impl(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    output: torch.Tensor = torch.empty_like(x)
+    assert x.device == DEVICE and y.device == DEVICE and output.device == DEVICE
+    n_elements: int = output.numel()
+    BLOCK_SIZE: int = 1024
+    add_kernel[lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]), 1, 1)](
+        x, y, output, n_elements, BLOCK_SIZE
+    )
+    return output
+
+
+@trident.jit
+def add_jit(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    return add_impl(x, y)
+
+
 @triton.jit
 def add_kernel(
     x_ptr,
@@ -29,24 +45,8 @@ def add_kernel(
     tl.store(output_ptr + offsets, output, mask=mask)
 
 
-@trident.jit
-def add_jit(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    return add_impl(x, y)
-
-
 def add_triton(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return add_impl(x, y)
-
-
-def add_impl(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    output: torch.Tensor = torch.empty_like(x)
-    assert x.device == DEVICE and y.device == DEVICE and output.device == DEVICE
-    n_elements: int = output.numel()
-    BLOCK_SIZE: int = 1024
-    add_kernel[lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]), 1, 1)](
-        x, y, output, n_elements, BLOCK_SIZE
-    )
-    return output
 
 
 def main() -> None:

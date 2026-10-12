@@ -4,7 +4,6 @@ add_mlir_library(
   DEPENDS
   LINK_LIBS
   PUBLIC
-  OwnershipDeallocation
   DLPackDialect
   DLPackToLLVM
   FinalizeTVMFFI
@@ -13,7 +12,8 @@ add_mlir_library(
   MLIRRegisterAllPasses
   MLIRSCFDialect
   MLIRToLLVMIRTranslationRegistration
-  TorchExtToGPU
-  TridentPipeline
+  OwnershipDeallocation
   TVMFFIDialect
-  TVMFFIToLLVM)
+  TVMFFIToGPU
+  TVMFFIToLLVM
+  TridentPipeline)

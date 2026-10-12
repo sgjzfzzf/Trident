@@ -25,6 +25,14 @@ class DLPack_TensorIndexedMetadataOp<string mnemonic>
   let assemblyFormat = "$tensor `[` $index `]` attr-dict `:` type($tensor)";
 }
 
+def DLPack_TensorDTypeOp : DLPack_Op<"tensor.dtype", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Read DLPack dtype fields from a tensor";
+  let arguments = (ins DLPack_DLTensorType:$tensor);
+  let results = (outs I8:$code, I8:$bits, I16:$lanes);
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
 def DLPack_TensorDataOp : DLPack_Op<"tensor.data", [Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read the data pointer from a DLPack tensor";
@@ -46,14 +54,6 @@ def DLPack_TensorDimOp : DLPack_Op<"tensor.dim", [Pure,
   let summary = "Read the rank of a DLPack tensor";
   let arguments = (ins DLPack_DLTensorType:$tensor);
   let results = (outs I64:$result);
-  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
-}
-
-def DLPack_TensorDTypeOp : DLPack_Op<"tensor.dtype", [Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Read DLPack dtype fields from a tensor";
-  let arguments = (ins DLPack_DLTensorType:$tensor);
-  let results = (outs I8:$code, I8:$bits, I16:$lanes);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
 }
 

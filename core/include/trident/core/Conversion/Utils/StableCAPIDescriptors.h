@@ -19,17 +19,17 @@
 // compatibility when calling ATen operations through the dispatcher.
 namespace trident::conversion::utils {
 
+// StableList introspection.
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(torch_delete_list, TorchDeleteList)
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(torch_list_get_item, TorchListGetItem)
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(torch_list_push_back,
+                                         TorchListPushBack)
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(torch_list_set_item, TorchListSetItem)
+TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(torch_list_size, TorchListSize)
+
 // StableList construction.
 TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(torch_new_list_reserve_size,
                                          TorchNewListReserveSize)
-
-// StableList introspection.
-TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(torch_list_size, TorchListSize)
-TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(torch_list_get_item, TorchListGetItem)
-TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(torch_list_set_item, TorchListSetItem)
-TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(torch_list_push_back,
-                                         TorchListPushBack)
-TRIDENT_DECLARE_CAPI_GET_OR_CREATE_NAMED(torch_delete_list, TorchDeleteList)
 
 } // namespace trident::conversion::utils
 

@@ -41,10 +41,10 @@ from trident.core.dialects import (
 from trident.core.execution_engine import ExecutionEngine
 from trident.ffi import Exception
 
-from .fx_importer import TridentFxImporter
 from .guards import parse_guards
+from .importer import TridentFxImporter
 from .input import InputTableBuilder
-from .ir_utils import array, box, value_type
+from .ir import array, box
 
 RuntimeValue: TypeAlias = Any
 RuntimeArguments: TypeAlias = tuple[RuntimeValue, ...]
@@ -53,7 +53,7 @@ RuntimeCallable: TypeAlias = Callable[..., RuntimeValue]
 
 
 class TridentGraphModule:
-    """Compiles a torch function via Torch-MLIR and wraps with tvm_ffi.
+    """Imports a Torch FX graph into MLIR and executes through TVM FFI.
 
     Maintains a list of sub-modules, one per unique guard specialization
     encountered at call time.  On each ``compile()`` call the class builds
@@ -62,31 +62,14 @@ class TridentGraphModule:
     order - the first one that returns 0 (guard match) wins.
     """
 
-    def _alloca_tvmffi_any(
-        self,
-        index: int,
-        payload: ir.Value,
-    ) -> ir.Value:
-        """Allocate a TVMFFIAny slot, fill it, and return the pointer.
-
-        A convenience that combines ``llvm.alloca`` + ``_fill_tvmffi_any``::
-
-            %slot = llvm.alloca %any_ty
-            _fill_tvmffi_any(%slot, index, payload)
-        """
-        i32_ty: ir.Type = ir.IntegerType.get_signless(32)
-        i64_ty: ir.Type = ir.IntegerType.get_signless(64)
-        slot: ir.Value = llvm.alloca(
-            res=llvm.PointerType.get(),
-            array_size=llvm.mlir_constant(
-                value=ir.IntegerAttr.get(i64_ty, 1),
-            ),
-            elem_type=ir.TypeAttr.get(
-                llvm.StructType.get_literal([i32_ty, i32_ty, i64_ty], context=self.ctx),
-            ),
-        )
-        self._fill_tvmffi_any(slot, index, payload)
-        return slot
+    def __call__(self, *args: RuntimeValue, **kwargs: RuntimeValue) -> RuntimeValue:
+        result = self.executor(*args, **kwargs)
+        if isinstance(result, Exception):
+            # The dispatcher returned an Exception ObjectRef
+            # (all specializations failed); compile a new one.
+            return self.compile(*args, **kwargs)
+        else:
+            return result
 
     def __init__(
         self,
@@ -107,135 +90,31 @@ class TridentGraphModule:
     # Public API
     # ------------------------------------------------------------------ #
 
-    def __call__(self, *args: RuntimeValue, **kwargs: RuntimeValue) -> RuntimeValue:
-        result = self.executor(*args, **kwargs)
-        if isinstance(result, Exception):
-            # The dispatcher returned an Exception ObjectRef
-            # (all specializations failed); compile a new one.
-            return self.compile(*args, **kwargs)
-        else:
-            return result
-
     def __name__(self) -> str:
         return self.fn.__name__
 
-    def compile(self, *args: RuntimeValue, **kwargs: RuntimeValue) -> RuntimeValue:
-        """Build a new sub-module for *args* and rebuild the combined
-        module + dispatcher.  Called automatically from ``__call__`` when a
-        ``GuardMatchException`` is raised."""
-        return self._build_sub_module([*args], {**kwargs})
+    def _alloca_tvmffi_any(
+        self,
+        index: int,
+        payload: ir.Value,
+    ) -> ir.Value:
+        """Allocate a TVMFFIAny slot, fill it, and return the pointer.
 
-    # ------------------------------------------------------------------ #
-    # Internal: orchestration
-    # ------------------------------------------------------------------ #
-
-    def stub_compile(self) -> RuntimeCallable:
-        """Build the combined module, lower it, add the LLVM dispatcher,
-        JIT-compile, and return a callable executor.
-
-        Called initially from ``__init__`` (with zero sub-modules) and
-        after every ``compile()`` to pick up newly added specializations.
+        Initializes the slot with a complete ABI struct.
         """
-        # 1. Merge all sub-modules into one (each is cloned to avoid
-        #    repeated-merging hangs).
-        combined: ir.Module = self._build_combined_module()
-
-        # 2. Lower semantic TVM FFI and GPU IR to LLVM.
-        with self.ctx:
-            passmanager.PassManager.parse(
-                "builtin.module(trident-lowering-pipeline)",
-            ).run(combined.operation)
-
-        # 3. Build the LLVM dispatcher that tries each sub-function.
-        self._build_llvm_dispatcher(combined)
-
-        # 4. JIT-compile and wrap.
-        engine: ExecutionEngine = ExecutionEngine(
-            combined,
-            opt_level=3,
-            shared_libs=capi_utils.find_runtime_libraries(),
+        i32_ty: ir.Type = ir.IntegerType.get_signless(32)
+        i64_ty: ir.Type = ir.IntegerType.get_signless(64)
+        slot: ir.Value = llvm.alloca(
+            res=llvm.PointerType.get(),
+            array_size=llvm.mlir_constant(
+                value=ir.IntegerAttr.get(i64_ty, 1),
+            ),
+            elem_type=ir.TypeAttr.get(
+                llvm.StructType.get_literal([i32_ty, i32_ty, i64_ty], context=self.ctx),
+            ),
         )
-        engine.initialize()
-
-        symbol: str = f"__tvm_ffi_{self.fn.__name__}"
-        ptr: int = engine.raw_lookup(symbol)
-        assert ptr is not None, (
-            f"symbol not found: {symbol}; "
-            f"available: {[op.sym_name.value for op in combined.body.operations if hasattr(op, 'sym_name')]}"
-        )
-
-        fn: tvm_ffi.Function = tvm_ffi.Function.__from_mlir_packed_safe_call__(
-            ptr,
-            keep_alive_object=engine,
-        )
-
-        def normalize(
-            value: RuntimeValue,
-            convert: Callable[[RuntimeValue], RuntimeValue],
-        ) -> RuntimeValue:
-            if isinstance(value, tvm_ffi.Array):
-                return [normalize(element, convert) for element in value]
-            if isinstance(value, tuple):
-                return tuple(normalize(element, convert) for element in value)
-            if isinstance(value, list):
-                return [normalize(element, convert) for element in value]
-            if isinstance(value, dict):
-                return {
-                    key: normalize(element, convert) for key, element in value.items()
-                }
-            return convert(value)
-
-        def invoke(*values: RuntimeValue) -> RuntimeValue:
-            result = normalize(
-                fn(
-                    *(
-                        normalize(
-                            value,
-                            lambda element: (
-                                tvm_ffi.device(f"{element}")
-                                if isinstance(element, torch.device)
-                                else tvm_ffi.convert(element)
-                                if isinstance(element, torch.dtype)
-                                else element
-                            ),
-                        )
-                        for value in values
-                    )
-                ),
-                lambda value: (
-                    torch.from_dlpack(value)
-                    if isinstance(value, tvm_ffi.Tensor)
-                    else value
-                ),
-            )
-
-            if isinstance(result, Exception):
-                return result
-            leaves = [result] if self._output_spec.num_leaves == 1 else list(result)
-            return pytree.tree_unflatten(leaves, self._output_spec)
-
-        signature = inspect.signature(self.fn)
-        ffi_signature = signature.replace(
-            parameters=[
-                parameter.replace(
-                    default=(
-                        tvm_ffi.device(f"{parameter.default}")
-                        if isinstance(parameter.default, torch.device)
-                        else tvm_ffi.convert(parameter.default)
-                    )
-                )
-                if isinstance(parameter.default, (torch.device, torch.dtype))
-                else parameter
-                for parameter in signature.parameters.values()
-            ]
-        )
-        return tvm_ffi.utils.kwargs_wrapper.make_kwargs_wrapper_from_signature(
-            invoke, ffi_signature
-        )
-
-    # ------------------------------------------------------------------ #
-    # Internal: module merging
-    # ------------------------------------------------------------------ #
+        llvm.store(self._build_tvmffi_any(index, payload), slot)
+        return slot
 
     def _build_combined_module(self) -> ir.Module:
         """Merge all sub-modules into a single ``ir.Module``.
@@ -273,399 +152,136 @@ class TridentGraphModule:
     # ------------------------------------------------------------------ #
 
     def _build_llvm_dispatcher(self, module: ir.Module) -> None:
-        """After the pipeline has lowered every sub-module to LLVM IR, add a
-        new ``llvm.func`` that tries each sub-function in sequence.
+        """Try packed specializations in order, releasing guard failures.
 
-        The dispatcher ABI matches the TVM PackedCFunc convention::
-
-            i32 (ptr, ptr, i32, ptr)
-
-        Each sub-function writes its result into *ret_ptr*.  The dispatcher
-        inspects the type_index field (field 0) of the resulting TVMFFIAny:
-        if it matches the registered type index of ``trident.ffi.Exception``
-        the dispatcher tries the next specialization.  If all fail, the
-        last Exception is left in *ret_ptr* and the dispatcher returns 0
-        (success), letting the Python caller see the Exception ObjectRef.
-
-        A real error (sub-function returned -1) means the FFI error is
-        already set; the dispatcher simply returns -1.
+        An Exception result requests the next specialization; a nonzero packed
+        call status propagates the runtime error without inspecting its result.
         """
-        n: int = len(self._sub_modules)
-        symbol: str = f"__tvm_ffi_{self.fn.__name__}"
-
-        # ── Types ────────────────────────────────────────────────────────
-        with self.ctx:
-            i32_type: ir.IntegerType = ir.IntegerType.get_signless(32)
-            i64_type: ir.IntegerType = ir.IntegerType.get_signless(64)
-            ptr_type: ir.Type = llvm.PointerType.get()
-
-        with ir.InsertionPoint(module.body), module.operation.location:
-            # ── Declare external C API functions (only when missing) ─
-            sym_tab: ir.SymbolTable = ir.SymbolTable(module.operation)
-            needed_funcs: list[tuple[str, str]] = [
-                ("TVMFFIFunctionGetGlobal", "!llvm.func<i32 (!llvm.ptr, !llvm.ptr)>"),
-                (
-                    "TVMFFIFunctionCall",
-                    "!llvm.func<i32 (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr)>",
+        with self.ctx, module.operation.location, ir.InsertionPoint(module.body):
+            i32 = ir.IntegerType.get_signless(32)
+            i64 = ir.IntegerType.get_signless(64)
+            pointer = llvm.PointerType.get()
+            any_type = llvm.StructType.get_literal([i32, i32, i64])
+            name_type = llvm.StructType.get_literal([pointer, i64])
+            packed_type = ir.Type.parse(
+                "!llvm.func<i32 (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr)>"
+            )
+            symbols = ir.SymbolTable(module.operation)
+            declarations = {
+                "TVMFFIFunctionCall": packed_type,
+                "TVMFFIFunctionGetGlobal": ir.Type.parse(
+                    "!llvm.func<i32 (!llvm.ptr, !llvm.ptr)>"
                 ),
-                ("TVMFFIObjectDecRef", "!llvm.func<i32 (!llvm.ptr)>"),
-            ]
-            for fname, ftype_str in needed_funcs:
-                if fname not in sym_tab:
-                    llvm.func(
-                        sym_name=fname,
-                        function_type=ir.TypeAttr.get(
-                            ir.Type.parse(ftype_str, self.ctx),
-                        ),
-                    )
-
-            # ── Create the dispatcher function ────────────────────────
-            dispatcher: llvm.FuncOp = llvm.func(
-                sym_name=symbol,
-                function_type=ir.TypeAttr.get(
-                    ir.Type.parse(
-                        "!llvm.func<i32 (!llvm.ptr, !llvm.ptr, i32, !llvm.ptr)>",
-                        self.ctx,
-                    )
-                ),
+                "TVMFFIObjectDecRef": ir.Type.parse("!llvm.func<i32 (!llvm.ptr)>"),
+            }
+            for name, type_ in declarations.items():
+                if name not in symbols:
+                    llvm.func(name, ir.TypeAttr.get(type_))
+            dispatcher = llvm.func(
+                f"__tvm_ffi_{self.fn.__name__}", ir.TypeAttr.get(packed_type)
             )
-
-            # Entry block: receives ABI arguments.
-            entry_block: ir.Block = ir.Block.create_at_start(
-                dispatcher.body,
-                arg_types=[ptr_type, ptr_type, i32_type, ptr_type],
+            entry = ir.Block.create_at_start(
+                dispatcher.body, [pointer, pointer, i32, pointer]
             )
-            in_ptr, out_ptr, num_args, ret_ptr = entry_block.arguments
+            in_ptr, out_ptr, num_args, ret_ptr = entry.arguments
+            error = ir.Block.create_after(entry)
+            done = ir.Block.create_after(error)
+            exit_ = ir.Block.create_after(done, i32)
 
-            # ── Forward-declared blocks ─────────────────────────────
-            error_block: ir.Block = ir.Block.create_after(entry_block)
-            done_block: ir.Block = ir.Block.create_after(error_block)
-            exit_block: ir.Block = ir.Block.create_after(done_block, i32_type)
-            (exit_ret_val,) = exit_block.arguments
+            def call(name: str, arguments: Sequence[ir.Value]) -> ir.Value:
+                return llvm.call(i32, arguments, [], [], callee=name)
 
-            # ── Common types ──────────────────────────────────────────
-            any_ty: ir.Type = llvm.StructType.get_literal(
-                [i32_type, i32_type, i64_type],
-                context=self.ctx,
-            )
-            byte_array_ty: ir.Type = llvm.StructType.get_literal(
-                [ptr_type, i64_type],
-                context=self.ctx,
-            )
+            def field(slot: ir.Value, index: int, type_: ir.Type) -> ir.Value:
+                return llvm.extractvalue(type_, llvm.load(any_type, slot), [index])
 
-            with ir.InsertionPoint(entry_block):
-                # SSA constants (dominate all blocks)
-                one_i64: ir.Value = llvm.mlir_constant(
-                    value=ir.IntegerAttr.get(i64_type, 1),
-                )
-                zero_i32: ir.Value = llvm.mlir_constant(
-                    value=ir.IntegerAttr.get(i32_type, 0),
-                )
-                zero_i64: ir.Value = llvm.mlir_constant(
-                    value=ir.IntegerAttr.get(i64_type, 0),
-                )
-                one_i32: ir.Value = llvm.mlir_constant(
-                    value=ir.IntegerAttr.get(i32_type, 1),
-                )
-
-                # ── Module-level null-terminated C string for Exception ─
-                gme_kind: Final[str] = "GuardMatchException\0"
+            def string(name: str, value: str) -> ir.Value:
                 with ir.InsertionPoint(module.body):
                     llvm.mlir_global(
-                        global_type=ir.TypeAttr.get(
-                            ir.Type.parse(
-                                f"!llvm.array<{len(gme_kind)} x i8>",
-                                self.ctx,
-                            )
+                        ir.TypeAttr.get(
+                            ir.Type.parse(f"!llvm.array<{len(value)} x i8>")
                         ),
-                        sym_name="__trident_const_GuardMatchException",
-                        linkage=ir.Attribute.parse(
-                            "#llvm.linkage<internal>",
-                            self.ctx,
-                        ),
+                        name,
+                        ir.Attribute.parse("#llvm.linkage<internal>"),
                         constant=True,
-                        value=ir.StringAttr.get(gme_kind),
+                        value=ir.StringAttr.get(value),
                     )
+                return llvm.mlir_addressof(pointer, name)
 
-                # ── Pre-fetch handle: trident.ffi.GetExceptionIndex ──
-                handles: dict[str, ir.Value] = {}
-                for fname in [
-                    "trident.ffi.GetExceptionIndex",
-                    "trident.ffi.Exception",
-                ]:
-                    gsym: str = f"__trident_const_{fname}"
-                    # mlir_global string constant (module level)
-                    with ir.InsertionPoint(module.body):
-                        name_len: Final[int] = len(fname)
-                        llvm.mlir_global(
-                            global_type=ir.TypeAttr.get(
-                                ir.Type.parse(
-                                    f"!llvm.array<{name_len} x i8>",
-                                    self.ctx,
-                                )
-                            ),
-                            sym_name=gsym,
-                            linkage=ir.Attribute.parse(
-                                "#llvm.linkage<internal>",
-                                self.ctx,
-                            ),
-                            constant=True,
-                            value=ir.StringAttr.get(fname),
-                        )
-                    # Pre-fetch handle in entry block
-                    name_ptr: ir.Value = llvm.mlir_addressof(
-                        res=ptr_type,
-                        global_name=ir.FlatSymbolRefAttr.get(gsym),
+            with ir.InsertionPoint(entry):
+                zero = llvm.mlir_constant(ir.IntegerAttr.get(i32, 0))
+                one = llvm.mlir_constant(ir.IntegerAttr.get(i32, 1))
+                zero_i64 = llvm.mlir_constant(ir.IntegerAttr.get(i64, 0))
+                one_i64 = llvm.mlir_constant(ir.IntegerAttr.get(i64, 1))
+                null = llvm.mlir_zero(pointer)
+                handles = {}
+                for name in ("trident.ffi.Exception", "trident.ffi.GetExceptionIndex"):
+                    name_ptr = string(f"__trident_const_{name}", name)
+                    name_value = llvm.mlir_undef(name_type)
+                    name_value = llvm.insertvalue(name_value, name_ptr, [0])
+                    name_value = llvm.insertvalue(
+                        name_value,
+                        llvm.mlir_constant(ir.IntegerAttr.get(i64, len(name))),
+                        [1],
                     )
-                    name_slot: ir.Value = llvm.alloca(
-                        res=ptr_type,
-                        array_size=one_i64,
-                        elem_type=ir.TypeAttr.get(byte_array_ty),
-                    )
-                    llvm.store(
-                        value=name_ptr,
-                        addr=llvm.getelementptr(
-                            res=ptr_type,
-                            base=name_slot,
-                            dynamic_indices=[],
-                            raw_constant_indices=ir.DenseI32ArrayAttr.get([0, 0]),
-                            elem_type=ir.TypeAttr.get(byte_array_ty),
-                            no_wrap_flags=None,
-                        ),
-                    )
-                    llvm.store(
-                        value=llvm.mlir_constant(
-                            value=ir.IntegerAttr.get(i64_type, len(fname)),
-                        ),
-                        addr=llvm.getelementptr(
-                            res=ptr_type,
-                            base=name_slot,
-                            dynamic_indices=[],
-                            raw_constant_indices=ir.DenseI32ArrayAttr.get([0, 1]),
-                            elem_type=ir.TypeAttr.get(byte_array_ty),
-                            no_wrap_flags=None,
-                        ),
-                    )
-                    handle_slot: ir.Value = llvm.alloca(
-                        res=ptr_type,
-                        array_size=one_i64,
-                        elem_type=ir.TypeAttr.get(ptr_type),
-                    )
-                    llvm.call(
-                        result=i32_type,
-                        callee_operands=[name_slot, handle_slot],
-                        op_bundle_operands=[],
-                        op_bundle_sizes=[],
-                        callee=ir.FlatSymbolRefAttr.get(
-                            "TVMFFIFunctionGetGlobal",
-                        ),
-                    )
-                    handles[fname] = llvm.load(res=ptr_type, addr=handle_slot)
-
-                # ── Get ExcIdx = trident.ffi.GetExceptionIndex() ─────
-                exc_idx_slot: ir.Value = self._alloca_tvmffi_any(0, zero_i64)
-                llvm.call(
-                    result=i32_type,
-                    callee_operands=[
-                        handles["trident.ffi.GetExceptionIndex"],
-                        llvm.inttoptr(
-                            res=ptr_type,
-                            arg=zero_i64,
-                        ),
-                        zero_i32,
-                        exc_idx_slot,
-                    ],
-                    op_bundle_operands=[],
-                    op_bundle_sizes=[],
-                    callee=ir.FlatSymbolRefAttr.get(
-                        "TVMFFIFunctionCall",
-                    ),
+                    name_slot = llvm.alloca(pointer, one_i64, name_type)
+                    llvm.store(name_value, name_slot)
+                    handle_slot = llvm.alloca(pointer, one_i64, pointer)
+                    call("TVMFFIFunctionGetGlobal", [name_slot, handle_slot])
+                    handles[name] = llvm.load(pointer, handle_slot)
+                index_slot = self._alloca_tvmffi_any(0, zero_i64)
+                call(
+                    "TVMFFIFunctionCall",
+                    [handles["trident.ffi.GetExceptionIndex"], null, zero, index_slot],
+                )
+                exception_index = llvm.trunc(
+                    i32,
+                    field(index_slot, 2, i64),
+                    ir.Attribute.parse("#llvm.overflow<none>"),
+                )
+                result_slot = self._alloca_tvmffi_any(0, zero_i64)
+                kind = string(
+                    "__trident_const_GuardMatchException", "GuardMatchException\0"
+                )
+                arguments = self._alloca_tvmffi_any(8, llvm.ptrtoint(i64, kind))
+                call(
+                    "TVMFFIFunctionCall",
+                    [handles["trident.ffi.Exception"], arguments, one, result_slot],
                 )
 
-                # ── Allocate local result slot (TVMFFIAny) ──
-                result_slot: ir.Value = self._alloca_tvmffi_any(0, zero_i64)
-
-                # ── Construct Exception("GuardMatchException") via FFI ──
-                # When n==0 the dispatcher returns this immediately,
-                # signalling recompile.  When n>0 sub-functions
-                # overwrite it on success (or leave their own
-                # Exception on failure).
-
-                # Load exc_idx from GetExceptionIndex result for comparison
-                exc_idx_i32: ir.Value = llvm.trunc(
-                    res=i32_type,
-                    arg=llvm.load(
-                        res=i64_type,
-                        addr=llvm.getelementptr(
-                            res=ptr_type,
-                            base=exc_idx_slot,
-                            dynamic_indices=[],
-                            raw_constant_indices=ir.DenseI32ArrayAttr.get([0, 2]),
-                            elem_type=ir.TypeAttr.get(any_ty),
-                            no_wrap_flags=None,
-                        ),
-                    ),
-                    overflow_flags=ir.Attribute.parse("#llvm.overflow<none>", self.ctx),
-                )
-
-                # Build TVMFFIAny {kTVMFFIRawStr=8, padding=0, v_c_str=&"GuardMatchException\0"}
-                # AnyView::type_index can be kTVMFFIRawStr (8) —
-                # the std::string fallback chain accepts it via const char*,
-                # no heap allocation needed.
-                # v_c_str = pointer to the null-terminated global string
-                args_slot: ir.Value = self._alloca_tvmffi_any(
-                    8,
-                    llvm.ptrtoint(
-                        res=i64_type,
-                        arg=llvm.mlir_addressof(
-                            res=ptr_type,
-                            global_name=ir.FlatSymbolRefAttr.get(
-                                "__trident_const_GuardMatchException"
-                            ),
-                        ),
-                    ),
-                )
-
-                # Call trident.ffi.Exception(kind="GuardMatchException") via RawStr
-                llvm.call(
-                    result=i32_type,
-                    callee_operands=[
-                        handles["trident.ffi.Exception"],
-                        args_slot,
-                        one_i32,
-                        result_slot,
-                    ],
-                    op_bundle_operands=[],
-                    op_bundle_sizes=[],
-                    callee=ir.FlatSymbolRefAttr.get("TVMFFIFunctionCall"),
-                )
-
-                # ── Streaming: try_i → check_i → try_{i+1} ─────
-            prev_block: ir.Block = entry_block
-
-            for i in range(n):
-                # The lowering pass emits a packed ABI wrapper for each
-                # specialization under this derived symbol.
-                sub_symbol: Final[str] = f"__tvm_ffi_{self.fn.__name__}_{i}"
-
-                # Create try_i + check_i
-                try_blk: ir.Block = ir.Block.create_after(prev_block)
-                check_blk: ir.Block = ir.Block.create_after(try_blk)
-
-                # Terminator for prev_block → try_i / done
-                with ir.InsertionPoint(prev_block):
-                    llvm.cond_br(
-                        condition=llvm.icmp(
-                            predicate=llvm.ICmpPredicate.eq,
-                            lhs=llvm.load(
-                                res=i32_type,
-                                addr=llvm.getelementptr(
-                                    res=ptr_type,
-                                    base=result_slot,
-                                    dynamic_indices=[],
-                                    raw_constant_indices=ir.DenseI32ArrayAttr.get(
-                                        [0, 0]
-                                    ),
-                                    elem_type=ir.TypeAttr.get(any_ty),
-                                    no_wrap_flags=None,
-                                ),
-                            ),
-                            rhs=exc_idx_i32,
-                        ),
-                        true_dest_operands=[],
-                        false_dest_operands=[],
-                        true_dest=try_blk,
-                        false_dest=done_block,
+            previous = entry
+            for index in range(len(self._sub_modules)):
+                attempt = ir.Block.create_after(previous)
+                check = ir.Block.create_after(attempt)
+                with ir.InsertionPoint(previous):
+                    failed = llvm.icmp(
+                        llvm.ICmpPredicate.eq,
+                        field(result_slot, 0, i32),
+                        exception_index,
                     )
-
-                with ir.InsertionPoint(try_blk):
-                    # Release the previous exception object to avoid leak
-                    llvm.call(
-                        result=i32_type,
-                        callee_operands=[
-                            llvm.inttoptr(
-                                res=ptr_type,
-                                arg=llvm.load(
-                                    res=i64_type,
-                                    addr=llvm.getelementptr(
-                                        res=ptr_type,
-                                        base=result_slot,
-                                        dynamic_indices=[],
-                                        raw_constant_indices=ir.DenseI32ArrayAttr.get(
-                                            [0, 2]
-                                        ),
-                                        elem_type=ir.TypeAttr.get(any_ty),
-                                        no_wrap_flags=None,
-                                    ),
-                                ),
-                            )
-                        ],
-                        op_bundle_operands=[],
-                        op_bundle_sizes=[],
-                        callee=ir.FlatSymbolRefAttr.get("TVMFFIObjectDecRef"),
+                    llvm.cond_br(failed, [], [], attempt, done)
+                with ir.InsertionPoint(attempt):
+                    call(
+                        "TVMFFIObjectDecRef",
+                        [llvm.inttoptr(pointer, field(result_slot, 2, i64))],
                     )
-                    llvm.cond_br(
-                        condition=llvm.icmp(
-                            predicate=llvm.ICmpPredicate.eq,
-                            lhs=llvm.call(
-                                result=i32_type,
-                                callee_operands=[
-                                    in_ptr,
-                                    out_ptr,
-                                    num_args,
-                                    result_slot,
-                                ],
-                                op_bundle_operands=[],
-                                op_bundle_sizes=[],
-                                callee=ir.FlatSymbolRefAttr.get(sub_symbol),
-                            ),
-                            rhs=zero_i32,
-                        ),
-                        true_dest_operands=[],
-                        false_dest_operands=[],
-                        true_dest=check_blk,
-                        false_dest=error_block,
+                    status = call(
+                        f"__tvm_ffi_{self.fn.__name__}_{index}",
+                        [in_ptr, out_ptr, num_args, result_slot],
                     )
-
-                prev_block = check_blk
-
-            # Terminator for last prev_block → done_block
-            with ir.InsertionPoint(prev_block):
-                llvm.br(dest_operands=[], dest=done_block)
-
-            # ── error block (shared): real error → -1 ────────────────
-            with ir.InsertionPoint(error_block):
-                llvm.br(
-                    dest_operands=[
-                        llvm.mlir_constant(
-                            value=ir.IntegerAttr.get(i32_type, -1),
-                        )
-                    ],
-                    dest=exit_block,
-                )
-
-            # ── done block ────────────────────────────────────────────
-            with ir.InsertionPoint(done_block):
-                # Copy result_slot → *ret_ptr (entire TVMFFIAny struct at once)
-                llvm.store(
-                    value=llvm.load(res=any_ty, addr=result_slot),
-                    addr=ret_ptr,
-                )
-                llvm.br(dest_operands=[zero_i32], dest=exit_block)
-
-            # ── exit block (shared): dec-ref + return ─────────────
-            with ir.InsertionPoint(exit_block):
-                for h in handles.values():
-                    llvm.call(
-                        result=i32_type,
-                        callee_operands=[h],
-                        op_bundle_operands=[],
-                        op_bundle_sizes=[],
-                        callee=ir.FlatSymbolRefAttr.get(
-                            "TVMFFIObjectDecRef",
-                        ),
-                    )
-                llvm.return_(arg=exit_ret_val)
+                    success = llvm.icmp(llvm.ICmpPredicate.eq, status, zero)
+                    llvm.cond_br(success, [], [], check, error)
+                previous = check
+            with ir.InsertionPoint(previous):
+                llvm.br([], done)
+            with ir.InsertionPoint(error):
+                llvm.br([llvm.mlir_constant(ir.IntegerAttr.get(i32, -1))], exit_)
+            with ir.InsertionPoint(done):
+                llvm.store(llvm.load(any_type, result_slot), ret_ptr)
+                llvm.br([zero], exit_)
+            with ir.InsertionPoint(exit_):
+                for handle in handles.values():
+                    call("TVMFFIObjectDecRef", [handle])
+                llvm.return_(arg=exit_.arguments[0])
 
     # ------------------------------------------------------------------ #
     # Internal: sub-module construction
@@ -734,13 +350,11 @@ class TridentGraphModule:
                 signature,
                 bound.arguments,
                 flat_types,
-                value_type,
-                self.ctx,
             )
         param_types = input_builder.input_types
 
         with self.ctx:
-            abi_result_type = ir.Type.parse("!tvm_ffi.any", self.ctx)
+            abi_result_type = tvm_ffi_d.AnyType.get(context=self.ctx)
             ffi_type: ir.FunctionType = ir.FunctionType.get(
                 param_types, [abi_result_type]
             )
@@ -816,65 +430,19 @@ class TridentGraphModule:
     # Internal: TVMFFIAny helpers
     # ------------------------------------------------------------------ #
 
-    def _build_tvmffi_any(
-        self,
-        index: int,
-        payload: ir.Value,
-    ) -> ir.Value:
-        """Build a TVMFFIAny struct value ``!llvm.struct<(i32, i32, i64)>``.
-
-        Returns an SSA value with fields::
-
-            {type_index=index, zero_padding=0, payload}
-
-        ``payload`` must be an ``i64`` value (e.g. a ``zero_i64`` constant,
-        or the result of ``ptrtoint``, …).
-        """
-        i32_ty: ir.Type = ir.IntegerType.get_signless(32)
-        i64_ty: ir.Type = ir.IntegerType.get_signless(64)
-        undef: ir.Value = llvm.mlir_undef(
-            res=llvm.StructType.get_literal([i32_ty, i32_ty, i64_ty], context=self.ctx),
+    def _build_tvmffi_any(self, index: int, payload: ir.Value) -> ir.Value:
+        """Build the ABI struct containing a type index, padding and payload."""
+        i32 = ir.IntegerType.get_signless(32)
+        i64 = ir.IntegerType.get_signless(64)
+        result = llvm.mlir_undef(llvm.StructType.get_literal([i32, i32, i64]))
+        fields = (
+            llvm.mlir_constant(ir.IntegerAttr.get(i32, index)),
+            llvm.mlir_constant(ir.IntegerAttr.get(i32, 0)),
+            payload,
         )
-        with_index: ir.Value = llvm.insertvalue(
-            container=undef,
-            value=llvm.mlir_constant(
-                value=ir.IntegerAttr.get(
-                    i32_ty,
-                    index,
-                ),
-            ),
-            position=ir.DenseI64ArrayAttr.get([0]),
-        )
-        with_padding: ir.Value = llvm.insertvalue(
-            container=with_index,
-            value=llvm.mlir_constant(
-                value=ir.IntegerAttr.get(
-                    i32_ty,
-                    0,
-                ),
-            ),
-            position=ir.DenseI64ArrayAttr.get([1]),
-        )
-        result: ir.Value = llvm.insertvalue(
-            container=with_padding,
-            value=payload,
-            position=ir.DenseI64ArrayAttr.get([2]),
-        )
+        for position, value in enumerate(fields):
+            result = llvm.insertvalue(result, value, [position])
         return result
-
-    def _fill_tvmffi_any(
-        self,
-        slot: ir.Value,
-        index: int,
-        payload: ir.Value,
-    ) -> None:
-        """Store a TVMFFIAny into the alloca'd *slot*.
-
-        Builds a complete ``!llvm.struct<(i32, i32, i64)>`` via
-        ``_build_tvmffi_any`` and stores it in one shot.
-        """
-        struct_val: ir.Value = self._build_tvmffi_any(index, payload)
-        llvm.store(value=struct_val, addr=slot)
 
     # ------------------------------------------------------------------ #
     # Internal: dynamic-shape helpers
@@ -912,6 +480,24 @@ class TridentGraphModule:
             dimensions[symbol] = result
             return result
 
+        def register_shape(value: Any, fake_value: Any) -> None:
+            if isinstance(value, torch.Tensor):
+                assert isinstance(fake_value, torch.Tensor), (
+                    "Dynamo placeholder for a Tensor input does not contain "
+                    "FakeTensor metadata"
+                )
+                assert value.dim() == fake_value.dim(), (
+                    f"Dynamo FakeTensor has rank {fake_value.dim()}, but its input "
+                    f"has rank {value.dim()}"
+                )
+                dynamic_shapes[value] = {
+                    index: dimension_spec
+                    for index, size in enumerate(fake_value.shape)
+                    if isinstance(size, torch.SymInt)
+                    if (dimension_spec := symbolic_dimension(size, value.shape[index]))
+                    is not None
+                }
+
         def symbolic_dimension(
             value: torch.SymInt, concrete_size: int
         ) -> torch.export.Dim | None:
@@ -947,27 +533,127 @@ class TridentGraphModule:
                 result = result + operator.index(round(offset))
             return result
 
-        def register_shape(value: Any, fake_value: Any) -> None:
-            if isinstance(value, torch.Tensor):
-                assert isinstance(fake_value, torch.Tensor), (
-                    "Dynamo placeholder for a Tensor input does not contain "
-                    "FakeTensor metadata"
-                )
-                assert value.dim() == fake_value.dim(), (
-                    f"Dynamo FakeTensor has rank {fake_value.dim()}, but its input "
-                    f"has rank {value.dim()}"
-                )
-                dynamic_shapes[value] = {
-                    index: dimension_spec
-                    for index, size in enumerate(fake_value.shape)
-                    if isinstance(size, torch.SymInt)
-                    if (dimension_spec := symbolic_dimension(size, value.shape[index]))
-                    is not None
-                }
-
         pytree.tree_map(
             register_shape,
             (tuple(args), kwargs),
             (fake_args, fake_kwargs),
         )
         return dynamic_shapes
+
+    def compile(self, *args: RuntimeValue, **kwargs: RuntimeValue) -> RuntimeValue:
+        """Build a new sub-module for *args* and rebuild the combined
+        module + dispatcher.  Called automatically from ``__call__`` when a
+        ``GuardMatchException`` is raised."""
+        return self._build_sub_module([*args], {**kwargs})
+
+    # ------------------------------------------------------------------ #
+    # Internal: orchestration
+    # ------------------------------------------------------------------ #
+
+    def stub_compile(self) -> RuntimeCallable:
+        """Build the combined module, lower it, add the LLVM dispatcher,
+        JIT-compile, and return a callable executor.
+
+        Called initially from ``__init__`` (with zero sub-modules) and
+        after every ``compile()`` to pick up newly added specializations.
+        """
+        # 1. Merge all sub-modules into one (each is cloned to avoid
+        #    repeated-merging hangs).
+        combined: ir.Module = self._build_combined_module()
+
+        # 2. Lower semantic TVM FFI and GPU IR to LLVM.
+        with self.ctx:
+            passmanager.PassManager.parse(
+                "builtin.module(trident-lowering-pipeline)",
+            ).run(combined.operation)
+
+        # 3. Build the LLVM dispatcher that tries each sub-function.
+        self._build_llvm_dispatcher(combined)
+
+        # 4. JIT-compile and wrap.
+        engine: ExecutionEngine = ExecutionEngine(
+            combined,
+            opt_level=3,
+            shared_libs=capi_utils.find_runtime_libraries(),
+        )
+        engine.initialize()
+
+        symbol: str = f"__tvm_ffi_{self.fn.__name__}"
+        ptr: int = engine.raw_lookup(symbol)
+        assert ptr is not None, (
+            f"symbol not found: {symbol}; "
+            f"available: {[op.sym_name.value for op in combined.body.operations if hasattr(op, 'sym_name')]}"
+        )
+
+        fn: tvm_ffi.Function = tvm_ffi.Function.__from_mlir_packed_safe_call__(
+            ptr,
+            keep_alive_object=engine,
+        )
+
+        def invoke(*values: RuntimeValue) -> RuntimeValue:
+            result = normalize(
+                fn(
+                    *(
+                        normalize(
+                            value,
+                            lambda element: (
+                                tvm_ffi.device(f"{element}")
+                                if isinstance(element, torch.device)
+                                else tvm_ffi.convert(element)
+                                if isinstance(element, torch.dtype)
+                                else element
+                            ),
+                        )
+                        for value in values
+                    )
+                ),
+                lambda value: (
+                    torch.from_dlpack(value)
+                    if isinstance(value, tvm_ffi.Tensor)
+                    else value
+                ),
+            )
+
+            if isinstance(result, Exception):
+                return result
+            leaves = [result] if self._output_spec.num_leaves == 1 else list(result)
+            return pytree.tree_unflatten(leaves, self._output_spec)
+
+        def normalize(
+            value: RuntimeValue,
+            convert: Callable[[RuntimeValue], RuntimeValue],
+        ) -> RuntimeValue:
+            if isinstance(value, tvm_ffi.Array):
+                return [normalize(element, convert) for element in value]
+            if isinstance(value, tuple):
+                return tuple(normalize(element, convert) for element in value)
+            if isinstance(value, list):
+                return [normalize(element, convert) for element in value]
+            if isinstance(value, dict):
+                return {
+                    key: normalize(element, convert) for key, element in value.items()
+                }
+            return convert(value)
+
+        signature = inspect.signature(self.fn)
+        ffi_signature = signature.replace(
+            parameters=[
+                parameter.replace(
+                    default=(
+                        tvm_ffi.device(f"{parameter.default}")
+                        if isinstance(parameter.default, torch.device)
+                        else tvm_ffi.convert(parameter.default)
+                    )
+                )
+                if isinstance(parameter.default, (torch.device, torch.dtype))
+                else parameter
+                for parameter in signature.parameters.values()
+            ]
+        )
+        return tvm_ffi.utils.kwargs_wrapper.make_kwargs_wrapper_from_signature(
+            invoke, ffi_signature
+        )
+
+    # ------------------------------------------------------------------ #
+    # Internal: module merging
+    # ------------------------------------------------------------------ #

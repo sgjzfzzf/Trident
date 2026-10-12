@@ -5,6 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// Keep input/check order: ABI lowering inserts helper declarations and wrappers
+// whose output order is checked together with the original functions.
 // RUN: trident-core-opt %s --trident-lowering-pipeline | FileCheck %s
 
 // The in-place copy keeps the destination as the first tensor argument to the

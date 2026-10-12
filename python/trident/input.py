@@ -4,9 +4,8 @@
 from __future__ import annotations
 
 import inspect
-from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator, Mapping, Sequence
-from typing import Any, Final, Self, TypeAlias, override
+from collections.abc import Mapping, Sequence
+from typing import Any, Final, Self, TypeAlias
 
 import torch
 import torch.utils._pytree as pytree
@@ -19,7 +18,8 @@ from torch.export.graph_signature import (
 )
 
 from trident.core import ir
-from trident.ir_utils import array_get, ffi_type
+from trident.core.dialects import tvm_ffi as tvm_ffi_d
+from trident.ir import array_get, value_type
 
 InputPath: TypeAlias = Sequence[int | str]
 InputValue: TypeAlias = Any
@@ -45,113 +45,43 @@ pytree.register_pytree_node(
 )
 
 
-class _InputNode(ABC):
-    """A table-owned input node with a cached region-local value."""
+class InputNodeBuilder:
+    """Static recipe for recursively building table-owned input nodes."""
 
-    __slots__ = ("type", "value")
+    __slots__ = ("children", "type")
 
     def __init__(
         self,
         type: ir.Type,
-        value: ir.Value | None = None,
+        children: Sequence[InputNodeBuilder] | None = None,
     ) -> None:
+        self.children: Final[list[InputNodeBuilder] | None] = (
+            None if children is None else [*children]
+        )
         self.type: Final[ir.Type] = type
-        self.value: ir.Value | None = value
 
-    @abstractmethod
-    def resolve(self, path: InputPath) -> ir.Value | None: ...
-
-    @abstractmethod
-    def flatten(self) -> list[ir.Value]: ...
-
-
-class _InputLeafNode(_InputNode):
-    """A terminal input node."""
-
-    __slots__ = ()
-
-    @override
-    def resolve(self, path: InputPath) -> ir.Value | None:
-        if path:
-            return None
-        return self.value
-
-    @override
-    def flatten(self) -> list[ir.Value]:
-        return [] if self.value is None else [self.value]
-
-
-class _InputNonLeafNode(_InputNode):
-    """A container input node which materializes and caches its children."""
-
-    __slots__ = ("children",)
-
-    def __init__(
-        self,
-        type: ir.Type,
-        children: Sequence[_InputNode | None],
-        value: ir.Value | None = None,
-    ) -> None:
-        super().__init__(type, value)
-        self.children: Final[list[_InputNode | None]] = [*children]
-
-    @property
-    def _children_iter(self) -> Iterator[tuple[int, _InputNode]]:
-        return (
-            (index, child)
-            for index, child in enumerate(self.children)
-            if child is not None
+    def build(self, value: ir.Value | None = None) -> _InputNode:
+        """Recursively build table-owned nodes with an optional root value."""
+        return _InputNode(
+            self.type,
+            None
+            if self.children is None
+            else [child.build() for child in self.children],
+            value,
         )
-
-    def _find_child(self, key: int | str) -> tuple[int, _InputNode] | None:
-        return next(
-            ((index, child) for index, child in self._children_iter if index == key),
-            None,
-        )
-
-    def _get_child(self, index: int, child: _InputNode) -> _InputNode | None:
-        if child.value is None:
-            parent = self.value
-            if parent is None:
-                return None
-            assert str(parent.type) == "!tvm_ffi.array", (
-                f"unsupported input container type: {parent.type}"
-            )
-            child.value = array_get(parent, index, child.type)
-        return child
-
-    def child(self, key: int | str) -> _InputNode | None:
-        """Return the table-owned child selected by *key*."""
-        result = self._find_child(key)
-        if result is None:
-            return None
-        _, child = result
-        return child
-
-    @override
-    def resolve(self, path: InputPath) -> ir.Value | None:
-        if not path:
-            return self.value
-        step, *remaining = path
-        result = self._find_child(step)
-        if result is None:
-            return None
-        index, child = result
-        child = self._get_child(index, child)
-        return None if child is None else child.resolve(remaining)
-
-    @override
-    def flatten(self) -> list[ir.Value]:
-        values: list[ir.Value] = []
-        for index, child in self._children_iter:
-            child = self._get_child(index, child)
-            if child is not None:
-                values.extend(child.flatten())
-        return values
 
 
 class InputTable:
     """Table-owned input nodes addressable through Python pytree paths."""
+
+    def __getitem__(self, path: InputPath) -> ir.Value | None:
+        assert path, "input paths must not be empty"
+        name, *remaining = path
+        assert isinstance(name, str), "input paths must start with a parameter name"
+        node = self._nodes.get(name)
+        if node is None:
+            return None
+        return node.resolve(remaining)
 
     def __init__(
         self,
@@ -164,46 +94,11 @@ class InputTable:
             "exported input names must be present in the input table"
         )
 
-    def __getitem__(self, path: InputPath) -> ir.Value | None:
-        assert path, "input paths must not be empty"
-        name, *remaining = path
-        assert isinstance(name, str), "input paths must start with a parameter name"
-        node = self._nodes.get(name)
-        if node is None:
-            return None
-        return node.resolve(remaining)
-
     def flatten_inputs(self) -> list[ir.Value]:
         """Return all exported input leaves in graph-signature order."""
         return [
             value for name in self._input_names for value in self._nodes[name].flatten()
         ]
-
-
-class InputNodeBuilder:
-    """Static recipe for recursively building table-owned input nodes."""
-
-    __slots__ = ("children", "type")
-
-    def __init__(
-        self,
-        type: ir.Type,
-        children: Sequence[InputNodeBuilder | None] | None = None,
-    ) -> None:
-        self.children: Final[list[InputNodeBuilder | None] | None] = (
-            None if children is None else [*children]
-        )
-        self.type: Final[ir.Type] = type
-
-    def build(self, value: ir.Value | None = None) -> _InputNode:
-        """Recursively build table-owned nodes with an optional root value."""
-        if self.children is None:
-            return _InputLeafNode(self.type, value)
-        return _InputNonLeafNode(
-            self.type,
-            [None if child is None else child.build() for child in self.children],
-            value,
-        )
 
 
 class InputTableBuilder:
@@ -220,6 +115,17 @@ class InputTableBuilder:
             builder.type for _, builder in self._entries
         ]
 
+    def build(self, operands: Sequence[ir.Value]) -> InputTable:
+        """Bind *operands* to a fresh table for the current IR region."""
+        assert len(operands) == len(self._entries), (
+            f"input operand count does not match the wrapper signature: got {len(operands)}, expected {len(self._entries)}"
+        )
+        nodes = {
+            name: builder.build(operand)
+            for (name, builder), operand in zip(self._entries, operands)
+        }
+        return InputTable(nodes, self._input_names)
+
     @classmethod
     def get(
         cls,
@@ -227,15 +133,7 @@ class InputTableBuilder:
         signature: inspect.Signature,
         bound_arguments: Mapping[str, InputValue],
         main_input_types: Sequence[ir.Type],
-        value_type: Callable[[InputValue], ir.Type],
-        context: ir.Context,
     ) -> Self:
-        def container_type(
-            node_type: type, element_types: Sequence[ir.Type]
-        ) -> ir.Type:
-            assert node_type in (tuple, list)
-            return ffi_type("array")
-
         input_specs = exported_program.graph_signature.input_specs
         exported_input_values = pytree.tree_leaves(exported_program.example_inputs)
         assert len(input_specs) == len(exported_input_values), (
@@ -325,12 +223,12 @@ class InputTableBuilder:
                 )
                 return InputNodeBuilder(type)
             else:
-                assert node.type is not dict, (
-                    f"dict parameters (path step {name!r}) are not yet supported by trident.jit"
+                assert node.type in (list, tuple), (
+                    f"unsupported input container at {name!r}: {node.type}"
                 )
                 children = [build_node(child, name) for child in node.children()]
                 return InputNodeBuilder(
-                    container_type(node.type, [child.type for child in children]),
+                    tvm_ffi_d.ArrayType.get(),
                     children=children,
                 )
 
@@ -346,7 +244,7 @@ class InputTableBuilder:
             if isinstance(value, (list, tuple)):
                 children = [build_value(child) for child in value]
                 return InputNodeBuilder(
-                    container_type(type(value), [child.type for child in children]),
+                    tvm_ffi_d.ArrayType.get(),
                     children=children,
                 )
             return InputNodeBuilder(value_type(value))
@@ -363,13 +261,49 @@ class InputTableBuilder:
             input_names,
         )
 
-    def build(self, operands: Sequence[ir.Value]) -> InputTable:
-        """Bind *operands* to a fresh table for the current IR region."""
-        assert len(operands) == len(self._entries), (
-            f"input operand count does not match the wrapper signature: got {len(operands)}, expected {len(self._entries)}"
-        )
-        nodes = {
-            name: builder.build(operand)
-            for (name, builder), operand in zip(self._entries, operands)
-        }
-        return InputTable(nodes, self._input_names)
+
+class _InputNode:
+    """An input value with optional children, extracted lazily in its region."""
+
+    __slots__ = ("children", "type", "value")
+
+    def __init__(
+        self,
+        type: ir.Type,
+        children: list[_InputNode] | None,
+        value: ir.Value | None = None,
+    ) -> None:
+        self.children: Final[list[_InputNode] | None] = children
+        self.type: Final[ir.Type] = type
+        self.value = value
+
+    def _get_child(self, index: int) -> _InputNode:
+        assert self.children is not None
+        child = self.children[index]
+        if child.value is None and self.value is not None:
+            assert isinstance(self.value.type, tvm_ffi_d.ArrayType), (
+                f"unsupported input container type: {self.value.type}"
+            )
+            child.value = array_get(self.value, index, child.type)
+        return child
+
+    def flatten(self) -> list[ir.Value]:
+        if self.children is None:
+            return [] if self.value is None else [self.value]
+        return [
+            value
+            for index in range(len(self.children))
+            for value in self._get_child(index).flatten()
+        ]
+
+    def resolve(self, path: InputPath) -> ir.Value | None:
+        if not path:
+            return self.value
+        index, *remaining = path
+        if (
+            self.children is None
+            or not isinstance(index, int)
+            or not 0 <= index < len(self.children)
+        ):
+            return None
+        return self._get_child(index).resolve(remaining)

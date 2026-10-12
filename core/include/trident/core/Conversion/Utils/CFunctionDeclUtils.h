@@ -27,6 +27,7 @@ getOrCreateCAPIImpl(mlir::ModuleOp moduleOp, llvm::StringRef symbol,
 
 template <typename T> inline constexpr bool kUnsupportedCType = false;
 
+// Define conversion templates before the function traits that instantiate them.
 template <typename CType, typename Enable = void> struct CTypeToLLVMImpl {
   static mlir::Type get(mlir::MLIRContext * /*context*/) {
     static_assert(kUnsupportedCType<CType>,
@@ -106,7 +107,10 @@ template <> struct CFunctionReturnType<void> {
   }
 };
 
-template <typename FunctionType> struct CFunctionSignature;
+template <typename FunctionType> struct CFunctionSignature {
+  static_assert(kUnsupportedCType<FunctionType>,
+                "CFunctionSignature expects a function type");
+};
 
 template <typename Ret, typename... Args>
 struct CFunctionSignature<Ret(Args...)> {
@@ -124,15 +128,12 @@ template <typename FunctionType> struct CFunctionTraits {
                 "CFunctionTraits expects a function pointer type");
 };
 
-template <typename Ret, typename... Args> struct CFunctionTraitsImpl {
-  using Signature = CFunctionSignature<Ret(Args...)>;
-  static mlir::LLVM::LLVMFunctionType getLLVMType(mlir::MLIRContext *context) {
-    return Signature::getLLVMType(context);
-  }
-};
+template <typename Ret, typename... Args>
+struct CFunctionTraits<Ret (*)(Args...)> : CFunctionSignature<Ret(Args...)> {};
 
 template <typename Ret, typename... Args>
-struct CFunctionTraits<Ret (*)(Args...)> : CFunctionTraitsImpl<Ret, Args...> {};
+struct CFunctionTraits<Ret (*)(Args...) noexcept>
+    : CFunctionSignature<Ret(Args...)> {};
 
 template <typename FunctionType>
 mlir::FailureOr<mlir::LLVM::LLVMFuncOp>
@@ -147,10 +148,6 @@ getOrCreateCAPI(mlir::ModuleOp moduleOp, llvm::StringRef symbol) {
 mlir::FailureOr<mlir::LLVM::LLVMFuncOp>
 getOrCreateCAPI(mlir::ModuleOp moduleOp, llvm::StringRef symbol,
                 mlir::LLVM::LLVMFunctionType expectedType);
-
-template <typename Ret, typename... Args>
-struct CFunctionTraits<Ret (*)(Args...) noexcept>
-    : CFunctionTraitsImpl<Ret, Args...> {};
 
 } // namespace trident::conversion::utils
 

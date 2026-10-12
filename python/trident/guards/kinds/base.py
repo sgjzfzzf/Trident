@@ -17,7 +17,7 @@ class Guard:
 
     create_fn_name: ClassVar[str | None] = None
     code_types: ClassVar[tuple[type[GuardCode], ...]] = ()
-    _registry: ClassVar[set[type[Guard]]] = set()
+    _registry: ClassVar[dict[str, type[Guard]]] = {}
 
     def __init__(
         self,
@@ -34,23 +34,15 @@ class Guard:
             assert isinstance(create_fn_name, str) and create_fn_name, (
                 "Guard.create_fn_name must be a non-empty string"
             )
-            assert not any(
-                registered.create_fn_name == create_fn_name
-                for registered in Guard._registry
-            ), f"duplicate Guard registration for {create_fn_name!r}"
-            Guard._registry.add(cls)
+            assert create_fn_name not in Guard._registry, (
+                f"duplicate Guard registration for {create_fn_name!r}"
+            )
+            Guard._registry[create_fn_name] = cls
 
     @classmethod
     def parse(cls, guard: torch._guards.Guard) -> Guard | None:
         create_fn_name = guard.create_fn_name()
-        builder = next(
-            (
-                registered
-                for registered in cls._registry
-                if registered.create_fn_name == create_fn_name
-            ),
-            None,
-        )
+        builder = cls._registry.get(create_fn_name)
         if builder is None or not builder.validate_guard(guard):
             return None
         texts = guard.code_list or []
@@ -61,25 +53,6 @@ class Guard:
         if codes is None:
             return None
         return builder(source, codes)
-
-    @classmethod
-    def validate_code_list(
-        cls,
-        texts: list[str],
-    ) -> bool:
-        """Validate create-function-specific CodeList cardinality."""
-        return True
-
-    @classmethod
-    def validate_guard(cls, guard: torch._guards.Guard) -> bool:
-        return True
-
-    @classmethod
-    def parse_source(
-        cls,
-        guard: torch._guards.Guard,
-    ) -> Local | None:
-        return Local.parse(guard.name)
 
     @classmethod
     def parse_codes(
@@ -102,3 +75,22 @@ class Guard:
             [match] = matches
             parsed_codes.append(match.to_builder())
         return parsed_codes
+
+    @classmethod
+    def parse_source(
+        cls,
+        guard: torch._guards.Guard,
+    ) -> Local | None:
+        return Local.parse(guard.name)
+
+    @classmethod
+    def validate_code_list(
+        cls,
+        texts: list[str],
+    ) -> bool:
+        """Validate create-function-specific CodeList cardinality."""
+        return True
+
+    @classmethod
+    def validate_guard(cls, guard: torch._guards.Guard) -> bool:
+        return True

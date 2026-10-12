@@ -5,8 +5,8 @@ Triton/Torch-style compute into MLIR/LLVM, then executes through tvm_ffi.
 
 The repository contains:
 
-- A Python package (`trident`) with `jit` and `compile` entry points.
 - A C++/MLIR core (`core`) built with CMake.
+- A Python package (`trident`) with `jit` and `compile` entry points.
 - A lightweight FFI runtime layer (`ffi`) providing composable error types.
 - End-to-end examples and tests for ATen op lowering/execution.
 
@@ -18,33 +18,33 @@ The repository contains:
 
 ## Repository Layout
 
-- `python/trident`: Python APIs (`jit`, `compile`) and runtime backend.
 - `core`: MLIR/C++ implementation, dialects, passes, runtime glue.
+- `examples`: Functional demos (`add.py`, `attn.py`, `mm.py`, `softmax.py`).
 - `ffi`: Lightweight C++ shared library for FFI-level types (`trident.ffi.Exception`).
-- `examples`: Functional demos (`add.py`, `mm.py`, `softmax.py`, `attn.py`).
+- `python/trident`: Python APIs (`jit`, `compile`) and runtime backend.
 - `test`: Python end-to-end tests for lowered ATen ops.
 
 ## Prerequisites
 
-- Linux
-- Python 3.10+
 - CMake 3.29+
-- Ninja
-- Clang/Clang++
 - CUDA Toolkit (for GPU execution)
+- Clang/Clang++
+- Linux
+- Ninja
+- Python 3.10+
 - `uv` (recommended Python package/build workflow)
 
 Dependencies as declared in `pyproject.toml`:
 
 **Runtime** (also listed under `[project] dependencies`):
-- `torch>=2.10.0`
 - `apache-tvm-ffi`
+- `torch>=2.10.0`
 
 **Build-time** (also required at runtime for `torch`):
-- `torch>=2.10.0`
-- `triton`
 - `apache-tvm-ffi`
 - `scikit-build-core`, `nanobind`, `cmake`, `ninja`
+- `torch>=2.10.0`
+- `triton`
 
 ## Build And Install
 
@@ -90,6 +90,6 @@ Source files in this repository use MIT SPDX headers (`SPDX-License-Identifier: 
 
 ## Notes
 
+- GPU/CUDA availability is expected by the provided examples/tests.
 - Initial builds can take a long time because LLVM/MLIR is
 	built/fetched as dependencies.
-- GPU/CUDA availability is expected by the provided examples/tests.

@@ -9,6 +9,21 @@ import triton
 import triton.language as tl
 
 
+def main() -> None:
+    torch.manual_seed(0)
+    x: torch.Tensor = torch.randn(1823, 781, device="cuda")
+    y_torch: torch.Tensor = torch.softmax(x, axis=1)
+    y_triton: torch.Tensor = softmax_triton(x)
+    y_jit: torch.Tensor = softmax_jit(x)
+    assert torch.allclose(y_torch, y_triton), (y_torch, y_triton)
+    assert torch.allclose(y_torch, y_jit), (y_torch, y_jit)
+
+
+@trident.jit
+def softmax_jit(x: torch.Tensor) -> torch.Tensor:
+    return softmax_triton_impl(x)
+
+
 @triton.jit
 def softmax_kernel(
     output_ptr,
@@ -40,11 +55,6 @@ def softmax_triton(x: torch.Tensor) -> torch.Tensor:
     return softmax_triton_impl(x)
 
 
-@trident.jit
-def softmax_jit(x: torch.Tensor) -> torch.Tensor:
-    return softmax_triton_impl(x)
-
-
 def softmax_triton_impl(x: torch.Tensor) -> torch.Tensor:
     n_rows, n_cols = x.shape
     BLOCK_SIZE: int = triton.next_power_of_2(n_cols)
@@ -63,16 +73,6 @@ def softmax_triton_impl(x: torch.Tensor) -> torch.Tensor:
         num_stages=num_stages,
     )
     return y
-
-
-def main() -> None:
-    torch.manual_seed(0)
-    x: torch.Tensor = torch.randn(1823, 781, device="cuda")
-    y_torch: torch.Tensor = torch.softmax(x, axis=1)
-    y_triton: torch.Tensor = softmax_triton(x)
-    y_jit: torch.Tensor = softmax_jit(x)
-    assert torch.allclose(y_torch, y_triton), (y_torch, y_triton)
-    assert torch.allclose(y_torch, y_jit), (y_torch, y_jit)
 
 
 if __name__ == "__main__":

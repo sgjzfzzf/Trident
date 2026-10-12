@@ -28,6 +28,7 @@
 #include <ATen/core/stack.h>
 #include <tvm/ffi/container/tuple.h>
 #include <tvm/ffi/function.h>
+#include <type_traits>
 
 #include <utility>
 
@@ -36,12 +37,16 @@ namespace trident::runtime {
 /// Parameter type list for Function.
 template <typename... ArgKinds> struct Args {};
 
-/// Primary template (declaration only — partial specialization below).
-template <typename Ret, typename ArgList> struct Function;
+/// Primary template; supported argument lists are specialized below.
+template <typename Ret, typename ArgList> struct Function {
+  static_assert(!std::is_same_v<ArgList, ArgList>,
+                "Function requires an Args argument type list");
+};
 
 namespace detail {
 
 /// Primary: single return — pop one IValue and resolve.
+// Return resolvers must be available before Function instantiates them.
 template <typename Ret> struct ResolveReturn {
   static tvm::ffi::Any resolve(torch::jit::Stack &stack) {
     return resolveValue<Ret>(torch::jit::pop(stack));

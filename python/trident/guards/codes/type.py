@@ -17,6 +17,11 @@ from .base import GuardCode
 class TypeIdCode(GuardCode):
     """A type-id template covered by the wrapper function signature."""
 
+    def build(self, tree: InputTable, context: ir.Context) -> ir.Value:
+        """The ABI type tag and Torch signature cover this guard."""
+        i1 = ir.IntegerType.get_signless(1, context)
+        return arith.constant(i1, ir.IntegerAttr.get(i1, 1))
+
     @classmethod
     def parse(
         cls,
@@ -34,8 +39,3 @@ class TypeIdCode(GuardCode):
             text,
         )
         return cls(text, source) if match is not None else None
-
-    def build(self, tree: InputTable, context: ir.Context) -> ir.Value:
-        """The ABI type tag and Torch signature cover this guard."""
-        i1 = ir.IntegerType.get_signless(1, context)
-        return arith.constant(i1, ir.IntegerAttr.get(i1, 1))

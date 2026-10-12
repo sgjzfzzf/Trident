@@ -14,11 +14,83 @@ import tvm_ffi
 
 from trident.core import ir
 from trident.core.dialects import arith
-from trident.core.dialects import tvm_ffi as ffi
+from trident.core.dialects import tvm_ffi as tvm_ffi_d
 from trident.input import InputTable
 
 from ..local import Local
 from .base import GuardCode
+
+
+class DynamoAttributeAbsentCode(GuardCode):
+    def __init__(
+        self,
+        text: str,
+        source: Local,
+        attribute: str,
+    ) -> None:
+        super().__init__(text, source)
+        self.attribute: Final[str] = attribute
+
+    @override
+    def build(self, tree: InputTable, context: ir.Context) -> ir.Value:
+        # These private Dynamo attributes are not part of the TVM FFI ABI.
+        i1 = ir.IntegerType.get_signless(1, context)
+        return arith.constant(i1, ir.IntegerAttr.get(i1, 1))
+
+    @classmethod
+    def parse(
+        cls,
+        text: str,
+        source: Local | None,
+    ) -> Self | None:
+        if source is None:
+            return None
+        match = re.fullmatch(
+            rf"\s*hasattr\(\s*{source.regex}\s*,\s*"
+            rf"(?P<quote>['\"])(?P<attribute>_dynamo_[A-Za-z0-9_]*)"
+            rf"(?P=quote)\s*\)\s*==\s*False\s*",
+            text,
+        )
+        return (
+            cls(text, source, match.group("attribute")) if match is not None else None
+        )
+
+
+class RequiresGradCode(GuardCode):
+    def __init__(
+        self,
+        text: str,
+        source: Local,
+        expected: bool,
+    ) -> None:
+        super().__init__(text, source)
+        self.expected: Final[bool] = expected
+
+    @override
+    def build(self, tree: InputTable, context: ir.Context) -> ir.Value:
+        # TVM FFI tensor metadata does not expose autograd state.  Treat this
+        # specialization guard as satisfied; the wrapper ABI cannot perform a
+        # runtime requires_grad check.
+        i1 = ir.IntegerType.get_signless(1, context)
+        return arith.constant(i1, ir.IntegerAttr.get(i1, 1))
+
+    @classmethod
+    def parse(
+        cls,
+        text: str,
+        source: Local | None,
+    ) -> Self | None:
+        if source is None:
+            return None
+        match = re.fullmatch(
+            rf"\s*{source.regex}\s*\.requires_grad\s*==\s*"
+            rf"(?P<value>True|False)\s*",
+            text,
+        )
+        if match is None:
+            return None
+        else:
+            return cls(text, source, match.group("value") == "True")
 
 
 class TensorDTypeCode(GuardCode):
@@ -32,6 +104,44 @@ class TensorDTypeCode(GuardCode):
         super().__init__(text, source)
         self.expected: Final[str] = expected
         self.dtype: Final[torch.dtype] = dtype
+
+    @override
+    def build(
+        self,
+        tree: InputTable,
+        context: ir.Context,
+    ) -> ir.Value:
+        source = self.source
+        if source is None:
+            return super().build(tree, context)
+        tensor = source.resolve(tree)
+        if tensor is None:
+            return super().build(tree, context)
+        metadata = tvm_ffi_d.tensor_dtype(tensor)
+        dtype = tvm_ffi.convert(self.dtype)
+        i1 = ir.IntegerType.get_signless(1, context)
+        return reduce(
+            arith.andi,
+            [
+                arith.cmpi(
+                    arith.CmpIPredicate.eq,
+                    actual,
+                    arith.constant(
+                        actual.type,
+                        ir.IntegerAttr.get(actual.type, expected_value),
+                    ),
+                )
+                for actual, expected_value in zip(
+                    metadata,
+                    (dtype.type_code, dtype.bits, dtype.lanes),
+                )
+            ],
+            arith.constant(i1, ir.IntegerAttr.get(i1, 1)),
+        )
+
+    @property
+    def key(self) -> Hashable:
+        return ("tensor-dtype", self.source, self.expected)
 
     @classmethod
     def parse(
@@ -55,44 +165,6 @@ class TensorDTypeCode(GuardCode):
             return None
         return cls(text, source, expected, dtype)
 
-    @property
-    def key(self) -> Hashable:
-        return ("tensor-dtype", self.source, self.expected)
-
-    @override
-    def build(
-        self,
-        tree: InputTable,
-        context: ir.Context,
-    ) -> ir.Value:
-        source = self.source
-        if source is None:
-            return super().build(tree, context)
-        tensor = source.resolve(tree)
-        if tensor is None:
-            return super().build(tree, context)
-        metadata = ffi.tensor_dtype(tensor)
-        dtype = tvm_ffi.convert(self.dtype)
-        i1 = ir.IntegerType.get_signless(1, context)
-        return reduce(
-            arith.andi,
-            [
-                arith.cmpi(
-                    arith.CmpIPredicate.eq,
-                    actual,
-                    arith.constant(
-                        actual.type,
-                        ir.IntegerAttr.get(actual.type, expected_value),
-                    ),
-                )
-                for actual, expected_value in zip(
-                    metadata,
-                    (dtype.type_code, dtype.bits, dtype.lanes),
-                )
-            ],
-            arith.constant(i1, ir.IntegerAttr.get(i1, 1)),
-        )
-
 
 class TensorDeviceCode(GuardCode):
     def __init__(
@@ -105,29 +177,6 @@ class TensorDeviceCode(GuardCode):
         super().__init__(text, source)
         self.expected: Final[str] = expected
         self.device: Final[torch.device] = device
-
-    @classmethod
-    def parse(
-        cls,
-        text: str,
-        source: Local | None,
-    ) -> Self | None:
-        if source is None:
-            return None
-        match = re.fullmatch(
-            rf"\s*str\(\s*{source.regex}\s*\.device\s*\)\s*==\s*"
-            rf"(?P<quote>['\"])(?P<device>[^'\"]+)(?P=quote)\s*",
-            text,
-        )
-        if match is None:
-            return None
-        expected = match.group("device")
-        device = torch.device(expected)
-        return cls(text, source, expected, device)
-
-    @property
-    def key(self) -> Hashable:
-        return ("tensor-device", self.source, self.expected)
 
     @override
     def build(
@@ -142,7 +191,7 @@ class TensorDeviceCode(GuardCode):
         if tensor is None:
             return super().build(tree, context)
         i32 = ir.IntegerType.get_signless(32, context)
-        metadata = ffi.tensor_device(tensor)
+        metadata = tvm_ffi_d.tensor_device(tensor)
         i1 = ir.IntegerType.get_signless(1, context)
         [index, type_code] = metadata
         device_type = tvm_ffi.device(self.device.type).dlpack_device_type()
@@ -174,6 +223,29 @@ class TensorDeviceCode(GuardCode):
             arith.constant(i1, ir.IntegerAttr.get(i1, 1)),
         )
 
+    @property
+    def key(self) -> Hashable:
+        return ("tensor-device", self.source, self.expected)
+
+    @classmethod
+    def parse(
+        cls,
+        text: str,
+        source: Local | None,
+    ) -> Self | None:
+        if source is None:
+            return None
+        match = re.fullmatch(
+            rf"\s*str\(\s*{source.regex}\s*\.device\s*\)\s*==\s*"
+            rf"(?P<quote>['\"])(?P<device>[^'\"]+)(?P=quote)\s*",
+            text,
+        )
+        if match is None:
+            return None
+        expected = match.group("device")
+        device = torch.device(expected)
+        return cls(text, source, expected, device)
+
 
 class TensorRankCode(GuardCode):
     def __init__(
@@ -184,6 +256,33 @@ class TensorRankCode(GuardCode):
     ) -> None:
         super().__init__(text, source)
         self.expected: Final[int] = expected
+
+    @override
+    def build(
+        self,
+        tree: InputTable,
+        context: ir.Context,
+    ) -> ir.Value:
+        source = self.source
+        if source is None:
+            return super().build(tree, context)
+        i64 = ir.IntegerType.get_signless(64, context)
+        tensor = source.resolve(tree)
+        if tensor is None:
+            return super().build(tree, context)
+        actual = tvm_ffi_d.tensor_dim(tensor)
+        return arith.cmpi(
+            arith.CmpIPredicate.eq,
+            actual,
+            arith.constant(
+                i64,
+                ir.IntegerAttr.get(i64, self.expected),
+            ),
+        )
+
+    @property
+    def key(self) -> Hashable:
+        return ("tensor-dim", self.source, self.expected)
 
     @classmethod
     def parse(
@@ -203,102 +302,3 @@ class TensorRankCode(GuardCode):
         rank = ast.literal_eval(match.group("rank"))
         assert isinstance(rank, int) and not isinstance(rank, bool)
         return cls(text, source, rank)
-
-    @property
-    def key(self) -> Hashable:
-        return ("tensor-dim", self.source, self.expected)
-
-    @override
-    def build(
-        self,
-        tree: InputTable,
-        context: ir.Context,
-    ) -> ir.Value:
-        source = self.source
-        if source is None:
-            return super().build(tree, context)
-        i64 = ir.IntegerType.get_signless(64, context)
-        tensor = source.resolve(tree)
-        if tensor is None:
-            return super().build(tree, context)
-        actual = ffi.tensor_dim(tensor)
-        return arith.cmpi(
-            arith.CmpIPredicate.eq,
-            actual,
-            arith.constant(
-                i64,
-                ir.IntegerAttr.get(i64, self.expected),
-            ),
-        )
-
-
-class RequiresGradCode(GuardCode):
-    def __init__(
-        self,
-        text: str,
-        source: Local,
-        expected: bool,
-    ) -> None:
-        super().__init__(text, source)
-        self.expected: Final[bool] = expected
-
-    @classmethod
-    def parse(
-        cls,
-        text: str,
-        source: Local | None,
-    ) -> Self | None:
-        if source is None:
-            return None
-        match = re.fullmatch(
-            rf"\s*{source.regex}\s*\.requires_grad\s*==\s*"
-            rf"(?P<value>True|False)\s*",
-            text,
-        )
-        if match is None:
-            return None
-        else:
-            return cls(text, source, match.group("value") == "True")
-
-    @override
-    def build(self, tree: InputTable, context: ir.Context) -> ir.Value:
-        # TVM FFI tensor metadata does not expose autograd state.  Treat this
-        # specialization guard as satisfied; the wrapper ABI cannot perform a
-        # runtime requires_grad check.
-        i1 = ir.IntegerType.get_signless(1, context)
-        return arith.constant(i1, ir.IntegerAttr.get(i1, 1))
-
-
-class DynamoAttributeAbsentCode(GuardCode):
-    def __init__(
-        self,
-        text: str,
-        source: Local,
-        attribute: str,
-    ) -> None:
-        super().__init__(text, source)
-        self.attribute: Final[str] = attribute
-
-    @classmethod
-    def parse(
-        cls,
-        text: str,
-        source: Local | None,
-    ) -> Self | None:
-        if source is None:
-            return None
-        match = re.fullmatch(
-            rf"\s*hasattr\(\s*{source.regex}\s*,\s*"
-            rf"(?P<quote>['\"])(?P<attribute>_dynamo_[A-Za-z0-9_]*)"
-            rf"(?P=quote)\s*\)\s*==\s*False\s*",
-            text,
-        )
-        return (
-            cls(text, source, match.group("attribute")) if match is not None else None
-        )
-
-    @override
-    def build(self, tree: InputTable, context: ir.Context) -> ir.Value:
-        # These private Dynamo attributes are not part of the TVM FFI ABI.
-        i1 = ir.IntegerType.get_signless(1, context)
-        return arith.constant(i1, ir.IntegerAttr.get(i1, 1))

@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "trident/ffi/Exception.h"
+#include "trident/ffi/ExceptionObj.h"
 #include <cstdint>
 #include <string>
 #include <tvm/ffi/base_details.h>
@@ -30,8 +31,10 @@ Exception::Exception(const std::string &kind)
     : tvm::ffi::ObjectRef(tvm::ffi::make_object<ExceptionObj>(kind)) {}
 
 const std::string &Exception::GetKind() const & {
-  return static_cast<ExceptionObj *>(data_.get())->kind_;
+  return static_cast<ExceptionObj *>(data_.get())->GetKind();
 }
+
+const std::string &ExceptionObj::GetKind() const & { return kind_; }
 
 TVM_FFI_STATIC_INIT_BLOCK() {
   namespace refl = tvm::ffi::reflection;

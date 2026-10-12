@@ -13,16 +13,16 @@
 namespace trident::dlpack {
 
 mlir::LLVM::LLVMStructType
-DLDeviceType::getLLVMType(mlir::MLIRContext *context) {
-  mlir::IntegerType const i32Ty = mlir::IntegerType::get(context, 32);
-  return mlir::LLVM::LLVMStructType::getLiteral(context, {i32Ty, i32Ty});
-}
-
-mlir::LLVM::LLVMStructType
 DLDataTypeType::getLLVMType(mlir::MLIRContext *context) {
   mlir::IntegerType const i8Ty = mlir::IntegerType::get(context, 8);
   mlir::IntegerType const i16Ty = mlir::IntegerType::get(context, 16);
   return mlir::LLVM::LLVMStructType::getLiteral(context, {i8Ty, i8Ty, i16Ty});
+}
+
+mlir::LLVM::LLVMStructType
+DLDeviceType::getLLVMType(mlir::MLIRContext *context) {
+  mlir::IntegerType const i32Ty = mlir::IntegerType::get(context, 32);
+  return mlir::LLVM::LLVMStructType::getLiteral(context, {i32Ty, i32Ty});
 }
 
 mlir::LLVM::LLVMStructType

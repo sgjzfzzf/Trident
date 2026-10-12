@@ -4,8 +4,8 @@
 from ..codes import (
     DynamoAttributeAbsentCode,
     RequiresGradCode,
-    TensorDeviceCode,
     TensorDTypeCode,
+    TensorDeviceCode,
     TensorRankCode,
     TypeIdCode,
 )
@@ -15,10 +15,10 @@ from .base import Guard
 class TensorMatchGuard(Guard):
     create_fn_name = "TENSOR_MATCH"
     code_types = (
-        TypeIdCode,
+        DynamoAttributeAbsentCode,
+        RequiresGradCode,
         TensorDTypeCode,
         TensorDeviceCode,
         TensorRankCode,
-        RequiresGradCode,
-        DynamoAttributeAbsentCode,
+        TypeIdCode,
     )

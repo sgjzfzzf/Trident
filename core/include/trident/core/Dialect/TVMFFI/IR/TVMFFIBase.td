@@ -24,6 +24,7 @@ def TVMFFI_Dialect : Dialect {
     types.
   }];
 
+  let useDefaultAttributePrinterParser = 1;
   let useDefaultTypePrinterParser = 1;
 }
 

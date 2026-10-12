@@ -67,15 +67,15 @@ public:
 
 void populateFinalizeTVMFFIPatterns(mlir::RewritePatternSet &patterns) {
   patterns.add<
-      FinalizeTensorMetadataOp<tvm_ffi::TensorDeviceOp, dlpack::TensorDeviceOp>,
-      FinalizeTensorMetadataOp<tvm_ffi::TensorDimOp, dlpack::TensorDimOp>,
-      FinalizeTensorMetadataOp<tvm_ffi::TensorDTypeOp, dlpack::TensorDTypeOp>,
       FinalizeIndexedTensorMetadataOp<tvm_ffi::TensorSizeOp,
                                       dlpack::TensorSizeOp>,
-      FinalizeTensorMetadataOp<tvm_ffi::TensorStorageOffsetOp,
-                               dlpack::TensorStorageOffsetOp>,
       FinalizeIndexedTensorMetadataOp<tvm_ffi::TensorStrideOp,
-                                      dlpack::TensorStrideOp>>(
+                                      dlpack::TensorStrideOp>,
+      FinalizeTensorMetadataOp<tvm_ffi::TensorDTypeOp, dlpack::TensorDTypeOp>,
+      FinalizeTensorMetadataOp<tvm_ffi::TensorDeviceOp, dlpack::TensorDeviceOp>,
+      FinalizeTensorMetadataOp<tvm_ffi::TensorDimOp, dlpack::TensorDimOp>,
+      FinalizeTensorMetadataOp<tvm_ffi::TensorStorageOffsetOp,
+                               dlpack::TensorStorageOffsetOp>>(
       patterns.getContext());
 }
 

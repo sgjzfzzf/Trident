@@ -15,6 +15,33 @@ from ..ast import GuardBuildFn
 from ..local import Local
 
 
+@dataclass(frozen=True)
+class GuardBuilder:
+    """Metadata and delayed IR builder for one parsed guard code."""
+
+    code: GuardCode
+    build_fn: GuardBuildFn
+
+    def build(self, tree: InputTable, context: ir.Context) -> ir.Value:
+        return self.build_fn(tree, context)
+
+    @property
+    def depth(self) -> int:
+        return self.code.depth
+
+    @property
+    def key(self) -> Hashable:
+        return self.code.key
+
+    @property
+    def priority(self) -> int:
+        return self.code.priority
+
+    @property
+    def text(self) -> str:
+        return self.code.text
+
+
 class GuardCode:
     """Parsed representation of one expression from a Guard code list."""
 
@@ -26,22 +53,6 @@ class GuardCode:
         self.text: Final[str] = text
         self.source: Final[Local | None] = source
 
-    @classmethod
-    @abstractmethod
-    def parse(
-        cls,
-        text: str,
-        source: Local | None,
-    ) -> Self | None: ...
-
-    @property
-    def depth(self) -> int:
-        return 0
-
-    @property
-    def key(self) -> Hashable:
-        return (type(self), self.source, self.text)
-
     @abstractmethod
     def build(
         self,
@@ -52,35 +63,24 @@ class GuardCode:
             f"guard code {type(self).__name__} cannot be lowered: {self.text!r}"
         )
 
+    @property
+    def depth(self) -> int:
+        return 0
+
+    @property
+    def key(self) -> Hashable:
+        return (type(self), self.source, self.text)
+
+    @classmethod
+    @abstractmethod
+    def parse(
+        cls,
+        text: str,
+        source: Local | None,
+    ) -> Self | None: ...
+
     def to_builder(self) -> GuardBuilder:
         return GuardBuilder(
             code=self,
             build_fn=self.build,
         )
-
-
-@dataclass(frozen=True)
-class GuardBuilder:
-    """Metadata and delayed IR builder for one parsed guard code."""
-
-    code: GuardCode
-    build_fn: GuardBuildFn
-
-    @property
-    def text(self) -> str:
-        return self.code.text
-
-    @property
-    def priority(self) -> int:
-        return self.code.priority
-
-    @property
-    def depth(self) -> int:
-        return self.code.depth
-
-    @property
-    def key(self) -> Hashable:
-        return self.code.key
-
-    def build(self, tree: InputTable, context: ir.Context) -> ir.Value:
-        return self.build_fn(tree, context)

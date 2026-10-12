@@ -42,34 +42,34 @@ _TEMPLATE_DIR: Final[Path] = Path(__file__).parent
 
 
 _TYPE_KIND_TO_CLASS: Final[dict[str, str]] = {
-    "TensorType": "TensorType",
-    "IntType": "IntType",
-    "FloatType": "FloatType",
-    "BoolType": "BoolType",
-    "StringType": "StringType",
-    "NumberType": "NumberType",
-    "NoneType": "NoneType",
+    "AnyEnumType": "AnyEnumType",
     "AnyType": "AnyType",
+    "BoolType": "BoolType",
+    "CapsuleType": "CapsuleType",
+    "ClassType": "AnyClassType",
     "ComplexType": "ComplexType",
     "DeviceObjType": "DeviceObjType",
-    "ScalarTypeType": "ScalarTypeType",
-    "LayoutType": "LayoutType",
-    "MemoryFormatType": "MemoryFormatType",
-    "StorageType": "StorageType",
-    "GeneratorType": "GeneratorType",
-    "QSchemeType": "QSchemeType",
-    "StreamObjType": "StreamObjType",
-    "CapsuleType": "CapsuleType",
-    "SymBoolType": "SymBoolType",
-    "AnyEnumType": "AnyEnumType",
-    "VarType": "VarType",
-    "ClassType": "AnyClassType",
-    "FutureType": "FutureType",
-    "RRefType": "RRefType",
     "DictType": "DictType",
+    "FloatType": "FloatType",
+    "FutureType": "FutureType",
+    "GeneratorType": "GeneratorType",
+    "IntType": "IntType",
+    "LayoutType": "LayoutType",
     "ListType": "ListType",
+    "MemoryFormatType": "MemoryFormatType",
+    "NoneType": "NoneType",
+    "NumberType": "NumberType",
     "OptionalType": "OptionalType",
+    "QSchemeType": "QSchemeType",
+    "RRefType": "RRefType",
+    "ScalarTypeType": "ScalarTypeType",
+    "StorageType": "StorageType",
+    "StreamObjType": "StreamObjType",
+    "StringType": "StringType",
+    "SymBoolType": "SymBoolType",
+    "TensorType": "TensorType",
     "TupleType": "TupleType",
+    "VarType": "VarType",
 }
 
 _NAMESPACE: Final[str] = "trident::runtime"
@@ -102,33 +102,6 @@ def _type_kind_expr(jit_type: torch.JitType) -> str:
 # ===========================================================================
 # Schema -> tuple[str, str, str]
 # ===========================================================================
-
-
-def schema_to_descriptor(schema: torch.FunctionSchema) -> tuple[str, str, str]:
-    name: Final[str] = schema.name.removeprefix("aten::")
-
-    # --- Build ret_expr ---
-    if len(schema.returns) == 0:
-        ret_expr: Final[str] = "c10::NoneType"
-    elif len(schema.returns) == 1:
-        [ret] = schema.returns
-        ret_expr: Final[str] = _type_kind_expr(ret.type)
-    else:
-        inner: Final[str] = ", ".join(_type_kind_expr(r.type) for r in schema.returns)
-        ret_expr: Final[str] = (
-            f"{_NAMESPACE}::Contain<c10::TupleType, {_NAMESPACE}::SubTypes<{inner}>>"
-        )
-
-    # --- Build args_expr ---
-    args_expr: Final[str] = (
-        f"{_NAMESPACE}::Args<{', '.join(_type_kind_expr(arg.type) for arg in schema.arguments)}>"
-    )
-
-    return (
-        name,
-        schema.overload_name,
-        f"{_NAMESPACE}::Function<{ret_expr}, {args_expr}>::call",
-    )
 
 
 # ===========================================================================
@@ -198,6 +171,33 @@ def main() -> None:
             f.write(source_content)
     else:
         print(source_content)
+
+
+def schema_to_descriptor(schema: torch.FunctionSchema) -> tuple[str, str, str]:
+    name: Final[str] = schema.name.removeprefix("aten::")
+
+    # --- Build ret_expr ---
+    if len(schema.returns) == 0:
+        ret_expr: Final[str] = "c10::NoneType"
+    elif len(schema.returns) == 1:
+        [ret] = schema.returns
+        ret_expr: Final[str] = _type_kind_expr(ret.type)
+    else:
+        inner: Final[str] = ", ".join(_type_kind_expr(r.type) for r in schema.returns)
+        ret_expr: Final[str] = (
+            f"{_NAMESPACE}::Contain<c10::TupleType, {_NAMESPACE}::SubTypes<{inner}>>"
+        )
+
+    # --- Build args_expr ---
+    args_expr: Final[str] = (
+        f"{_NAMESPACE}::Args<{', '.join(_type_kind_expr(arg.type) for arg in schema.arguments)}>"
+    )
+
+    return (
+        name,
+        schema.overload_name,
+        f"{_NAMESPACE}::Function<{ret_expr}, {args_expr}>::call",
+    )
 
 
 if __name__ == "__main__":

@@ -5,13 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTATTRS_H_
-#define TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTATTRS_H_
+#ifndef TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIATTRS_H_
+#define TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIATTRS_H_
 
-#include "trident/core/Dialect/TorchExt/IR/TorchExtInterfaces.h"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.h"
 #include <mlir/IR/Attributes.h>
 
 #define GET_ATTRDEF_CLASSES
-#include "trident/core/Dialect/TorchExt/IR/TorchExtAttrs.h.inc"
+#include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttrs.h.inc"
 
-#endif // TRIDENT_CORE_DIALECT_TORCHEXT_IR_TORCHEXTATTRS_H_
+#endif // TRIDENT_CORE_DIALECT_TVMFFI_IR_TVMFFIATTRS_H_

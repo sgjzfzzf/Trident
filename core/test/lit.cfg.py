@@ -21,13 +21,13 @@ config.substitutions.append(("%PATH%", config.environment["PATH"]))
 shlibext = config.llvm_shlib_ext if config.llvm_shlib_ext else ".so"
 config.substitutions.append(("%shlibext", shlibext))
 
-llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
+llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TEMP", "TMP"])
 llvm_config.with_environment("PATH", config.trident_core_tools_dir, append_path=True)
 llvm_config.with_environment("PATH", config.llvm_tools_dir, append_path=True)
 
 config.excludes = [
-    "Inputs",
     "CMakeLists.txt",
+    "Inputs",
     "README.txt",
     "lit.cfg.py",
     "lit.site.cfg.py",
@@ -35,8 +35,8 @@ config.excludes = [
 
 tool_dirs = [config.trident_core_tools_dir, config.llvm_tools_dir]
 tools = [
-    ToolSubst("trident-core-opt"),
     ToolSubst("FileCheck"),
+    ToolSubst("trident-core-opt"),
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)

@@ -7,11 +7,15 @@
 
 // RUN: trident-core-opt %s -convert-tvm-ffi-to-llvm | FileCheck %s
 
-// CHECK-LABEL: func.func @object_type(
-// CHECK-SAME: %[[OBJECT:[a-zA-Z0-9_]+]]: !llvm.ptr) {
-// CHECK-NEXT: return
-func.func @object_type(%object: !tvm_ffi.object) {
-  return
+// CHECK-LABEL: func.func @as_dlpack_tensor(
+// CHECK-SAME: %[[OBJECT:[a-zA-Z0-9_]+]]: !llvm.ptr) -> !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)> {
+// CHECK: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[OBJECT]][24] : (!llvm.ptr) -> !llvm.ptr, i8
+// CHECK: %[[TENSOR:[a-zA-Z0-9_]+]] = llvm.load %[[PAYLOAD]] : !llvm.ptr -> !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
+// CHECK-NEXT: return %[[TENSOR]] : !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
+func.func @as_dlpack_tensor(%object: !tvm_ffi.object)
+    -> !dlpack.dl_tensor {
+  %tensor = tvm_ffi.as %object : !tvm_ffi.object -> !dlpack.dl_tensor
+  return %tensor : !dlpack.dl_tensor
 }
 
 // CHECK-LABEL: func.func @get_object(
@@ -24,15 +28,11 @@ func.func @get_object(%tensor: !tvm_ffi.tensor) -> !tvm_ffi.object {
   return %object : !tvm_ffi.object
 }
 
-// CHECK-LABEL: func.func @as_dlpack_tensor(
-// CHECK-SAME: %[[OBJECT:[a-zA-Z0-9_]+]]: !llvm.ptr) -> !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)> {
-// CHECK: %[[PAYLOAD:[a-zA-Z0-9_]+]] = llvm.getelementptr %[[OBJECT]][24] : (!llvm.ptr) -> !llvm.ptr, i8
-// CHECK: %[[TENSOR:[a-zA-Z0-9_]+]] = llvm.load %[[PAYLOAD]] : !llvm.ptr -> !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
-// CHECK-NEXT: return %[[TENSOR]] : !llvm.struct<(ptr, struct<(i32, i32)>, i32, struct<(i8, i8, i16)>, ptr, ptr, i64)>
-func.func @as_dlpack_tensor(%object: !tvm_ffi.object)
-    -> !dlpack.dl_tensor {
-  %tensor = tvm_ffi.as %object : !tvm_ffi.object -> !dlpack.dl_tensor
-  return %tensor : !dlpack.dl_tensor
+// CHECK-LABEL: func.func @object_type(
+// CHECK-SAME: %[[OBJECT:[a-zA-Z0-9_]+]]: !llvm.ptr) {
+// CHECK-NEXT: return
+func.func @object_type(%object: !tvm_ffi.object) {
+  return
 }
 
 // CHECK-LABEL: func.func @tensor_literal() -> !llvm.struct<(i32, i32, i64)> {

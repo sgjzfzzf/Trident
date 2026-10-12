@@ -21,6 +21,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIBase.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFIInterfaces.td"
 include "trident/core/Dialect/TVMFFI/IR/TVMFFITypes.td"
+include "trident/core/Dialect/TVMFFI/IR/TVMFFIAttrs.td"
 
 class TVMFFI_Op<string mnemonic, list<Trait> traits = []>
     : Op<TVMFFI_Dialect, mnemonic, traits>;
@@ -77,15 +78,15 @@ def TVMFFI_ConstantBoolOp
   let summary = "Create a TVM FFI boolean constant";
 }
 
-def TVMFFI_ConstantDeviceOp
-    : TVMFFI_ConstantOp<"constant.device", TVMFFI_DeviceType, StrAttr> {
-  let summary = "Create a TVM FFI device constant";
-}
-
 def TVMFFI_ConstantDTypeOp
     : TVMFFI_ConstantOp<"constant.dtype", TVMFFI_DTypeType, ArrayAttr> {
   let summary = "Create a TVM FFI dtype constant";
   let hasVerifier = 1;
+}
+
+def TVMFFI_ConstantDeviceOp
+    : TVMFFI_ConstantOp<"constant.device", TVMFFI_DeviceType, StrAttr> {
+  let summary = "Create a TVM FFI device constant";
 }
 
 def TVMFFI_ConstantFloatOp
@@ -200,6 +201,75 @@ def TVMFFI_GetOp : TVMFFI_Op<"get", [Pure,
   let assemblyFormat = "$operand attr-dict `:` type($operand) `->` type($result)";
 }
 
+// Define the operand constraint before the launch operation that uses it.
+def TVMFFI_KernelOperandType
+    : AnyTypeOf<[AnyTVMFFISemanticType, F64, I1, I64],
+                "TVM FFI value or native scalar accepted by a Triton launch">;
+
+def TVMFFI_KernelLaunchOp
+    : TVMFFI_Op<"kernel_launch", [
+  AttrSizedOperandSegments, AllTypesMatch<[
+    "gridSizeX", "gridSizeY", "gridSizeZ", "blockSizeX", "blockSizeY",
+    "blockSizeZ"
+  ]>
+]> {
+  let summary = "Launch a compiled kernel entry point";
+  let description = [{
+    Models launching a compiled kernel symbol with explicit grid/block sizes.
+    Operands use TVM FFI semantic values or native scalars. Each operand's
+    specialization attribute defines its runtime precondition. Constant
+    specializations are guard-only, while variable specializations are passed
+    to the compiled Triton kernel.
+
+    Optionally supports cluster-level parallelism via `clusterSizeX`,
+    `clusterSizeY`, and `clusterSizeZ` arguments. When present, the kernel
+    is launched with the specified thread-block cluster size. This feature
+    is exclusive to certain architectures (e.g. NVIDIA Hopper and later).
+}];
+
+let arguments = (ins SymbolRefAttr:$kernel,
+                   I64:$gridSizeX,
+                   I64:$gridSizeY,
+                   I64:$gridSizeZ,
+                   I64:$blockSizeX,
+                   I64:$blockSizeY,
+                   I64:$blockSizeZ,
+                   Optional<I64>:$clusterSizeX,
+                   Optional<I64>:$clusterSizeY,
+                   Optional<I64>:$clusterSizeZ,
+                   Optional<I32>:$dynamicSharedMemorySize,
+                   Variadic<TVMFFI_KernelOperandType>:$kernelOperands,
+                   TVMFFI_KernelSpecializationArrayAttr:$specializations);
+let results = (outs);
+let hasVerifier = 1;
+
+let extraClassDeclaration = [{
+    /// Returns true if cluster size is specified.
+    bool hasClusterSize();
+    static ::mlir::ParseResult parseKernelArguments(
+        ::mlir::OpAsmParser &parser,
+        ::llvm::SmallVectorImpl<::mlir::OpAsmParser::UnresolvedOperand> &operands,
+        ::llvm::SmallVectorImpl<::mlir::Type> &types,
+        ::mlir::ArrayAttr &specializations);
+    static void printKernelArguments(
+        ::mlir::OpAsmPrinter &printer,
+        ::mlir::Operation *op [[maybe_unused]],
+        ::mlir::OperandRange operands, ::mlir::TypeRange types,
+        ::mlir::ArrayAttr specializations);
+  }];
+
+  let assemblyFormat = [{
+    $kernel
+    (`clusters` `in` `(` $clusterSizeX^ `,` $clusterSizeY `,` $clusterSizeZ `)`)?
+    `blocks` `in` `(` $gridSizeX `,` $gridSizeY `,` $gridSizeZ `)`
+    `:` type($gridSizeX)
+    `threads` `in` `(` $blockSizeX `,` $blockSizeY `,` $blockSizeZ `)`
+    (`dynamic_shared_memory_size` $dynamicSharedMemorySize^)?
+    `args` `(` custom<KernelArguments>($kernelOperands, type($kernelOperands), $specializations) `)`
+    prop-dict attr-dict
+}];
+}
+
 def TVMFFI_ObjectDecRefOp : TVMFFI_Op<"ObjectDecRef", [
     DeclareOpInterfaceMethods<TVMFFI_ObjectOwnershipOpInterface,
                               ["getObjectOperandOwnership"]>]> {
@@ -254,6 +324,14 @@ def TVMFFI_TensorCopyOp
   let assemblyFormat = "$destination `,` $source attr-dict `:` type($destination)";
 }
 
+def TVMFFI_TensorDTypeOp : TVMFFI_Op<"tensor.dtype", [Pure,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "Read DLPack dtype fields from a runtime tensor";
+  let arguments = (ins TVMFFI_TensorType:$tensor);
+  let results = (outs I8:$code, I8:$bits, I16:$lanes);
+  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
+}
+
 def TVMFFI_TensorDeviceOp : TVMFFI_Op<"tensor.device", [Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Read DLPack device fields from a runtime tensor";
@@ -267,14 +345,6 @@ def TVMFFI_TensorDimOp : TVMFFI_Op<"tensor.dim", [Pure,
   let summary = "Read the rank of a runtime tensor";
   let arguments = (ins TVMFFI_TensorType:$tensor);
   let results = (outs I64:$result);
-  let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
-}
-
-def TVMFFI_TensorDTypeOp : TVMFFI_Op<"tensor.dtype", [Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let summary = "Read DLPack dtype fields from a runtime tensor";
-  let arguments = (ins TVMFFI_TensorType:$tensor);
-  let results = (outs I8:$code, I8:$bits, I16:$lanes);
   let assemblyFormat = "$tensor attr-dict `:` type($tensor)";
 }
 
@@ -312,9 +382,8 @@ def TVMFFI_ToOp
     : TVMFFI_Op<"to", [Pure,
         DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Convert a native scalar to a TVM FFI semantic value";
-  let arguments = (ins AnyTypeOf<[I1, I64, F64]> : $value);
-  let results = (outs AnyTypeOf<[TVMFFI_BoolType, TVMFFI_IntType,
-                                 TVMFFI_FloatType]> : $result);
+  let arguments = (ins AnyTypeOf<[F64, I1, I64]> : $value);
+  let results = (outs AnyTypeOf<[TVMFFI_BoolType, TVMFFI_FloatType, TVMFFI_IntType]> : $result);
   let hasVerifier = 1;
   let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
 }

@@ -19,6 +19,12 @@ class Local:
 
     __slots__ = ("_subscripts",)
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Local) and self._subscripts == other._subscripts
+
+    def __hash__(self) -> int:
+        return hash(self._subscripts)
+
     def __init__(self, subscripts: Sequence[Subscript]) -> None:
         assert subscripts, "local subscripts must not be empty"
         root, *follows = subscripts
@@ -31,26 +37,12 @@ class Local:
         ), "local subscripts must be integers or strings"
         self._subscripts: tuple[Subscript, ...] = tuple(subscripts)
 
-    @property
-    def subscripts(self) -> tuple[Subscript, ...]:
-        return self._subscripts
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, Local) and self._subscripts == other._subscripts
-
-    def __hash__(self) -> int:
-        return hash(self._subscripts)
-
     def __repr__(self) -> str:
         return f"Local(subscripts={self._subscripts!r})"
 
-    @classmethod
-    def parse(cls, text: str) -> Local | None:
-        try:
-            expression = ast.parse(text, mode="eval").body
-        except SyntaxError:
-            return None
-        return cls.from_expression(expression)
+    @property
+    def depth(self) -> int:
+        return len(self._subscripts) - 1
 
     @classmethod
     def from_expression(cls, expression: ast.expr) -> Local | None:
@@ -81,12 +73,16 @@ class Local:
         return cls(subscripts) if subscripts is not None else None
 
     @property
-    def depth(self) -> int:
-        return len(self._subscripts) - 1
-
-    @property
     def literal(self) -> str:
         return f"L{''.join(f'[{subscript!r}]' for subscript in self._subscripts)}"
+
+    @classmethod
+    def parse(cls, text: str) -> Local | None:
+        try:
+            expression = ast.parse(text, mode="eval").body
+        except SyntaxError:
+            return None
+        return cls.from_expression(expression)
 
     @property
     def regex(self) -> str:
@@ -94,3 +90,7 @@ class Local:
 
     def resolve(self, tree: InputTable) -> ir.Value | None:
         return tree[self._subscripts]
+
+    @property
+    def subscripts(self) -> tuple[Subscript, ...]:
+        return self._subscripts
